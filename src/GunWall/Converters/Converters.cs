@@ -11,8 +11,8 @@ public sealed class StatusToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var allowed = new SolidColorBrush(Color.FromRgb(0x58, 0xC9, 0x8B));
-        var blocked = new SolidColorBrush(Color.FromRgb(0xF4, 0x60, 0x4F));
+        var allowed = new SolidColorBrush(Color.FromRgb(0x3D, 0xD6, 0x8C));
+        var blocked = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
         return value is AppStatus s && s == AppStatus.Blocked ? blocked : allowed;
     }
 

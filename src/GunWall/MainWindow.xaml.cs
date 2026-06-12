@@ -404,8 +404,8 @@ public partial class MainWindow : Window
 
         DrawBaseline(canvas, w, h);
         // Palette: cool blue for download, signature orange for upload.
-        AddSeries(canvas, _downSeries, max, w, h, Color.FromRgb(0x46, 0xB5, 0xE6));
-        AddSeries(canvas, _upSeries, max, w, h, Color.FromRgb(0xFF, 0x9D, 0x2E));
+        AddSeries(canvas, _downSeries, max, w, h, Color.FromRgb(0x3D, 0xA9, 0xFC));
+        AddSeries(canvas, _upSeries, max, w, h, Color.FromRgb(0x7C, 0x5C, 0xFF));
     }
 
     private static void DrawBaseline(Canvas canvas, double w, double h)
@@ -413,7 +413,7 @@ public partial class MainWindow : Window
         var line = new Line
         {
             X1 = 0, Y1 = h - 1, X2 = w, Y2 = h - 1,
-            Stroke = new SolidColorBrush(Color.FromRgb(0x33, 0x37, 0x3F)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0x2A, 0x34, 0x46)),
             StrokeThickness = 1
         };
         canvas.Children.Add(line);
@@ -437,7 +437,7 @@ public partial class MainWindow : Window
         }
         canvas.Children.Add(poly);
 
-        // a soft gradient soft vertical gradient under the line.
+        // Soft vertical gradient fill under the line.
         var fillBrush = new LinearGradientBrush
         {
             StartPoint = new Point(0, 0),

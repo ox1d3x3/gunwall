@@ -2,12 +2,13 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using GunWall.Services;
 
 namespace GunWall;
 
 /// <summary>
-/// a connection connection alert. Shown when an executable GunWall has
+/// A connection alert. Shown when an executable GunWall has
 /// never seen before makes its first network connection.
 ///
 /// Honest note on semantics: GunWall is allow-by-default, so this alert is
@@ -29,6 +30,8 @@ public partial class AlertWindow : Window
     private readonly AlertInfo _info;
     private readonly Action _onBlock;
     private readonly Action? _onAllow;
+    private System.Windows.Threading.DispatcherTimer? _countdown;
+    private int _secondsLeft = 20;
 
     public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null)
     {
@@ -54,6 +57,7 @@ public partial class AlertWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         TryEnableDarkTitleBar();
+        StartCountdown();
 
         // Enrich asynchronously so the popup appears instantly.
         var path = _info.ExePath;
@@ -80,6 +84,7 @@ public partial class AlertWindow : Window
 
     private void Allow_Click(object sender, RoutedEventArgs e)
     {
+        StopCountdown();
         // In alert mode this is a no-op (app already allowed by default);
         // in strict mode the callback creates persistent PERMIT filters.
         try { _onAllow?.Invoke(); }
@@ -93,6 +98,7 @@ public partial class AlertWindow : Window
 
     private void Block_Click(object sender, RoutedEventArgs e)
     {
+        StopCountdown();
         try { _onBlock(); }
         catch (Exception ex)
         {
@@ -102,7 +108,47 @@ public partial class AlertWindow : Window
         Close();
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    private void Close_Click(object sender, RoutedEventArgs e) { StopCountdown(); Close(); }
+
+    private void StartCountdown()
+    {
+        // Auto-allow after a grace period so the popup never blocks the user
+        // indefinitely (the app is allowed by default; this just dismisses).
+        _countdown = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _countdown.Tick += (_, _) =>
+        {
+            _secondsLeft--;
+            if (AllowButton != null)
+                AllowButton.Content = BuildAllowContent($"Allow ({_secondsLeft}s)");
+            if (_secondsLeft <= 0)
+            {
+                _countdown?.Stop();
+                Allow_Click(this, new RoutedEventArgs());
+            }
+        };
+        _countdown.Start();
+    }
+
+    private static object BuildAllowContent(string text)
+    {
+        var sp = new System.Windows.Controls.StackPanel
+        { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        sp.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Width = 10, Height = 10,
+            Fill = new SolidColorBrush(Color.FromRgb(0x3D, 0xD6, 0x8C)),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0)
+        });
+        sp.Children.Add(new System.Windows.Controls.TextBlock
+        { Text = text, FontWeight = FontWeights.SemiBold });
+        return sp;
+    }
+
+    private void StopCountdown() => _countdown?.Stop();
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

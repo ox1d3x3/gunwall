@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/release-v0.6.0%20(alpha)-orange?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.7.0%20(alpha)-orange?style=flat-square)](#roadmap)
 
 *Take full control of your network. Block apps from the internet, watch your traffic in real time, and get a popup the moment a new app reaches out — in a fast, dark, modern interface.*
 
@@ -19,13 +19,15 @@
 
 ## ⚠️ Project status
 
-GunWall is an **early alpha (v0.6.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
+GunWall is an **early alpha (v0.7.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
 
 ---
 
 ## ✨ Features
 
 - **Enable Firewall (full control)** — one click takes over all network traffic: every app is blocked except the ones you allow, enforced by persistent WFP filters. Loopback and core Windows networking (DNS/DHCP) stay alive automatically so your connection never silently dies.
+- **Refined interface** — a deeper, blue-tinted dark theme with elevation, status pills, hover rows, and a cyan/violet accent system for a cleaner, more modern feel.
+- **Alert auto-decision countdown** — the connection popup counts down and auto-allows if you step away, so it never blocks your workflow.
 - **Connection alerts** — a popup the first time any new app reaches the network, showing name, **Authenticode signature**, address, **reverse-DNS host**, port and path, with one-click **Allow / Block**. Detection is fast (sub-second) and robust: apps running as SYSTEM or other users (VPN helpers, security software) are resolved correctly, and outbound-UDP apps (VPN tunnels) are caught too.
 - **Live throughput graph** — smooth gradient area chart of download/upload, plus session data totals.
 - **Connection inspector** — every active TCP connection and UDP socket (IPv4 + IPv6) with owning process, endpoints and state, with instant search.
@@ -113,7 +115,8 @@ Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv
 
 | Version | Focus |
 |---------|-------|
-| **v0.6** ✅ | Enable-Firewall takeover, robust detection (SYSTEM/VPN apps), staged settings + Apply, refined UI |
+| **v0.6** ✅ | Enable-Firewall takeover, robust detection (SYSTEM/VPN apps), staged settings + Apply |
+| **v0.7** ✅ | Refined blue-tinted theme, status pills, alert countdown, new logo |
 | **v0.7** | Kernel net-event drop notifications (show address/port of blocked attempts), per-rule scoping (address/port/direction) |
 | **v0.8** | GeoIP + per-app traffic attribution, traffic history database, profiles (Home/Work/Public) |
 | **v0.9** | DNS-level blocking and blocklists, rule editor |
