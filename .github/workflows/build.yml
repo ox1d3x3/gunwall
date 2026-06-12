@@ -1,0 +1,43 @@
+name: build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore NetGuardPro.sln
+
+      - name: Build (Release, x64)
+        run: dotnet build NetGuardPro.sln --configuration Release --no-restore /p:Platform=x64
+
+      - name: Publish self-contained EXE
+        run: >
+          dotnet publish src/NetGuardPro/NetGuardPro.csproj
+          --configuration Release
+          -r win-x64
+          --self-contained false
+          -p:PublishSingleFile=true
+          -o publish
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetGuardPro-win-x64
+          path: publish/
+          if-no-files-found: warn

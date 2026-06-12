@@ -1,0 +1,226 @@
+<Window
+    x:Class="NetGuardPro.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="clr-namespace:NetGuardPro.Converters"
+    Title="NetGuard Pro"
+    Height="740" Width="1140"
+    MinHeight="620" MinWidth="980"
+    WindowStartupLocation="CenterScreen"
+    Background="{StaticResource BgPrimary}">
+
+    <Window.Resources>
+        <conv:StatusToBrushConverter x:Key="StatusToBrush" />
+        <conv:StatusToActionTextConverter x:Key="StatusToAction" />
+        <conv:StatusToTextConverter x:Key="StatusToText" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="210" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ===================== Navigation rail ===================== -->
+        <Border Grid.Column="0" Background="{StaticResource BgSecondary}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Brand -->
+                <StackPanel Grid.Row="0" Margin="18,22,18,18">
+                    <TextBlock Text="NetGuard Pro" Style="{StaticResource H2}" />
+                    <TextBlock Text="WFP Firewall" Style="{StaticResource Muted}" Margin="0,2,0,0" />
+                </StackPanel>
+
+                <!-- Nav items -->
+                <StackPanel Grid.Row="1" Margin="0,8,0,0">
+                    <RadioButton x:Name="NavDashboard" Content="Dashboard"
+                                 Style="{StaticResource NavButton}" IsChecked="True"
+                                 Checked="Nav_Checked" Tag="Dashboard" />
+                    <RadioButton x:Name="NavFirewall" Content="Firewall"
+                                 Style="{StaticResource NavButton}"
+                                 Checked="Nav_Checked" Tag="Firewall" />
+                    <RadioButton x:Name="NavConnections" Content="Connections"
+                                 Style="{StaticResource NavButton}"
+                                 Checked="Nav_Checked" Tag="Connections" />
+                </StackPanel>
+
+                <!-- Lockdown + status -->
+                <StackPanel Grid.Row="2" Margin="14,0,14,18">
+                    <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="Lockdown" FontWeight="SemiBold" />
+                            <TextBlock Text="Block all traffic instantly"
+                                       Style="{StaticResource Muted}" Margin="0,2,0,8" />
+                            <Button x:Name="LockdownButton" Content="Engage lockdown"
+                                    Style="{StaticResource ActionButton}"
+                                    Click="LockdownButton_Click" />
+                        </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="EngineStatus" Text="Engine: starting…"
+                               Style="{StaticResource Muted}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ===================== Content area ===================== -->
+        <Grid Grid.Column="1" Margin="24">
+
+            <!-- ---------- Dashboard ---------- -->
+            <Grid x:Name="PanelDashboard">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Dashboard" Style="{StaticResource H1}" Margin="0,0,0,16" />
+
+                <!-- Stat cards -->
+                <Grid Grid.Row="1" Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="Download" Style="{StaticResource Muted}" />
+                            <TextBlock x:Name="DownSpeed" Text="0 KB/s"
+                                       FontSize="24" FontWeight="SemiBold"
+                                       Foreground="{StaticResource InboundBrush}" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="Upload" Style="{StaticResource Muted}" />
+                            <TextBlock x:Name="UpSpeed" Text="0 KB/s"
+                                       FontSize="24" FontWeight="SemiBold"
+                                       Foreground="{StaticResource OutboundBrush}" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource Card}" Margin="8,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Active connections" Style="{StaticResource Muted}" />
+                            <TextBlock x:Name="ConnCount" Text="0"
+                                       FontSize="24" FontWeight="SemiBold" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Graph -->
+                <Border Grid.Row="2" Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="Throughput (last 60s)" Style="{StaticResource H2}" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+                                <Ellipse Width="10" Height="10" Fill="{StaticResource InboundBrush}"
+                                         VerticalAlignment="Center" />
+                                <TextBlock Text="Down" Style="{StaticResource Muted}" Margin="6,0,16,0" />
+                                <Ellipse Width="10" Height="10" Fill="{StaticResource OutboundBrush}"
+                                         VerticalAlignment="Center" />
+                                <TextBlock Text="Up" Style="{StaticResource Muted}" Margin="6,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                        <Canvas Grid.Row="1" x:Name="GraphCanvas" ClipToBounds="True"
+                                SizeChanged="GraphCanvas_SizeChanged" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- ---------- Firewall ---------- -->
+            <Grid x:Name="PanelFirewall" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" Margin="0,0,0,16">
+                    <TextBlock Text="Firewall" Style="{StaticResource H1}" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Block an app…" Style="{StaticResource ActionButton}"
+                                Click="BrowseBlock_Click" Margin="0,0,8,0" />
+                        <Button Content="Refresh" Style="{StaticResource ActionButton}"
+                                Click="RefreshApps_Click" />
+                    </StackPanel>
+                </Grid>
+
+                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
+                    <ListView x:Name="AppsList">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Application" Width="220"
+                                                DisplayMemberBinding="{Binding Name}" />
+                                <GridViewColumn Header="Path" Width="380"
+                                                DisplayMemberBinding="{Binding ExecutablePath}" />
+                                <GridViewColumn Header="Conns" Width="70"
+                                                DisplayMemberBinding="{Binding ActiveConnections}" />
+                                <GridViewColumn Header="Status" Width="90">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Status, Converter={StaticResource StatusToText}}"
+                                                       Foreground="{Binding Status, Converter={StaticResource StatusToBrush}}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Action" Width="100">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding Status, Converter={StaticResource StatusToAction}}"
+                                                    Style="{StaticResource ActionButton}"
+                                                    Padding="10,4"
+                                                    Click="ToggleApp_Click" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+            </Grid>
+
+            <!-- ---------- Connections ---------- -->
+            <Grid x:Name="PanelConnections" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Connections" Style="{StaticResource H1}" Margin="0,0,0,16" />
+
+                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
+                    <ListView x:Name="ConnList">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Process" Width="180"
+                                                DisplayMemberBinding="{Binding ProcessName}" />
+                                <GridViewColumn Header="PID" Width="70"
+                                                DisplayMemberBinding="{Binding ProcessId}" />
+                                <GridViewColumn Header="Proto" Width="60"
+                                                DisplayMemberBinding="{Binding Protocol}" />
+                                <GridViewColumn Header="Local" Width="190"
+                                                DisplayMemberBinding="{Binding LocalEndpoint}" />
+                                <GridViewColumn Header="Remote" Width="220"
+                                                DisplayMemberBinding="{Binding RemoteEndpoint}" />
+                                <GridViewColumn Header="State" Width="110"
+                                                DisplayMemberBinding="{Binding State}" />
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+            </Grid>
+
+        </Grid>
+    </Grid>
+</Window>
