@@ -59,6 +59,6 @@ ehthumbs.db
 Desktop.ini
 .DS_Store
 
-# ---- NetGuard Pro runtime data (created on the user's machine) ----
-# Rules live in %ProgramData%\NetGuardPro and are never committed.
+# ---- GunWall runtime data (created on the user's machine) ----
+# Rules live in %ProgramData%\GunWall and are never committed.
 *.local.json

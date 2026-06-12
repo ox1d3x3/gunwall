@@ -1,15 +1,17 @@
 <div align="center">
 
-# 🛡️ NetGuard Pro
+<img src="docs/logo.png" alt="GunWall" width="560"/>
 
 ### A modern, open-source firewall for Windows 11, built on the Windows Filtering Platform
 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/release-v0.1.0%20(alpha)-orange?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.4.0%20(alpha)-orange?style=flat-square)](#roadmap)
 
-*Block apps from the internet, watch your traffic in real time, and lock down your machine with one click — with a clean, dark, native Windows 11 interface.*
+*Block apps from the internet, watch your traffic in real time, and lock down your machine with one click — wrapped in a dark, GlassWire-inspired interface.*
+
+[github.com/ox1d3x3/gunwall](https://github.com/ox1d3x3/gunwall)
 
 </div>
 
@@ -17,41 +19,25 @@
 
 ## ⚠️ Project status
 
-NetGuard Pro is an **early alpha (v0.1.0)**. The core firewall engine and the live monitoring UI are functional, but this is a foundation to build on — not yet a hardened, production security product. Treat it as a serious starting point for a great firewall, and test in a safe environment first. See the [Roadmap](#roadmap) for what's coming.
+GunWall is an **early alpha (v0.4.0)**. The core firewall engine and live monitoring are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
 
 ---
 
-## ✨ Features in v0.1
+## ✨ Features in v0.4
 
-- **Real per-app blocking** via the Windows Filtering Platform (WFP) — the same low-level technology used by [simplewall](https://github.com/henrypp/simplewall). Filters are *persistent*: they keep working after you close the app and across reboots.
-- **Live throughput graph** — real-time download/upload speeds drawn on a smooth, hand-rendered chart.
-- **Connection inspector** — every active TCP connection with its owning process, local/remote endpoints, and state.
-- **One-click Lockdown** — instantly block all inbound and outbound traffic, then release it just as fast.
-- **Allow-by-default policy** — unlike whitelist firewalls, NetGuard Pro only blocks what *you* choose, so it never silently cuts off your internet.
-- **Block any executable** — pick any `.exe` from disk, even one that isn't currently connected.
-- **Native Windows 11 look** — dark Fluent styling with a proper dark title bar.
-- **Zero telemetry** — see [Privacy & Security](#-privacy--security).
-
----
-
-## 🖼️ Interface
-
-```
-┌──────────────┬─────────────────────────────────────────────┐
-│ NetGuard Pro │  Dashboard                                   │
-│ WFP Firewall │  ┌─────────┐ ┌─────────┐ ┌──────────────┐    │
-│              │  │Download │ │ Upload  │ │ Active conns │    │
-│ ● Dashboard  │  │ 1.2 MB/s│ │ 340 KB/s│ │      37      │    │
-│ ○ Firewall   │  └─────────┘ └─────────┘ └──────────────┘    │
-│ ○ Connections│  ┌─────────────────────────────────────────┐│
-│              │  │ Throughput (last 60s)    ● Down  ● Up    ││
-│ ┌──────────┐ │  │      ╱╲      ╱╲╱╲                        ││
-│ │ Lockdown │ │  │  ╱╲╱  ╲╱╲╱╲╱    ╲╱╲╱╲                    ││
-│ │ [Engage] │ │  │ ────────────────────────────────────────││
-│ └──────────┘ │  └─────────────────────────────────────────┘│
-│ Engine:active│                                              │
-└──────────────┴─────────────────────────────────────────────┘
-```
+- **Connection alerts** — a simplewall-style popup the first time a new app connects, showing name, **Authenticode signature**, address, **reverse-DNS host**, port and path, with one-click **Allow / Block**. (GunWall is allow-by-default, so the alert is shown on first observed connection; ask-before-connect requires whitelist mode and is on the roadmap.)
+- **Session data totals** — bytes downloaded/uploaded this session on the dashboard, GlassWire-style.
+- **Real per-app blocking** via the Windows Filtering Platform (WFP) — the same low-level technology used by [simplewall](https://github.com/henrypp/simplewall). Filters are *persistent*: they keep enforcing after you close the app and across reboots.
+- **Fast & responsive** — all heavy work (process snapshots, TCP/UDP tables, interface stats) runs on a background thread with PID caching; the UI never stutters.
+- **Live throughput graph** — GlassWire-style gradient area chart of download/upload.
+- **Connection inspector** — every active **TCP connection and UDP listener** (IPv4 + IPv6) with its owning process, endpoints, and state, with instant search.
+- **Activity feed** — new connections logged as they appear, GlassWire-timeline style. Local only.
+- **One-click Lockdown** — block all traffic instantly from the app or the tray icon.
+- **System tray** — minimize to tray; filters keep enforcing because they live in the OS, not the app.
+- **Searchable app list** — filter by name or path; optionally show *all* running apps, not just networked ones.
+- **Settings** — refresh interval control and a one-click "remove all GunWall filtering" reset.
+- **Allow-by-default policy** — GunWall only blocks what *you* choose, so it never silently cuts your internet.
+- **Zero telemetry, zero dependencies** — see [Privacy & Security](#-privacy--security).
 
 ---
 
@@ -60,101 +46,97 @@ NetGuard Pro is an **early alpha (v0.1.0)**. The core firewall engine and the li
 ### Prerequisites
 
 - **Windows 10 (2004+) or Windows 11**, 64-bit
-- **Visual Studio 2022** (17.8 or newer) with the **.NET desktop development** workload
-  *(or the standalone [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) + `dotnet build`)*
+- **Visual Studio 2022** (17.8+) with the **.NET desktop development** workload
+  *(or the standalone [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0))*
 
 ### Build in Visual Studio (recommended)
 
-1. Open `NetGuardPro.sln` in Visual Studio 2022.
-2. Set the configuration to **Release** and platform to **x64**.
+1. Open `GunWall.sln`.
+2. Set configuration **Release**, platform **x64**.
 3. **Build → Build Solution** (`Ctrl+Shift+B`).
-4. The executable appears in `src/NetGuardPro/bin/Release/net8.0-windows/NetGuardPro.exe`.
+4. The EXE appears in `src/GunWall/bin/Release/net8.0-windows/GunWall.exe`.
 
-### Build from the command line
+### Command line
 
 ```powershell
-dotnet build NetGuardPro.sln -c Release
+dotnet build GunWall.sln -c Release
 ```
 
-To produce a single self-contained EXE that runs without the .NET runtime installed:
+Single self-contained EXE (no .NET runtime needed on the target machine):
 
 ```powershell
-dotnet publish src/NetGuardPro/NetGuardPro.csproj -c Release -r win-x64 ^
+dotnet publish src/GunWall/GunWall.csproj -c Release -r win-x64 ^
     --self-contained true -p:PublishSingleFile=true
 ```
 
 ### Running
 
-NetGuard Pro **requires administrator privileges** — WFP cannot add or remove filters otherwise. The application manifest already requests elevation, so Windows will prompt with a UAC dialog automatically when you launch the EXE. If you run from Visual Studio, start Visual Studio itself as administrator.
+GunWall **requires administrator privileges** — WFP cannot add or remove filters otherwise. The manifest requests elevation automatically (UAC prompt). To debug from Visual Studio, start Visual Studio as administrator.
 
 ---
 
 ## 🔒 Privacy & Security
 
-NetGuard Pro is designed so that **nothing happens to your data without your say-so**:
+GunWall is designed so that **nothing happens to your data without your say-so**:
 
-- **No network calls of its own.** The app never phones home, checks for updates silently, or uploads anything. The only network activity on the machine is the traffic you already have — NetGuard Pro just observes it locally.
+- **No network calls of its own.** No phoning home, no silent update checks, no uploads.
 - **No telemetry, no analytics, no accounts.**
-- **Local-only storage.** Rules are saved as a plain JSON file under `%ProgramData%\NetGuardPro\rules.json`. You can read it, back it up, or delete it.
-- **Explicit actions only.** The engine never blocks or allows anything on its own initiative. Every filter corresponds to a button you pressed.
-- **Allow-by-default.** A fresh install changes nothing about your connectivity until you block something.
-- **Clean removal.** "Remove all filtering" tears down every filter NetGuard Pro created. Because WFP filters persist, always run this (or release Lockdown) before uninstalling.
+- **Local-only storage.** Rules live in `%ProgramData%\GunWall\rules.json` — plain JSON you can read, back up, or delete. (Rules from earlier NetGuard Pro alphas are migrated automatically.)
+- **Explicit actions only.** Every filter corresponds to a button you pressed.
+- **Allow-by-default.** A fresh install changes nothing until you block something.
+- **Clean removal.** Settings → "Remove all GunWall filtering" tears down every persistent filter. Always run it before uninstalling.
+- **Zero third-party packages.** The whole supply chain is the .NET BCL plus Win32 — trivially auditable.
 
-> **Security caveat for v0.1:** this alpha runs as a single elevated process and does not yet implement the hardened service-isolation, code-signing, and tamper-protection described in the roadmap. Don't rely on it as your sole defense on a high-risk machine yet.
+> **Security caveat:** this alpha runs as a single elevated process and does not yet implement service isolation, code signing, or tamper protection. Don't rely on it as your sole defense on a high-risk machine yet.
 
 ---
 
 ## 🧭 How it works
 
-NetGuard Pro talks directly to the **Windows Filtering Platform**, a set of OS APIs for building network-filtering software. It is *not* a front-end for Windows Firewall and does not modify Windows Firewall rules — the two operate independently, exactly like simplewall.
+GunWall talks directly to the **Windows Filtering Platform**. It is *not* a front-end for Windows Firewall — the two operate independently, exactly like simplewall.
 
 ```
-┌─────────────────────────────────────────┐
-│  WPF UI (dashboard, firewall, conns)     │  ← what you see
-├─────────────────────────────────────────┤
-│  FirewallManager + RuleStore (JSON)      │  ← orchestration + persistence
-├─────────────────────────────────────────┤
-│  WfpEngine  →  fwpuclnt.dll (P/Invoke)   │  ← real WFP filters
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│  WPF UI — dashboard • firewall • connections  │
+│           activity • settings • tray          │
+├──────────────────────────────────────────────┤
+│  Background sampler (TCP/UDP tables, procs)   │
+│  FirewallManager + RuleStore (JSON)           │
+├──────────────────────────────────────────────┤
+│  WfpEngine  →  fwpuclnt.dll (P/Invoke)        │
+└──────────────────────────────────────────────┘
 ```
 
-When you block an app, NetGuard Pro adds four persistent WFP filters (outbound + inbound, IPv4 + IPv6) keyed to that executable's app ID. Lockdown adds higher-weight, condition-less block filters that override per-app rules until released.
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
+Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv6) keyed to the executable's app ID. Lockdown adds higher-weight condition-less block filters that override everything until released. Full details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
 ## 🗺️ Roadmap
 
+Informed by studying [simplewall](https://github.com/henrypp/simplewall), [Fort Firewall](https://github.com/tnodir/fort), [Portmaster](https://github.com/safing/portmaster), and [GlassWire](https://www.glasswire.com/):
+
 | Version | Focus |
 |---------|-------|
-| **v0.1** ✅ | WFP engine, per-app block/allow, live graph, connection inspector, lockdown |
-| **v0.2** | GeoIP + country flags, per-app bandwidth attribution, connection event history |
-| **v0.3** | Firewall profiles (Home/Work/Public), "Ask to Connect" prompts, rule editor |
-| **v0.4** | Split into hardened Windows Service + UI, code signing, tamper protection |
-| **v0.5** | DNS query logging, LAN device scanner, world map, mini floating widget |
-| **v1.0** | Installer, auto-update, multi-language, polish |
+| **v0.3** ✅ | Fast async engine, UDP, activity feed, search, tray, settings, GunWall identity |
+| **v0.4** ✅ | Connection alert popups (signature + host), session totals, alert settings |
+| **v0.5** | True ask-before-connect (whitelist mode + WFP net events), per-rule scoping, rule editor |
+| **v0.6** | GeoIP + per-app traffic attribution (ETW), traffic history database |
+| **v0.7** | DNS-level blocking and blocklists (Portmaster-style), profiles |
+| **v0.8** | Hardened Windows Service split, code signing, tamper protection |
+| **v1.0** | Installer, auto-update, multi-language, kernel-driver evaluation (Fort-style) for speed limits |
 
 ---
 
-## 🤝 Contributing
+## 🤝 Acknowledgments
 
-Contributions are welcome. The most valuable help right now:
-
-- Testing the WFP interop on different Windows builds and reporting marshalling issues.
-- Implementing per-app bandwidth via a WFP flow callout.
-- Improving the UI and adding the roadmap features.
-
-Please open an issue before large changes so we can align on direction.
-
----
+GunWall contains no code from other projects, but stands on the shoulders of the open-source firewall community: **simplewall** (WFP approach), **Fort Firewall** (driver-based filtering ideas), and **Portmaster** (DNS-level privacy concepts). GlassWire's visual design language is an inspiration for the UI direction.
 
 ## 📄 License
 
-Released under the [MIT License](LICENSE). NetGuard Pro is original work; its WFP approach is *inspired by* simplewall but contains no simplewall code.
+[MIT](LICENSE).
 
 ---
 
 <div align="center">
-<sub>Built with care for a free, modern, private Windows. Bismillah.</sub>
+<sub>Guard your network. Bismillah.</sub>
 </div>

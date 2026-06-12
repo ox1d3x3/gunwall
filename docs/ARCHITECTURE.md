@@ -1,4 +1,4 @@
-# NetGuard Pro — Architecture
+# GunWall — Architecture
 
 This document describes how the **v0.1** release is actually built. It reflects
 the code in this repository, not an aspirational design. Where the long-term
@@ -73,7 +73,7 @@ persistent (see §5).
 This is the security core. Everything else is presentation.
 
 ### Identity
-NetGuard Pro owns exactly **one sublayer**, keyed by a fixed GUID
+GunWall owns exactly **one sublayer**, keyed by a fixed GUID
 (`8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`). All of our filters live in it, which
 means we can enumerate, reason about, and tear down *only* our own rules
 without disturbing Windows Firewall or any other product.
@@ -109,7 +109,7 @@ switch. Disabling lockdown removes exactly those filter IDs.
   lift lockdown). `FWP_E_FILTER_NOT_FOUND` is treated as success.
 - `RemoveAllFiltering()` deletes the whole sublayer (cascading every filter we
   own) and recreates an empty one so the engine stays usable. This is the
-  "remove all NetGuard rules" reset.
+  "remove all GunWall rules" reset.
 
 ### Persistence
 The sublayer and every filter are created with the **persistent** flag, so they
@@ -131,11 +131,11 @@ that are explicitly tolerated (`FWP_E_ALREADY_EXISTS`,
 
 ## 5. Persistence on disk (`RuleStore`)
 
-Independently of the OS-level persistent filters, NetGuard Pro records its own
+Independently of the OS-level persistent filters, GunWall records its own
 intent as JSON at:
 
 ```
-%ProgramData%\NetGuardPro\rules.json
+%ProgramData%\GunWall\rules.json
 ```
 
 `StoreData` holds the list of `FirewallRule`s, whether lockdown is engaged, and
@@ -167,10 +167,12 @@ returns them in network order.
 
 ## 7. Threading & UI
 
-The shell runs a single `DispatcherTimer` at 1-second cadence to refresh
-connections and throughput. All WFP and table calls are quick, synchronous
-P/Invoke and run on the UI dispatcher in v0.1; moving the polling onto a
-background task is a natural early improvement. The bandwidth graph is drawn by
+Since v0.3 all sampling (process snapshot, TCP/UDP tables, interface
+statistics) runs in an async background loop via `Task.Run`; only the cheap
+"apply to UI" step executes on the dispatcher. Process paths are cached per
+PID because `Process.MainModule` is the most expensive call in the app — each
+PID is resolved exactly once. The refresh interval is user-configurable
+(1/2/5 s). The bandwidth graph is drawn by
 hand onto a WPF `Canvas` (no charting dependency), and the title bar is darkened
 via `DwmSetWindowAttribute`.
 
@@ -179,8 +181,13 @@ via `DwmSetWindowAttribute`.
 ## 8. What is intentionally *not* here yet
 
 - No Windows Service / driver of our own (we use the OS WFP, persistently).
-- No outbound-connection *prompts* ("App X wants to connect — Allow/Block?").
-  v0.1 is block-on-demand, not prompt-on-first-connect.
+- True *ask-before-connect*. v0.4 adds a simplewall-style alert popup, but in
+  allow-by-default mode it fires on the first **observed** connection of a new
+  executable (detected by the polling loop + a persisted known-apps list).
+  simplewall's popup fires *before* traffic flows because it blocks unknown
+  apps by default and subscribes to WFP net events (`FwpmNetEventSubscribe`)
+  for drop notifications. Matching that requires whitelist mode plus the
+  net-event interop — planned for v0.5.
 - No per-rule scoping (remote address, port, direction-only). Today a block is
   all-or-nothing per executable.
 - No packet inspection or DNS filtering.

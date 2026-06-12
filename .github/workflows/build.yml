@@ -21,14 +21,14 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore NetGuardPro.sln
+        run: dotnet restore GunWall.sln
 
       - name: Build (Release, x64)
-        run: dotnet build NetGuardPro.sln --configuration Release --no-restore /p:Platform=x64
+        run: dotnet build GunWall.sln --configuration Release --no-restore /p:Platform=x64
 
       - name: Publish self-contained EXE
         run: >
-          dotnet publish src/NetGuardPro/NetGuardPro.csproj
+          dotnet publish src/GunWall/GunWall.csproj
           --configuration Release
           -r win-x64
           --self-contained false
@@ -38,6 +38,6 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NetGuardPro-win-x64
+          name: GunWall-win-x64
           path: publish/
           if-no-files-found: warn
