@@ -38,8 +38,11 @@ public sealed class WfpEngine : IDisposable
     private static readonly Guid SublayerKey = new("8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00");
 
     private const ushort SublayerWeight = 0x8000; // mid-high so we sit above default
-    private const byte AppBlockWeight = 10;       // per-app block filters
-    private const byte LockdownWeight = 15;       // lockdown beats per-app rules
+    private const byte StrictBaseWeight = 6;      // strict-mode block-everything
+    private const byte AppPermitWeight = 8;       // per-app allow (strict mode)
+    private const byte LoopbackWeight = 9;        // keep loopback alive in strict
+    private const byte AppBlockWeight = 10;       // per-app block beats permits
+    private const byte LockdownWeight = 15;       // lockdown beats everything
 
     private IntPtr _engine = IntPtr.Zero;
     private bool _initialized;
@@ -90,7 +93,17 @@ public sealed class WfpEngine : IDisposable
     /// remove them later. The app path must be a normal file path
     /// (e.g. C:\Program Files\App\app.exe).
     /// </summary>
-    public List<ulong> BlockApplication(string exePath)
+    public List<ulong> BlockApplication(string exePath) =>
+        AddAppFilters(exePath, FWP_ACTION_BLOCK, AppBlockWeight, "Block");
+
+    /// <summary>
+    /// Permits all traffic for an executable (used by strict mode to punch a
+    /// hole through the base block). Returns the created filter IDs.
+    /// </summary>
+    public List<ulong> PermitApplication(string exePath) =>
+        AddAppFilters(exePath, FWP_ACTION_PERMIT, AppPermitWeight, "Allow");
+
+    private List<ulong> AddAppFilters(string exePath, uint action, byte weight, string verb)
     {
         EnsureReady();
         if (string.IsNullOrWhiteSpace(exePath))
@@ -103,14 +116,32 @@ public sealed class WfpEngine : IDisposable
         {
             var ids = new List<ulong>(4);
             foreach (var layer in AllAppLayers())
-                ids.Add(AddBlockFilter(layer, blob, AppBlockWeight,
-                    $"Block {Path.GetFileName(exePath)}"));
+                ids.Add(AddAppFilter(layer, blob, weight, action,
+                    $"{verb} {Path.GetFileName(exePath)}"));
             return ids;
         }
         finally
         {
             FwpmFreeMemory0(ref appIdPtr);
         }
+    }
+
+    /// <summary>
+    /// Engages strict (whitelist) mode: block everything by default, but keep
+    /// loopback traffic alive so local IPC keeps working. Per-app PERMIT
+    /// filters (higher weight) punch through; explicit per-app BLOCK filters
+    /// (higher still) always win. Returns all created filter IDs.
+    /// </summary>
+    public List<ulong> EngageStrictMode()
+    {
+        EnsureReady();
+        var ids = new List<ulong>(8);
+        foreach (var layer in AllAppLayers())
+        {
+            ids.Add(AddGlobalBlockFilter(layer, StrictBaseWeight, "GunWall Strict Base Block"));
+            ids.Add(AddLoopbackPermitFilter(layer));
+        }
+        return ids;
     }
 
     /// <summary>
@@ -174,7 +205,50 @@ public sealed class WfpEngine : IDisposable
         return appIdPtr;
     }
 
-    private ulong AddBlockFilter(Guid layer, FWP_BYTE_BLOB appIdBlob, byte weight, string name)
+    private ulong AddLoopbackPermitFilter(Guid layer)
+    {
+        IntPtr condPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWPM_FILTER_CONDITION0>());
+        try
+        {
+            var cond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_FLAGS,
+                matchType = FWP_MATCH_FLAGS_ALL_SET,
+                conditionValue = new FWP_CONDITION_VALUE0
+                {
+                    type = FWP_UINT32,
+                    value = FWP_CONDITION_FLAG_IS_LOOPBACK
+                }
+            };
+            Marshal.StructureToPtr(cond, condPtr, false);
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = FWPM_FILTER_FLAG_PERSISTENT,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = LoopbackWeight },
+                numFilterConditions = 1,
+                filterCondition = condPtr,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_PERMIT },
+                displayData = new FWPM_DISPLAY_DATA0
+                {
+                    name = "GunWall Loopback Permit",
+                    description = "Keeps localhost traffic working in strict mode"
+                }
+            };
+
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(condPtr);
+        }
+    }
+
+    private ulong AddAppFilter(Guid layer, FWP_BYTE_BLOB appIdBlob, byte weight, uint action, string name)
     {
         // Marshal one FWPM_FILTER_CONDITION0 (APP_ID == app) into native memory.
         // The condition's byteBlob value must point to an FWP_BYTE_BLOB; we copy
@@ -205,7 +279,7 @@ public sealed class WfpEngine : IDisposable
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = weight },
                 numFilterConditions = 1,
                 filterCondition = condPtr,
-                action = new FWPM_ACTION0 { type = FWP_ACTION_BLOCK },
+                action = new FWPM_ACTION0 { type = action },
                 displayData = new FWPM_DISPLAY_DATA0 { name = name, description = name }
             };
 

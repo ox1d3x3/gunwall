@@ -71,7 +71,7 @@ public sealed class FirewallRule
 /// One entry in the live activity feed: a newly observed connection.
 /// Inspired by GlassWire's "things" timeline — local-only, never uploaded.
 /// </summary>
-public sealed class ActivityEvent
+public sealed class NetActivityEvent
 {
     public DateTime Time { get; set; } = DateTime.Now;
     public string ProcessName { get; set; } = "";

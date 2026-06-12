@@ -90,4 +90,8 @@ public sealed class StoreData
 
     /// <summary>Whether the new-connection alert popup is enabled.</summary>
     public bool AlertsEnabled { get; set; } = true;
+
+    /// <summary>Strict (whitelist) mode: block everything except allowed apps.</summary>
+    public bool StrictMode { get; set; }
+    public List<ulong> StrictFilterIds { get; set; } = new();
 }

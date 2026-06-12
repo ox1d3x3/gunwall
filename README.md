@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/release-v0.4.0%20(alpha)-orange?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.5.0%20(alpha)-orange?style=flat-square)](#roadmap)
 
 *Block apps from the internet, watch your traffic in real time, and lock down your machine with one click — wrapped in a dark, GlassWire-inspired interface.*
 
@@ -19,12 +19,14 @@
 
 ## ⚠️ Project status
 
-GunWall is an **early alpha (v0.4.0)**. The core firewall engine and live monitoring are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
+GunWall is an **early alpha (v0.5.0)**. The core firewall engine and live monitoring are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
 
 ---
 
-## ✨ Features in v0.4
+## ✨ Features in v0.5
 
+- **Strict mode (full control)** — simplewall-style whitelist: when engaged, **everything is blocked except apps you explicitly allow** via persistent WFP PERMIT filters. Loopback and core Windows networking (svchost/DNS/DHCP) are auto-allowed so your connection never silently dies.
+- **Status banner** — Portmaster-style at-a-glance state: Protected / Strict / Lockdown.
 - **Connection alerts** — a simplewall-style popup the first time a new app connects, showing name, **Authenticode signature**, address, **reverse-DNS host**, port and path, with one-click **Allow / Block**. (GunWall is allow-by-default, so the alert is shown on first observed connection; ask-before-connect requires whitelist mode and is on the roadmap.)
 - **Session data totals** — bytes downloaded/uploaded this session on the dashboard, GlassWire-style.
 - **Real per-app blocking** via the Windows Filtering Platform (WFP) — the same low-level technology used by [simplewall](https://github.com/henrypp/simplewall). Filters are *persistent*: they keep enforcing after you close the app and across reboots.
@@ -119,10 +121,11 @@ Informed by studying [simplewall](https://github.com/henrypp/simplewall), [Fort 
 |---------|-------|
 | **v0.3** ✅ | Fast async engine, UDP, activity feed, search, tray, settings, GunWall identity |
 | **v0.4** ✅ | Connection alert popups (signature + host), session totals, alert settings |
-| **v0.5** | True ask-before-connect (whitelist mode + WFP net events), per-rule scoping, rule editor |
-| **v0.6** | GeoIP + per-app traffic attribution (ETW), traffic history database |
-| **v0.7** | DNS-level blocking and blocklists (Portmaster-style), profiles |
-| **v0.8** | Hardened Windows Service split, code signing, tamper protection |
+| **v0.5** ✅ | Strict whitelist mode (full traffic control), loopback keep-alive, status banner, Portmaster-style UI |
+| **v0.6** | WFP net-event drop notifications (alert with address/port for blocked attempts), per-rule scoping, rule editor |
+| **v0.7** | GeoIP + per-app traffic attribution (ETW), traffic history database |
+| **v0.8** | DNS-level blocking and blocklists (Portmaster-style), profiles |
+| **v0.9** | Hardened Windows Service split, code signing, tamper protection |
 | **v1.0** | Installer, auto-update, multi-language, kernel-driver evaluation (Fort-style) for speed limits |
 
 ---

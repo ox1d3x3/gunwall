@@ -22,7 +22,7 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<AppInfo> _apps = new();
     private readonly ObservableCollection<ConnectionInfo> _connections = new();
-    private readonly ObservableCollection<ActivityEvent> _activity = new();
+    private readonly ObservableCollection<NetActivityEvent> _activity = new();
 
     private const int GraphPoints = 60;
     private readonly double[] _downSeries = new double[GraphPoints];
@@ -81,6 +81,10 @@ public partial class MainWindow : Window
             EngineStatus.Text = "Engine: active";
             SyncLockdownButton();
             AlertsCheck.IsChecked = _firewall.AlertsEnabled;
+            _suppressModeEvent = true;
+            AlertModeRadio.IsChecked = !_firewall.StrictMode;
+            StrictModeRadio.IsChecked = _firewall.StrictMode;
+            _suppressModeEvent = false;
         }
         catch (Exception ex)
         {
@@ -190,7 +194,7 @@ public partial class MainWindow : Window
             string key = $"{c.ProcessId}|{c.RemoteAddress}:{c.RemotePort}";
             if (!_seenConnections.Add(key)) continue;
 
-            _activity.Insert(0, new ActivityEvent
+            _activity.Insert(0, new NetActivityEvent
             {
                 ProcessName = c.ProcessName,
                 Detail = $"connected to {c.RemoteEndpoint} ({c.Protocol})"
@@ -225,10 +229,15 @@ public partial class MainWindow : Window
 
         if (!_firewall.AlertsEnabled) return;
 
+        bool strict = _firewall.StrictMode;
         foreach (var c in snap.Conns)
         {
-            if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
-            if (c.RemoteAddress is "0.0.0.0" or "::" or "127.0.0.1" or "::1") continue;
+            // In alert mode, only real outbound/inbound connections matter.
+            // In strict mode, a blocked app's TCP never connects - but its
+            // UDP/listen sockets still appear, so use those as the signal.
+            if (!strict && string.IsNullOrEmpty(c.RemoteAddress)) continue;
+            if (!string.IsNullOrEmpty(c.RemoteAddress) &&
+                c.RemoteAddress is "0.0.0.0" or "::" or "127.0.0.1" or "::1") continue;
             if (!snap.Procs.TryGetValue(c.ProcessId, out var proc)) continue;
             if (string.IsNullOrEmpty(proc.Path)) continue;
             if (string.Equals(proc.Path, Environment.ProcessPath,
@@ -251,11 +260,17 @@ public partial class MainWindow : Window
         var info = _alertQueue.Dequeue();
         _alertOpen = true;
 
-        var win = new AlertWindow(info, onBlock: () =>
-        {
-            _firewall.BlockApp(info.ExePath, info.ProcessName);
-            RebuildAppsList();
-        });
+        var win = new AlertWindow(info,
+            onBlock: () =>
+            {
+                _firewall.BlockApp(info.ExePath, info.ProcessName);
+                RebuildAppsList();
+            },
+            onAllow: () =>
+            {
+                _firewall.AllowApp(info.ExePath, info.ProcessName); // permits in strict mode
+                RebuildAppsList();
+            });
         win.Closed += (_, _) => { _alertOpen = false; ShowNextAlert(); };
         win.Show();
     }
@@ -295,7 +310,7 @@ public partial class MainWindow : Window
         }
 
         foreach (var a in known.Values)
-            a.Status = _firewall.IsBlocked(a.ExecutablePath) ? AppStatus.Blocked : AppStatus.Allowed;
+            a.Status = _firewall.EffectiveStatus(a.ExecutablePath);
 
         IEnumerable<AppInfo> view = known.Values;
         if (!string.IsNullOrWhiteSpace(_appFilter))
@@ -436,8 +451,8 @@ public partial class MainWindow : Window
 
         try
         {
-            if (_firewall.IsBlocked(app.ExecutablePath))
-                _firewall.UnblockApp(app.ExecutablePath);
+            if (_firewall.EffectiveStatus(app.ExecutablePath) == AppStatus.Blocked)
+                _firewall.AllowApp(app.ExecutablePath, app.Name);
             else
                 _firewall.BlockApp(app.ExecutablePath, app.Name);
 
@@ -509,6 +524,77 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool _suppressModeEvent;
+
+    private void Mode_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressModeEvent || !_engineReady || StrictModeRadio == null) return;
+        bool wantStrict = StrictModeRadio.IsChecked == true;
+        if (wantStrict == _firewall.StrictMode) return;
+
+        if (wantStrict)
+        {
+            var answer = MessageBox.Show(
+                "Strict mode blocks EVERY app except the ones you allow.\n\n" +
+                "Core Windows networking (svchost / DNS / DHCP) and loopback are " +
+                "auto-allowed, but other apps - including your browser - will lose " +
+                "internet access until you press Allow on them in the Firewall tab.\n\n" +
+                "Engage strict mode?",
+                "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.Yes)
+            {
+                _suppressModeEvent = true;
+                AlertModeRadio.IsChecked = true;
+                _suppressModeEvent = false;
+                return;
+            }
+        }
+
+        try
+        {
+            _firewall.SetStrictMode(wantStrict);
+            RebuildAppsList();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+            _suppressModeEvent = true;
+            AlertModeRadio.IsChecked = !_firewall.StrictMode;
+            StrictModeRadio.IsChecked = _firewall.StrictMode;
+            _suppressModeEvent = false;
+        }
+        UpdateStatusBanner();
+    }
+
+    private void UpdateStatusBanner()
+    {
+        if (StatusDot == null) return;
+        if (!_engineReady)
+        {
+            StatusDot.Fill = (Brush)FindResource("BlockBrush");
+            StatusTitle.Text = "Engine unavailable";
+            StatusSub.Text = "Run GunWall as administrator to enable filtering";
+        }
+        else if (_firewall.LockdownEngaged)
+        {
+            StatusDot.Fill = (Brush)FindResource("BlockBrush");
+            StatusTitle.Text = "Lockdown engaged";
+            StatusSub.Text = "All network traffic is blocked";
+        }
+        else if (_firewall.StrictMode)
+        {
+            StatusDot.Fill = (Brush)FindResource("Accent");
+            StatusTitle.Text = "Strict mode - full control";
+            StatusSub.Text = "Everything is blocked except apps you allowed";
+        }
+        else
+        {
+            StatusDot.Fill = (Brush)FindResource("AllowBrush");
+            StatusTitle.Text = "Protected";
+            StatusSub.Text = "Alert mode - new apps are allowed and you get notified";
+        }
+    }
+
     private void AlertsCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_engineReady) _firewall.SetAlertsEnabled(AlertsCheck.IsChecked == true);
@@ -535,6 +621,7 @@ public partial class MainWindow : Window
 
     private void SyncLockdownButton()
     {
+        UpdateStatusBanner();
         if (_firewall.LockdownEngaged)
         {
             LockdownButton.Content = "Release lockdown";

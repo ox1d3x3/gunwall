@@ -11,7 +11,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.4.0</Version>
+    <Version>0.5.0</Version>
     <Company>GunWall</Company>
     <Product>GunWall Firewall</Product>
     <Description>A modern, open-source Windows firewall built on the Windows Filtering Platform.</Description>
@@ -24,6 +24,14 @@
   </PropertyGroup>
 
   <!-- No external NuGet packages by design: keeps the first build dependency-free. -->
+
+  <!-- UseWindowsForms injects global usings for System.Windows.Forms and
+       System.Drawing, which collide with WPF's Application/Color/Point types
+       (CS0104). We fully qualify WinForms/Drawing usage, so remove them. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Update="Assets\app.ico">

@@ -27,11 +27,16 @@ internal static class WfpNative
     // ----- FWP_DATA_TYPE (subset we use) ------------------------------------
     internal const uint FWP_EMPTY = 0;
     internal const uint FWP_UINT8 = 1;
+    internal const uint FWP_UINT32 = 3;
     internal const uint FWP_UINT64 = 4;
     internal const uint FWP_BYTE_BLOB_TYPE = 12;
 
     // ----- FWP_MATCH_TYPE ---------------------------------------------------
     internal const uint FWP_MATCH_EQUAL = 0;
+    internal const uint FWP_MATCH_FLAGS_ALL_SET = 6;
+
+    // ----- Condition flag bits ------------------------------------------------
+    internal const uint FWP_CONDITION_FLAG_IS_LOOPBACK = 0x00000001;
 
     // ----- FWP_ACTION_TYPE --------------------------------------------------
     internal const uint FWP_ACTION_FLAG_TERMINATING = 0x00001000;
@@ -57,6 +62,8 @@ internal static class WfpNative
     // ----- Condition field GUIDs --------------------------------------------
     internal static readonly Guid FWPM_CONDITION_ALE_APP_ID =
         new("d78e1e87-8644-4ea5-9437-d809ecefc971");
+    internal static readonly Guid FWPM_CONDITION_FLAGS =
+        new("632ce23b-5167-435c-86d7-e903684aa80c");
 
     // =========================================================================
     //  Structures

@@ -22,6 +22,7 @@ public sealed class FirewallManager : IDisposable
 
     public bool LockdownEngaged => _data.LockdownEngaged;
     public bool AlertsEnabled => _data.AlertsEnabled;
+    public bool StrictMode => _data.StrictMode;
 
     private HashSet<string>? _knownSet;
     private HashSet<string> KnownSet =>
@@ -43,10 +44,58 @@ public sealed class FirewallManager : IDisposable
             string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase) &&
             r.Status == AppStatus.Blocked);
 
+    public bool IsAllowed(string exePath) =>
+        _data.Rules.Any(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase) &&
+            r.Status == AppStatus.Allowed);
+
+    /// <summary>
+    /// The user-facing status of an app under the current mode:
+    /// explicit block always wins; in strict mode anything not allowed is blocked.
+    /// </summary>
+    public AppStatus EffectiveStatus(string exePath)
+    {
+        if (IsBlocked(exePath)) return AppStatus.Blocked;
+        if (_data.StrictMode && !IsAllowed(exePath)) return AppStatus.Blocked;
+        return AppStatus.Allowed;
+    }
+
+    /// <summary>
+    /// Allows an application: removes any explicit block; in strict mode also
+    /// creates persistent PERMIT filters and records the allow rule.
+    /// </summary>
+    public void AllowApp(string exePath, string displayName)
+    {
+        UnblockApp(exePath);
+        if (!_data.StrictMode || IsAllowed(exePath)) return;
+
+        var ids = _engine.PermitApplication(exePath);
+        _data.Rules.Add(new FirewallRule
+        {
+            ExecutablePath = exePath,
+            DisplayName = displayName,
+            Status = AppStatus.Allowed,
+            FilterIds = ids
+        });
+        _store.Save(_data);
+    }
+
+    private void RemoveAllowRule(string exePath)
+    {
+        var rule = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase) &&
+            r.Status == AppStatus.Allowed);
+        if (rule is null) return;
+        _engine.RemoveFilters(rule.FilterIds);
+        _data.Rules.Remove(rule);
+        _store.Save(_data);
+    }
+
     /// <summary>Blocks an application and persists the rule. Idempotent.</summary>
     public void BlockApp(string exePath, string displayName)
     {
         if (IsBlocked(exePath)) return;
+        RemoveAllowRule(exePath); // an explicit block supersedes an allow
 
         var ids = _engine.BlockApplication(exePath);
         _data.Rules.RemoveAll(r =>
@@ -126,6 +175,53 @@ public sealed class FirewallManager : IDisposable
             if (KnownSet.Add(p)) { _data.KnownApps.Add(p); changed = true; }
         }
         if (changed) _store.Save(_data);
+    }
+
+    /// <summary>
+    /// Enables or disables strict (whitelist) mode. When enabling, core
+    /// Windows networking services are auto-allowed so DNS/DHCP keep working —
+    /// without this, strict mode would appear to "break the internet".
+    /// </summary>
+    public void SetStrictMode(bool enabled)
+    {
+        if (enabled == _data.StrictMode) return;
+
+        if (enabled)
+        {
+            // 1) Base block + loopback keep-alive.
+            _data.StrictFilterIds = _engine.EngageStrictMode();
+            _data.StrictMode = true;
+            _store.Save(_data);
+
+            // 2) Re-create permits for previously allowed apps.
+            foreach (var rule in _data.Rules.Where(r => r.Status == AppStatus.Allowed))
+            {
+                try { rule.FilterIds = _engine.PermitApplication(rule.ExecutablePath); }
+                catch { /* exe may be gone; rule stays recorded */ }
+            }
+            _store.Save(_data);
+
+            // 3) Safety net: keep core Windows networking alive.
+            string sys32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            foreach (var name in new[] { "svchost.exe", "services.exe", "lsass.exe" })
+            {
+                string path = System.IO.Path.Combine(sys32, name);
+                try { if (System.IO.File.Exists(path)) AllowApp(path, name); }
+                catch { /* best effort */ }
+            }
+        }
+        else
+        {
+            _engine.RemoveFilters(_data.StrictFilterIds);
+            _data.StrictFilterIds.Clear();
+            foreach (var rule in _data.Rules.Where(r => r.Status == AppStatus.Allowed))
+            {
+                try { _engine.RemoveFilters(rule.FilterIds); } catch { }
+                rule.FilterIds.Clear();
+            }
+            _data.StrictMode = false;
+            _store.Save(_data);
+        }
     }
 
     public void SetAlertsEnabled(bool enabled)

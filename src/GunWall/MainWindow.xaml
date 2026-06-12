@@ -93,7 +93,21 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="Dashboard" Style="{StaticResource H1}" Margin="0,0,0,16" />
+                <StackPanel Grid.Row="0" Margin="0,0,0,16">
+                    <TextBlock Text="Dashboard" Style="{StaticResource H1}" Margin="0,0,0,12" />
+                    <Border x:Name="StatusBanner" Style="{StaticResource Card}" Padding="14,12">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="StatusDot" Width="12" Height="12"
+                                     Fill="{StaticResource AllowBrush}" VerticalAlignment="Center" />
+                            <StackPanel Margin="12,0,0,0">
+                                <TextBlock x:Name="StatusTitle" Text="Protected"
+                                           FontWeight="SemiBold" FontSize="14" />
+                                <TextBlock x:Name="StatusSub" Style="{StaticResource Muted}"
+                                           Text="Alert mode - new apps are allowed and you get notified" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
                 <Grid Grid.Row="1" Margin="0,0,0,16">
                     <Grid.ColumnDefinitions>
@@ -302,6 +316,22 @@
                 <StackPanel Grid.Row="1">
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
+                            <TextBlock Text="Firewall mode" Style="{StaticResource H2}" />
+                            <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap"
+                                       Text="Alert mode allows new apps and notifies you. Strict mode takes full control: everything is blocked except apps you explicitly allow (like simplewall). Core Windows networking (svchost, DNS) and loopback are auto-allowed so your connection keeps working." />
+                            <RadioButton x:Name="AlertModeRadio" Content="Alert mode (recommended)"
+                                         GroupName="FwMode" IsChecked="True"
+                                         Foreground="{StaticResource TextPrimary}"
+                                         Checked="Mode_Changed" Margin="0,0,0,6" />
+                            <RadioButton x:Name="StrictModeRadio" Content="Strict mode - block everything except allowed apps"
+                                         GroupName="FwMode"
+                                         Foreground="{StaticResource TextPrimary}"
+                                         Checked="Mode_Changed" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
                             <TextBlock Text="Connection alerts" Style="{StaticResource H2}" />
                             <TextBlock Text="Show a popup the first time a new app connects to the network, with one-click Allow / Block - like simplewall."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
@@ -340,7 +370,7 @@
                         <StackPanel>
                             <TextBlock Text="About" Style="{StaticResource H2}" />
                             <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap"
-                                       Text="GunWall v0.4.0 - free, open-source, no telemetry. Rules are stored locally at %ProgramData%\GunWall. Built on the Windows Filtering Platform." />
+                                       Text="GunWall v0.5.0 - free, open-source, no telemetry. Rules are stored locally at %ProgramData%\GunWall. Built on the Windows Filtering Platform." />
                             <TextBlock Margin="0,6,0,0">
                                 <Hyperlink NavigateUri="https://github.com/ox1d3x3/gunwall"
                                            RequestNavigate="Repo_RequestNavigate"

@@ -28,16 +28,20 @@ public partial class AlertWindow : Window
 
     private readonly AlertInfo _info;
     private readonly Action _onBlock;
+    private readonly Action? _onAllow;
 
-    public AlertWindow(AlertInfo info, Action onBlock)
+    public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null)
     {
         InitializeComponent();
         _info = info;
         _onBlock = onBlock;
+        _onAllow = onAllow;
 
         NameText.Text = info.ProcessName;
-        AddressText.Text = $"{info.Protocol.ToLowerInvariant()}://{info.RemoteAddress}";
-        PortText.Text = PortLabel(info.RemotePort);
+        AddressText.Text = string.IsNullOrEmpty(info.RemoteAddress)
+            ? "\u2014 (no remote yet)"
+            : $"{info.Protocol.ToLowerInvariant()}://{info.RemoteAddress}";
+        PortText.Text = info.RemotePort == 0 ? "\u2014" : PortLabel(info.RemotePort);
         PathText.Text = info.ExePath;
         DateText.Text = info.Time.ToString("g");
         SignatureText.Text = "Checking signature...";
@@ -58,6 +62,7 @@ public partial class AlertWindow : Window
         string publisher = await Task.Run(() => NetInfoService.GetPublisher(path));
         SignatureText.Text = publisher;
 
+        if (string.IsNullOrEmpty(ip)) { HostText.Text = "\u2014"; return; }
         string host = await NetInfoService.ResolveHostAsync(ip);
         HostText.Text = string.IsNullOrEmpty(host) ? "\u2014" : host;
     }
@@ -73,8 +78,18 @@ public partial class AlertWindow : Window
         _ => port.ToString()
     };
 
-    private void Allow_Click(object sender, RoutedEventArgs e) => Close();
-    // Allow = keep the default (the app is already marked known by the caller).
+    private void Allow_Click(object sender, RoutedEventArgs e)
+    {
+        // In alert mode this is a no-op (app already allowed by default);
+        // in strict mode the callback creates persistent PERMIT filters.
+        try { _onAllow?.Invoke(); }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not allow: {ex.Message}", "GunWall",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        Close();
+    }
 
     private void Block_Click(object sender, RoutedEventArgs e)
     {
