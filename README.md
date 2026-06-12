@@ -131,5 +131,5 @@ Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv
 ---
 
 <div align="center">
-<sub>Guard your network. Bismillah.</sub>
+<sub>Guard your network.</sub>
 </div>
