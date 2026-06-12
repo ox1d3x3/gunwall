@@ -6,8 +6,8 @@ namespace GunWall.Services;
 
 /// <summary>
 /// Enrichment lookups for alerts and views:
-///  - Authenticode publisher of an executable (like simplewall's "Signature").
-///  - Reverse-DNS host name for a remote address (like simplewall's "Host").
+///  - Authenticode publisher of an executable (a publisher signature).
+///  - Reverse-DNS host name for a remote address (a resolved host name).
 /// Both are cached and failure-tolerant; both are local lookups except the
 /// reverse-DNS query, which goes to the user's own configured DNS server —
 /// the same query the OS performs constantly. Nothing else leaves the machine.

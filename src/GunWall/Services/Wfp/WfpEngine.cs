@@ -28,7 +28,7 @@ public sealed class WfpException : Exception
 ///  - Lockdown mode adds higher-weight, condition-less BLOCK filters that
 ///    override per-app rules until disabled.
 ///  - All filters are marked PERSISTENT so they survive app close and reboot,
-///    exactly like simplewall. Removing them requires either deleting by the
+///    as an independent filtering layer. Removing them requires either deleting by the
 ///    stored filter IDs or tearing down the sublayer.
 /// </summary>
 public sealed class WfpEngine : IDisposable

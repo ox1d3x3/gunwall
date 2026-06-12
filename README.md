@@ -7,9 +7,9 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/release-v0.5.0%20(alpha)-orange?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.6.0%20(alpha)-orange?style=flat-square)](#roadmap)
 
-*Block apps from the internet, watch your traffic in real time, and lock down your machine with one click — wrapped in a dark, GlassWire-inspired interface.*
+*Take full control of your network. Block apps from the internet, watch your traffic in real time, and get a popup the moment a new app reaches out — in a fast, dark, modern interface.*
 
 [github.com/ox1d3x3/gunwall](https://github.com/ox1d3x3/gunwall)
 
@@ -19,26 +19,22 @@
 
 ## ⚠️ Project status
 
-GunWall is an **early alpha (v0.5.0)**. The core firewall engine and live monitoring are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
+GunWall is an **early alpha (v0.6.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
 
 ---
 
-## ✨ Features in v0.5
+## ✨ Features
 
-- **Strict mode (full control)** — simplewall-style whitelist: when engaged, **everything is blocked except apps you explicitly allow** via persistent WFP PERMIT filters. Loopback and core Windows networking (svchost/DNS/DHCP) are auto-allowed so your connection never silently dies.
-- **Status banner** — Portmaster-style at-a-glance state: Protected / Strict / Lockdown.
-- **Connection alerts** — a simplewall-style popup the first time a new app connects, showing name, **Authenticode signature**, address, **reverse-DNS host**, port and path, with one-click **Allow / Block**. (GunWall is allow-by-default, so the alert is shown on first observed connection; ask-before-connect requires whitelist mode and is on the roadmap.)
-- **Session data totals** — bytes downloaded/uploaded this session on the dashboard, GlassWire-style.
-- **Real per-app blocking** via the Windows Filtering Platform (WFP) — the same low-level technology used by [simplewall](https://github.com/henrypp/simplewall). Filters are *persistent*: they keep enforcing after you close the app and across reboots.
-- **Fast & responsive** — all heavy work (process snapshots, TCP/UDP tables, interface stats) runs on a background thread with PID caching; the UI never stutters.
-- **Live throughput graph** — GlassWire-style gradient area chart of download/upload.
-- **Connection inspector** — every active **TCP connection and UDP listener** (IPv4 + IPv6) with its owning process, endpoints, and state, with instant search.
-- **Activity feed** — new connections logged as they appear, GlassWire-timeline style. Local only.
-- **One-click Lockdown** — block all traffic instantly from the app or the tray icon.
+- **Enable Firewall (full control)** — one click takes over all network traffic: every app is blocked except the ones you allow, enforced by persistent WFP filters. Loopback and core Windows networking (DNS/DHCP) stay alive automatically so your connection never silently dies.
+- **Connection alerts** — a popup the first time any new app reaches the network, showing name, **Authenticode signature**, address, **reverse-DNS host**, port and path, with one-click **Allow / Block**. Detection is fast (sub-second) and robust: apps running as SYSTEM or other users (VPN helpers, security software) are resolved correctly, and outbound-UDP apps (VPN tunnels) are caught too.
+- **Live throughput graph** — smooth gradient area chart of download/upload, plus session data totals.
+- **Connection inspector** — every active TCP connection and UDP socket (IPv4 + IPv6) with owning process, endpoints and state, with instant search.
+- **Activity feed** — new connections logged as they appear. Local only.
+- **Lockdown** — block all traffic instantly from the app or the tray.
 - **System tray** — minimize to tray; filters keep enforcing because they live in the OS, not the app.
-- **Searchable app list** — filter by name or path; optionally show *all* running apps, not just networked ones.
-- **Settings** — refresh interval control and a one-click "remove all GunWall filtering" reset.
-- **Allow-by-default policy** — GunWall only blocks what *you* choose, so it never silently cuts your internet.
+- **Searchable app list** — filter by name or path; optionally show all running apps.
+- **Staged settings with Apply** — choose your options, then commit them with one button.
+- **Allow-by-default until you say otherwise** — monitoring mode never cuts your internet; full control is opt-in.
 - **Zero telemetry, zero dependencies** — see [Privacy & Security](#-privacy--security).
 
 ---
@@ -64,7 +60,7 @@ GunWall is an **early alpha (v0.5.0)**. The core firewall engine and live monito
 dotnet build GunWall.sln -c Release
 ```
 
-Single self-contained EXE (no .NET runtime needed on the target machine):
+Single self-contained EXE:
 
 ```powershell
 dotnet publish src/GunWall/GunWall.csproj -c Release -r win-x64 ^
@@ -81,13 +77,13 @@ GunWall **requires administrator privileges** — WFP cannot add or remove filte
 
 GunWall is designed so that **nothing happens to your data without your say-so**:
 
-- **No network calls of its own.** No phoning home, no silent update checks, no uploads.
+- **No network calls of its own.** No phoning home, no silent update checks, no uploads. (The only outbound lookup is reverse-DNS for the alert's "Host" field, which is the same query your OS already makes, to your own DNS server.)
 - **No telemetry, no analytics, no accounts.**
-- **Local-only storage.** Rules live in `%ProgramData%\GunWall\rules.json` — plain JSON you can read, back up, or delete. (Rules from earlier NetGuard Pro alphas are migrated automatically.)
+- **Local-only storage.** Rules live in `%ProgramData%\GunWall\rules.json` — plain JSON you can read, back up, or delete.
 - **Explicit actions only.** Every filter corresponds to a button you pressed.
-- **Allow-by-default.** A fresh install changes nothing until you block something.
+- **Allow-by-default.** A fresh install changes nothing until you enable the firewall or block something.
 - **Clean removal.** Settings → "Remove all GunWall filtering" tears down every persistent filter. Always run it before uninstalling.
-- **Zero third-party packages.** The whole supply chain is the .NET BCL plus Win32 — trivially auditable.
+- **Zero third-party packages.** The whole supply chain is the .NET base class library plus Win32 — trivially auditable.
 
 > **Security caveat:** this alpha runs as a single elevated process and does not yet implement service isolation, code signing, or tamper protection. Don't rely on it as your sole defense on a high-risk machine yet.
 
@@ -95,44 +91,35 @@ GunWall is designed so that **nothing happens to your data without your say-so**
 
 ## 🧭 How it works
 
-GunWall talks directly to the **Windows Filtering Platform**. It is *not* a front-end for Windows Firewall — the two operate independently, exactly like simplewall.
+GunWall talks directly to the **Windows Filtering Platform**, the OS network-filtering subsystem. It runs as an independent filtering layer and does not modify your existing Windows Firewall rules.
 
 ```
 ┌──────────────────────────────────────────────┐
 │  WPF UI — dashboard • firewall • connections  │
-│           activity • settings • tray          │
+│           activity • settings • tray • alerts │
 ├──────────────────────────────────────────────┤
-│  Background sampler (TCP/UDP tables, procs)   │
+│  Fast detection loop + background sampler      │
 │  FirewallManager + RuleStore (JSON)           │
 ├──────────────────────────────────────────────┤
 │  WfpEngine  →  fwpuclnt.dll (P/Invoke)        │
 └──────────────────────────────────────────────┘
 ```
 
-Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv6) keyed to the executable's app ID. Lockdown adds higher-weight condition-less block filters that override everything until released. Full details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv6) keyed to the executable. Enabling full control adds a base block plus per-app permits. Full details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
 ## 🗺️ Roadmap
 
-Informed by studying [simplewall](https://github.com/henrypp/simplewall), [Fort Firewall](https://github.com/tnodir/fort), [Portmaster](https://github.com/safing/portmaster), and [GlassWire](https://www.glasswire.com/):
-
 | Version | Focus |
 |---------|-------|
-| **v0.3** ✅ | Fast async engine, UDP, activity feed, search, tray, settings, GunWall identity |
-| **v0.4** ✅ | Connection alert popups (signature + host), session totals, alert settings |
-| **v0.5** ✅ | Strict whitelist mode (full traffic control), loopback keep-alive, status banner, Portmaster-style UI |
-| **v0.6** | WFP net-event drop notifications (alert with address/port for blocked attempts), per-rule scoping, rule editor |
-| **v0.7** | GeoIP + per-app traffic attribution (ETW), traffic history database |
-| **v0.8** | DNS-level blocking and blocklists (Portmaster-style), profiles |
-| **v0.9** | Hardened Windows Service split, code signing, tamper protection |
-| **v1.0** | Installer, auto-update, multi-language, kernel-driver evaluation (Fort-style) for speed limits |
+| **v0.6** ✅ | Enable-Firewall takeover, robust detection (SYSTEM/VPN apps), staged settings + Apply, refined UI |
+| **v0.7** | Kernel net-event drop notifications (show address/port of blocked attempts), per-rule scoping (address/port/direction) |
+| **v0.8** | GeoIP + per-app traffic attribution, traffic history database, profiles (Home/Work/Public) |
+| **v0.9** | DNS-level blocking and blocklists, rule editor |
+| **v1.0** | Hardened service split, code signing, tamper protection, installer, auto-update |
 
 ---
-
-## 🤝 Acknowledgments
-
-GunWall contains no code from other projects, but stands on the shoulders of the open-source firewall community: **simplewall** (WFP approach), **Fort Firewall** (driver-based filtering ideas), and **Portmaster** (DNS-level privacy concepts). GlassWire's visual design language is an inspiration for the UI direction.
 
 ## 📄 License
 

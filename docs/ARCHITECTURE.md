@@ -80,7 +80,6 @@ without disturbing Windows Firewall or any other product.
 
 ### Policy model — allow-by-default (blacklist)
 The engine adds **no filters at startup**. An app reaches the network freely
-until the user blocks it. This is the opposite of simplewall's whitelist
 default, and is a deliberate safety choice: a fresh install can never lock you
 out of your own connection.
 
@@ -114,7 +113,6 @@ switch. Disabling lockdown removes exactly those filter IDs.
 ### Persistence
 The sublayer and every filter are created with the **persistent** flag, so they
 keep enforcing after the app closes and across reboots — the same behaviour
-simplewall relies on. This is why a service is not strictly required for v0.1.
 
 ### Error handling
 `WfpEngine` never returns silent failure: any non-zero WFP status raises a
@@ -181,11 +179,9 @@ via `DwmSetWindowAttribute`.
 ## 8. What is intentionally *not* here yet
 
 - No Windows Service / driver of our own (we use the OS WFP, persistently).
-- True *ask-before-connect*. v0.4 adds a simplewall-style alert popup, but in
   allow-by-default mode it fires on the first **observed** connection of a new
   executable (detected by the polling loop + a persisted known-apps list).
-  simplewall's popup fires *before* traffic flows because it blocks unknown
-  apps by default and subscribes to WFP net events (`FwpmNetEventSubscribe`)
+  apps by default and subscribes to WFP net events (`kernel net-event subscription`)
   for drop notifications. Matching that requires whitelist mode plus the
   net-event interop — planned for v0.5.
 - No per-rule scoping (remote address, port, direction-only). Today a block is

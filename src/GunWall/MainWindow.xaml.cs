@@ -43,7 +43,7 @@ public partial class MainWindow : Window
     private readonly HashSet<string> _seenConnections = new();
     private const int MaxActivity = 300;
 
-    // Connection alerts (simplewall-style popup)
+    // Connection alerts (a connection popup)
     private readonly Queue<AlertWindow.AlertInfo> _alertQueue = new();
     private bool _alertOpen;
     private bool _knownSeeded;
@@ -80,11 +80,11 @@ public partial class MainWindow : Window
             _engineReady = true;
             EngineStatus.Text = "Engine: active";
             SyncLockdownButton();
-            AlertsCheck.IsChecked = _firewall.AlertsEnabled;
             _suppressModeEvent = true;
-            AlertModeRadio.IsChecked = !_firewall.StrictMode;
-            StrictModeRadio.IsChecked = _firewall.StrictMode;
+            AlertsCheck.IsChecked = _firewall.AlertsEnabled;
             _suppressModeEvent = false;
+            SyncFirewallToggle();
+            if (ApplyButton != null) ApplyButton.IsEnabled = false;
         }
         catch (Exception ex)
         {
@@ -98,6 +98,7 @@ public partial class MainWindow : Window
 
         _cts = new CancellationTokenSource();
         _ = SampleLoopAsync(_cts.Token);
+        _ = DetectionLoopAsync(_cts.Token);
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -114,6 +115,30 @@ public partial class MainWindow : Window
     /// Task.Run. Only the cheap UI application happens on the dispatcher, so
     /// the window stays perfectly responsive regardless of system load.
     /// </summary>
+    private async Task DetectionLoopAsync(CancellationToken ct)
+    {
+        // 300ms is frequent enough to catch brief VPN/handshake connections
+        // without measurable CPU cost (the table reads are cheap).
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var (conns, procs) = await Task.Run(() =>
+                {
+                    var c = _monitor.GetTcpConnections();
+                    var pr = _processes.SnapshotProcesses();
+                    return (c, pr);
+                }, ct);
+                DetectNewApps(conns, procs);
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex) { Debug.WriteLine($"detect error: {ex.Message}"); }
+
+            try { await Task.Delay(300, ct); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
     private async Task SampleLoopAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -171,7 +196,6 @@ public partial class MainWindow : Window
 
         RecordActivity(snap.Conns);
         UpdateSessionTotals();
-        DetectNewApps(snap);
 
         if (PanelConnections.Visibility == Visibility.Visible) RebuildConnList();
         if (PanelFirewall.Visibility == Visibility.Visible) RebuildAppsList();
@@ -209,36 +233,38 @@ public partial class MainWindow : Window
 
     // ================================================================ alerts
     /// <summary>
-    /// Shows a simplewall-style popup the first time an executable is ever
-    /// observed with a network connection. On the very first run, all apps
-    /// currently online are seeded as "known" so the user isn't flooded.
+    /// Shows a popup the first time an executable is ever observed using the
+    /// network. Detection is PER-PROCESS, not per-remote: any app with a TCP
+    /// connection OR a UDP socket (so VPNs that only use outbound UDP, like
+    /// WireGuard/OpenVPN tunnels, are caught) triggers exactly one alert. On
+    /// the very first run, everything currently networked is seeded as known
+    /// so the user isn't flooded. Runs on the fast detection loop.
     /// </summary>
-    private void DetectNewApps(Snapshot snap)
+    private void DetectNewApps(List<ConnectionInfo> conns,
+                              Dictionary<int, (string Name, string Path)> procs)
     {
         if (!_engineReady) return;
 
         if (!_knownSeeded)
         {
             _knownSeeded = true;
-            _firewall.SeedKnownApps(
-                snap.Conns.Where(c => !string.IsNullOrEmpty(c.RemoteAddress))
-                          .Select(c => snap.Procs.TryGetValue(c.ProcessId, out var p) ? p.Path : "")
-                          .Where(path => !string.IsNullOrEmpty(path)));
+            var seed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in conns)
+            {
+                if (c.RemoteAddress is "127.0.0.1" or "::1") continue;
+                if (procs.TryGetValue(c.ProcessId, out var p) && !string.IsNullOrEmpty(p.Path))
+                    seed.Add(p.Path);
+            }
+            _firewall.SeedKnownApps(seed);
             return;
         }
 
         if (!_firewall.AlertsEnabled) return;
 
-        bool strict = _firewall.StrictMode;
-        foreach (var c in snap.Conns)
+        foreach (var c in conns)
         {
-            // In alert mode, only real outbound/inbound connections matter.
-            // In strict mode, a blocked app's TCP never connects - but its
-            // UDP/listen sockets still appear, so use those as the signal.
-            if (!strict && string.IsNullOrEmpty(c.RemoteAddress)) continue;
-            if (!string.IsNullOrEmpty(c.RemoteAddress) &&
-                c.RemoteAddress is "0.0.0.0" or "::" or "127.0.0.1" or "::1") continue;
-            if (!snap.Procs.TryGetValue(c.ProcessId, out var proc)) continue;
+            if (c.RemoteAddress is "127.0.0.1" or "::1") continue;
+            if (!procs.TryGetValue(c.ProcessId, out var proc)) continue;
             if (string.IsNullOrEmpty(proc.Path)) continue;
             if (string.Equals(proc.Path, Environment.ProcessPath,
                               StringComparison.OrdinalIgnoreCase)) continue;
@@ -247,8 +273,10 @@ public partial class MainWindow : Window
             // MarkKnown returns true only the very first time we see this exe.
             if (!_firewall.MarkKnown(proc.Path)) continue;
 
+            string remote = c.RemoteAddress;
+            if (remote is "0.0.0.0" or "::") remote = ""; // unbound -> pending
             _alertQueue.Enqueue(new AlertWindow.AlertInfo(
-                proc.Name, proc.Path, c.RemoteAddress, c.RemotePort, c.Protocol, DateTime.Now));
+                proc.Name, proc.Path, remote, c.RemotePort, c.Protocol, DateTime.Now));
         }
 
         ShowNextAlert();
@@ -375,7 +403,7 @@ public partial class MainWindow : Window
         }
 
         DrawBaseline(canvas, w, h);
-        // GlassWire palette: cool blue for download, signature orange for upload.
+        // Palette: cool blue for download, signature orange for upload.
         AddSeries(canvas, _downSeries, max, w, h, Color.FromRgb(0x46, 0xB5, 0xE6));
         AddSeries(canvas, _upSeries, max, w, h, Color.FromRgb(0xFF, 0x9D, 0x2E));
     }
@@ -409,7 +437,7 @@ public partial class MainWindow : Window
         }
         canvas.Children.Add(poly);
 
-        // GlassWire-style soft vertical gradient under the line.
+        // a soft gradient soft vertical gradient under the line.
         var fillBrush = new LinearGradientBrush
         {
             StartPoint = new Point(0, 0),
@@ -525,45 +553,121 @@ public partial class MainWindow : Window
     }
 
     private bool _suppressModeEvent;
+    private bool _settingsDirty;
 
-    private void Mode_Changed(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// The prominent "Enable Firewall" action. Toggles full network control
+    /// (whitelist takeover): when enabled, every app is blocked except those
+    /// you allow. This is the same protective engine the Settings mode selects,
+    /// surfaced as a one-click button.
+    /// </summary>
+    private void EnableFirewall_Click(object sender, RoutedEventArgs e)
     {
-        if (_suppressModeEvent || !_engineReady || StrictModeRadio == null) return;
-        bool wantStrict = StrictModeRadio.IsChecked == true;
-        if (wantStrict == _firewall.StrictMode) return;
+        if (!RequireEngine()) return;
+        bool turningOn = !_firewall.StrictMode;
 
-        if (wantStrict)
+        if (turningOn)
         {
             var answer = MessageBox.Show(
-                "Strict mode blocks EVERY app except the ones you allow.\n\n" +
-                "Core Windows networking (svchost / DNS / DHCP) and loopback are " +
-                "auto-allowed, but other apps - including your browser - will lose " +
-                "internet access until you press Allow on them in the Firewall tab.\n\n" +
-                "Engage strict mode?",
+                "Enable Firewall takes full control of your network.\n\n" +
+                "Every app will be blocked except the ones you allow. Core Windows " +
+                "networking (DNS / DHCP) and loopback stay on automatically, but other " +
+                "apps - including your browser - will need an Allow (you'll get a popup, " +
+                "or use the Firewall tab).\n\nEnable now?",
                 "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (answer != MessageBoxResult.Yes)
-            {
-                _suppressModeEvent = true;
-                AlertModeRadio.IsChecked = true;
-                _suppressModeEvent = false;
-                return;
-            }
+            if (answer != MessageBoxResult.Yes) return;
         }
 
         try
         {
-            _firewall.SetStrictMode(wantStrict);
+            _firewall.SetStrictMode(turningOn);
+            SyncFirewallToggle();
             RebuildAppsList();
         }
-        catch (Exception ex)
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void SyncFirewallToggle()
+    {
+        if (EnableFirewallButton == null) return;
+        EnableFirewallButton.Content = _firewall.StrictMode ? "Disable Firewall" : "Enable Firewall";
+        if (StrictModeRadio != null && AlertModeRadio != null)
         {
-            ShowError(ex);
             _suppressModeEvent = true;
-            AlertModeRadio.IsChecked = !_firewall.StrictMode;
             StrictModeRadio.IsChecked = _firewall.StrictMode;
+            AlertModeRadio.IsChecked = !_firewall.StrictMode;
             _suppressModeEvent = false;
         }
         UpdateStatusBanner();
+    }
+
+    // Settings are now STAGED and committed with Apply, so the user can select
+    // options and confirm rather than each click taking effect immediately.
+    private void Settings_Staged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressModeEvent) return;
+        MarkSettingsDirty();
+    }
+
+    private void Mode_Changed(object sender, RoutedEventArgs e) => Settings_Staged(sender, e);
+
+    private void IntervalCombo_Changed(object sender, SelectionChangedEventArgs e)
+        => MarkSettingsDirty();
+
+    private void AlertsCheck_Changed(object sender, RoutedEventArgs e)
+        => MarkSettingsDirty();
+
+    private void MarkSettingsDirty()
+    {
+        _settingsDirty = true;
+        if (ApplyButton != null) ApplyButton.IsEnabled = true;
+    }
+
+    private void ApplySettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_engineReady) { _settingsDirty = false; return; }
+
+        // 1) Refresh interval
+        if (IntervalCombo?.SelectedItem is ComboBoxItem item &&
+            int.TryParse((string)item.Tag, out int ms))
+            _intervalMs = ms;
+
+        // 2) Alerts toggle
+        _firewall.SetAlertsEnabled(AlertsCheck?.IsChecked == true);
+
+        // 3) Firewall mode (the heavy one) - confirm before a takeover.
+        bool wantStrict = StrictModeRadio?.IsChecked == true;
+        if (wantStrict != _firewall.StrictMode)
+        {
+            if (wantStrict)
+            {
+                var answer = MessageBox.Show(
+                    "Strict mode blocks every app except the ones you allow. " +
+                    "Continue?",
+                    "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (answer != MessageBoxResult.Yes)
+                {
+                    _suppressModeEvent = true;
+                    AlertModeRadio.IsChecked = true;
+                    StrictModeRadio.IsChecked = false;
+                    _suppressModeEvent = false;
+                }
+                else
+                {
+                    try { _firewall.SetStrictMode(true); } catch (Exception ex) { ShowError(ex); }
+                }
+            }
+            else
+            {
+                try { _firewall.SetStrictMode(false); } catch (Exception ex) { ShowError(ex); }
+            }
+        }
+
+        SyncFirewallToggle();
+        RebuildAppsList();
+        _settingsDirty = false;
+        if (ApplyButton != null) ApplyButton.IsEnabled = false;
+        if (ApplyStatus != null) ApplyStatus.Text = "Settings applied.";
     }
 
     private void UpdateStatusBanner()
@@ -584,28 +688,14 @@ public partial class MainWindow : Window
         else if (_firewall.StrictMode)
         {
             StatusDot.Fill = (Brush)FindResource("Accent");
-            StatusTitle.Text = "Strict mode - full control";
+            StatusTitle.Text = "Firewall enabled - full control";
             StatusSub.Text = "Everything is blocked except apps you allowed";
         }
         else
         {
             StatusDot.Fill = (Brush)FindResource("AllowBrush");
-            StatusTitle.Text = "Protected";
-            StatusSub.Text = "Alert mode - new apps are allowed and you get notified";
-        }
-    }
-
-    private void AlertsCheck_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_engineReady) _firewall.SetAlertsEnabled(AlertsCheck.IsChecked == true);
-    }
-
-    private void IntervalCombo_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (IntervalCombo?.SelectedItem is ComboBoxItem item &&
-            int.TryParse((string)item.Tag, out int ms))
-        {
-            _intervalMs = ms;
+            StatusTitle.Text = "Monitoring";
+            StatusSub.Text = "New apps are allowed and you get notified - enable the firewall for full control";
         }
     }
 

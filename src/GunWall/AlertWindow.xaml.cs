@@ -7,11 +7,11 @@ using GunWall.Services;
 namespace GunWall;
 
 /// <summary>
-/// simplewall-style connection alert. Shown when an executable GunWall has
+/// a connection connection alert. Shown when an executable GunWall has
 /// never seen before makes its first network connection.
 ///
 /// Honest note on semantics: GunWall is allow-by-default, so this alert is
-/// "a new app just connected — keep allowing it?" rather than simplewall's
+/// "a new app just connected — keep allowing it?" rather than the
 /// "a connection was blocked — allow it?". The Block button creates real,
 /// persistent WFP filters immediately.
 /// </summary>

@@ -3,7 +3,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ============================ Palette ============================ -->
-    <!-- GlassWire-inspired: warm graphite background, signature orange accent,
+    <!-- A modern, warm graphite background, signature orange accent,
          cool blue for inbound, soft graph gradients. -->
     <Color x:Key="BgPrimaryColor">#13161C</Color>
     <Color x:Key="BgSecondaryColor">#181C23</Color>
@@ -77,7 +77,7 @@
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter VerticalAlignment="Center" Margin="8,0,0,0" />
                         </Border>
-                        <!-- Portmaster-style selected indicator bar -->
+                        <!-- a clean selected indicator bar -->
                         <Rectangle x:Name="bar" Width="3" HorizontalAlignment="Left"
                                    Margin="0,6,0,6" RadiusX="1.5" RadiusY="1.5"
                                    Fill="{StaticResource Accent}" Visibility="Collapsed" />
@@ -90,6 +90,37 @@
                             <Setter TargetName="bd" Property="Background" Value="{StaticResource BgCard}" />
                             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
                             <Setter TargetName="bar" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ======================= Primary button ======================= -->
+    <Style x:Key="PrimaryButton" TargetType="Button">
+        <Setter Property="Foreground" Value="#13161C" />
+        <Setter Property="Background" Value="{StaticResource Accent}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="14,11" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bd"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="8"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Opacity" Value="0.92" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="bd" Property="Opacity" Value="0.82" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

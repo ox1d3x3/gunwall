@@ -69,7 +69,7 @@ public sealed class FirewallRule
 
 /// <summary>
 /// One entry in the live activity feed: a newly observed connection.
-/// Inspired by GlassWire's "things" timeline — local-only, never uploaded.
+/// Inspired by a live activity timeline — local-only, never uploaded.
 /// </summary>
 public sealed class NetActivityEvent
 {
