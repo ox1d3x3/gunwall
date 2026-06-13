@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/release-v0.9.0%20(alpha)-orange?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.10.0%20(alpha)-orange?style=flat-square)](#roadmap)
 
 *Take full control of your network. Block apps from the internet, watch your traffic in real time, and get a popup the moment a new app reaches out — in a fast, dark, modern interface.*
 
@@ -19,7 +19,7 @@
 
 ## ⚠️ Project status
 
-GunWall is an **early alpha (v0.9.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
+GunWall is an **early alpha (v0.10.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
 
 ---
 
@@ -37,6 +37,10 @@ GunWall is an **early alpha (v0.9.0)**. The core engine, real-time monitoring, c
 - **Searchable app list** — filter by name or path; optionally show all running apps.
 - **Staged settings with Apply** — choose your options, then commit them with one button.
 - **Allow-by-default until you say otherwise** — monitoring mode never cuts your internet; full control is opt-in.
+- **Tamper detection** — each rule stores the app's SHA-256 hash, so a swapped binary at the same path is detectable.
+- **Silent apps** — right-click an app to mute it: stays allowed but never raises a popup again.
+- **Profile export / import** — back up all rules and settings to a file and restore them on any machine.
+- **Window preferences** — start minimized to tray, always-on-top, toggle hashing.
 - **Zero telemetry, zero dependencies** — see [Privacy & Security](#-privacy--security).
 
 ---
@@ -119,6 +123,7 @@ Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv
 | **v0.7** ✅ | Refined blue-tinted theme, status pills, alert countdown, new logo |
 | **v0.8** ✅ | Corrected full-control engine, transaction-based, reliable blocks |
 | **v0.9** ✅ | Zero Trust: default-deny, per-app approval prompts that persist, deny-on-timeout |
+| **v0.10** ✅ | SHA-256 tamper hashing, silent (muted) apps, profile export/import, window preferences |
 | **v0.7** | Kernel net-event drop notifications (show address/port of blocked attempts), per-rule scoping (address/port/direction) |
 | **v0.8** | GeoIP + per-app traffic attribution, traffic history database, profiles (Home/Work/Public) |
 | **v0.9** | DNS-level blocking and blocklists, rule editor |

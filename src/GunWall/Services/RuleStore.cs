@@ -76,6 +76,21 @@ public sealed class RuleStore
             File.Delete(tmp);
         }
     }
+
+    /// <summary>Writes the full profile (rules + settings) to a chosen file.</summary>
+    public void Export(StoreData data, string filePath)
+    {
+        string json = JsonSerializer.Serialize(data, JsonOpts);
+        File.WriteAllText(filePath, json);
+    }
+
+    /// <summary>Reads a profile from a chosen file. Throws on malformed input.</summary>
+    public StoreData Import(string filePath)
+    {
+        string json = File.ReadAllText(filePath);
+        return JsonSerializer.Deserialize<StoreData>(json)
+               ?? throw new InvalidDataException("Profile file is empty or invalid.");
+    }
 }
 
 /// <summary>Everything GunWall persists between runs.</summary>
@@ -94,4 +109,9 @@ public sealed class StoreData
     /// <summary>Strict (whitelist) mode: block everything except allowed apps.</summary>
     public bool StrictMode { get; set; }
     public List<ulong> StrictFilterIds { get; set; } = new();
+
+    /// <summary>UI/behaviour preferences.</summary>
+    public bool StartMinimized { get; set; }
+    public bool AlwaysOnTop { get; set; }
+    public bool HashesEnabled { get; set; } = true;
 }

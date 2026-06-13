@@ -43,6 +43,12 @@ public sealed class AppInfo
     /// <summary>Number of live connections currently attributed to this app.</summary>
     public int ActiveConnections { get; set; }
 
+    /// <summary>SHA-256 of the executable (for display / tamper awareness).</summary>
+    public string Hash { get; set; } = "";
+
+    /// <summary>Allowed but not notified about.</summary>
+    public bool Silent { get; set; }
+
     public override bool Equals(object? obj) =>
         obj is AppInfo other &&
         string.Equals(ExecutablePath, other.ExecutablePath, StringComparison.OrdinalIgnoreCase);
@@ -63,6 +69,12 @@ public sealed class FirewallRule
 
     /// <summary>WFP filter IDs created for this rule (connect/recv, v4/v6).</summary>
     public List<ulong> FilterIds { get; set; } = new();
+
+    /// <summary>SHA-256 of the executable when the rule was created (tamper check).</summary>
+    public string Hash { get; set; } = "";
+
+    /// <summary>Allowed but suppressed from raising notification popups.</summary>
+    public bool Silent { get; set; }
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }

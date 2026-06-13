@@ -87,9 +87,16 @@ public partial class MainWindow : Window
             SyncLockdownButton();
             _suppressModeEvent = true;
             AlertsCheck.IsChecked = _firewall.AlertsEnabled;
+            StartMinimizedCheck.IsChecked = _firewall.StartMinimized;
+            AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
+            HashesCheck.IsChecked = _firewall.HashesEnabled;
             _suppressModeEvent = false;
             SyncFirewallToggle();
             if (ApplyButton != null) ApplyButton.IsEnabled = false;
+
+            // Apply window prefs immediately.
+            Topmost = _firewall.AlwaysOnTop;
+            if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
         }
         catch (Exception ex)
         {
@@ -284,6 +291,7 @@ public partial class MainWindow : Window
             // A decided app never prompts again (approval/denial persists).
             if (_firewall.IsBlocked(proc.Path)) continue;
             if (_firewall.IsAllowed(proc.Path)) continue;
+            if (_firewall.IsSilent(proc.Path)) continue; // allowed + muted
 
             if (strict)
             {
@@ -369,6 +377,8 @@ public partial class MainWindow : Window
 
         foreach (var a in known.Values)
             a.Status = _firewall.EffectiveStatus(a.ExecutablePath);
+            a.Silent = _firewall.IsSilent(a.ExecutablePath);
+            a.Hash = _firewall.GetHash(a.ExecutablePath);
 
         IEnumerable<AppInfo> view = known.Values;
         if (!string.IsNullOrWhiteSpace(_appFilter))
@@ -546,6 +556,26 @@ public partial class MainWindow : Window
 
     private void RefreshApps_Click(object sender, RoutedEventArgs e) => RebuildAppsList();
 
+    private void MuteApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        try { _firewall.SetSilent(app.ExecutablePath, app.Name, true); RebuildAppsList(); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void UnmuteApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        try { _firewall.SetSilent(app.ExecutablePath, app.Name, false); RebuildAppsList(); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void CopyPath_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        try { Clipboard.SetText(app.ExecutablePath); } catch { /* clipboard busy */ }
+    }
+
     private void LockdownButton_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireEngine()) return;
@@ -648,7 +678,58 @@ public partial class MainWindow : Window
         => MarkSettingsDirty();
 
     private void AlertsCheck_Changed(object sender, RoutedEventArgs e)
-        => MarkSettingsDirty();
+    {
+        if (_suppressModeEvent) return;
+        MarkSettingsDirty();
+    }
+
+    private void Pref_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressModeEvent) return;
+        MarkSettingsDirty();
+    }
+
+    private void ExportProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new SaveFileDialog
+        {
+            Title = "Export GunWall profile",
+            Filter = "GunWall profile (*.gwprofile)|*.gwprofile|JSON (*.json)|*.json",
+            FileName = "gunwall-profile.gwprofile"
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            _firewall.ExportProfile(dlg.FileName);
+            MessageBox.Show("Profile exported.", "GunWall",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void ImportProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var answer = MessageBox.Show(
+            "Importing replaces your current rules and settings with the file's. Continue?",
+            "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+
+        var dlg = new OpenFileDialog
+        {
+            Title = "Import GunWall profile",
+            Filter = "GunWall profile (*.gwprofile)|*.gwprofile|JSON (*.json)|*.json|All files (*.*)|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            int count = _firewall.ImportProfile(dlg.FileName);
+            SyncFirewallToggle();
+            RebuildAppsList();
+            MessageBox.Show($"Imported {count} rule(s).", "GunWall",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
 
     private void MarkSettingsDirty()
     {
@@ -667,6 +748,12 @@ public partial class MainWindow : Window
 
         // 2) Alerts toggle
         _firewall.SetAlertsEnabled(AlertsCheck?.IsChecked == true);
+
+        // Preferences
+        _firewall.SetStartMinimized(StartMinimizedCheck?.IsChecked == true);
+        _firewall.SetAlwaysOnTop(AlwaysOnTopCheck?.IsChecked == true);
+        _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
+        Topmost = _firewall.AlwaysOnTop;
 
         // 3) Firewall mode (the heavy one) - confirm before a takeover.
         bool wantStrict = StrictModeRadio?.IsChecked == true;

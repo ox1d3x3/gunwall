@@ -75,7 +75,8 @@ public sealed class FirewallManager : IDisposable
             ExecutablePath = exePath,
             DisplayName = displayName,
             Status = AppStatus.Allowed,
-            FilterIds = ids
+            FilterIds = ids,
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
         });
         _store.Save(_data);
     }
@@ -105,7 +106,8 @@ public sealed class FirewallManager : IDisposable
             ExecutablePath = exePath,
             DisplayName = displayName,
             Status = AppStatus.Blocked,
-            FilterIds = ids
+            FilterIds = ids,
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
         });
         _store.Save(_data);
     }
@@ -235,6 +237,66 @@ public sealed class FirewallManager : IDisposable
         if (_data.AlertsEnabled == enabled) return;
         _data.AlertsEnabled = enabled;
         _store.Save(_data);
+    }
+
+    // ------------------------------------------------ silent apps
+    public bool IsSilent(string exePath) =>
+        _data.Rules.Any(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase) && r.Silent);
+
+    /// <summary>
+    /// Marks an allowed app "silent": it stays allowed but never raises a popup.
+    /// If the app has no rule yet, an allowed+silent rule is created.
+    /// </summary>
+    public void SetSilent(string exePath, string displayName, bool silent)
+    {
+        var rule = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        if (rule is null)
+        {
+            rule = new FirewallRule
+            {
+                ExecutablePath = exePath,
+                DisplayName = displayName,
+                Status = AppStatus.Allowed,
+                Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
+            };
+            _data.Rules.Add(rule);
+        }
+        rule.Silent = silent;
+        _store.Save(_data);
+    }
+
+    /// <summary>Returns the stored hash for an app, or empty if none.</summary>
+    public string GetHash(string exePath) =>
+        _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase))?.Hash ?? "";
+
+    // ------------------------------------------------ settings
+    public bool StartMinimized => _data.StartMinimized;
+    public bool AlwaysOnTop => _data.AlwaysOnTop;
+    public bool HashesEnabled => _data.HashesEnabled;
+
+    public void SetStartMinimized(bool v) { _data.StartMinimized = v; _store.Save(_data); }
+    public void SetAlwaysOnTop(bool v) { _data.AlwaysOnTop = v; _store.Save(_data); }
+    public void SetHashesEnabled(bool v) { _data.HashesEnabled = v; _store.Save(_data); }
+
+    // ------------------------------------------------ profile export / import
+    /// <summary>Exports all rules and settings to a portable file.</summary>
+    public void ExportProfile(string filePath) => _store.Export(_data, filePath);
+
+    /// <summary>
+    /// Replaces current rules/settings with those from a file. Note: this loads
+    /// the records; the live WFP filters are reconciled on next strict-mode
+    /// toggle. Returns the number of rules imported.
+    /// </summary>
+    public int ImportProfile(string filePath)
+    {
+        var imported = _store.Import(filePath);
+        _data = imported;
+        _knownSet = null;
+        _store.Save(_data);
+        return _data.Rules.Count;
     }
 
     public void Dispose()
