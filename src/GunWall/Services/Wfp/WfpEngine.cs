@@ -110,8 +110,6 @@ public sealed class WfpEngine : IDisposable
         EnsureReady();
         if (string.IsNullOrWhiteSpace(exePath))
             throw new ArgumentException("Executable path is required.", nameof(exePath));
-        if (!File.Exists(exePath))
-            throw new FileNotFoundException("Executable not found.", exePath);
 
         IntPtr appIdPtr = GetAppId(exePath, out FWP_BYTE_BLOB blob);
         try
@@ -124,7 +122,7 @@ public sealed class WfpEngine : IDisposable
         }
         finally
         {
-            FwpmFreeMemory0(ref appIdPtr);
+            FreeAppId(appIdPtr);
         }
     }
 
@@ -277,12 +275,96 @@ public sealed class WfpEngine : IDisposable
         yield return FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6;
     }
 
+    /// <summary>
+    /// Produces a WFP "app ID" blob for an executable. The blob is the file's
+    /// NT device path as a lowercase, null-terminated wide string.
+    ///
+    /// Normally we let the OS build it (FwpmGetAppIdFromFileName0). But that API
+    /// opens the file to canonicalize it, which self-protected processes such as
+    /// antivirus (e.g. avp.exe) deny with ERROR_ACCESS_DENIED (5). In that case
+    /// we build the blob ourselves from the path string — no file handle needed.
+    ///
+    /// The returned pointer is always owned by us (AllocHGlobal); callers free it
+    /// with Marshal.FreeHGlobal, NOT FwpmFreeMemory0.
+    /// </summary>
     private IntPtr GetAppId(string exePath, out FWP_BYTE_BLOB blob)
     {
-        uint r = FwpmGetAppIdFromFileName0(exePath, out IntPtr appIdPtr);
-        if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmGetAppIdFromFileName0), r);
-        blob = Marshal.PtrToStructure<FWP_BYTE_BLOB>(appIdPtr);
-        return appIdPtr;
+        uint r = FwpmGetAppIdFromFileName0(exePath, out IntPtr apiPtr);
+        if (r == ERROR_SUCCESS)
+        {
+            try
+            {
+                // Copy the OS-provided blob into memory we own, then free theirs.
+                var apiBlob = Marshal.PtrToStructure<FWP_BYTE_BLOB>(apiPtr);
+                byte[] data = new byte[apiBlob.size];
+                Marshal.Copy(apiBlob.data, data, 0, (int)apiBlob.size);
+                return AllocBlob(data, out blob);
+            }
+            finally { FwpmFreeMemory0(ref apiPtr); }
+        }
+
+        const uint ERROR_ACCESS_DENIED = 5;
+        if (r == ERROR_ACCESS_DENIED)
+        {
+            // Self-protected process: build the app ID manually from the path.
+            string ntPath = DosToNtPath(exePath);
+            byte[] data = System.Text.Encoding.Unicode.GetBytes(ntPath + '\0');
+            return AllocBlob(data, out blob);
+        }
+
+        throw new WfpException(nameof(FwpmGetAppIdFromFileName0), r);
+    }
+
+    /// <summary>Allocates an FWP_BYTE_BLOB in unmanaged memory holding the bytes.</summary>
+    private static IntPtr AllocBlob(byte[] data, out FWP_BYTE_BLOB blob)
+    {
+        IntPtr dataPtr = Marshal.AllocHGlobal(data.Length);
+        Marshal.Copy(data, 0, dataPtr, data.Length);
+        blob = new FWP_BYTE_BLOB { size = (uint)data.Length, data = dataPtr };
+
+        // Store the blob struct itself in unmanaged memory and return that ptr,
+        // so the caller's free releases everything (struct ptr + data ptr).
+        IntPtr blobPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWP_BYTE_BLOB>());
+        Marshal.StructureToPtr(blob, blobPtr, false);
+        return blobPtr;
+    }
+
+    /// <summary>
+    /// Converts a DOS path (C:\dir\file.exe) to its NT device path
+    /// (\device\harddiskvolumeN\dir\file.exe), lowercased, without opening the
+    /// file. Falls back to the original path if the drive can't be mapped.
+    /// </summary>
+    private static string DosToNtPath(string dosPath)
+    {
+        try
+        {
+            if (dosPath.Length >= 2 && dosPath[1] == ':')
+            {
+                string drive = dosPath[..2]; // "C:"
+                var sb = new System.Text.StringBuilder(1024);
+                uint n = QueryDosDeviceW(drive, sb, (uint)sb.Capacity);
+                if (n != 0)
+                {
+                    string device = sb.ToString();          // \Device\HarddiskVolume3
+                    string rest = dosPath[2..];             // \dir\file.exe
+                    return (device + rest).ToLowerInvariant();
+                }
+            }
+        }
+        catch { /* fall through */ }
+        return dosPath.ToLowerInvariant();
+    }
+
+    private void FreeAppId(IntPtr blobPtr)
+    {
+        if (blobPtr == IntPtr.Zero) return;
+        try
+        {
+            var blob = Marshal.PtrToStructure<FWP_BYTE_BLOB>(blobPtr);
+            if (blob.data != IntPtr.Zero) Marshal.FreeHGlobal(blob.data);
+        }
+        catch { /* best effort */ }
+        Marshal.FreeHGlobal(blobPtr);
     }
 
     private ulong AddLoopbackPermitFilter(Guid layer)

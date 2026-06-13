@@ -426,7 +426,7 @@
                         <StackPanel>
                             <TextBlock Text="About" Style="{StaticResource H2}" />
                             <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap"
-                                       Text="GunWall v0.10.1 - free, open-source, no telemetry. Rules are stored locally at %ProgramData%\GunWall. Built on the Windows Filtering Platform." />
+                                       Text="GunWall v0.10.2 - free, open-source, no telemetry. Rules are stored locally at %ProgramData%\GunWall. Built on the Windows Filtering Platform." />
                             <TextBlock Margin="0,6,0,0">
                                 <Hyperlink NavigateUri="https://github.com/ox1d3x3/gunwall"
                                            RequestNavigate="Repo_RequestNavigate"

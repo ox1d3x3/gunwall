@@ -244,4 +244,13 @@ internal static class WfpNative
 
     [DllImport(FwpuclntDll)]
     internal static extern uint FwpmTransactionAbort0(IntPtr engineHandle);
+
+    // Maps a drive letter (e.g. "C:") to its NT device path (e.g.
+    // "\Device\HarddiskVolume3"). Used to build a WFP app ID without opening
+    // the target file — essential for self-protected processes (antivirus).
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern uint QueryDosDeviceW(
+        string lpDeviceName,
+        System.Text.StringBuilder lpTargetPath,
+        uint ucchMax);
 }
