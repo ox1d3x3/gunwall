@@ -51,6 +51,9 @@ public sealed class WfpEngine : IDisposable
 
     public bool IsInitialized => _initialized;
 
+    /// <summary>The open WFP engine handle (for net-event subscription). Zero if not initialized.</summary>
+    public IntPtr EngineHandle => _engine;
+
     /// <summary>
     /// Opens the WFP engine and ensures our persistent sublayer exists.
     /// Safe to call multiple times.

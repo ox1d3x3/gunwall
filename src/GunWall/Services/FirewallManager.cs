@@ -17,6 +17,9 @@ namespace GunWall.Services;
 public sealed class FirewallManager : IDisposable
 {
     private readonly WfpEngine _engine = new();
+
+    /// <summary>WFP engine handle, for the kernel net-event monitor.</summary>
+    public IntPtr EngineHandle => _engine.EngineHandle;
     private readonly RuleStore _store = new();
     private StoreData _data = new();
 

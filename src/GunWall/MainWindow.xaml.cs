@@ -11,6 +11,7 @@ using System.Windows.Shapes;
 using Microsoft.Win32;
 using GunWall.Models;
 using GunWall.Services;
+using GunWall.Services.Wfp;
 
 namespace GunWall;
 
@@ -34,6 +35,8 @@ public partial class MainWindow : Window
 
     // Background sampling
     private CancellationTokenSource? _cts;
+    private NetEventMonitor? _netEvents;
+    private bool _eventDriven; // true when kernel events are active (no polling needed for detection)
     private volatile int _intervalMs = 1000;
     private string _appFilter = "";
     private string _connFilter = "";
@@ -97,6 +100,12 @@ public partial class MainWindow : Window
             // Apply window prefs immediately.
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
+
+            // Try event-driven detection (kernel net events). If it starts, it
+            // becomes the primary detector and we stop relying on polling for
+            // new-app prompts. If it fails on this machine, we silently keep the
+            // poll-based detector — no regression.
+            TryStartEventMonitor();
         }
         catch (Exception ex)
         {
@@ -116,6 +125,7 @@ public partial class MainWindow : Window
     private void OnClosed(object? sender, EventArgs e)
     {
         _cts?.Cancel();
+        _netEvents?.Dispose();
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         _firewall.Dispose();
     }
@@ -252,9 +262,65 @@ public partial class MainWindow : Window
     /// the very first run, everything currently networked is seeded as known
     /// so the user isn't flooded. Runs on the fast detection loop.
     /// </summary>
+    // ================================================================ event-driven detection
+    private void TryStartEventMonitor()
+    {
+        if (!_engineReady || _firewall.EngineHandle == IntPtr.Zero) return;
+        try
+        {
+            _netEvents = new NetEventMonitor(_firewall.EngineHandle);
+            _netEvents.ConnectionEvent += OnKernelConnectionEvent;
+            _eventDriven = _netEvents.Start();
+            System.Diagnostics.Debug.WriteLine($"event-driven detection: {_eventDriven}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"event monitor unavailable: {ex.Message}");
+            _eventDriven = false;
+        }
+    }
+
+    // Called on a kernel thread for every filtered connection. Marshal to the UI
+    // thread, then run the same approval logic the poller uses.
+    private void OnKernelConnectionEvent(NetEventMonitor.Event e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (!_engineReady || string.IsNullOrEmpty(e.AppPath)) return;
+            if (string.Equals(e.AppPath, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            // Log into the activity feed (every event, drop or allow).
+            string verb = e.Dropped ? "blocked" : "connected to";
+            string remote = string.IsNullOrEmpty(e.RemoteAddress)
+                ? "" : $" {e.RemoteAddress}:{e.RemotePort}";
+            _activity.Insert(0, new NetActivityEvent
+            {
+                ProcessName = System.IO.Path.GetFileNameWithoutExtension(e.AppPath),
+                Detail = $"{verb}{remote} ({e.Protocol})"
+            });
+            while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
+
+            // Approval pipeline: prompt once for any undecided app.
+            string path = e.AppPath;
+            if (_firewall.IsBlocked(path) || _firewall.IsAllowed(path) || _firewall.IsSilent(path))
+                return;
+            if (!_firewall.AlertsEnabled) return;
+            if (!_promptedThisSession.Add(path)) return;
+
+            string name = System.IO.Path.GetFileNameWithoutExtension(path);
+            _alertQueue.Enqueue(new AlertWindow.AlertInfo(
+                name, path, e.RemoteAddress, e.RemotePort, e.Protocol, DateTime.Now));
+            ShowNextAlert();
+        });
+    }
+
     private void DetectNewApps(List<ConnectionInfo> conns,
                               Dictionary<int, (string Name, string Path)> procs)
     {
+        // When kernel events are driving detection, skip poll-based prompting to
+        // avoid double prompts — events are strictly more complete.
+        if (_eventDriven) return;
         if (!_engineReady) return;
 
         bool strict = _firewall.StrictMode;
