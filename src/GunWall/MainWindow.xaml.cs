@@ -47,6 +47,11 @@ public partial class MainWindow : Window
     private readonly Queue<AlertWindow.AlertInfo> _alertQueue = new();
     private bool _alertOpen;
     private bool _knownSeeded;
+    // Apps we've already raised a Zero-Trust prompt for this session (prevents
+    // re-prompting every 300ms while the user hasn't decided). Cleared when
+    // strict mode is toggled so a fresh takeover re-prompts everything.
+    private readonly HashSet<string> _promptedThisSession =
+        new(StringComparer.OrdinalIgnoreCase);
 
     // Session data totals
     private long _sessionStartRx = -1, _sessionStartTx = -1;
@@ -245,7 +250,13 @@ public partial class MainWindow : Window
     {
         if (!_engineReady) return;
 
-        if (!_knownSeeded)
+        bool strict = _firewall.StrictMode;
+
+        // Seeding only applies to monitoring mode (allow-by-default), where we
+        // don't want to notify for everything already running. In strict mode
+        // (Zero Trust) we WANT to prompt for every undecided app, so we skip
+        // seeding entirely.
+        if (!strict && !_knownSeeded)
         {
             _knownSeeded = true;
             var seed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -263,15 +274,32 @@ public partial class MainWindow : Window
 
         foreach (var c in conns)
         {
+            // Skip pure loopback (always permitted).
             if (c.RemoteAddress is "127.0.0.1" or "::1") continue;
             if (!procs.TryGetValue(c.ProcessId, out var proc)) continue;
             if (string.IsNullOrEmpty(proc.Path)) continue;
             if (string.Equals(proc.Path, Environment.ProcessPath,
                               StringComparison.OrdinalIgnoreCase)) continue;
-            if (_firewall.IsBlocked(proc.Path)) continue;
 
-            // MarkKnown returns true only the very first time we see this exe.
-            if (!_firewall.MarkKnown(proc.Path)) continue;
+            // A decided app never prompts again (approval/denial persists).
+            if (_firewall.IsBlocked(proc.Path)) continue;
+            if (_firewall.IsAllowed(proc.Path)) continue;
+
+            if (strict)
+            {
+                // Zero Trust: ANY socket-owning, undecided app must be approved.
+                // It is already blocked by the default-deny rule; prompt once
+                // per session (the session set prevents 300ms re-spam). If the
+                // user ignores it, it stays blocked.
+                if (!_promptedThisSession.Add(proc.Path)) continue;
+            }
+            else
+            {
+                // Monitoring: notify once ever, only for real outbound contact.
+                if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
+                if (c.RemoteAddress is "0.0.0.0" or "::") continue;
+                if (!_firewall.MarkKnown(proc.Path)) continue;
+            }
 
             string remote = c.RemoteAddress;
             if (remote is "0.0.0.0" or "::") remote = ""; // unbound -> pending
@@ -298,7 +326,9 @@ public partial class MainWindow : Window
             {
                 _firewall.AllowApp(info.ExePath, info.ProcessName); // permits in strict mode
                 RebuildAppsList();
-            });
+            },
+            strictMode: _firewall.StrictMode);
+        win.Owner = this;
         win.Closed += (_, _) => { _alertOpen = false; ShowNextAlert(); };
         win.Show();
     }
@@ -591,6 +621,9 @@ public partial class MainWindow : Window
     {
         if (EnableFirewallButton == null) return;
         EnableFirewallButton.Content = _firewall.StrictMode ? "Disable Firewall" : "Enable Firewall";
+        // A mode change resets per-session prompt tracking, so entering Zero
+        // Trust re-prompts for every undecided app.
+        _promptedThisSession.Clear();
         if (StrictModeRadio != null && AlertModeRadio != null)
         {
             _suppressModeEvent = true;

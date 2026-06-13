@@ -231,3 +231,28 @@ Two correctness details that are easy to miss and cause silent breakage:
 Removing strict mode deletes exactly these filter IDs, restoring open
 connectivity.
 
+
+## Zero Trust behavior (Enable Firewall)
+
+When the firewall is enabled, GunWall operates default-deny:
+
+- The block-all default (lowest weight) denies any traffic not explicitly
+  permitted. This is active immediately, so an app is blocked *before* it is
+  approved.
+- The fast detection loop (300 ms) watches the socket tables. Any process that
+  owns a socket and has not been decided (not allowed, not blocked) raises an
+  approval prompt exactly once per session.
+- **Allow** writes a persistent per-app PERMIT (weight above the block-all);
+  **Block** writes a persistent per-app BLOCK (weight above permits). Both
+  decisions are saved to disk and survive restarts, so an app is never asked
+  about twice.
+- If the user ignores the prompt, the grace timer simply dismisses it and the
+  app stays blocked — doing nothing is the safe default under Zero Trust.
+
+Honest limitation: detection is poll-based, so a single blocked connection
+attempt that never retries can be missed within a poll interval. The app stays
+correctly blocked; it just may not raise a prompt until it tries again (most
+software retries). Catching every blocked attempt at the instant it happens,
+and showing the exact destination of a *blocked* attempt, requires kernel
+net-event subscription — the next major engine milestone.
+

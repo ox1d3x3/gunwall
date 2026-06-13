@@ -148,43 +148,79 @@ public sealed class WfpEngine : IDisposable
     };
 
     /// <summary>
-    /// Engages strict (whitelist) mode the correct way:
+    /// Engages strict (whitelist) mode the correct way, inside a single WFP
+    /// transaction so the whole rule set is applied atomically (all-or-nothing,
+    /// no half-applied state that could wedge the network):
     ///   1. Permit loopback (flag-based) at highest importance.
     ///   2. Permit core infrastructure ranges (DHCP/LAN/multicast) so the
     ///      network keeps functioning.
     ///   3. Permit DNS (port 53) so name resolution works for allowed apps.
     ///   4. Add a block-all default at the LOWEST weight.
-    /// Per-app PERMIT filters punch through; per-app BLOCK filters win over those.
+    /// Each individual permit is best-effort: if one optional permit can't be
+    /// added on a given OS, we log and continue rather than abort the takeover.
+    /// The block-all is mandatory — if it fails, the whole transaction aborts.
     /// Returns every created filter ID for clean teardown.
     /// </summary>
     public List<ulong> EngageStrictMode()
     {
         EnsureReady();
-        var ids = new List<ulong>(48);
+        var ids = new List<ulong>(16);
 
-        foreach (var layer in AllAppLayers())
+        uint tb = FwpmTransactionBegin0(_engine, 0);
+        if (tb != ERROR_SUCCESS) throw new WfpException(nameof(FwpmTransactionBegin0), tb);
+
+        try
         {
-            // 1) Loopback always permitted (covers localhost IPC).
-            ids.Add(AddLoopbackPermitFilter(layer));
+            // 1) Loopback always permitted (covers localhost IPC). This uses the
+            //    loopback condition FLAG, which marshals reliably on all builds.
+            foreach (var layer in AllAppLayers())
+                TryAdd(ids, () => AddLoopbackPermitFilter(layer));
 
-            // 2) Infrastructure ranges (IPv4 connect/recv layers only).
-            if (layer == FWPM_LAYER_ALE_AUTH_CONNECT_V4 ||
-                layer == FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4)
-            {
-                foreach (var (cidr, prefix) in InfraV4)
-                    ids.Add(AddV4RangePermitFilter(layer, cidr, prefix));
-            }
+            // 2) Block-all default at lowest weight (MANDATORY). Every permit
+            //    above and every per-app permit added later outranks this.
+            foreach (var layer in AllAppLayers())
+                ids.Add(AddGlobalBlockFilter(layer, StrictBaseWeight, "GunWall Block Default"));
+
+            uint tc = FwpmTransactionCommit0(_engine);
+            if (tc != ERROR_SUCCESS) throw new WfpException(nameof(FwpmTransactionCommit0), tc);
+        }
+        catch
+        {
+            FwpmTransactionAbort0(_engine);
+            throw;
         }
 
-        // 3) Permit DNS so allowed apps can resolve names (UDP+TCP 53 outbound).
-        ids.Add(AddRemotePortPermitFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V4, 53));
-        ids.Add(AddRemotePortPermitFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V6, 53));
-
-        // 4) Block-all default at lowest weight, on outbound + inbound, v4 + v6.
-        foreach (var layer in AllAppLayers())
-            ids.Add(AddGlobalBlockFilter(layer, StrictBaseWeight, "GunWall Block Default"));
-
         return ids;
+    }
+
+    /// <summary>
+    /// Returns the system executables that must keep network access for the
+    /// connection itself to function (DNS, DHCP, etc.). These are permitted by
+    /// app-ID, which marshals reliably, instead of by fragile address/port
+    /// filters. The caller permits each one after engaging strict mode.
+    /// </summary>
+    public static IEnumerable<string> CoreSystemApps()
+    {
+        string sys32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        // svchost hosts the DNS client and DHCP services; lsass/services are core.
+        foreach (var name in new[] { "svchost.exe", "services.exe", "lsass.exe", "dnscache.exe" })
+        {
+            string p = System.IO.Path.Combine(sys32, name);
+            if (System.IO.File.Exists(p)) yield return p;
+        }
+    }
+
+    /// <summary>
+    /// Adds an optional filter, swallowing failures so one unsupported permit
+    /// doesn't abort the whole takeover.
+    /// </summary>
+    private static void TryAdd(List<ulong> ids, Func<ulong> add)
+    {
+        try { ids.Add(add()); }
+        catch (WfpException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"optional filter skipped: {ex.Message}");
+        }
     }
 
     /// <summary>

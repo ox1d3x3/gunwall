@@ -188,9 +188,15 @@ public sealed class FirewallManager : IDisposable
 
         if (enabled)
         {
-            // 1) Base block + loopback keep-alive.
+            // 1) Base block + loopback keep-alive (atomic transaction).
             _data.StrictFilterIds = _engine.EngageStrictMode();
             _data.StrictMode = true;
+
+            // When taking full control, forget the "already seen" list so every
+            // app must be approved or denied again — the whitelist starts fresh,
+            // and the user gets a prompt the next time each app connects.
+            _data.KnownApps.Clear();
+            _knownSet = null;
             _store.Save(_data);
 
             // 2) Re-create permits for previously allowed apps.
@@ -201,12 +207,12 @@ public sealed class FirewallManager : IDisposable
             }
             _store.Save(_data);
 
-            // 3) Safety net: keep core Windows networking alive.
-            string sys32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
-            foreach (var name in new[] { "svchost.exe", "services.exe", "lsass.exe" })
+            // 3) Safety net: keep core Windows networking alive (DNS/DHCP live
+            //    inside these system hosts). Permitting them by app-ID is the
+            //    reliable way to keep the connection working in strict mode.
+            foreach (var path in WfpEngine.CoreSystemApps())
             {
-                string path = System.IO.Path.Combine(sys32, name);
-                try { if (System.IO.File.Exists(path)) AllowApp(path, name); }
+                try { AllowApp(path, System.IO.Path.GetFileNameWithoutExtension(path)); }
                 catch { /* best effort */ }
             }
         }

@@ -30,8 +30,8 @@
 
             <!-- Accent header strip -->
             <Border Grid.Row="1" Background="{StaticResource Accent}" Padding="16,12">
-                <TextBlock Text="New app connected to the network"
-                           FontSize="16" FontWeight="SemiBold" Foreground="#17191D" />
+                <TextBlock x:Name="HeaderText" Text="New app connected to the network"
+                           FontSize="16" FontWeight="SemiBold" Foreground="#0E1117" TextWrapping="Wrap" />
             </Border>
 
             <!-- Detail rows -->
@@ -77,28 +77,32 @@
             </Grid>
 
             <!-- Buttons -->
-            <Grid Grid.Row="3" Margin="16,8,16,16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Button Grid.Column="0" x:Name="AllowButton" Margin="0,0,6,0" Padding="14,10"
-                        Style="{StaticResource ActionButton}" Click="Allow_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="10" Height="10" Fill="{StaticResource AllowBrush}"
-                                 VerticalAlignment="Center" Margin="0,0,8,0" />
-                        <TextBlock Text="Allow" FontWeight="SemiBold" />
-                    </StackPanel>
-                </Button>
-                <Button Grid.Column="1" x:Name="BlockButton" Margin="6,0,0,0" Padding="14,10"
-                        Style="{StaticResource ActionButton}" Click="Block_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="10" Height="10" Fill="{StaticResource BlockBrush}"
-                                 VerticalAlignment="Center" Margin="0,0,8,0" />
-                        <TextBlock Text="Block" FontWeight="SemiBold" />
-                    </StackPanel>
-                </Button>
-            </Grid>
+            <StackPanel Grid.Row="3" Margin="16,8,16,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" x:Name="AllowButton" Margin="0,0,6,0" Padding="14,10"
+                            Style="{StaticResource ActionButton}" Click="Allow_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="10" Height="10" Fill="{StaticResource AllowBrush}"
+                                     VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Text="Allow" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+                    <Button Grid.Column="1" x:Name="BlockButton" Margin="6,0,0,0" Padding="14,10"
+                            Style="{StaticResource ActionButton}" Click="Block_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="10" Height="10" Fill="{StaticResource BlockBrush}"
+                                     VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Text="Block" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+                <TextBlock x:Name="CountdownHint" Style="{StaticResource Muted}"
+                           HorizontalAlignment="Center" Margin="0,8,0,0" Text="" />
+            </StackPanel>
         </Grid>
     </Border>
 </Window>

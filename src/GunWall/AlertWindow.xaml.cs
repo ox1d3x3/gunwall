@@ -30,15 +30,17 @@ public partial class AlertWindow : Window
     private readonly AlertInfo _info;
     private readonly Action _onBlock;
     private readonly Action? _onAllow;
+    private readonly bool _strictMode;
     private System.Windows.Threading.DispatcherTimer? _countdown;
     private int _secondsLeft = 20;
 
-    public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null)
+    public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null, bool strictMode = false)
     {
         InitializeComponent();
         _info = info;
         _onBlock = onBlock;
         _onAllow = onAllow;
+        _strictMode = strictMode;
 
         NameText.Text = info.ProcessName;
         AddressText.Text = string.IsNullOrEmpty(info.RemoteAddress)
@@ -49,6 +51,11 @@ public partial class AlertWindow : Window
         DateText.Text = info.Time.ToString("g");
         SignatureText.Text = "Checking signature...";
         HostText.Text = "Resolving...";
+
+        // In Zero Trust (strict) mode the app is currently BLOCKED and stays
+        // blocked unless approved; reflect that in the header.
+        if (_strictMode)
+            HeaderText.Text = "App is blocked - approve to allow network access";
 
         Loaded += OnLoaded;
         PositionBottomRight();
@@ -112,8 +119,12 @@ public partial class AlertWindow : Window
 
     private void StartCountdown()
     {
-        // Auto-allow after a grace period so the popup never blocks the user
-        // indefinitely (the app is allowed by default; this just dismisses).
+        // The grace timer's default action depends on mode:
+        //  - Strict (Zero Trust): timeout = stay BLOCKED (just dismiss). The
+        //    app is denied by default, so doing nothing keeps it denied.
+        //  - Monitoring: timeout = keep ALLOWED (dismiss; allowed by default).
+        // Either way the popup never traps the user indefinitely, and the safe
+        // default for the active mode is what happens on timeout.
         _countdown = new System.Windows.Threading.DispatcherTimer
         {
             Interval = TimeSpan.FromSeconds(1)
@@ -121,12 +132,16 @@ public partial class AlertWindow : Window
         _countdown.Tick += (_, _) =>
         {
             _secondsLeft--;
-            if (AllowButton != null)
-                AllowButton.Content = BuildAllowContent($"Allow ({_secondsLeft}s)");
+            string label = _strictMode ? $"Dismiss ({_secondsLeft}s)" : $"Allow ({_secondsLeft}s)";
+            if (_strictMode && CountdownHint != null)
+                CountdownHint.Text = $"Stays blocked in {_secondsLeft}s if no choice";
+            else if (AllowButton != null)
+                AllowButton.Content = BuildAllowContent(label);
             if (_secondsLeft <= 0)
             {
                 _countdown?.Stop();
-                Allow_Click(this, new RoutedEventArgs());
+                if (_strictMode) { Close(); }       // stay blocked
+                else { Allow_Click(this, new RoutedEventArgs()); }
             }
         };
         _countdown.Start();
