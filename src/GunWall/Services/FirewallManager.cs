@@ -279,10 +279,15 @@ public sealed class FirewallManager : IDisposable
     public bool StartMinimized => _data.StartMinimized;
     public bool AlwaysOnTop => _data.AlwaysOnTop;
     public bool HashesEnabled => _data.HashesEnabled;
+    public bool ExperimentalEvents => _data.ExperimentalEvents;
+
+    /// <summary>Where the user's profile (rules + settings) is stored on disk.</summary>
+    public string ProfileFolder => _store.ProfileFolder;
 
     public void SetStartMinimized(bool v) { _data.StartMinimized = v; _store.Save(_data); }
     public void SetAlwaysOnTop(bool v) { _data.AlwaysOnTop = v; _store.Save(_data); }
     public void SetHashesEnabled(bool v) { _data.HashesEnabled = v; _store.Save(_data); }
+    public void SetExperimentalEvents(bool v) { _data.ExperimentalEvents = v; _store.Save(_data); }
 
     // ------------------------------------------------ profile export / import
     /// <summary>Exports all rules and settings to a portable file.</summary>

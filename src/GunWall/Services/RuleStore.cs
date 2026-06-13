@@ -22,10 +22,35 @@ public sealed class RuleStore
 
     public RuleStore()
     {
-        _dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "GunWall");
+        // Save the profile in the application's own folder (portable) so the
+        // user's allow/block choices live alongside GunWall. If that folder
+        // isn't writable (e.g. installed read-only), fall back to ProgramData.
+        string appDir = AppContext.BaseDirectory;
+        string portableDir = Path.Combine(appDir, "GunWallData");
+
+        if (IsWritable(appDir))
+        {
+            _dir = portableDir;
+        }
+        else
+        {
+            _dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "GunWall");
+        }
         _file = Path.Combine(_dir, "rules.json");
+    }
+
+    private static bool IsWritable(string dir)
+    {
+        try
+        {
+            string probe = Path.Combine(dir, ".gw_write_test");
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            return true;
+        }
+        catch { return false; }
     }
 
     public StoreData Load()
@@ -55,13 +80,30 @@ public sealed class RuleStore
     private void MigrateFromLegacyLocation()
     {
         if (File.Exists(_file)) return;
-        string legacy = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "NetGuardPro", "rules.json");
-        if (!File.Exists(legacy)) return;
         Directory.CreateDirectory(_dir);
-        File.Copy(legacy, _file, overwrite: false);
+
+        // Prefer a prior GunWall profile in ProgramData (previous releases),
+        // then fall back to the original NetGuardPro location.
+        string[] legacies =
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                         "GunWall", "rules.json"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                         "NetGuardPro", "rules.json"),
+        };
+        foreach (var legacy in legacies)
+        {
+            if (legacy.Equals(_file, StringComparison.OrdinalIgnoreCase)) continue;
+            if (File.Exists(legacy))
+            {
+                try { File.Copy(legacy, _file, overwrite: false); } catch { }
+                return;
+            }
+        }
     }
+
+    /// <summary>The folder where the user's profile is stored (shown in Settings).</summary>
+    public string ProfileFolder => _dir;
 
     public void Save(StoreData data)
     {
@@ -114,4 +156,7 @@ public sealed class StoreData
     public bool StartMinimized { get; set; }
     public bool AlwaysOnTop { get; set; }
     public bool HashesEnabled { get; set; } = true;
+
+    /// <summary>Experimental kernel event-driven detection (off by default).</summary>
+    public bool ExperimentalEvents { get; set; }
 }

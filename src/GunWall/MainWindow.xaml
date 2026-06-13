@@ -378,8 +378,14 @@
                                       Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="HashesCheck" Content="Compute SHA-256 hash of apps (tamper detection)"
+                                      Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="ExperimentalEventsCheck"
+                                      Content="Experimental: kernel event detection (catches more apps, may be unstable)"
                                       Foreground="{StaticResource TextPrimary}"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <TextBlock Text="If GunWall becomes unstable after enabling this, turn it off and restart. Restart required to take effect."
+                                       Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 
@@ -426,7 +432,8 @@
                         <StackPanel>
                             <TextBlock Text="About" Style="{StaticResource H2}" />
                             <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap"
-                                       Text="GunWall v0.11.0 - free, open-source, no telemetry. Rules are stored locally at %ProgramData%\GunWall. Built on the Windows Filtering Platform." />
+                                       x:Name="AboutText"
+                                       Text="GunWall - free, open-source, no telemetry. Built on the Windows Filtering Platform." />
                             <TextBlock Margin="0,6,0,0">
                                 <Hyperlink NavigateUri="https://github.com/ox1d3x3/gunwall"
                                            RequestNavigate="Repo_RequestNavigate"

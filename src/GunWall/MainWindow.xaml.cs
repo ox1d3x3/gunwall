@@ -93,6 +93,7 @@ public partial class MainWindow : Window
             StartMinimizedCheck.IsChecked = _firewall.StartMinimized;
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
+            ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
             _suppressModeEvent = false;
             SyncFirewallToggle();
             if (ApplyButton != null) ApplyButton.IsEnabled = false;
@@ -100,6 +101,9 @@ public partial class MainWindow : Window
             // Apply window prefs immediately.
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
+
+            AboutText.Text = $"GunWall v0.11.1 - free, open-source, no telemetry. " +
+                             $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
             // becomes the primary detector and we stop relying on polling for
@@ -266,6 +270,10 @@ public partial class MainWindow : Window
     private void TryStartEventMonitor()
     {
         if (!_engineReady || _firewall.EngineHandle == IntPtr.Zero) return;
+        // OFF by default. Polling is the stable, tested detector. The kernel
+        // event engine is opt-in (Settings) until it's proven on real hardware,
+        // because faulty event interop can crash the process.
+        if (!_firewall.ExperimentalEvents) { _eventDriven = false; return; }
         try
         {
             _netEvents = new NetEventMonitor(_firewall.EngineHandle);
@@ -821,6 +829,7 @@ public partial class MainWindow : Window
         _firewall.SetStartMinimized(StartMinimizedCheck?.IsChecked == true);
         _firewall.SetAlwaysOnTop(AlwaysOnTopCheck?.IsChecked == true);
         _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
+        _firewall.SetExperimentalEvents(ExperimentalEventsCheck?.IsChecked == true);
         Topmost = _firewall.AlwaysOnTop;
 
         // 3) Firewall mode (the heavy one) - confirm before a takeover.

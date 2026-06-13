@@ -92,8 +92,8 @@ public sealed class NetEventMonitor : IDisposable
             if (string.IsNullOrEmpty(appPath)) return;
 
             string proto = h.ipProtocol switch { 6 => "TCP", 17 => "UDP", 1 => "ICMP", _ => "IP" };
-            string remote = FormatV4(h.remoteAddrV4);
-            string local = FormatV4(h.localAddrV4);
+            string remote = FormatV4(h.remoteAddr);
+            string local = FormatV4(h.localAddr);
             bool dropped = evt.type == FWPM_NET_EVENT_TYPE_CLASSIFY_DROP;
             uint dir = 0;
             if (dropped && evt.value != IntPtr.Zero)
@@ -128,11 +128,14 @@ public sealed class NetEventMonitor : IDisposable
         catch { return ""; }
     }
 
-    private static string FormatV4(uint addrHostOrder)
+    private static string FormatV4(byte[]? addr)
     {
-        if (addrHostOrder == 0) return "";
-        return $"{(addrHostOrder >> 24) & 0xFF}.{(addrHostOrder >> 16) & 0xFF}." +
-               $"{(addrHostOrder >> 8) & 0xFF}.{addrHostOrder & 0xFF}";
+        if (addr == null || addr.Length < 4) return "";
+        // IPv4 occupies the first 4 bytes in network byte order. The WFP header
+        // stores the V4 address as a UINT32 in host order inside the union, but
+        // when read as bytes the first 4 are the address octets. All-zero = none.
+        if (addr[0] == 0 && addr[1] == 0 && addr[2] == 0 && addr[3] == 0) return "";
+        return $"{addr[3]}.{addr[2]}.{addr[1]}.{addr[0]}";
     }
 
     // Best-effort NT (\device\harddiskvolumeN\...) -> DOS (C:\...) path mapping

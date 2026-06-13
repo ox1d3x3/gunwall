@@ -57,15 +57,17 @@ internal static class WfpEvents
         public uint flags;              // which fields are set
         public uint ipVersion;          // FWP_IP_VERSION
         public byte ipProtocol;
-        // 3 bytes padding to align next uint
-        public byte _pad0, _pad1, _pad2;
-        public uint localAddrV4;        // union: V4 addr (host of V6 if v6)
-        public uint remoteAddrV4;
-        // For v6 the addresses are 16-byte arrays in a union; for our v4-focused
-        // first cut we read V4. v6 events are still surfaced (addr shown blank).
+        public byte _pad0, _pad1, _pad2; // pad to 4-byte boundary
+        // Address unions: largest member is a 16-byte IPv6 array, so each MUST
+        // be 16 bytes. (IPv4 lives in the first 4 bytes, network byte order.)
+        // Declaring these as 4-byte fields shifts appId/userId to wrong offsets
+        // and crashes — that was the v0.11 fault.
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] public byte[] localAddr;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] public byte[] remoteAddr;
         public ushort localPort;
         public ushort remotePort;
-        public uint scopeId;
+        public byte scopeId;
+        public byte _pad3, _pad4, _pad5; // pad to pointer alignment
         public FWP_BYTE_BLOB appId;     // the app path blob
         public IntPtr userId;           // SID*
     }

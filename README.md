@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/release-v0.11.0%20(alpha)-orange?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.11.1%20(alpha)-orange?style=flat-square)](#roadmap)
 
 *Take full control of your network. Block apps from the internet, watch your traffic in real time, and get a popup the moment a new app reaches out — in a fast, dark, modern interface.*
 
@@ -19,7 +19,7 @@
 
 ## ⚠️ Project status
 
-GunWall is an **early alpha (v0.11.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
+GunWall is an **early alpha (v0.11.1)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
 
 ---
 
@@ -85,7 +85,7 @@ GunWall is designed so that **nothing happens to your data without your say-so**
 
 - **No network calls of its own.** No phoning home, no silent update checks, no uploads. (The only outbound lookup is reverse-DNS for the alert's "Host" field, which is the same query your OS already makes, to your own DNS server.)
 - **No telemetry, no analytics, no accounts.**
-- **Local-only storage.** Rules live in `%ProgramData%\GunWall\rules.json` — plain JSON you can read, back up, or delete.
+- **Local-only storage.** Your profile (allow/block choices + settings) is saved in a `GunWallData` folder next to the GunWall executable (portable), falling back to `%ProgramData%\GunWall` if that location is read-only — plain JSON you can read, back up, or delete.
 - **Explicit actions only.** Every filter corresponds to a button you pressed.
 - **Allow-by-default.** A fresh install changes nothing until you enable the firewall or block something.
 - **Clean removal.** Settings → "Remove all GunWall filtering" tears down every persistent filter. Always run it before uninstalling.
@@ -124,7 +124,7 @@ Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv
 | **v0.8** ✅ | Corrected full-control engine, transaction-based, reliable blocks |
 | **v0.9** ✅ | Zero Trust: default-deny, per-app approval prompts that persist, deny-on-timeout |
 | **v0.10** ✅ | SHA-256 tamper hashing, silent (muted) apps, profile export/import, window preferences |
-| **v0.11** ✅ | Event-driven detection engine (kernel net events) — catches every app/service instantly, replaces polling |
+| **v0.11** ✅ | Event-driven detection engine (kernel net events), opt-in/experimental; stable polling remains default; portable profile in app folder |
 | **v0.12** | Packets Log tab; alerts show true blocked-destination address |
 | **v0.13** | Services tab (per-service rules) + UWP app-container support |
 | **v0.14** | Custom rules editor (allow/block by address, port, protocol, direction) |
