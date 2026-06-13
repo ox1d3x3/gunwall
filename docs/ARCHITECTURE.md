@@ -198,3 +198,36 @@ facade small and honest so these can be layered on without rework.
 **Zero third-party NuGet packages.** Everything uses the .NET base class library
 and direct Win32 P/Invoke. This keeps the supply chain trivial to audit — a
 firewall that pulls in a dozen opaque dependencies undermines its own promise.
+
+
+## Strict mode (full control) — corrected design
+
+Strict mode is the "block everything except what you allow" takeover. Getting
+it right requires more than a single block filter, because a naive block-all
+also blocks the traffic the network itself needs to function (DNS, DHCP, ARP-
+like discovery, IPv6 neighbor discovery). The engine therefore installs a
+layered set of filters, ordered by an 8-level weight hierarchy (highest wins):
+
+1. **Infrastructure permits (weight 0x0F, highest important).** Loopback (via
+   the loopback condition flag) plus the core IPv4 ranges: `0.0.0.0/8` (DHCP),
+   `10/8`, `172.16/12`, `192.168/16` (private), `100.64/10` (CGNAT),
+   `169.254/16` (link-local), `224/4` (multicast), `240/4` and the broadcast
+   address. These must outrank the block-all or the local network dies.
+2. **DNS permit (weight 0x0F).** Remote port 53 is permitted so allowed apps
+   can resolve names.
+3. **Per-app permits (weight 0x0B).** Apps the user allows.
+4. **Per-app blocks (weight 0x0C).** Explicit blocks beat permits.
+5. **Block-all default (weight 0x08, lowest).** Catches everything not
+   permitted above.
+
+Two correctness details that are easy to miss and cause silent breakage:
+
+- **Every BLOCK filter sets `FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT`.** Without it,
+  a block can be overridden by a lower-priority permit elsewhere in the system,
+  so blocks become unreliable.
+- **Block actions and highest-importance filters clear the action right** so the
+  weight hierarchy is actually honored by the WFP arbitration.
+
+Removing strict mode deletes exactly these filter IDs, restoring open
+connectivity.
+

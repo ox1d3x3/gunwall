@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/release-v0.7.0%20(alpha)-orange?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.8.0%20(alpha)-orange?style=flat-square)](#roadmap)
 
 *Take full control of your network. Block apps from the internet, watch your traffic in real time, and get a popup the moment a new app reaches out — in a fast, dark, modern interface.*
 
@@ -19,7 +19,7 @@
 
 ## ⚠️ Project status
 
-GunWall is an **early alpha (v0.7.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
+GunWall is an **early alpha (v0.8.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
 
 ---
 
@@ -117,6 +117,7 @@ Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv
 |---------|-------|
 | **v0.6** ✅ | Enable-Firewall takeover, robust detection (SYSTEM/VPN apps), staged settings + Apply |
 | **v0.7** ✅ | Refined blue-tinted theme, status pills, alert countdown, new logo |
+| **v0.8** ✅ | Corrected full-control engine: infrastructure + DNS permits, proper weight hierarchy, reliable blocks (fixes internet-blocked bug) |
 | **v0.7** | Kernel net-event drop notifications (show address/port of blocked attempts), per-rule scoping (address/port/direction) |
 | **v0.8** | GeoIP + per-app traffic attribution, traffic history database, profiles (Home/Work/Public) |
 | **v0.9** | DNS-level blocking and blocklists, rule editor |

@@ -27,9 +27,26 @@ internal static class WfpNative
     // ----- FWP_DATA_TYPE (subset we use) ------------------------------------
     internal const uint FWP_EMPTY = 0;
     internal const uint FWP_UINT8 = 1;
+    internal const uint FWP_UINT16 = 2;
     internal const uint FWP_UINT32 = 3;
     internal const uint FWP_UINT64 = 4;
+    internal const uint FWP_V4_ADDR_MASK = 0x100;  // FWP_V4_ADDR_AND_MASK*
+    internal const uint FWP_V6_ADDR_MASK = 0x101;  // FWP_V6_ADDR_AND_MASK*
     internal const uint FWP_BYTE_BLOB_TYPE = 12;
+
+    // ----- Filter flags -----------------------------------------------------
+    internal const uint FWPM_FILTER_FLAG_PERSISTENT = 0x00000001;
+    internal const uint FWPM_FILTER_FLAG_BOOTTIME = 0x00000002;
+    internal const uint FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT = 0x00000008;
+    internal const uint FWPM_FILTER_FLAG_INDEXED = 0x00000020;
+
+    // ----- Weight hierarchy (UINT8), highest wins ---------------------------
+    internal const byte FW_WEIGHT_HIGHEST_IMPORTANT = 0x0F; // infrastructure permits
+    internal const byte FW_WEIGHT_HIGHEST = 0x0E;
+    internal const byte FW_WEIGHT_RULE_USER_BLOCK = 0x0C;   // explicit user block
+    internal const byte FW_WEIGHT_RULE_USER = 0x0B;         // explicit user allow
+    internal const byte FW_WEIGHT_APP = 0x09;               // per-app rules
+    internal const byte FW_WEIGHT_LOWEST = 0x08;            // block-all default
 
     // ----- FWP_MATCH_TYPE ---------------------------------------------------
     internal const uint FWP_MATCH_EQUAL = 0;
@@ -45,7 +62,6 @@ internal static class WfpNative
 
     // ----- Persistence flags ------------------------------------------------
     internal const uint FWPM_SUBLAYER_FLAG_PERSISTENT = 0x00000001;
-    internal const uint FWPM_FILTER_FLAG_PERSISTENT = 0x00000001;
 
     // ----- Well-known layer GUIDs -------------------------------------------
     // Outbound connection authorization
@@ -64,6 +80,29 @@ internal static class WfpNative
         new("d78e1e87-8644-4ea5-9437-d809ecefc971");
     internal static readonly Guid FWPM_CONDITION_FLAGS =
         new("632ce23b-5167-435c-86d7-e903684aa80c");
+    internal static readonly Guid FWPM_CONDITION_IP_REMOTE_ADDRESS =
+        new("b235ae9a-1d64-49b8-a44c-5ff3d9095045");
+    internal static readonly Guid FWPM_CONDITION_IP_PROTOCOL =
+        new("3971ef2b-623e-4f9a-8cb1-6e79b806b9a7");
+    internal static readonly Guid FWPM_CONDITION_ICMP_TYPE =
+        new("b9f4e088-cb98-4efb-a2c7-ad07332643db");
+    internal static readonly Guid FWPM_CONDITION_IP_REMOTE_PORT =
+        new("c35a604d-d22b-48b1-a8dc-1377b9824a35");
+
+    // Address-and-mask structures for FWPM_CONDITION_IP_REMOTE_ADDRESS.
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FWP_V4_ADDR_AND_MASK
+    {
+        public uint addr;
+        public uint mask;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FWP_V6_ADDR_AND_MASK
+    {
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] public byte[] addr;
+        public byte prefixLength;
+    }
 
     // =========================================================================
     //  Structures

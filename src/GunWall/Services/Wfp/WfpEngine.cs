@@ -38,11 +38,13 @@ public sealed class WfpEngine : IDisposable
     private static readonly Guid SublayerKey = new("8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00");
 
     private const ushort SublayerWeight = 0x8000; // mid-high so we sit above default
-    private const byte StrictBaseWeight = 6;      // strict-mode block-everything
-    private const byte AppPermitWeight = 8;       // per-app allow (strict mode)
-    private const byte LoopbackWeight = 9;        // keep loopback alive in strict
-    private const byte AppBlockWeight = 10;       // per-app block beats permits
-    private const byte LockdownWeight = 15;       // lockdown beats everything
+    // Weights map to the documented WFP hierarchy: highest wins. Infrastructure
+    // permits MUST outrank the block-all default, or DNS/DHCP/IPv6 break.
+    private const byte InfraPermitWeight = FW_WEIGHT_HIGHEST_IMPORTANT; // 0x0F
+    private const byte AppPermitWeight = FW_WEIGHT_RULE_USER;           // 0x0B
+    private const byte AppBlockWeight = FW_WEIGHT_RULE_USER_BLOCK;      // 0x0C (beats permit)
+    private const byte StrictBaseWeight = FW_WEIGHT_LOWEST;            // 0x08 (block-all default)
+    private const byte LockdownWeight = FW_WEIGHT_HIGHEST;            // 0x0E (beats app rules)
 
     private IntPtr _engine = IntPtr.Zero;
     private bool _initialized;
@@ -126,27 +128,69 @@ public sealed class WfpEngine : IDisposable
         }
     }
 
+    // Infrastructure ranges that MUST stay reachable for the network to work:
+    // loopback, DHCP, link-local, private LANs, CGNAT, multicast/broadcast.
+    // Without permitting these, "block everything" also blocks DNS, DHCP renewal
+    // and local network discovery — i.e. it kills the internet. (IPv4 here;
+    // loopback + IPv6 link-local are handled by the loopback flag + ICMPv6.)
+    private static readonly (string Cidr, byte Prefix)[] InfraV4 =
+    {
+        ("0.0.0.0", 8),       // this network / DHCP
+        ("10.0.0.0", 8),      // private
+        ("100.64.0.0", 10),   // CGNAT
+        ("127.0.0.0", 8),     // loopback
+        ("169.254.0.0", 16),  // link-local
+        ("172.16.0.0", 12),   // private
+        ("192.168.0.0", 16),  // private
+        ("224.0.0.0", 4),     // multicast
+        ("240.0.0.0", 4),     // reserved/broadcast
+        ("255.255.255.255", 32),
+    };
+
     /// <summary>
-    /// Engages strict (whitelist) mode: block everything by default, but keep
-    /// loopback traffic alive so local IPC keeps working. Per-app PERMIT
-    /// filters (higher weight) punch through; explicit per-app BLOCK filters
-    /// (higher still) always win. Returns all created filter IDs.
+    /// Engages strict (whitelist) mode the correct way:
+    ///   1. Permit loopback (flag-based) at highest importance.
+    ///   2. Permit core infrastructure ranges (DHCP/LAN/multicast) so the
+    ///      network keeps functioning.
+    ///   3. Permit DNS (port 53) so name resolution works for allowed apps.
+    ///   4. Add a block-all default at the LOWEST weight.
+    /// Per-app PERMIT filters punch through; per-app BLOCK filters win over those.
+    /// Returns every created filter ID for clean teardown.
     /// </summary>
     public List<ulong> EngageStrictMode()
     {
         EnsureReady();
-        var ids = new List<ulong>(8);
+        var ids = new List<ulong>(48);
+
         foreach (var layer in AllAppLayers())
         {
-            ids.Add(AddGlobalBlockFilter(layer, StrictBaseWeight, "GunWall Strict Base Block"));
+            // 1) Loopback always permitted (covers localhost IPC).
             ids.Add(AddLoopbackPermitFilter(layer));
+
+            // 2) Infrastructure ranges (IPv4 connect/recv layers only).
+            if (layer == FWPM_LAYER_ALE_AUTH_CONNECT_V4 ||
+                layer == FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4)
+            {
+                foreach (var (cidr, prefix) in InfraV4)
+                    ids.Add(AddV4RangePermitFilter(layer, cidr, prefix));
+            }
         }
+
+        // 3) Permit DNS so allowed apps can resolve names (UDP+TCP 53 outbound).
+        ids.Add(AddRemotePortPermitFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V4, 53));
+        ids.Add(AddRemotePortPermitFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V6, 53));
+
+        // 4) Block-all default at lowest weight, on outbound + inbound, v4 + v6.
+        foreach (var layer in AllAppLayers())
+            ids.Add(AddGlobalBlockFilter(layer, StrictBaseWeight, "GunWall Block Default"));
+
         return ids;
     }
 
     /// <summary>
-    /// Engages lockdown: condition-less BLOCK filters on every ALE layer that
-    /// outrank per-app rules. Returns their filter IDs.
+    /// Engages lockdown: condition-less BLOCK filters that outrank per-app rules
+    /// (but NOT the infrastructure permits, so the machine doesn't hard-lock the
+    /// local stack). Returns their filter IDs.
     /// </summary>
     public List<ulong> EngageLockdown()
     {
@@ -227,7 +271,7 @@ public sealed class WfpEngine : IDisposable
                 layerKey = layer,
                 subLayerKey = SublayerKey,
                 flags = FWPM_FILTER_FLAG_PERSISTENT,
-                weight = new FWP_VALUE0 { type = FWP_UINT8, value = LoopbackWeight },
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = InfraPermitWeight },
                 numFilterConditions = 1,
                 filterCondition = condPtr,
                 action = new FWPM_ACTION0 { type = FWP_ACTION_PERMIT },
@@ -246,6 +290,112 @@ public sealed class WfpEngine : IDisposable
         {
             Marshal.FreeHGlobal(condPtr);
         }
+    }
+
+    /// <summary>Permits an outbound/inbound IPv4 CIDR range at highest importance.</summary>
+    private ulong AddV4RangePermitFilter(Guid layer, string baseAddress, byte prefix)
+    {
+        var maskStruct = new FWP_V4_ADDR_AND_MASK
+        {
+            addr = IpToHost(baseAddress),
+            mask = prefix == 0 ? 0 : 0xFFFFFFFF << (32 - prefix)
+        };
+        IntPtr maskPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWP_V4_ADDR_AND_MASK>());
+        IntPtr condPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWPM_FILTER_CONDITION0>());
+        try
+        {
+            Marshal.StructureToPtr(maskStruct, maskPtr, false);
+            var cond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0
+                {
+                    type = FWP_V4_ADDR_MASK,
+                    value = (ulong)maskPtr.ToInt64()
+                }
+            };
+            Marshal.StructureToPtr(cond, condPtr, false);
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = FWPM_FILTER_FLAG_PERSISTENT,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = InfraPermitWeight },
+                numFilterConditions = 1,
+                filterCondition = condPtr,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_PERMIT },
+                displayData = new FWPM_DISPLAY_DATA0
+                {
+                    name = "GunWall Infrastructure",
+                    description = $"Permit {baseAddress}/{prefix}"
+                }
+            };
+
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(condPtr);
+            Marshal.FreeHGlobal(maskPtr);
+        }
+    }
+
+    /// <summary>Permits a remote port (e.g. DNS 53) at highest importance.</summary>
+    private ulong AddRemotePortPermitFilter(Guid layer, ushort port)
+    {
+        IntPtr condPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWPM_FILTER_CONDITION0>());
+        try
+        {
+            var cond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_IP_REMOTE_PORT,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0
+                {
+                    type = FWP_UINT16,
+                    value = port
+                }
+            };
+            Marshal.StructureToPtr(cond, condPtr, false);
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = FWPM_FILTER_FLAG_PERSISTENT,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = InfraPermitWeight },
+                numFilterConditions = 1,
+                filterCondition = condPtr,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_PERMIT },
+                displayData = new FWPM_DISPLAY_DATA0
+                {
+                    name = "GunWall DNS Permit",
+                    description = $"Permit remote port {port}"
+                }
+            };
+
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(condPtr);
+        }
+    }
+
+    /// <summary>Converts a dotted IPv4 string to a host-order uint for WFP.</summary>
+    private static uint IpToHost(string ip)
+    {
+        var parts = ip.Split('.');
+        return ((uint)byte.Parse(parts[0]) << 24) |
+               ((uint)byte.Parse(parts[1]) << 16) |
+               ((uint)byte.Parse(parts[2]) << 8) |
+               byte.Parse(parts[3]);
     }
 
     private ulong AddAppFilter(Guid layer, FWP_BYTE_BLOB appIdBlob, byte weight, uint action, string name)
@@ -271,11 +421,16 @@ public sealed class WfpEngine : IDisposable
             };
             Marshal.StructureToPtr(cond, condPtr, false);
 
+            // Block actions must clear the action right so they can't be
+            // overridden by lower-priority permits elsewhere in the system.
+            uint flags = FWPM_FILTER_FLAG_PERSISTENT;
+            if (action == FWP_ACTION_BLOCK) flags |= FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT;
+
             var filter = new FWPM_FILTER0
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT,
+                flags = flags,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = weight },
                 numFilterConditions = 1,
                 filterCondition = condPtr,
@@ -300,7 +455,7 @@ public sealed class WfpEngine : IDisposable
         {
             layerKey = layer,
             subLayerKey = SublayerKey,
-            flags = FWPM_FILTER_FLAG_PERSISTENT,
+            flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
             weight = new FWP_VALUE0 { type = FWP_UINT8, value = weight },
             numFilterConditions = 0,
             filterCondition = IntPtr.Zero,
