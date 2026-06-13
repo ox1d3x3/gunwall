@@ -376,9 +376,11 @@ public partial class MainWindow : Window
         }
 
         foreach (var a in known.Values)
+        {
             a.Status = _firewall.EffectiveStatus(a.ExecutablePath);
             a.Silent = _firewall.IsSilent(a.ExecutablePath);
             a.Hash = _firewall.GetHash(a.ExecutablePath);
+        }
 
         IEnumerable<AppInfo> view = known.Values;
         if (!string.IsNullOrWhiteSpace(_appFilter))
@@ -739,7 +741,7 @@ public partial class MainWindow : Window
 
     private void ApplySettings_Click(object sender, RoutedEventArgs e)
     {
-        if (!_engineReady) { _settingsDirty = false; return; }
+        if (!_engineReady || !_settingsDirty) { _settingsDirty = false; return; }
 
         // 1) Refresh interval
         if (IntervalCombo?.SelectedItem is ComboBoxItem item &&
@@ -768,8 +770,8 @@ public partial class MainWindow : Window
                 if (answer != MessageBoxResult.Yes)
                 {
                     _suppressModeEvent = true;
-                    AlertModeRadio.IsChecked = true;
-                    StrictModeRadio.IsChecked = false;
+                    if (AlertModeRadio != null) AlertModeRadio.IsChecked = true;
+                    if (StrictModeRadio != null) StrictModeRadio.IsChecked = false;
                     _suppressModeEvent = false;
                 }
                 else

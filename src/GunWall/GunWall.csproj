@@ -9,9 +9,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <LangVersion>latest</LangVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.10.0</Version>
+    <Version>0.10.1</Version>
     <Company>GunWall</Company>
     <Product>GunWall Firewall</Product>
     <Description>A modern, open-source Windows firewall built on the Windows Filtering Platform.</Description>
