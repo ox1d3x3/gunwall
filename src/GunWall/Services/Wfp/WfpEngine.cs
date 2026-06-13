@@ -117,10 +117,24 @@ public sealed class WfpEngine : IDisposable
         IntPtr appIdPtr = GetAppId(exePath, out FWP_BYTE_BLOB blob);
         try
         {
-            var ids = new List<ulong>(4);
+            var ids = new List<ulong>(8);
             foreach (var layer in AllAppLayers())
-                ids.Add(AddAppFilter(layer, blob, weight, action,
-                    $"{verb} {Path.GetFileName(exePath)}"));
+            {
+                // Per-layer tolerance: the transport/ICMP layers may reject an
+                // app-id condition on some Windows builds. If a layer refuses,
+                // skip it rather than aborting — the ALE layers still apply, so
+                // TCP control is never lost.
+                try
+                {
+                    ids.Add(AddAppFilter(layer, blob, weight, action,
+                        $"{verb} {Path.GetFileName(exePath)}"));
+                }
+                catch (WfpException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"app filter skipped on a layer: 0x{ex.Code:X8}");
+                }
+            }
             return ids;
         }
         finally
@@ -177,10 +191,23 @@ public sealed class WfpEngine : IDisposable
             foreach (var layer in AllAppLayers())
                 TryAdd(ids, () => AddLoopbackPermitFilter(layer));
 
-            // 2) Block-all default at lowest weight (MANDATORY). Every permit
-            //    above and every per-app permit added later outranks this.
+            // 2) Block-all default at lowest weight. The four ALE layers are
+            //    mandatory (core TCP control); the transport layers are best-
+            //    effort so an OS that rejects a condition-less block there can't
+            //    abort the whole takeover.
             foreach (var layer in AllAppLayers())
-                ids.Add(AddGlobalBlockFilter(layer, StrictBaseWeight, "GunWall Block Default"));
+            {
+                bool mandatory =
+                    layer == FWPM_LAYER_ALE_AUTH_CONNECT_V4 ||
+                    layer == FWPM_LAYER_ALE_AUTH_CONNECT_V6 ||
+                    layer == FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4 ||
+                    layer == FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6;
+
+                if (mandatory)
+                    ids.Add(AddGlobalBlockFilter(layer, StrictBaseWeight, "GunWall Block Default"));
+                else
+                    TryAdd(ids, () => AddGlobalBlockFilter(layer, StrictBaseWeight, "GunWall Block Default"));
+            }
 
             uint tc = FwpmTransactionCommit0(_engine);
             if (tc != ERROR_SUCCESS) throw new WfpException(nameof(FwpmTransactionCommit0), tc);
@@ -232,9 +259,9 @@ public sealed class WfpEngine : IDisposable
     public List<ulong> EngageLockdown()
     {
         EnsureReady();
-        var ids = new List<ulong>(4);
+        var ids = new List<ulong>(8);
         foreach (var layer in AllAppLayers())
-            ids.Add(AddGlobalBlockFilter(layer, LockdownWeight, "GunWall Lockdown"));
+            TryAdd(ids, () => AddGlobalBlockFilter(layer, LockdownWeight, "GunWall Lockdown"));
         return ids;
     }
 
@@ -272,10 +299,17 @@ public sealed class WfpEngine : IDisposable
 
     private static IEnumerable<Guid> AllAppLayers()
     {
+        // ALE layers: TCP connect/accept (connection-oriented).
         yield return FWPM_LAYER_ALE_AUTH_CONNECT_V4;
         yield return FWPM_LAYER_ALE_AUTH_CONNECT_V6;
         yield return FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4;
         yield return FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6;
+        // Transport layers: ICMP, raw sockets, and connectionless traffic that
+        // never reaches the ALE layers (this is what makes ping controllable).
+        yield return FWPM_LAYER_OUTBOUND_TRANSPORT_V4;
+        yield return FWPM_LAYER_OUTBOUND_TRANSPORT_V6;
+        yield return FWPM_LAYER_INBOUND_TRANSPORT_V4;
+        yield return FWPM_LAYER_INBOUND_TRANSPORT_V6;
     }
 
     /// <summary>

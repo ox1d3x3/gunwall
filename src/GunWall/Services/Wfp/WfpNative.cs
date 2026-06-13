@@ -74,6 +74,17 @@ internal static class WfpNative
         new("e1cd9fe7-f4b5-4273-96c0-592e487b8650");
     internal static readonly Guid FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6 =
         new("a3b42c97-9f04-4672-b87e-cee9c483257f");
+    // Transport layers — carry ICMP, raw sockets, and other connectionless
+    // traffic that never passes through the ALE_AUTH_CONNECT layer. Filtering
+    // here is what makes ping, traceroute, and DNS visible/controllable.
+    internal static readonly Guid FWPM_LAYER_OUTBOUND_TRANSPORT_V4 =
+        new("09e61aea-d214-46e2-9b21-b26b0b2f28c8");
+    internal static readonly Guid FWPM_LAYER_OUTBOUND_TRANSPORT_V6 =
+        new("e1735bde-013f-4655-b351-a49e15762df0");
+    internal static readonly Guid FWPM_LAYER_INBOUND_TRANSPORT_V4 =
+        new("5926dfc8-e3cf-4426-a283-dc393f5d0f9d");
+    internal static readonly Guid FWPM_LAYER_INBOUND_TRANSPORT_V6 =
+        new("634a869f-fc23-4b90-b0c1-bf620a36ae6f");
 
     // ----- Condition field GUIDs --------------------------------------------
     internal static readonly Guid FWPM_CONDITION_ALE_APP_ID =
