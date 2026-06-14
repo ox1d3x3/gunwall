@@ -371,6 +371,69 @@ public sealed class FirewallManager : IDisposable
     /// <summary>Exports all rules and settings to a portable file.</summary>
     public void ExportProfile(string filePath) => _store.Export(_data, filePath);
 
+    // ------------------------------------------------ named profiles
+    // Profiles are named snapshots of the whole rule set, stored as JSON files
+    // in a "profiles" subfolder. Switching a profile imports it as the active
+    // configuration. This builds on the same serialization as export/import.
+
+    private string ProfilesFolder
+    {
+        get
+        {
+            string dir = System.IO.Path.Combine(_store.ProfileFolder, "profiles");
+            try { System.IO.Directory.CreateDirectory(dir); } catch { }
+            return dir;
+        }
+    }
+
+    public List<string> ListProfiles()
+    {
+        var names = new List<string>();
+        try
+        {
+            foreach (var f in System.IO.Directory.GetFiles(ProfilesFolder, "*.json"))
+                names.Add(System.IO.Path.GetFileNameWithoutExtension(f));
+        }
+        catch { }
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
+    }
+
+    /// <summary>Saves the current configuration as a named profile.</summary>
+    public void SaveProfile(string name)
+    {
+        string safe = SanitizeName(name);
+        if (string.IsNullOrEmpty(safe)) throw new ArgumentException("Enter a valid profile name.");
+        _store.Export(_data, System.IO.Path.Combine(ProfilesFolder, safe + ".json"));
+    }
+
+    /// <summary>Loads a named profile as the active configuration.</summary>
+    public int LoadProfile(string name)
+    {
+        string path = System.IO.Path.Combine(ProfilesFolder, SanitizeName(name) + ".json");
+        if (!System.IO.File.Exists(path))
+            throw new System.IO.FileNotFoundException("That profile no longer exists.");
+        return ImportProfile(path);
+    }
+
+    public void DeleteProfile(string name)
+    {
+        try
+        {
+            string path = System.IO.Path.Combine(ProfilesFolder, SanitizeName(name) + ".json");
+            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+        }
+        catch { }
+    }
+
+    private static string SanitizeName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "";
+        foreach (var c in System.IO.Path.GetInvalidFileNameChars())
+            name = name.Replace(c, '_');
+        return name.Trim();
+    }
+
     /// <summary>
     /// Replaces current rules/settings with those from a file. Note: this loads
     /// the records; the live WFP filters are reconciled on next strict-mode

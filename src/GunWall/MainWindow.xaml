@@ -95,6 +95,20 @@
                             <TextBlock Style="{StaticResource TabLabel}" Text="Connections" />
                         </StackPanel>
                     </RadioButton>
+                    <RadioButton x:Name="NavServices" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Services">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE9F5;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Services" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavNetwork" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Network">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE839;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Network" />
+                        </StackPanel>
+                    </RadioButton>
                     <RadioButton x:Name="NavPackets" Style="{StaticResource TabButton}"
                                  Checked="Nav_Checked" Tag="Packets">
                         <StackPanel>
@@ -400,27 +414,42 @@
                         <TextBlock Text="Add a rule" Style="{StaticResource H2}" />
                         <TextBlock Text="Block or allow traffic by remote address, port, protocol and direction."
                                    Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
-                        <WrapPanel>
-                            <ComboBox x:Name="RuleAction" Width="100" Margin="0,0,8,8">
-                                <ComboBoxItem Content="Block" IsSelected="True" />
-                                <ComboBoxItem Content="Allow" />
-                            </ComboBox>
-                            <ComboBox x:Name="RuleDirection" Width="120" Margin="0,0,8,8">
-                                <ComboBoxItem Content="Outbound" IsSelected="True" />
-                                <ComboBoxItem Content="Inbound" />
-                            </ComboBox>
-                            <ComboBox x:Name="RuleProtocol" Width="90" Margin="0,0,8,8">
-                                <ComboBoxItem Content="Any" IsSelected="True" />
-                                <ComboBoxItem Content="TCP" />
-                                <ComboBoxItem Content="UDP" />
-                            </ComboBox>
-                            <TextBox x:Name="RuleAddress" Width="160" Margin="0,0,8,8"
-                                     Style="{StaticResource SearchBox}" ToolTip="Remote IPv4 (blank = any)" />
-                            <TextBox x:Name="RulePort" Width="100" Margin="0,0,8,8"
-                                     Style="{StaticResource SearchBox}" ToolTip="Remote port (blank = any)" />
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Action" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <ComboBox x:Name="RuleAction" Width="82" Height="32">
+                                    <ComboBoxItem Content="Block" IsSelected="True" />
+                                    <ComboBoxItem Content="Allow" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Direction" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <ComboBox x:Name="RuleDirection" Width="96" Height="32">
+                                    <ComboBoxItem Content="Outbound" IsSelected="True" />
+                                    <ComboBoxItem Content="Inbound" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Protocol" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <ComboBox x:Name="RuleProtocol" Width="74" Height="32">
+                                    <ComboBoxItem Content="Any" IsSelected="True" />
+                                    <ComboBoxItem Content="TCP" />
+                                    <ComboBoxItem Content="UDP" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Remote address" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <TextBox x:Name="RuleAddress" Width="138" Height="32"
+                                         VerticalContentAlignment="Center" ToolTip="Remote IPv4 (blank = any)" />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Port" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <TextBox x:Name="RulePort" Width="70" Height="32"
+                                         VerticalContentAlignment="Center" ToolTip="Remote port (blank = any)" />
+                            </StackPanel>
                             <Button Content="Add rule" Style="{StaticResource PrimaryButton}"
-                                    Click="AddRule_Click" Margin="0,0,0,8" />
-                        </WrapPanel>
+                                    Click="AddRule_Click" Padding="16,9" VerticalAlignment="Bottom" />
+                        </StackPanel>
                         <TextBlock x:Name="RuleHint" Style="{StaticResource Muted}"
                                    Text="Tip: leave address and port blank to match all. Enter an IPv4 like 1.2.3.4."
                                    Margin="0,2,0,0" TextWrapping="Wrap" />
@@ -460,17 +489,87 @@
                         <TextBlock x:Name="BlocklistCount"
                                    Text="Paste IPv4 addresses (one per line) to block them outright."
                                    Style="{StaticResource Muted}" Margin="0,2,0,8" TextWrapping="Wrap" />
-                        <TextBox x:Name="BlocklistInput" Height="70" AcceptsReturn="True"
+                        <TextBox x:Name="BlocklistInput" Height="68" AcceptsReturn="True"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                                 Background="{DynamicResource BgElevated}" Foreground="{DynamicResource TextPrimary}"
-                                 BorderBrush="{DynamicResource BorderBrush}" Padding="8" Margin="0,0,0,8" />
+                                 VerticalContentAlignment="Top" Margin="0,0,0,8" />
                         <StackPanel Orientation="Horizontal">
                             <Button Content="Add to blocklist" Style="{StaticResource PrimaryButton}"
-                                    Click="AddBlocklist_Click" Margin="0,0,8,0" />
+                                    Click="AddBlocklist_Click" Margin="0,0,8,0" Padding="16,8" />
                             <Button Content="Clear blocklist" Style="{StaticResource ActionButton}"
                                     Click="ClearBlocklist_Click" />
                         </StackPanel>
                     </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ========== Services ========== -->
+            <Grid x:Name="PanelServices" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="Windows Services" Style="{StaticResource H1}" />
+                        <TextBlock Text="Services and the program that hosts each one. Block a service's host image directly."
+                                   Style="{StaticResource Muted}" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <TextBox x:Name="ServicesSearch" Style="{StaticResource SearchBox}"
+                                 TextChanged="ServicesSearch_TextChanged" Margin="0,0,8,0" ToolTip="Search services" />
+                        <Button x:Name="ServicesRefreshBtn" Content="Refresh" Style="{StaticResource ActionButton}"
+                                Click="RefreshServices_Click" />
+                    </StackPanel>
+                </Grid>
+                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
+                    <ListView x:Name="ServicesList" VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Service" Width="220" DisplayMemberBinding="{Binding Display}" />
+                                <GridViewColumn Header="Status" Width="90" DisplayMemberBinding="{Binding Status}" />
+                                <GridViewColumn Header="Name" Width="160" DisplayMemberBinding="{Binding Name}" />
+                                <GridViewColumn Header="" Width="110">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="Block host" Style="{StaticResource ActionButton}"
+                                                    Click="BlockService_Click" Tag="{Binding Name}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+            </Grid>
+
+            <!-- ========== Network Scanner ========== -->
+            <Grid x:Name="PanelNetwork" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="Network Scanner" Style="{StaticResource H1}" />
+                        <TextBlock x:Name="NetworkSubtitle"
+                                   Text="Discover devices on your local network (IP, MAC, host name)."
+                                   Style="{StaticResource Muted}" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <Button x:Name="ScanBtn" Content="Scan network" Style="{StaticResource PrimaryButton}"
+                            HorizontalAlignment="Right" VerticalAlignment="Top" Padding="16,8"
+                            Click="ScanNetwork_Click" />
+                </Grid>
+                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
+                    <ListView x:Name="DevicesList" VirtualizingPanel.IsVirtualizing="True">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="IP address" Width="160" DisplayMemberBinding="{Binding Ip}" />
+                                <GridViewColumn Header="MAC address" Width="180" DisplayMemberBinding="{Binding Mac}" />
+                                <GridViewColumn Header="Host" Width="280" DisplayMemberBinding="{Binding Host}" />
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
                 </Border>
             </Grid>
 
@@ -592,6 +691,29 @@
                                 <Button Content="Import profile" Style="{StaticResource ActionButton}"
                                         Click="ImportProfile_Click" />
                             </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Profiles" Style="{StaticResource H2}" />
+                            <TextBlock Text="Save the current rules and settings as a named profile, then switch between profiles (e.g. Home, Work, Travel)."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <ComboBox x:Name="ProfilesCombo" Width="200" Margin="0,0,8,0" />
+                                <Button Content="Load" Style="{StaticResource ActionButton}"
+                                        Click="LoadProfile_Click" Margin="0,0,8,0" />
+                                <Button Content="Delete" Style="{StaticResource ActionButton}"
+                                        Click="DeleteProfile_Click" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBox x:Name="NewProfileName" Width="200" Height="30"
+                                         VerticalContentAlignment="Center" Margin="0,0,8,0"
+                                         ToolTip="New profile name" />
+                                <Button Content="Save current as profile" Style="{StaticResource PrimaryButton}"
+                                        Click="SaveProfile_Click" Padding="14,7" />
+                            </StackPanel>
+                            <TextBlock x:Name="ProfileStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" />
                         </StackPanel>
                     </Border>
 

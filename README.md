@@ -40,6 +40,9 @@ GunWall is an **early alpha (v0.13.0)**. The core engine, real-time monitoring, 
 - **Custom rules** — block or allow traffic by remote IP, port, protocol and direction, independent of app.
 - **IP blocklist** — paste IPv4 addresses to block outright.
 - **Run at startup** — launch with Windows (elevated, no UAC prompt, via a scheduled task).
+- **Windows Services tab** — list services and block a service's host program.
+- **Network Scanner** — discover devices on your LAN (IP, MAC, host name).
+- **Profiles** — save and switch named rule-set profiles (Home / Work / Travel).
 - **VirusTotal scanning** — right-click an app to check its hash against VirusTotal with your own API key (only the hash is sent).
 - **Refreshed professional theme** with icon tabs and soft status pills.
 - **Light / dark theme** with an animated switch in the header; colors tuned so text stays high-contrast in both.

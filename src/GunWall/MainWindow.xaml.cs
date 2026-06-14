@@ -26,6 +26,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ConnectionInfo> _connections = new();
     private readonly ObservableCollection<NetActivityEvent> _activity = new();
     private readonly ObservableCollection<PacketLogEntry> _packets = new();
+    private readonly ObservableCollection<ServicesService.ServiceItem> _services = new();
+    private readonly ObservableCollection<NetworkScanner.Device> _devices = new();
 
     private const int GraphPoints = 60;
     private readonly double[] _downSeries = new double[GraphPoints];
@@ -77,6 +79,8 @@ public partial class MainWindow : Window
         ConnList.ItemsSource = _connections;
         ActivityList.ItemsSource = _activity;
         PacketsList.ItemsSource = _packets;
+        ServicesList.ItemsSource = _services;
+        DevicesList.ItemsSource = _devices;
         Loaded += OnLoaded;
         StateChanged += OnStateChanged;
         Closing += OnClosing;
@@ -147,7 +151,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.15.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.16.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -808,6 +812,8 @@ public partial class MainWindow : Window
         PanelDashboard.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         PanelFirewall.Visibility = tag == "Firewall" ? Visibility.Visible : Visibility.Collapsed;
         PanelConnections.Visibility = tag == "Connections" ? Visibility.Visible : Visibility.Collapsed;
+        PanelServices.Visibility = tag == "Services" ? Visibility.Visible : Visibility.Collapsed;
+        PanelNetwork.Visibility = tag == "Network" ? Visibility.Visible : Visibility.Collapsed;
         PanelPackets.Visibility = tag == "Packets" ? Visibility.Visible : Visibility.Collapsed;
         PanelRules.Visibility = tag == "Rules" ? Visibility.Visible : Visibility.Collapsed;
         PanelActivity.Visibility = tag == "Activity" ? Visibility.Visible : Visibility.Collapsed;
@@ -817,6 +823,8 @@ public partial class MainWindow : Window
         if (tag == "Firewall") RebuildAppsList();
         if (tag == "Connections") RebuildConnList();
         if (tag == "Rules") RefreshRulesList();
+        if (tag == "Services" && _services.Count == 0) LoadServices();
+        if (tag == "Settings") RefreshProfilesCombo();
     }
 
     // ================================================================ actions
@@ -924,6 +932,155 @@ public partial class MainWindow : Window
                  : MessageBoxImage.Error;
         MessageBox.Show($"{app.Name}\n\n{result.Message}", "VirusTotal scan",
             MessageBoxButton.OK, icon);
+    }
+
+    // ================================================================ services
+    private void LoadServices()
+    {
+        try
+        {
+            _services.Clear();
+            foreach (var s in ServicesService.GetServices()) _services.Add(s);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void RefreshServices_Click(object sender, RoutedEventArgs e) => LoadServices();
+
+    private void ServicesSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        string q = ServicesSearch.Text?.Trim() ?? "";
+        var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_services);
+        view.Filter = string.IsNullOrEmpty(q) ? null : o =>
+        {
+            if (o is not ServicesService.ServiceItem s) return false;
+            return s.Display.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || s.Name.Contains(q, StringComparison.OrdinalIgnoreCase);
+        };
+    }
+
+    private void BlockService_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        if (sender is not FrameworkElement fe || fe.Tag is not string svcName) return;
+        try
+        {
+            string exe = ServicesService.GetBinaryPath(svcName);
+            if (string.IsNullOrEmpty(exe) || !System.IO.File.Exists(exe))
+            {
+                MessageBox.Show(
+                    "Could not resolve this service's host program (it may be a shared svchost " +
+                    "service, which can't be blocked individually by image).",
+                    "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            _firewall.BlockApp(exe, System.IO.Path.GetFileName(exe));
+            MessageBox.Show($"Blocked the host program for '{svcName}':\n{exe}",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void BlockServiceHost_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        if (sender is not FrameworkElement fe || fe.Tag is not string exe) return;
+        if (string.IsNullOrEmpty(exe) || !System.IO.File.Exists(exe))
+        {
+            MessageBox.Show(
+                "This service's host program couldn't be resolved (often a shared svchost " +
+                "service, which can't be blocked individually by image).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        try
+        {
+            _firewall.BlockApp(exe, System.IO.Path.GetFileName(exe));
+            MessageBox.Show($"Blocked host program:\n{exe}\n\n(Note: shared host programs like " +
+                "svchost.exe carry many services — blocking affects all of them.)",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    // ================================================================ network scanner
+    private async void ScanNetwork_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            ScanBtn.IsEnabled = false;
+            ScanBtn.Content = "Scanning...";
+            _devices.Clear();
+            if (NetworkSubtitle != null) NetworkSubtitle.Text = "Scanning your local network...";
+
+            var found = await NetworkScanner.ScanAsync(pct =>
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (NetworkSubtitle != null) NetworkSubtitle.Text = $"Scanning... {pct}%";
+                }));
+
+            foreach (var d in found) _devices.Add(d);
+            if (NetworkSubtitle != null)
+                NetworkSubtitle.Text = $"Found {found.Count} device(s) on your local network.";
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally
+        {
+            ScanBtn.IsEnabled = true;
+            ScanBtn.Content = "Scan network";
+        }
+    }
+
+    // ================================================================ profiles
+    private void RefreshProfilesCombo()
+    {
+        if (ProfilesCombo == null) return;
+        var sel = ProfilesCombo.SelectedItem as string;
+        ProfilesCombo.ItemsSource = null;
+        ProfilesCombo.ItemsSource = _firewall.ListProfiles();
+        if (sel != null) ProfilesCombo.SelectedItem = sel;
+    }
+
+    private void SaveProfile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _firewall.SaveProfile(NewProfileName.Text);
+            NewProfileName.Clear();
+            RefreshProfilesCombo();
+            if (ProfileStatus != null) ProfileStatus.Text = "Profile saved.";
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void LoadProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProfilesCombo.SelectedItem is not string name)
+        {
+            if (ProfileStatus != null) ProfileStatus.Text = "Select a profile to load.";
+            return;
+        }
+        try
+        {
+            int n = _firewall.LoadProfile(name);
+            if (ProfileStatus != null)
+                ProfileStatus.Text = $"Loaded '{name}' ({n} rules). Re-toggle the firewall to apply filters.";
+            RebuildAppsList();
+            RefreshRulesList();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void DeleteProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProfilesCombo.SelectedItem is not string name) return;
+        try
+        {
+            _firewall.DeleteProfile(name);
+            RefreshProfilesCombo();
+            if (ProfileStatus != null) ProfileStatus.Text = $"Deleted '{name}'.";
+        }
+        catch (Exception ex) { ShowError(ex); }
     }
 
     private void LockdownButton_Click(object sender, RoutedEventArgs e)
