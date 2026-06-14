@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<AppInfo> _apps = new();
     private readonly ObservableCollection<ConnectionInfo> _connections = new();
     private readonly ObservableCollection<NetActivityEvent> _activity = new();
+    private readonly ObservableCollection<PacketLogEntry> _packets = new();
 
     private const int GraphPoints = 60;
     private readonly double[] _downSeries = new double[GraphPoints];
@@ -47,6 +48,7 @@ public partial class MainWindow : Window
     // Activity feed bookkeeping
     private readonly HashSet<string> _seenConnections = new();
     private const int MaxActivity = 300;
+    private const int MaxPackets = 1000;
 
     // Connection alerts (a connection popup)
     private readonly Queue<AlertWindow.AlertInfo> _alertQueue = new();
@@ -74,10 +76,43 @@ public partial class MainWindow : Window
         AppsList.ItemsSource = _apps;
         ConnList.ItemsSource = _connections;
         ActivityList.ItemsSource = _activity;
+        PacketsList.ItemsSource = _packets;
         Loaded += OnLoaded;
         StateChanged += OnStateChanged;
+        Closing += OnClosing;
         Closed += OnClosed;
     }
+
+    // True only when the user explicitly chooses Exit (tray menu / dialog), so
+    // the X button can be redirected to "hide to tray" instead of quitting.
+    private bool _reallyExit;
+
+    private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_reallyExit) return; // genuine exit — let it close
+
+        // The X button hides to tray instead of exiting. This keeps the UI one
+        // click away while the firewall stays active, so the user is never left
+        // with traffic blocked and no way to manage it. A balloon explains it
+        // the first time.
+        e.Cancel = true;
+        Hide();
+        if (_tray != null && !_trayHintShown)
+        {
+            _trayHintShown = true;
+            try
+            {
+                _tray.BalloonTipTitle = "GunWall is still running";
+                _tray.BalloonTipText = _firewall.StrictMode
+                    ? "The firewall stays active here. Right-click the tray icon to open or exit."
+                    : "GunWall keeps running in the tray. Right-click to open or exit.";
+                _tray.ShowBalloonTip(3000);
+            }
+            catch { /* balloon is best-effort */ }
+        }
+    }
+
+    private bool _trayHintShown;
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -104,7 +139,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.11.5 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.12.1 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -112,6 +147,13 @@ public partial class MainWindow : Window
             // new-app prompts. If it fails on this machine, we silently keep the
             // poll-based detector — no regression.
             TryStartEventMonitor();
+
+            if (PacketsSubtitle != null)
+            {
+                PacketsSubtitle.Text = _eventDriven
+                    ? "Live connection events from the kernel - allowed and blocked, system services included."
+                    : "Kernel events are off; this log fills from polling. Enable event detection in Settings for full coverage.";
+            }
 
             if (_eventsRecovered)
             {
@@ -270,6 +312,29 @@ public partial class MainWindow : Window
 
     private void ClearActivity_Click(object sender, RoutedEventArgs e) => _activity.Clear();
 
+    private void ClearPackets_Click(object sender, RoutedEventArgs e) => _packets.Clear();
+
+    private void PacketsSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        string q = PacketsSearch.Text?.Trim() ?? "";
+        var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_packets);
+        if (string.IsNullOrEmpty(q))
+        {
+            view.Filter = null;
+        }
+        else
+        {
+            view.Filter = o =>
+            {
+                if (o is not PacketLogEntry p) return false;
+                return p.AppName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || p.RemoteEndpoint.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || p.Protocol.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || p.Action.Contains(q, StringComparison.OrdinalIgnoreCase);
+            };
+        }
+    }
+
     // ================================================================ alerts
     /// <summary>
     /// Shows a popup the first time an executable is ever observed using the
@@ -352,6 +417,26 @@ public partial class MainWindow : Window
                 Detail = $"{verb}{remote} ({e.Protocol})"
             });
             while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
+
+            // Packets Log: derive the action from GunWall's own decision, which
+            // we know for certain — no risky extra kernel reads. In strict mode
+            // an app that isn't explicitly allowed is being blocked by default.
+            string appName = System.IO.Path.GetFileNameWithoutExtension(e.AppPath);
+            bool blocked = _firewall.IsBlocked(e.AppPath) ||
+                           (_firewall.StrictMode &&
+                            !_firewall.IsAllowed(e.AppPath) &&
+                            !_firewall.IsSilent(e.AppPath));
+            _packets.Insert(0, new PacketLogEntry
+            {
+                AppName = appName,
+                ExePath = e.AppPath,
+                Protocol = e.Protocol,
+                Direction = "Out",
+                RemoteEndpoint = string.IsNullOrEmpty(e.RemoteAddress)
+                    ? "\u2014" : $"{e.RemoteAddress}:{e.RemotePort}",
+                Blocked = blocked
+            });
+            while (_packets.Count > MaxPackets) _packets.RemoveAt(_packets.Count - 1);
 
             // Approval pipeline: prompt once for any undecided app.
             string path = e.AppPath;
@@ -625,6 +710,7 @@ public partial class MainWindow : Window
         PanelDashboard.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         PanelFirewall.Visibility = tag == "Firewall" ? Visibility.Visible : Visibility.Collapsed;
         PanelConnections.Visibility = tag == "Connections" ? Visibility.Visible : Visibility.Collapsed;
+        PanelPackets.Visibility = tag == "Packets" ? Visibility.Visible : Visibility.Collapsed;
         PanelActivity.Visibility = tag == "Activity" ? Visibility.Visible : Visibility.Collapsed;
         PanelSettings.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
@@ -988,7 +1074,7 @@ public partial class MainWindow : Window
             menu.Items.Add("Toggle lockdown", null, (_, _) =>
                 Dispatcher.Invoke(() => LockdownButton_Click(this, new RoutedEventArgs())));
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-            menu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(Close));
+            menu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(ExitFromTray));
             _tray.ContextMenuStrip = menu;
         }
         catch (Exception ex)
@@ -1012,6 +1098,43 @@ public partial class MainWindow : Window
             WindowState = WindowState.Normal;
             Activate();
         });
+    }
+
+    /// <summary>
+    /// Genuine exit path. If the firewall is still engaged, the persistent WFP
+    /// filters will keep blocking traffic after GunWall closes — and the user
+    /// would have no UI to manage them. So we warn and offer to disable the
+    /// firewall on the way out, preventing the "stuck with no internet and no
+    /// app" trap.
+    /// </summary>
+    private void ExitFromTray()
+    {
+        if (_firewall.StrictMode || _firewall.LockdownEngaged)
+        {
+            var result = MessageBox.Show(
+                "The firewall is still active. If you exit now, it will keep " +
+                "blocking traffic in the background and you'll need to reopen " +
+                "GunWall to change anything.\n\n" +
+                "Yes  = Turn the firewall OFF and exit\n" +
+                "No   = Keep the firewall ON and exit\n" +
+                "Cancel = Stay open",
+                "Exit GunWall",
+                MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Cancel) return;
+            if (result == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    if (_firewall.LockdownEngaged) _firewall.SetLockdown(false);
+                    if (_firewall.StrictMode) _firewall.SetStrictMode(false);
+                }
+                catch (Exception ex) { ShowError(ex); }
+            }
+        }
+
+        _reallyExit = true;
+        Close();
     }
 
     // ================================================================ helpers

@@ -90,3 +90,24 @@ public sealed class NetActivityEvent
     public string Detail { get; set; } = "";
     public string TimeText => Time.ToString("HH:mm:ss");
 }
+
+/// <summary>A single connection event for the Packets Log (allowed or blocked).</summary>
+public sealed class PacketLogEntry
+{
+    public DateTime Time { get; set; } = DateTime.Now;
+    public string AppName { get; set; } = "";
+    public string ExePath { get; set; } = "";
+    public string Protocol { get; set; } = "";
+    public string Direction { get; set; } = "";
+    public string RemoteEndpoint { get; set; } = "";
+    public bool Blocked { get; set; }
+    public string Action => Blocked ? "Blocked" : "Allowed";
+    public string TimeText => Time.ToString("HH:mm:ss");
+
+    /// <summary>Green for allowed, red for blocked — bound by the action pill.</summary>
+    public System.Windows.Media.Brush ActionBrush => Blocked
+        ? new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(0xFF, 0x6B, 0x6B))
+        : new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(0x3D, 0xD6, 0x8C));
+}
