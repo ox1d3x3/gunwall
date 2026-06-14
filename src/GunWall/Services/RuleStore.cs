@@ -157,6 +157,10 @@ public sealed class StoreData
     public bool AlwaysOnTop { get; set; }
     public bool HashesEnabled { get; set; } = true;
 
-    /// <summary>Experimental kernel event-driven detection (off by default).</summary>
-    public bool ExperimentalEvents { get; set; }
+    /// <summary>
+    /// Kernel event-driven detection. ON by default so GunWall detects every
+    /// connection (including blocked/ICMP) like a mature firewall. Protected by
+    /// a crash-loop guard that auto-disables it if a session ends uncleanly.
+    /// </summary>
+    public bool ExperimentalEvents { get; set; } = true;
 }

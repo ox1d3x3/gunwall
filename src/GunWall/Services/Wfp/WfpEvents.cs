@@ -26,8 +26,21 @@ internal static class WfpEvents
     // FWPM_NET_EVENT_TYPE
     internal const uint FWPM_NET_EVENT_TYPE_CLASSIFY_DROP = 3;
 
-    // Engine option to start collecting net events.
+    // Engine option indices (FWPM_ENGINE_OPTION enum).
     internal const uint FWPM_ENGINE_COLLECT_NET_EVENTS = 0;     // FWPM_ENGINE_OPTION value index
+    // Without setting MATCH_ANY_KEYWORDS, the engine collects almost nothing and
+    // subscribers receive no events. This was the missing piece that prevented
+    // popups: collection must be ON *and* the keyword mask must be set.
+    internal const uint FWPM_ENGINE_NET_EVENT_MATCH_ANY_KEYWORDS = 1;
+    internal const uint FWPM_ENGINE_MONITOR_IPSEC_CONNECTIONS = 4;
+
+    // Net event keyword bits (which event classes to collect). Drops are always
+    // collected; these add allow + inbound + port-scan visibility.
+    internal const uint FWPM_NET_EVENT_KEYWORD_INBOUND_MCAST = 0x00000001;
+    internal const uint FWPM_NET_EVENT_KEYWORD_INBOUND_BCAST = 0x00000002;
+    internal const uint FWPM_NET_EVENT_KEYWORD_CLASSIFY_ALLOW = 0x00000004;
+    internal const uint FWPM_NET_EVENT_KEYWORD_PORT_SCANNING_DROP = 0x00000008;
+
     internal const uint FWPM_NET_EVENT_KEYWORD_CLASSIFY_DROP = 0x00000002;
 
     // AF families inside the event header flags.

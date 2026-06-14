@@ -299,17 +299,17 @@ public sealed class WfpEngine : IDisposable
 
     private static IEnumerable<Guid> AllAppLayers()
     {
-        // ALE layers: TCP connect/accept (connection-oriented).
+        // ALE layers: TCP connect/accept. These are the layers the poll-based
+        // detector can actually observe, so detection and blocking stay in sync.
+        // (Transport/ICMP layers are defined in WfpNative for the event-engine
+        // path, but are intentionally NOT filtered here: adding a block-all on
+        // them makes blocked traffic invisible to polling, which silently kills
+        // the approval popups. They will be re-enabled together with the event
+        // engine, which can see transport-layer events.)
         yield return FWPM_LAYER_ALE_AUTH_CONNECT_V4;
         yield return FWPM_LAYER_ALE_AUTH_CONNECT_V6;
         yield return FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4;
         yield return FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6;
-        // Transport layers: ICMP, raw sockets, and connectionless traffic that
-        // never reaches the ALE layers (this is what makes ping controllable).
-        yield return FWPM_LAYER_OUTBOUND_TRANSPORT_V4;
-        yield return FWPM_LAYER_OUTBOUND_TRANSPORT_V6;
-        yield return FWPM_LAYER_INBOUND_TRANSPORT_V4;
-        yield return FWPM_LAYER_INBOUND_TRANSPORT_V6;
     }
 
     /// <summary>

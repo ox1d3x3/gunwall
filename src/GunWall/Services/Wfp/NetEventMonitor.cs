@@ -46,9 +46,21 @@ public sealed class NetEventMonitor : IDisposable
         if (_running) return true;
         try
         {
-            // Turn on net-event collection (FWP_UINT32 = 1).
-            var val = new FWP_VALUE0 { type = 3 /*FWP_UINT32*/, value = 1 };
-            FwpmEngineSetOption0(_engine, FWPM_ENGINE_COLLECT_NET_EVENTS, ref val);
+            // STEP 1: turn on net-event collection (FWP_UINT32 = 1).
+            var on = new FWP_VALUE0 { type = 3 /*FWP_UINT32*/, value = 1 };
+            FwpmEngineSetOption0(_engine, FWPM_ENGINE_COLLECT_NET_EVENTS, ref on);
+
+            // STEP 2 (the piece that was missing): tell the engine WHICH event
+            // classes to collect. Drops are collected by default; we add allow,
+            // inbound multicast/broadcast, and port-scan drops so detection sees
+            // essentially every connection — system services included. Without
+            // this mask, subscribers receive almost nothing and no popups fire.
+            uint mask = FWPM_NET_EVENT_KEYWORD_CLASSIFY_ALLOW
+                      | FWPM_NET_EVENT_KEYWORD_INBOUND_MCAST
+                      | FWPM_NET_EVENT_KEYWORD_INBOUND_BCAST
+                      | FWPM_NET_EVENT_KEYWORD_PORT_SCANNING_DROP;
+            var maskVal = new FWP_VALUE0 { type = 3, value = mask };
+            FwpmEngineSetOption0(_engine, FWPM_ENGINE_NET_EVENT_MATCH_ANY_KEYWORDS, ref maskVal);
 
             _callback = OnKernelEvent;                  // keep a strong ref
             _callbackHandle = GCHandle.Alloc(_callback); // pin against GC
@@ -85,8 +97,14 @@ public sealed class NetEventMonitor : IDisposable
         try
         {
             if (eventPtr == IntPtr.Zero) return;
-            var evt = Marshal.PtrToStructure<FWPM_NET_EVENT1>(eventPtr);
-            var h = evt.header;
+
+            // SAFETY: marshal ONLY the header, which sits at offset 0 of the
+            // event and whose layout (through userId) is stable. We deliberately
+            // do NOT marshal the full FWPM_NET_EVENT1 union (type + payload
+            // pointer), because that layout varies by OS version and a wrong
+            // offset there would dereference garbage and crash the process. We
+            // don't need the drop/allow distinction to raise a prompt.
+            var h = Marshal.PtrToStructure<FWPM_NET_EVENT_HEADER1>(eventPtr);
 
             string appPath = ReadAppId(h.appId);
             if (string.IsNullOrEmpty(appPath)) return;
@@ -94,20 +112,10 @@ public sealed class NetEventMonitor : IDisposable
             string proto = h.ipProtocol switch { 6 => "TCP", 17 => "UDP", 1 => "ICMP", _ => "IP" };
             string remote = FormatV4(h.remoteAddr);
             string local = FormatV4(h.localAddr);
-            bool dropped = evt.type == FWPM_NET_EVENT_TYPE_CLASSIFY_DROP;
-            uint dir = 0;
-            if (dropped && evt.value != IntPtr.Zero)
-            {
-                try
-                {
-                    var drop = Marshal.PtrToStructure<FWPM_NET_EVENT_CLASSIFY_DROP1>(evt.value);
-                    dir = drop.msFwpDirection;
-                }
-                catch { /* ignore payload read issues */ }
-            }
 
             ConnectionEvent?.Invoke(new Event(
-                NtToDosPath(appPath), proto, remote, h.remotePort, local, h.localPort, dropped, dir));
+                NtToDosPath(appPath), proto, remote, h.remotePort, local, h.localPort,
+                /*dropped*/ false, /*direction*/ 0));
         }
         catch
         {
@@ -117,10 +125,14 @@ public sealed class NetEventMonitor : IDisposable
 
     private static string ReadAppId(FWP_BYTE_BLOB blob)
     {
-        if (blob.data == IntPtr.Zero || blob.size == 0) return "";
+        // Defensive bounds: a real app-ID path blob is a handful to a few
+        // hundred bytes. If size is zero or implausibly large, or the pointer is
+        // null, treat it as unreadable rather than dereferencing — this turns a
+        // potential access violation into a harmless skip.
+        if (blob.data == IntPtr.Zero) return "";
+        if (blob.size < 2 || blob.size > 8192) return "";
         try
         {
-            // App ID is a wide-char NT path; size is in bytes including the null.
             int chars = (int)(blob.size / 2);
             string s = Marshal.PtrToStringUni(blob.data, chars) ?? "";
             return s.TrimEnd('\0');

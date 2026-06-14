@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _cts;
     private NetEventMonitor? _netEvents;
     private bool _eventDriven; // true when kernel events are active (no polling needed for detection)
+    private bool _eventsRecovered; // true if we auto-disabled events after a prior crash
     private volatile int _intervalMs = 1000;
     private string _appFilter = "";
     private string _connFilter = "";
@@ -102,7 +103,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.11.2 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.11.4 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -110,6 +111,16 @@ public partial class MainWindow : Window
             // new-app prompts. If it fails on this machine, we silently keep the
             // poll-based detector — no regression.
             TryStartEventMonitor();
+
+            if (_eventsRecovered)
+            {
+                _activity.Insert(0, new NetActivityEvent
+                {
+                    ProcessName = "GunWall",
+                    Detail = "Kernel event detection was auto-disabled after an unclean exit; " +
+                             "polling is active. Re-enable in Settings if you want to retry."
+                });
+            }
         }
         catch (Exception ex)
         {
@@ -129,6 +140,7 @@ public partial class MainWindow : Window
     private void OnClosed(object? sender, EventArgs e)
     {
         _cts?.Cancel();
+        ClearEventMarker(); // clean exit — not a crash
         _netEvents?.Dispose();
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         _firewall.Dispose();
@@ -270,22 +282,53 @@ public partial class MainWindow : Window
     private void TryStartEventMonitor()
     {
         if (!_engineReady || _firewall.EngineHandle == IntPtr.Zero) return;
-        // OFF by default. Polling is the stable, tested detector. The kernel
-        // event engine is opt-in (Settings) until it's proven on real hardware,
-        // because faulty event interop can crash the process.
         if (!_firewall.ExperimentalEvents) { _eventDriven = false; return; }
+
+        // CRASH-LOOP GUARD: kernel event interop runs in a callback that, if its
+        // struct layout is wrong on this OS build, can hard-crash the process.
+        // We write a marker file before subscribing and delete it on clean exit.
+        // If we find the marker at startup, the previous run did NOT exit cleanly
+        // while events were on — so we disable events this run and recover
+        // automatically, instead of crash-looping. The user can re-enable in
+        // Settings once they understand it's unstable on their machine.
         try
         {
+            string marker = EventMarkerPath();
+            if (File.Exists(marker))
+            {
+                File.Delete(marker);
+                _firewall.SetExperimentalEvents(false);
+                _eventDriven = false;
+                _eventsRecovered = true; // surfaced in the UI as a notice
+                return;
+            }
+        }
+        catch { /* if the guard itself fails, fall through cautiously */ }
+
+        try
+        {
+            File.WriteAllText(EventMarkerPath(), DateTime.UtcNow.ToString("o"));
             _netEvents = new NetEventMonitor(_firewall.EngineHandle);
             _netEvents.ConnectionEvent += OnKernelConnectionEvent;
             _eventDriven = _netEvents.Start();
+            if (!_eventDriven) ClearEventMarker(); // didn't start, no crash risk
             System.Diagnostics.Debug.WriteLine($"event-driven detection: {_eventDriven}");
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"event monitor unavailable: {ex.Message}");
             _eventDriven = false;
+            ClearEventMarker();
         }
+    }
+
+    private string EventMarkerPath() =>
+        System.IO.Path.Combine(_firewall.ProfileFolder, "events.lock");
+
+    private void ClearEventMarker()
+    {
+        try { if (File.Exists(EventMarkerPath())) File.Delete(EventMarkerPath()); }
+        catch { /* best effort */ }
     }
 
     // Called on a kernel thread for every filtered connection. Marshal to the UI
@@ -326,9 +369,11 @@ public partial class MainWindow : Window
     private void DetectNewApps(List<ConnectionInfo> conns,
                               Dictionary<int, (string Name, string Path)> procs)
     {
-        // When kernel events are driving detection, skip poll-based prompting to
-        // avoid double prompts — events are strictly more complete.
-        if (_eventDriven) return;
+        // Polling runs ALONGSIDE kernel events (when active) as a redundant
+        // detector. Both paths share _promptedThisSession, so an app already
+        // prompted by an event won't be prompted again by the poller. This
+        // gives the union of both: events catch blocked/ICMP/short-lived
+        // connections; polling catches anything events might miss.
         if (!_engineReady) return;
 
         bool strict = _firewall.StrictMode;
