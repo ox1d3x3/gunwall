@@ -28,69 +28,75 @@
     </Window.Resources>
 
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="212" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-        <!-- ===================== Navigation rail ===================== -->
-        <Border Grid.Column="0" Background="{StaticResource BgSecondary}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+        <!-- ===================== Top header bar ===================== -->
+        <Border Grid.Row="0" Background="{StaticResource BgSecondary}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="20,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Row="0" Margin="18,22,18,18">
+                <!-- Brand -->
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
                     <TextBlock Text="GunWall" Style="{StaticResource H2}" />
-                    <TextBlock Text="Guard Your Network" Style="{StaticResource Muted}" Margin="0,2,0,0" />
+                    <TextBlock Text="Guard Your Network" Style="{StaticResource Muted}" Margin="0,1,0,0" />
                 </StackPanel>
 
-                <StackPanel Grid.Row="1" Margin="0,8,0,0">
-                    <RadioButton x:Name="NavDashboard" Content="Dashboard"
-                                 Style="{StaticResource NavButton}" IsChecked="True"
-                                 Checked="Nav_Checked" Tag="Dashboard" />
-                    <RadioButton x:Name="NavFirewall" Content="Firewall"
-                                 Style="{StaticResource NavButton}"
-                                 Checked="Nav_Checked" Tag="Firewall" />
-                    <RadioButton x:Name="NavConnections" Content="Connections"
-                                 Style="{StaticResource NavButton}"
-                                 Checked="Nav_Checked" Tag="Connections" />
-                    <RadioButton x:Name="NavPackets" Content="Packets Log"
-                                 Style="{StaticResource NavButton}"
-                                 Checked="Nav_Checked" Tag="Packets" />
-                    <RadioButton x:Name="NavActivity" Content="Activity"
-                                 Style="{StaticResource NavButton}"
-                                 Checked="Nav_Checked" Tag="Activity" />
-                    <RadioButton x:Name="NavSettings" Content="Settings"
-                                 Style="{StaticResource NavButton}"
-                                 Checked="Nav_Checked" Tag="Settings" />
-                </StackPanel>
-
-                <StackPanel Grid.Row="2" Margin="14,0,14,18">
-                    <!-- Primary protective action: take full control of network traffic. -->
-                    <Button x:Name="EnableFirewallButton" Content="Enable Firewall"
-                            Style="{StaticResource PrimaryButton}" Margin="0,0,0,10"
-                            Click="EnableFirewall_Click" />
-                    <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,10">
-                        <StackPanel>
-                            <TextBlock Text="Lockdown" FontWeight="SemiBold" />
-                            <TextBlock Text="Block all traffic instantly"
-                                       Style="{StaticResource Muted}" Margin="0,2,0,8" />
-                            <Button x:Name="LockdownButton" Content="Engage lockdown"
-                                    Style="{StaticResource ActionButton}"
-                                    Click="LockdownButton_Click" />
-                        </StackPanel>
-                    </Border>
+                <!-- Primary actions on the right -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock x:Name="EngineStatus" Text="Engine: starting"
-                               Style="{StaticResource Muted}" />
+                               Style="{StaticResource Muted}" VerticalAlignment="Center"
+                               Margin="0,0,16,0" />
+                    <Button x:Name="LockdownButton" Content="Engage lockdown"
+                            Style="{StaticResource ActionButton}" Margin="0,0,10,0"
+                            Click="LockdownButton_Click" />
+                    <Button x:Name="EnableFirewallButton" Content="Enable Firewall"
+                            Style="{StaticResource PrimaryButton}"
+                            Click="EnableFirewall_Click" />
                 </StackPanel>
             </Grid>
         </Border>
 
+        <!-- ===================== Top tab strip ===================== -->
+        <Border Grid.Row="1" Background="{StaticResource BgSecondary}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal" Margin="16,0">
+                    <RadioButton x:Name="NavDashboard" Content="Dashboard"
+                                 Style="{StaticResource TabButton}" IsChecked="True"
+                                 Checked="Nav_Checked" Tag="Dashboard" />
+                    <RadioButton x:Name="NavFirewall" Content="Apps"
+                                 Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Firewall" />
+                    <RadioButton x:Name="NavConnections" Content="Connections"
+                                 Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Connections" />
+                    <RadioButton x:Name="NavPackets" Content="Packets Log"
+                                 Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Packets" />
+                    <RadioButton x:Name="NavRules" Content="Custom Rules"
+                                 Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Rules" />
+                    <RadioButton x:Name="NavActivity" Content="Activity"
+                                 Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Activity" />
+                    <RadioButton x:Name="NavSettings" Content="Settings"
+                                 Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Settings" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
         <!-- ===================== Content area ===================== -->
-        <Grid Grid.Column="1" Margin="24">
+        <Grid Grid.Row="2" Margin="24">
 
             <!-- ========== Dashboard ========== -->
             <Grid x:Name="PanelDashboard">
@@ -343,6 +349,97 @@
                 </Border>
             </Grid>
 
+            <!-- ========== Custom Rules ========== -->
+            <Grid x:Name="PanelRules" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Custom Rules" Style="{StaticResource H1}" Margin="0,0,0,12" />
+
+                <!-- Editor form -->
+                <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Add a rule" Style="{StaticResource H2}" />
+                        <TextBlock Text="Block or allow traffic by remote address, port, protocol and direction."
+                                   Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                        <WrapPanel>
+                            <ComboBox x:Name="RuleAction" Width="100" Margin="0,0,8,8">
+                                <ComboBoxItem Content="Block" IsSelected="True" />
+                                <ComboBoxItem Content="Allow" />
+                            </ComboBox>
+                            <ComboBox x:Name="RuleDirection" Width="120" Margin="0,0,8,8">
+                                <ComboBoxItem Content="Outbound" IsSelected="True" />
+                                <ComboBoxItem Content="Inbound" />
+                            </ComboBox>
+                            <ComboBox x:Name="RuleProtocol" Width="90" Margin="0,0,8,8">
+                                <ComboBoxItem Content="Any" IsSelected="True" />
+                                <ComboBoxItem Content="TCP" />
+                                <ComboBoxItem Content="UDP" />
+                            </ComboBox>
+                            <TextBox x:Name="RuleAddress" Width="160" Margin="0,0,8,8"
+                                     Style="{StaticResource SearchBox}" ToolTip="Remote IPv4 (blank = any)" />
+                            <TextBox x:Name="RulePort" Width="100" Margin="0,0,8,8"
+                                     Style="{StaticResource SearchBox}" ToolTip="Remote port (blank = any)" />
+                            <Button Content="Add rule" Style="{StaticResource PrimaryButton}"
+                                    Click="AddRule_Click" Margin="0,0,0,8" />
+                        </WrapPanel>
+                        <TextBlock x:Name="RuleHint" Style="{StaticResource Muted}"
+                                   Text="Tip: leave address and port blank to match all. Enter an IPv4 like 1.2.3.4."
+                                   Margin="0,2,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Rules list -->
+                <Border Grid.Row="2" Style="{StaticResource Card}" Padding="8">
+                    <ListView x:Name="RulesList" VirtualizingPanel.IsVirtualizing="True">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Action" Width="80"
+                                                DisplayMemberBinding="{Binding ActionText}" />
+                                <GridViewColumn Header="Direction" Width="100"
+                                                DisplayMemberBinding="{Binding DirectionText}" />
+                                <GridViewColumn Header="Match" Width="280"
+                                                DisplayMemberBinding="{Binding TargetText}" />
+                                <GridViewColumn Header="Status" Width="100"
+                                                DisplayMemberBinding="{Binding StatusText}" />
+                                <GridViewColumn Header="" Width="90">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="Remove" Style="{StaticResource ActionButton}"
+                                                    Click="RemoveRule_Click" Tag="{Binding Id}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Border>
+
+                <!-- Blocklist -->
+                <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="IP Blocklist" Style="{StaticResource H2}" />
+                        <TextBlock x:Name="BlocklistCount"
+                                   Text="Paste IPv4 addresses (one per line) to block them outright."
+                                   Style="{StaticResource Muted}" Margin="0,2,0,8" TextWrapping="Wrap" />
+                        <TextBox x:Name="BlocklistInput" Height="70" AcceptsReturn="True"
+                                 TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                 Background="{StaticResource BgElevated}" Foreground="{StaticResource TextPrimary}"
+                                 BorderBrush="{StaticResource BorderBrush}" Padding="8" Margin="0,0,0,8" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Add to blocklist" Style="{StaticResource PrimaryButton}"
+                                    Click="AddBlocklist_Click" Margin="0,0,8,0" />
+                            <Button Content="Clear blocklist" Style="{StaticResource ActionButton}"
+                                    Click="ClearBlocklist_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
             <!-- ========== Activity ========== -->
             <Grid x:Name="PanelActivity" Visibility="Collapsed">
                 <Grid.RowDefinitions>
@@ -430,6 +527,9 @@
                             <TextBlock Text="General behaviour. Staged - press Apply to save."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" />
                             <CheckBox x:Name="StartMinimizedCheck" Content="Start minimized to tray"
+                                      Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="RunAtStartupCheck" Content="Run GunWall when Windows starts"
                                       Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="AlwaysOnTopCheck" Content="Keep window always on top"

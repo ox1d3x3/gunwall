@@ -289,6 +289,79 @@ public sealed class FirewallManager : IDisposable
     public void SetHashesEnabled(bool v) { _data.HashesEnabled = v; _store.Save(_data); }
     public void SetExperimentalEvents(bool v) { _data.ExperimentalEvents = v; _store.Save(_data); }
 
+    // ------------------------------------------------ custom rules
+    public IReadOnlyList<CustomRule> CustomRules => _data.CustomRules;
+
+    public void AddCustomRule(CustomRule rule)
+    {
+        if (rule.Enabled)
+        {
+            rule.FilterIds = _engine.AddCustomRule(
+                rule.Block, rule.Outbound, rule.Protocol, rule.RemoteAddress, rule.RemotePort);
+            rule.Applied = rule.FilterIds.Count > 0;
+        }
+        _data.CustomRules.Add(rule);
+        _store.Save(_data);
+    }
+
+    public void RemoveCustomRule(string id)
+    {
+        var rule = _data.CustomRules.FirstOrDefault(r => r.Id == id);
+        if (rule is null) return;
+        try { _engine.RemoveFilters(rule.FilterIds); } catch { }
+        _data.CustomRules.Remove(rule);
+        _store.Save(_data);
+    }
+
+    // ------------------------------------------------ blocklist
+    public IReadOnlyList<string> Blocklist => _data.Blocklist;
+
+    /// <summary>Adds IPs to the blocklist and installs block filters for them.</summary>
+    public int AddToBlocklist(IEnumerable<string> addresses)
+    {
+        int added = 0;
+        foreach (var raw in addresses)
+        {
+            string ip = raw.Trim();
+            if (string.IsNullOrEmpty(ip) || ip.StartsWith('#')) continue;
+            if (_data.Blocklist.Contains(ip, StringComparer.OrdinalIgnoreCase)) continue;
+            // Only IPv4 literals are filtered here; non-IP entries are stored but
+            // not applied (kept for a future DNS-resolving blocklist).
+            if (System.Net.IPAddress.TryParse(ip, out var parsed) &&
+                parsed.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            {
+                var ids = _engine.AddCustomRule(true, true, "Any", ip, 0);
+                _data.BlocklistFilterIds.AddRange(ids);
+            }
+            _data.Blocklist.Add(ip);
+            added++;
+        }
+        _store.Save(_data);
+        return added;
+    }
+
+    public void ClearBlocklist()
+    {
+        try { _engine.RemoveFilters(_data.BlocklistFilterIds); } catch { }
+        _data.BlocklistFilterIds.Clear();
+        _data.Blocklist.Clear();
+        _store.Save(_data);
+    }
+
+    // ------------------------------------------------ startup
+    public bool RunAtStartup => _data.RunAtStartup;
+
+    public void SetRunAtStartup(bool enabled)
+    {
+        bool ok = StartupService.SetEnabled(enabled);
+        // Persist the user's intent regardless; reflect actual state if it failed.
+        _data.RunAtStartup = enabled && ok;
+        _store.Save(_data);
+        if (!ok && enabled)
+            throw new InvalidOperationException(
+                "Could not register the startup task. Make sure GunWall is running as administrator.");
+    }
+
     // ------------------------------------------------ profile export / import
     /// <summary>Exports all rules and settings to a portable file.</summary>
     public void ExportProfile(string filePath) => _store.Export(_data, filePath);

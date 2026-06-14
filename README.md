@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/release-v0.12.1%20(alpha)-orange?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.13.0%20(alpha)-orange?style=flat-square)](#roadmap)
 
 *Take full control of your network. Block apps from the internet, watch your traffic in real time, and get a popup the moment a new app reaches out — in a fast, dark, modern interface.*
 
@@ -19,7 +19,7 @@
 
 ## ⚠️ Project status
 
-GunWall is an **early alpha (v0.12.1)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
+GunWall is an **early alpha (v0.13.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
 
 ---
 
@@ -37,6 +37,9 @@ GunWall is an **early alpha (v0.12.1)**. The core engine, real-time monitoring, 
 - **Searchable app list** — filter by name or path; optionally show all running apps.
 - **Staged settings with Apply** — choose your options, then commit them with one button.
 - **Allow-by-default until you say otherwise** — monitoring mode never cuts your internet; full control is opt-in.
+- **Custom rules** — block or allow traffic by remote IP, port, protocol and direction, independent of app.
+- **IP blocklist** — paste IPv4 addresses to block outright.
+- **Run at startup** — launch with Windows (elevated, no UAC prompt, via a scheduled task).
 - **Close to tray** — closing the window minimizes GunWall to the system tray instead of quitting, so the firewall stays manageable and you're never left with blocked traffic and no UI. A true Exit (tray menu) warns if the firewall is still active and offers to turn it off on the way out.
 - **Packets Log** — a live, searchable log of every connection event (allowed and blocked, system services included), color-coded by action.
 - **Tamper detection** — each rule stores the app's SHA-256 hash, so a swapped binary at the same path is detectable.
@@ -128,7 +131,7 @@ Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv
 | **v0.10** ✅ | SHA-256 tamper hashing, silent (muted) apps, profile export/import, window preferences |
 | **v0.11** ✅ | Event-driven detection (kernel net events) ON by default with crash-loop self-recovery; sets COLLECT + MATCH_ANY_KEYWORDS so all event classes fire (the fix for missing popups); runs alongside polling; transport-layer ICMP coverage; portable profile |
 | **v0.12** ✅ | Packets Log tab (live allowed/blocked events, searchable, color-coded); alerts show real destination |
-| **v0.13** | Services tab (per-service rules) + UWP app-container support |
+| **v0.13** ✅ | Custom rules editor (block/allow by IP, port, protocol, direction), IP blocklist, run-at-startup |
 | **v0.14** | Custom rules editor (allow/block by address, port, protocol, direction) |
 | **v0.15** | Curated blocklists + system-rules toggles |
 | **v1.0** | Hardened service split, code signing, installer, auto-update |

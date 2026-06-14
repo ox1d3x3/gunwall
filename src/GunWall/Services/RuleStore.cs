@@ -163,4 +163,14 @@ public sealed class StoreData
     /// a crash-loop guard that auto-disables it if a session ends uncleanly.
     /// </summary>
     public bool ExperimentalEvents { get; set; } = true;
+
+    /// <summary>User-defined address/port/protocol rules.</summary>
+    public List<CustomRule> CustomRules { get; set; } = new();
+
+    /// <summary>Blocked IPs (simple address blocklist).</summary>
+    public List<string> Blocklist { get; set; } = new();
+    public List<ulong> BlocklistFilterIds { get; set; } = new();
+
+    /// <summary>Run GunWall when Windows starts.</summary>
+    public bool RunAtStartup { get; set; }
 }

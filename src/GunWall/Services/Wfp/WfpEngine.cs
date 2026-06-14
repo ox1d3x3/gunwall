@@ -553,6 +553,137 @@ public sealed class WfpEngine : IDisposable
                byte.Parse(parts[3]);
     }
 
+    /// <summary>
+    /// Installs a custom rule (block/allow by remote address / port / protocol /
+    /// direction) as a WFP filter with multiple conditions. Returns the created
+    /// filter IDs. Fully fault-tolerant: any marshalling or layer issue is caught
+    /// and results in zero filters rather than an exception, so an unsupported
+    /// condition can never crash the app — the rule is simply marked "not
+    /// applied" by the caller when the returned list is empty.
+    /// </summary>
+    public List<ulong> AddCustomRule(
+        bool block, bool outbound, string protocol, string remoteAddress, int remotePort)
+    {
+        var ids = new List<ulong>(2);
+        try
+        {
+            EnsureReady();
+
+            // Choose layers: outbound vs inbound, v4 (and v6 if no v4 address).
+            var layers = new List<Guid>();
+            if (outbound)
+            {
+                layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V4);
+                if (string.IsNullOrEmpty(remoteAddress)) layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V6);
+            }
+            else
+            {
+                layers.Add(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4);
+                if (string.IsNullOrEmpty(remoteAddress)) layers.Add(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6);
+            }
+
+            byte weight = block ? AppBlockWeight : AppPermitWeight;
+            uint action = block ? FWP_ACTION_BLOCK : FWP_ACTION_PERMIT;
+
+            foreach (var layer in layers)
+            {
+                try { ids.Add(BuildConditionedFilter(layer, weight, action,
+                    protocol, remoteAddress, remotePort, "GunWall Custom Rule")); }
+                catch (WfpException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"custom rule layer skipped: 0x{ex.Code:X8}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"AddCustomRule failed: {ex.Message}");
+        }
+        return ids;
+    }
+
+    private ulong BuildConditionedFilter(
+        Guid layer, byte weight, uint action,
+        string protocol, string remoteAddress, int remotePort, string name)
+    {
+        // Assemble the conditions we actually need.
+        var conds = new List<FWPM_FILTER_CONDITION0>(3);
+        var holds = new List<IntPtr>(); // unmanaged buffers to free afterward
+
+        try
+        {
+            // Protocol condition (UINT8).
+            byte? proto = protocol?.ToUpperInvariant() switch
+            { "TCP" => (byte)6, "UDP" => (byte)17, _ => (byte?)null };
+            if (proto.HasValue)
+            {
+                conds.Add(new FWPM_FILTER_CONDITION0
+                {
+                    fieldKey = FWPM_CONDITION_IP_PROTOCOL,
+                    matchType = FWP_MATCH_EQUAL,
+                    conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_UINT8, value = proto.Value }
+                });
+            }
+
+            // Remote port condition (UINT16).
+            if (remotePort > 0)
+            {
+                conds.Add(new FWPM_FILTER_CONDITION0
+                {
+                    fieldKey = FWPM_CONDITION_IP_REMOTE_PORT,
+                    matchType = FWP_MATCH_EQUAL,
+                    conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_UINT16, value = (ushort)remotePort }
+                });
+            }
+
+            // Remote address condition (single IPv4 via addr+mask /32).
+            if (!string.IsNullOrEmpty(remoteAddress))
+            {
+                var mask = new FWP_V4_ADDR_AND_MASK { addr = IpToHost(remoteAddress), mask = 0xFFFFFFFF };
+                IntPtr maskPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWP_V4_ADDR_AND_MASK>());
+                Marshal.StructureToPtr(mask, maskPtr, false);
+                holds.Add(maskPtr);
+                conds.Add(new FWPM_FILTER_CONDITION0
+                {
+                    fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                    matchType = FWP_MATCH_EQUAL,
+                    conditionValue = new FWP_CONDITION_VALUE0
+                    { type = FWP_V4_ADDR_MASK, value = (ulong)maskPtr.ToInt64() }
+                });
+            }
+
+            // Marshal the condition array contiguously.
+            int condSize = Marshal.SizeOf<FWPM_FILTER_CONDITION0>();
+            IntPtr condArray = Marshal.AllocHGlobal(condSize * Math.Max(conds.Count, 1));
+            holds.Add(condArray);
+            for (int i = 0; i < conds.Count; i++)
+                Marshal.StructureToPtr(conds[i], condArray + i * condSize, false);
+
+            uint flags = FWPM_FILTER_FLAG_PERSISTENT;
+            if (action == FWP_ACTION_BLOCK) flags |= FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT;
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = flags,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = weight },
+                numFilterConditions = (uint)conds.Count,
+                filterCondition = conds.Count > 0 ? condArray : IntPtr.Zero,
+                action = new FWPM_ACTION0 { type = action },
+                displayData = new FWPM_DISPLAY_DATA0 { name = name, description = name }
+            };
+
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally
+        {
+            foreach (var h in holds) Marshal.FreeHGlobal(h);
+        }
+    }
+
     private ulong AddAppFilter(Guid layer, FWP_BYTE_BLOB appIdBlob, byte weight, uint action, string name)
     {
         // Marshal one FWPM_FILTER_CONDITION0 (APP_ID == app) into native memory.

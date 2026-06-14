@@ -111,3 +111,35 @@ public sealed class PacketLogEntry
         : new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(0x3D, 0xD6, 0x8C));
 }
+
+/// <summary>
+/// A user-defined rule that matches by remote address / port / protocol /
+/// direction (independent of which app makes the connection). Stored in the
+/// profile and applied as WFP filters.
+/// </summary>
+public sealed class CustomRule
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+    public string Name { get; set; } = "";
+    public bool Block { get; set; } = true;            // true = block, false = allow
+    public bool Outbound { get; set; } = true;         // true = outbound, false = inbound
+    public string Protocol { get; set; } = "Any";      // Any / TCP / UDP
+    public string RemoteAddress { get; set; } = "";    // empty = any
+    public int RemotePort { get; set; }                // 0 = any
+    public bool Enabled { get; set; } = true;
+    public bool Applied { get; set; }                  // did the WFP filter actually install?
+    public List<ulong> FilterIds { get; set; } = new();
+
+    public string ActionText => Block ? "Block" : "Allow";
+    public string DirectionText => Outbound ? "Outbound" : "Inbound";
+    public string TargetText
+    {
+        get
+        {
+            string a = string.IsNullOrEmpty(RemoteAddress) ? "any address" : RemoteAddress;
+            string p = RemotePort == 0 ? "any port" : $"port {RemotePort}";
+            return $"{Protocol} \u2192 {a}, {p}";
+        }
+    }
+    public string StatusText => !Enabled ? "Disabled" : Applied ? "Active" : "Not applied";
+}

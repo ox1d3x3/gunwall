@@ -128,6 +128,7 @@ public partial class MainWindow : Window
             _suppressModeEvent = true;
             AlertsCheck.IsChecked = _firewall.AlertsEnabled;
             StartMinimizedCheck.IsChecked = _firewall.StartMinimized;
+            RunAtStartupCheck.IsChecked = _firewall.RunAtStartup;
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
@@ -139,7 +140,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.12.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.13.1 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -313,6 +314,96 @@ public partial class MainWindow : Window
     private void ClearActivity_Click(object sender, RoutedEventArgs e) => _activity.Clear();
 
     private void ClearPackets_Click(object sender, RoutedEventArgs e) => _packets.Clear();
+
+    // ================================================================ custom rules
+    private void RefreshRulesList()
+    {
+        if (RulesList == null) return;
+        RulesList.ItemsSource = null;
+        RulesList.ItemsSource = _firewall.CustomRules;
+        if (BlocklistCount != null)
+            BlocklistCount.Text = $"{_firewall.Blocklist.Count} address(es) blocked. " +
+                                  "Paste IPv4 addresses (one per line) to add more.";
+    }
+
+    private void AddRule_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        try
+        {
+            bool block = (RuleAction.SelectedIndex == 0);
+            bool outbound = (RuleDirection.SelectedIndex == 0);
+            string protocol = ((ComboBoxItem)RuleProtocol.SelectedItem)?.Content?.ToString() ?? "Any";
+            string addr = RuleAddress.Text?.Trim() ?? "";
+            int port = 0;
+            if (!string.IsNullOrWhiteSpace(RulePort.Text) && !int.TryParse(RulePort.Text.Trim(), out port))
+            {
+                MessageBox.Show("Port must be a number (or blank for any).", "GunWall",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (!string.IsNullOrEmpty(addr) &&
+                !System.Net.IPAddress.TryParse(addr, out _))
+            {
+                MessageBox.Show("Address must be a valid IPv4 (or blank for any).", "GunWall",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var rule = new CustomRule
+            {
+                Block = block,
+                Outbound = outbound,
+                Protocol = protocol,
+                RemoteAddress = addr,
+                RemotePort = port,
+                Enabled = true
+            };
+            _firewall.AddCustomRule(rule);
+            RefreshRulesList();
+
+            if (!rule.Applied)
+                MessageBox.Show(
+                    "The rule was saved but the firewall filter could not be applied on this " +
+                    "system (the condition may be unsupported). It shows as 'Not applied'.",
+                    "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            RuleAddress.Clear();
+            RulePort.Clear();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void RemoveRule_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is string id)
+        {
+            try { _firewall.RemoveCustomRule(id); RefreshRulesList(); }
+            catch (Exception ex) { ShowError(ex); }
+        }
+    }
+
+    private void AddBlocklist_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        try
+        {
+            var lines = (BlocklistInput.Text ?? "")
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            int n = _firewall.AddToBlocklist(lines);
+            BlocklistInput.Clear();
+            RefreshRulesList();
+            MessageBox.Show($"Added {n} address(es) to the blocklist.", "GunWall",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void ClearBlocklist_Click(object sender, RoutedEventArgs e)
+    {
+        try { _firewall.ClearBlocklist(); RefreshRulesList(); }
+        catch (Exception ex) { ShowError(ex); }
+    }
 
     private void PacketsSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -711,12 +802,14 @@ public partial class MainWindow : Window
         PanelFirewall.Visibility = tag == "Firewall" ? Visibility.Visible : Visibility.Collapsed;
         PanelConnections.Visibility = tag == "Connections" ? Visibility.Visible : Visibility.Collapsed;
         PanelPackets.Visibility = tag == "Packets" ? Visibility.Visible : Visibility.Collapsed;
+        PanelRules.Visibility = tag == "Rules" ? Visibility.Visible : Visibility.Collapsed;
         PanelActivity.Visibility = tag == "Activity" ? Visibility.Visible : Visibility.Collapsed;
         PanelSettings.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
         // Populate immediately on switch instead of waiting for the next tick.
         if (tag == "Firewall") RebuildAppsList();
         if (tag == "Connections") RebuildConnList();
+        if (tag == "Rules") RefreshRulesList();
     }
 
     // ================================================================ actions
@@ -959,6 +1052,12 @@ public partial class MainWindow : Window
 
         // Preferences
         _firewall.SetStartMinimized(StartMinimizedCheck?.IsChecked == true);
+        try { _firewall.SetRunAtStartup(RunAtStartupCheck?.IsChecked == true); }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+            if (RunAtStartupCheck != null) RunAtStartupCheck.IsChecked = _firewall.RunAtStartup;
+        }
         _firewall.SetAlwaysOnTop(AlwaysOnTopCheck?.IsChecked == true);
         _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
         _firewall.SetExperimentalEvents(ExperimentalEventsCheck?.IsChecked == true);
