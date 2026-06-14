@@ -11,6 +11,7 @@
 
     <Window.Resources>
         <conv:StatusToBrushConverter x:Key="StatusToBrush" />
+        <conv:StatusToFillConverter x:Key="StatusToFill" />
         <conv:StatusToActionTextConverter x:Key="StatusToAction" />
         <conv:StatusToTextConverter x:Key="StatusToText" />
 
@@ -72,28 +73,56 @@
         <Border Grid.Row="1" Background="{DynamicResource BgSecondary}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                <StackPanel Orientation="Horizontal" Margin="16,0">
-                    <RadioButton x:Name="NavDashboard" Content="Dashboard"
-                                 Style="{StaticResource TabButton}" IsChecked="True"
-                                 Checked="Nav_Checked" Tag="Dashboard" />
-                    <RadioButton x:Name="NavFirewall" Content="Apps"
-                                 Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Firewall" />
-                    <RadioButton x:Name="NavConnections" Content="Connections"
-                                 Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Connections" />
-                    <RadioButton x:Name="NavPackets" Content="Packets Log"
-                                 Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Packets" />
-                    <RadioButton x:Name="NavRules" Content="Custom Rules"
-                                 Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Rules" />
-                    <RadioButton x:Name="NavActivity" Content="Activity"
-                                 Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Activity" />
-                    <RadioButton x:Name="NavSettings" Content="Settings"
-                                 Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Settings" />
+                <StackPanel Orientation="Horizontal" Margin="16,4">
+                    <RadioButton x:Name="NavDashboard" Style="{StaticResource TabButton}" IsChecked="True"
+                                 Checked="Nav_Checked" Tag="Dashboard">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE9D9;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Dashboard" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavFirewall" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Firewall">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE71D;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Apps" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavConnections" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Connections">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE968;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Connections" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavPackets" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Packets">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE9D2;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Packets Log" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavRules" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Rules">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE90F;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Custom Rules" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavActivity" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Activity">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE9F9;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Activity" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavSettings" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Settings">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE713;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Settings" />
+                        </StackPanel>
+                    </RadioButton>
                 </StackPanel>
             </ScrollViewer>
         </Border>
@@ -220,6 +249,7 @@
                                 <MenuItem Header="Mute (allow, no popups)" Click="MuteApp_Click" />
                                 <MenuItem Header="Unmute" Click="UnmuteApp_Click" />
                                 <Separator />
+                                <MenuItem Header="Scan with VirusTotal" Click="ScanVt_Click" />
                                 <MenuItem Header="Copy path" Click="CopyPath_Click" />
                             </ContextMenu>
                         </ListView.ContextMenu>
@@ -234,11 +264,12 @@
                                 <GridViewColumn Header="Status" Width="90">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Border CornerRadius="10" Padding="10,3"
+                                            <Border CornerRadius="6" Padding="10,3"
                                                     HorizontalAlignment="Left"
-                                                    Background="{Binding Status, Converter={StaticResource StatusToBrush}}">
+                                                    Background="{Binding Status, Converter={StaticResource StatusToFill}}">
                                                 <TextBlock Text="{Binding Status, Converter={StaticResource StatusToText}}"
-                                                           Foreground="#0E1117" FontSize="11" FontWeight="SemiBold" />
+                                                           Foreground="{Binding Status, Converter={StaticResource StatusToBrush}}"
+                                                           FontSize="11.5" FontWeight="SemiBold" />
                                             </Border>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
@@ -561,6 +592,23 @@
                                 <Button Content="Import profile" Style="{StaticResource ActionButton}"
                                         Click="ImportProfile_Click" />
                             </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="VirusTotal" Style="{StaticResource H2}" />
+                            <TextBlock Text="Add your VirusTotal API key to scan apps by hash (right-click an app in the Apps tab). Only the file hash is sent, never the file."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal">
+                                <PasswordBox x:Name="VtApiKeyBox" Width="280" Padding="8,6"
+                                             Background="{DynamicResource BgElevated}"
+                                             Foreground="{DynamicResource TextPrimary}"
+                                             BorderBrush="{DynamicResource BorderBrush}" Margin="0,0,8,0" />
+                                <Button Content="Save key" Style="{StaticResource ActionButton}"
+                                        Click="SaveVtKey_Click" />
+                            </StackPanel>
+                            <TextBlock x:Name="VtKeyStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" />
                         </StackPanel>
                     </Border>
 

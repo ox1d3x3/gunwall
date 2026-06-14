@@ -6,14 +6,28 @@ using GunWall.Models;
 
 namespace GunWall.Converters;
 
-/// <summary>Maps AppStatus to a status colour (green allowed / red blocked).</summary>
+/// <summary>Maps AppStatus to the pill FOREGROUND colour (bright green/red).</summary>
 public sealed class StatusToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var allowed = new SolidColorBrush(Color.FromRgb(0x3D, 0xD6, 0x8C));
-        var blocked = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
+        var allowed = new SolidColorBrush(Color.FromRgb(0x2E, 0x9E, 0x54));
+        var blocked = new SolidColorBrush(Color.FromRgb(0xD6, 0x53, 0x4F));
         return value is AppStatus s && s == AppStatus.Blocked ? blocked : allowed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => Binding.DoNothing;
+}
+
+/// <summary>Maps AppStatus to the pill soft BACKGROUND fill.</summary>
+public sealed class StatusToFillConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var allowedFill = new SolidColorBrush(Color.FromRgb(0xE7, 0xF6, 0xEC));
+        var blockedFill = new SolidColorBrush(Color.FromRgb(0xFC, 0xEB, 0xEA));
+        return value is AppStatus s && s == AppStatus.Blocked ? blockedFill : allowedFill;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

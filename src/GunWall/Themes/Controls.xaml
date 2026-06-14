@@ -9,20 +9,21 @@
          referenced with DynamicResource so they update live on theme switch.
          The accent, status, and gradient brushes below are theme-INVARIANT —
          the same cyan/violet identity works on both black and white. -->
-    <Color x:Key="AccentColor">#3DA9FC</Color>
-    <Color x:Key="Accent2Color">#7C5CFF</Color>
+    <Color x:Key="AccentColor">#3D8BD4</Color>
+    <Color x:Key="Accent2Color">#3D8BD4</Color>
 
     <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="Accent2" Color="{StaticResource Accent2Color}" />
-    <SolidColorBrush x:Key="AllowBrush" Color="#2BC97E" />
-    <SolidColorBrush x:Key="BlockBrush" Color="#FF5A5A" />
-    <SolidColorBrush x:Key="InboundBrush" Color="#3DA9FC" />
-    <SolidColorBrush x:Key="OutboundBrush" Color="#7C5CFF" />
+    <SolidColorBrush x:Key="AllowBrush" Color="#3FB868" />
+    <SolidColorBrush x:Key="BlockBrush" Color="#E25C5C" />
+    <SolidColorBrush x:Key="InboundBrush" Color="#3D8BD4" />
+    <SolidColorBrush x:Key="OutboundBrush" Color="#3FB868" />
 
-    <!-- Accent gradient for primary actions and highlights. -->
+    <!-- Flat accent (kept as a 'gradient' key name for compatibility, but solid
+         for a clean, professional, non-AI look). -->
     <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#3DA9FC" Offset="0" />
-        <GradientStop Color="#7C5CFF" Offset="1" />
+        <GradientStop Color="#3D8BD4" Offset="0" />
+        <GradientStop Color="#3578BD" Offset="1" />
     </LinearGradientBrush>
 
     <!-- ======================= Base TextBlock ======================= -->
@@ -168,43 +169,50 @@
         </Setter>
     </Style>
 
-    <!-- ======================= Top tab button ======================= -->
+    <!-- ======================= Top tab button =======================
+         Modern style: a Segoe icon glyph above the label, with a soft
+         rounded tinted highlight on the active tab (no underline). The icon
+         glyph is supplied per-tab via the Tag-adjacent IconGlyph attached
+         text; here we render whatever the RadioButton's content provides. -->
     <Style x:Key="TabButton" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Margin" Value="1,0" />
-        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Margin" Value="3,0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <Border x:Name="bd" Grid.Row="0" Background="Transparent" CornerRadius="7"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
-                        </Border>
-                        <!-- Selected underline indicator -->
-                        <Rectangle x:Name="bar" Grid.Row="1" Height="3" Margin="10,2,10,0"
-                                   RadiusX="1.5" RadiusY="1.5"
-                                   Fill="{StaticResource AccentGradient}" Visibility="Collapsed" />
-                    </Grid>
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="10"
+                            Padding="14,7">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgCard}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-                            <Setter Property="FontWeight" Value="SemiBold" />
-                            <Setter TargetName="bar" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoft}" />
+                            <Setter Property="Foreground" Value="{StaticResource Accent}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Tab icon glyph (Segoe Fluent / MDL2) -->
+    <Style x:Key="TabIcon" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,0,0,3" />
+    </Style>
+
+    <Style x:Key="TabLabel" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}" />
     </Style>
 
     <!-- ======================= Primary button ======================= -->

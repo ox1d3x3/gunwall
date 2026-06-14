@@ -2,20 +2,23 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- ======================= DARK THEME PALETTE =======================
-         Neutral near-black surfaces with clear elevation steps and high-
-         contrast text so information pops. The cyan/violet accent is shared
-         with the light theme (defined in Controls.xaml) so only the neutrals
-         change between themes. -->
-    <SolidColorBrush x:Key="BgPrimary" Color="#0F1115" />
-    <SolidColorBrush x:Key="BgSecondary" Color="#16181D" />
-    <SolidColorBrush x:Key="BgCard" Color="#1B1E24" />
-    <SolidColorBrush x:Key="BgElevated" Color="#252932" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#2C313B" />
-    <SolidColorBrush x:Key="TextPrimary" Color="#EDEFF2" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#969DA8" />
+    <!-- ===== DARK THEME (soft charcoal) =====
+         Soft charcoal surfaces, clean and flat. High-contrast text. Status
+         colors are soft-tinted: a faint fill with a brighter foreground. -->
+    <SolidColorBrush x:Key="BgPrimary" Color="#1B1D22" />
+    <SolidColorBrush x:Key="BgSecondary" Color="#212429" />
+    <SolidColorBrush x:Key="BgCard" Color="#24272D" />
+    <SolidColorBrush x:Key="BgElevated" Color="#2C3036" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#33373F" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#E9EBEE" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#969CA6" />
 
-    <!-- Title bar hint: dark -->
+    <!-- Soft status fills + foregrounds (pills) -->
+    <SolidColorBrush x:Key="AllowFill" Color="#1E3A2C" />
+    <SolidColorBrush x:Key="AllowText" Color="#5FD08A" />
+    <SolidColorBrush x:Key="BlockFill" Color="#3D2526" />
+    <SolidColorBrush x:Key="BlockText" Color="#F0807F" />
+    <SolidColorBrush x:Key="AccentSoft" Color="#243447" />
+
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">True</sys:Boolean>
-
 </ResourceDictionary>

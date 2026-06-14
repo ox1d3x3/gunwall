@@ -133,6 +133,9 @@ public partial class MainWindow : Window
             AlertsCheck.IsChecked = _firewall.AlertsEnabled;
             StartMinimizedCheck.IsChecked = _firewall.StartMinimized;
             RunAtStartupCheck.IsChecked = _firewall.RunAtStartup;
+            if (VtKeyStatus != null)
+                VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
+                    ? "No key set." : "A key is saved.";
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
@@ -144,7 +147,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.14.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.15.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -879,6 +882,48 @@ public partial class MainWindow : Window
     {
         if (AppsList.SelectedItem is not AppInfo app) return;
         try { Clipboard.SetText(app.ExecutablePath); } catch { /* clipboard busy */ }
+    }
+
+    // ================================================================ VirusTotal
+    private void SaveVtKey_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _firewall.SetVirusTotalApiKey(VtApiKeyBox.Password);
+            if (VtKeyStatus != null)
+                VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
+                    ? "Key cleared."
+                    : "Key saved. Right-click an app in the Apps tab to scan it.";
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async void ScanVt_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        if (string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey))
+        {
+            MessageBox.Show("Add your VirusTotal API key in Settings first.", "GunWall",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        string hash = _firewall.GetHash(app.ExecutablePath);
+        if (string.IsNullOrEmpty(hash))
+            hash = HashService.Compute(app.ExecutablePath);
+        if (string.IsNullOrEmpty(hash))
+        {
+            MessageBox.Show("Could not read this file to hash it (it may be protected).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var result = await VirusTotalService.LookupAsync(hash, _firewall.VirusTotalApiKey);
+        var icon = result.Ok && result.Malicious == 0 ? MessageBoxImage.Information
+                 : result.Ok ? MessageBoxImage.Warning
+                 : MessageBoxImage.Error;
+        MessageBox.Show($"{app.Name}\n\n{result.Message}", "VirusTotal scan",
+            MessageBoxButton.OK, icon);
     }
 
     private void LockdownButton_Click(object sender, RoutedEventArgs e)

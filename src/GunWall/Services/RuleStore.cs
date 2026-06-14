@@ -176,4 +176,7 @@ public sealed class StoreData
 
     /// <summary>UI theme: true = dark, false = light.</summary>
     public bool ThemeDark { get; set; } = true;
+
+    /// <summary>VirusTotal API key (optional, user-provided).</summary>
+    public string VirusTotalApiKey { get; set; } = "";
 }
