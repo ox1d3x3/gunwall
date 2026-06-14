@@ -356,6 +356,71 @@ public sealed class FirewallManager : IDisposable
     public string VirusTotalApiKey => _data.VirusTotalApiKey;
     public void SetVirusTotalApiKey(string v) { _data.VirusTotalApiKey = v?.Trim() ?? ""; _store.Save(_data); }
 
+    // ------------------------------------------------ system rules
+    public bool IsSystemRuleOn(string key) =>
+        _data.SystemRules.TryGetValue(key, out var ids) && ids.Count > 0;
+
+    public void SetSystemRule(string key, bool enabled)
+    {
+        if (enabled)
+        {
+            if (IsSystemRuleOn(key)) return;
+            var ids = _engine.AddSystemRule(key);
+            _data.SystemRules[key] = ids;
+            EventLog($"System rule enabled: {key}");
+        }
+        else
+        {
+            if (_data.SystemRules.TryGetValue(key, out var ids))
+            {
+                try { _engine.RemoveFilters(ids); } catch { }
+                _data.SystemRules.Remove(key);
+                EventLog($"System rule disabled: {key}");
+            }
+        }
+        _store.Save(_data);
+    }
+
+    // ------------------------------------------------ event log
+    public bool EventLogEnabled => _data.EventLogEnabled;
+    public void SetEventLogEnabled(bool v) { _data.EventLogEnabled = v; _store.Save(_data); }
+
+    /// <summary>Writes to the Windows Event Log if the user enabled it.</summary>
+    public void EventLog(string message)
+    {
+        if (_data.EventLogEnabled) EventLogService.Write("GunWall: " + message);
+    }
+
+    // ------------------------------------------------ temporary (timed) rules
+    private readonly Dictionary<string, System.Threading.Timer> _tempTimers = new();
+
+    /// <summary>
+    /// Blocks an app now and automatically unblocks it after the given duration.
+    /// In-memory only — a restart cancels pending reverts (the block persists
+    /// until manually changed). Returns the revert time.
+    /// </summary>
+    public DateTime BlockAppTemporarily(string exePath, string displayName, TimeSpan duration)
+    {
+        BlockApp(exePath, displayName);
+        EventLog($"Temporary block for {duration.TotalMinutes:0} min: {displayName}");
+
+        string key = exePath.ToLowerInvariant();
+        if (_tempTimers.TryGetValue(key, out var existing)) { existing.Dispose(); _tempTimers.Remove(key); }
+
+        var timer = new System.Threading.Timer(_ =>
+        {
+            try { UnblockApp(exePath); EventLog($"Temporary block expired: {displayName}"); }
+            catch { }
+            finally
+            {
+                if (_tempTimers.TryGetValue(key, out var t)) { t.Dispose(); _tempTimers.Remove(key); }
+            }
+        }, null, duration, System.Threading.Timeout.InfiniteTimeSpan);
+
+        _tempTimers[key] = timer;
+        return DateTime.Now.Add(duration);
+    }
+
     public void SetRunAtStartup(bool enabled)
     {
         bool ok = StartupService.SetEnabled(enabled);

@@ -265,6 +265,68 @@ public sealed class WfpEngine : IDisposable
         return ids;
     }
 
+    /// <summary>
+    /// Installs a "system rule" — a coarse protective filter identified by a
+    /// key. Returns the created filter IDs (empty if unsupported). Fully
+    /// fault-tolerant. Supported keys:
+    ///   block_inbound  - block all inbound connections (RECV_ACCEPT v4+v6)
+    ///   block_ipv6     - block all IPv6 (connect + accept v6)
+    ///   block_smb      - block TCP 445 (file sharing) both directions
+    ///   block_netbios  - block TCP/UDP 137-139 both directions
+    ///   block_rdp_in   - block inbound TCP 3389 (remote desktop)
+    ///   block_telnet   - block TCP 23
+    /// </summary>
+    public List<ulong> AddSystemRule(string key)
+    {
+        var ids = new List<ulong>(4);
+        try
+        {
+            EnsureReady();
+            switch (key)
+            {
+                case "block_inbound":
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, AppBlockWeight, "Block inbound"));
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, AppBlockWeight, "Block inbound"));
+                    break;
+                case "block_ipv6":
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V6, AppBlockWeight, "Block IPv6"));
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, AppBlockWeight, "Block IPv6"));
+                    break;
+                case "block_smb":
+                    AddPortBlock(ids, 445, tcp: true, "Block SMB 445");
+                    break;
+                case "block_netbios":
+                    AddPortBlock(ids, 137, tcp: true, "Block NetBIOS 137");
+                    AddPortBlock(ids, 138, tcp: false, "Block NetBIOS 138");
+                    AddPortBlock(ids, 139, tcp: true, "Block NetBIOS 139");
+                    break;
+                case "block_rdp_in":
+                    // inbound only
+                    TryAdd(ids, () => BuildConditionedFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
+                        AppBlockWeight, FWP_ACTION_BLOCK, "TCP", "", 3389, "Block RDP inbound"));
+                    break;
+                case "block_telnet":
+                    AddPortBlock(ids, 23, tcp: true, "Block Telnet 23");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"AddSystemRule({key}) failed: {ex.Message}");
+        }
+        return ids;
+    }
+
+    // Block a remote port in both directions (outbound connect + inbound accept).
+    private void AddPortBlock(List<ulong> ids, int port, bool tcp, string name)
+    {
+        string proto = tcp ? "TCP" : "UDP";
+        TryAdd(ids, () => BuildConditionedFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V4,
+            AppBlockWeight, FWP_ACTION_BLOCK, proto, "", port, name));
+        TryAdd(ids, () => BuildConditionedFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
+            AppBlockWeight, FWP_ACTION_BLOCK, proto, "", port, name));
+    }
+
     /// <summary>Removes a set of previously created filters by ID.</summary>
     public void RemoveFilters(IEnumerable<ulong> filterIds)
     {

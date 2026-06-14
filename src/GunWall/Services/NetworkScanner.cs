@@ -1,95 +1,144 @@
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 
 namespace GunWall.Services;
 
 /// <summary>
-/// Discovers devices on the local network. It pings every host in the local
-/// IPv4 /24, then reads the system ARP table (GetIpNetTable) to map IP to MAC,
-/// and attempts a reverse-DNS hostname. Pure managed / IP Helper — no driver,
-/// no external services. Best-effort throughout.
+/// Discovers devices on the local network(s). It pings every host across each
+/// active private IPv4 /24 the machine is attached to (handling multiple
+/// adapters — Wi-Fi, Ethernet, VPN, virtual switches), then reads the system
+/// ARP table to map IP to MAC and attempts a reverse-DNS hostname. Pure managed
+/// / IP Helper — no driver, no external services. Best-effort throughout.
 /// </summary>
 public sealed class NetworkScanner
 {
     public sealed record Device(string Ip, string Mac, string Host);
 
-    /// <summary>
-    /// Scans the local /24 around the machine's primary IPv4 and returns the
-    /// discovered devices. Reports progress (0-100) via the optional callback.
-    /// </summary>
     public static async Task<List<Device>> ScanAsync(Action<int>? progress = null)
     {
         var devices = new List<Device>();
         try
         {
-            string? local = GetLocalIPv4();
-            if (local == null) return devices;
+            // Gather every private /24 the machine sits on (across all adapters).
+            var prefixes = GetLocalSubnetPrefixes();
+            if (prefixes.Count == 0) prefixes.Add("192.168.1."); // sensible fallback
 
-            // Build the /24 base (e.g. 192.168.1.).
-            int lastDot = local.LastIndexOf('.');
-            string basePrefix = local[..(lastDot + 1)];
-
-            // Ping all 254 hosts in parallel batches.
-            var pingTasks = new List<Task>();
+            int totalHosts = prefixes.Count * 254;
             int done = 0;
-            for (int i = 1; i <= 254; i++)
+            var pingTasks = new List<Task>();
+
+            foreach (var prefix in prefixes)
             {
-                string ip = basePrefix + i;
-                pingTasks.Add(Task.Run(async () =>
+                for (int i = 1; i <= 254; i++)
                 {
-                    try
+                    string ip = prefix + i;
+                    pingTasks.Add(Task.Run(async () =>
                     {
-                        using var p = new Ping();
-                        await p.SendPingAsync(ip, 500);
-                    }
-                    catch { }
-                    finally
-                    {
-                        int d = System.Threading.Interlocked.Increment(ref done);
-                        progress?.Invoke(d * 100 / 254);
-                    }
-                }));
+                        try
+                        {
+                            using var p = new Ping();
+                            // Pinging forces an ARP exchange even if ICMP is
+                            // dropped, so the device still lands in the ARP table.
+                            await p.SendPingAsync(ip, 600);
+                        }
+                        catch { }
+                        finally
+                        {
+                            int d = System.Threading.Interlocked.Increment(ref done);
+                            progress?.Invoke(Math.Min(99, d * 100 / Math.Max(1, totalHosts)));
+                        }
+                    }));
+                }
             }
             await Task.WhenAll(pingTasks);
 
-            // Read the ARP table — hosts that responded now have MAC entries.
-            foreach (var (ip, mac) in ReadArpTable())
+            // Read the ARP table. Include every valid private unicast neighbour
+            // across ALL adapters — do NOT restrict to a single guessed subnet
+            // (that was the bug that hid LAN devices behind a VPN adapter).
+            var seen = new HashSet<string>();
+            var arp = ReadArpTable();
+            var resolveTasks = new List<Task>();
+
+            foreach (var (ip, mac) in arp)
             {
-                if (!ip.StartsWith(basePrefix, StringComparison.Ordinal)) continue;
-                string host = await ResolveHostAsync(ip);
-                devices.Add(new Device(ip, mac, host));
+                if (!IsRealLanIp(ip)) continue;
+                if (!seen.Add(ip)) continue;
+                string ipLocal = ip;
+                string macLocal = mac;
+                resolveTasks.Add(Task.Run(async () =>
+                {
+                    string host = await ResolveHostAsync(ipLocal);
+                    lock (devices) devices.Add(new Device(ipLocal, macLocal, host));
+                }));
             }
+            await Task.WhenAll(resolveTasks);
             devices.Sort((a, b) => CompareIp(a.Ip, b.Ip));
+            progress?.Invoke(100);
         }
         catch { /* best effort */ }
         return devices;
     }
 
-    private static string? GetLocalIPv4()
+    /// <summary>All private /24 prefixes the machine is attached to.</summary>
+    private static List<string> GetLocalSubnetPrefixes()
     {
-        foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+        var prefixes = new List<string>();
+        try
         {
-            if (ni.OperationalStatus != OperationalStatus.Up) continue;
-            if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
-            foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
             {
-                if (ua.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
-                    !IPAddress.IsLoopback(ua.Address))
-                    return ua.Address.ToString();
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    string ip = ua.Address.ToString();
+                    if (!IsPrivate(ip)) continue;
+                    string prefix = ip[..(ip.LastIndexOf('.') + 1)];
+                    if (!prefixes.Contains(prefix)) prefixes.Add(prefix);
+                }
             }
         }
-        return null;
+        catch { }
+        return prefixes;
+    }
+
+    private static bool IsPrivate(string ip)
+    {
+        var p = ip.Split('.');
+        if (p.Length != 4 || !int.TryParse(p[0], out int a) || !int.TryParse(p[1], out int b))
+            return false;
+        if (a == 10) return true;                          // 10.0.0.0/8
+        if (a == 192 && b == 168) return true;             // 192.168.0.0/16
+        if (a == 172 && b >= 16 && b <= 31) return true;   // 172.16.0.0/12
+        if (a == 169 && b == 254) return true;             // link-local
+        return false;
+    }
+
+    /// <summary>A real LAN neighbour IP (private, not network/broadcast/multicast).</summary>
+    private static bool IsRealLanIp(string ip)
+    {
+        if (!IsPrivate(ip)) return false;
+        var p = ip.Split('.');
+        if (!int.TryParse(p[3], out int last)) return false;
+        if (last == 0 || last == 255) return false;        // network / broadcast
+        if (int.TryParse(p[0], out int a) && a >= 224) return false; // multicast
+        return true;
     }
 
     private static async Task<string> ResolveHostAsync(string ip)
     {
         try
         {
-            var entry = await Dns.GetHostEntryAsync(ip);
-            return entry.HostName;
+            // Short timeout so a device without a PTR record doesn't stall.
+            var task = Dns.GetHostEntryAsync(ip);
+            if (await Task.WhenAny(task, Task.Delay(1200)) == task)
+                return task.Result.HostName;
         }
-        catch { return ""; }
+        catch { }
+        return "";
     }
 
     private static int CompareIp(string a, string b)
@@ -127,7 +176,7 @@ public sealed class NetworkScanner
     {
         var results = new List<(string, string)>();
         int size = 0;
-        GetIpNetTable(IntPtr.Zero, ref size, false);
+        GetIpNetTable(IntPtr.Zero, ref size, false);  // first call sizes the buffer
         if (size <= 0) return results;
 
         IntPtr buffer = Marshal.AllocHGlobal(size);
@@ -141,8 +190,8 @@ public sealed class NetworkScanner
             {
                 var row = Marshal.PtrToStructure<MIB_IPNETROW>(ptr);
                 ptr += rowSize;
-                if (row.dwPhysAddrLen != 6) continue;          // skip non-Ethernet
-                if (row.dwType is 2 or 4 or 0) { /* keep dynamic/static */ }
+                if (row.dwPhysAddrLen != 6) continue;        // Ethernet MACs only
+                if (row.dwType == 2) continue;               // skip INVALID entries
                 var ipBytes = BitConverter.GetBytes(row.dwAddr);
                 string ip = $"{ipBytes[0]}.{ipBytes[1]}.{ipBytes[2]}.{ipBytes[3]}";
                 string mac = $"{row.mac0:X2}:{row.mac1:X2}:{row.mac2:X2}:" +

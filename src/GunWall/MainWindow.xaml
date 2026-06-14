@@ -123,6 +123,13 @@
                             <TextBlock Style="{StaticResource TabLabel}" Text="Custom Rules" />
                         </StackPanel>
                     </RadioButton>
+                    <RadioButton x:Name="NavSystem" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="System">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE72E;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="System Rules" />
+                        </StackPanel>
+                    </RadioButton>
                     <RadioButton x:Name="NavActivity" Style="{StaticResource TabButton}"
                                  Checked="Nav_Checked" Tag="Activity">
                         <StackPanel>
@@ -264,6 +271,9 @@
                                 <MenuItem Header="Unmute" Click="UnmuteApp_Click" />
                                 <Separator />
                                 <MenuItem Header="Scan with VirusTotal" Click="ScanVt_Click" />
+                                <Separator />
+                                <MenuItem Header="Block for 15 minutes" Click="BlockTemp_Click" Tag="15" />
+                                <MenuItem Header="Block for 1 hour" Click="BlockTemp_Click" Tag="60" />
                                 <MenuItem Header="Copy path" Click="CopyPath_Click" />
                             </ContextMenu>
                         </ListView.ContextMenu>
@@ -573,6 +583,91 @@
                 </Border>
             </Grid>
 
+            <!-- ========== System Rules ========== -->
+            <Grid x:Name="PanelSystem" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                    <TextBlock Text="System Rules" Style="{StaticResource H1}" />
+                    <TextBlock Text="One-tap hardening rules for common risky traffic. Each applies a firewall filter immediately."
+                               Style="{StaticResource Muted}" Margin="0,4,0,0" />
+                </StackPanel>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                            <StackPanel>
+                                <DockPanel LastChildFill="False">
+                                    <StackPanel DockPanel.Dock="Left" MaxWidth="640">
+                                        <TextBlock Text="Block all inbound connections" FontWeight="SemiBold" />
+                                        <TextBlock Text="Stops any device from initiating a connection to this PC. Outbound still works."
+                                                   Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="SysBlockInbound" DockPanel.Dock="Right" VerticalAlignment="Center"
+                                              Click="SystemRule_Click" Tag="block_inbound" />
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                            <DockPanel LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
+                                    <TextBlock Text="Block IPv6" FontWeight="SemiBold" />
+                                    <TextBlock Text="Blocks all IPv6 traffic. Useful if you only use IPv4 and want to reduce exposure."
+                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <CheckBox x:Name="SysBlockIpv6" DockPanel.Dock="Right" VerticalAlignment="Center"
+                                          Click="SystemRule_Click" Tag="block_ipv6" />
+                            </DockPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                            <DockPanel LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
+                                    <TextBlock Text="Block file sharing (SMB, port 445)" FontWeight="SemiBold" />
+                                    <TextBlock Text="Blocks SMB traffic, a common ransomware and lateral-movement vector."
+                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <CheckBox x:Name="SysBlockSmb" DockPanel.Dock="Right" VerticalAlignment="Center"
+                                          Click="SystemRule_Click" Tag="block_smb" />
+                            </DockPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                            <DockPanel LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
+                                    <TextBlock Text="Block NetBIOS (ports 137-139)" FontWeight="SemiBold" />
+                                    <TextBlock Text="Legacy Windows networking ports, rarely needed and often probed."
+                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <CheckBox x:Name="SysBlockNetbios" DockPanel.Dock="Right" VerticalAlignment="Center"
+                                          Click="SystemRule_Click" Tag="block_netbios" />
+                            </DockPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                            <DockPanel LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
+                                    <TextBlock Text="Block inbound Remote Desktop (RDP, port 3389)" FontWeight="SemiBold" />
+                                    <TextBlock Text="Prevents incoming RDP connections — a frequent brute-force target."
+                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <CheckBox x:Name="SysBlockRdp" DockPanel.Dock="Right" VerticalAlignment="Center"
+                                          Click="SystemRule_Click" Tag="block_rdp_in" />
+                            </DockPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                            <DockPanel LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
+                                    <TextBlock Text="Block Telnet (port 23)" FontWeight="SemiBold" />
+                                    <TextBlock Text="Blocks unencrypted Telnet, which should never be used over a network."
+                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <CheckBox x:Name="SysBlockTelnet" DockPanel.Dock="Right" VerticalAlignment="Center"
+                                          Click="SystemRule_Click" Tag="block_telnet" />
+                            </DockPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
             <!-- ========== Activity ========== -->
             <Grid x:Name="PanelActivity" Visibility="Collapsed">
                 <Grid.RowDefinitions>
@@ -663,6 +758,9 @@
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="RunAtStartupCheck" Content="Run GunWall when Windows starts"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="EventLogCheck" Content="Send firewall events to the Windows Event Log"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="AlwaysOnTopCheck" Content="Keep window always on top"

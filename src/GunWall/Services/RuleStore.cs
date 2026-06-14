@@ -179,4 +179,10 @@ public sealed class StoreData
 
     /// <summary>VirusTotal API key (optional, user-provided).</summary>
     public string VirusTotalApiKey { get; set; } = "";
+
+    /// <summary>System hardening rules: key -> filter IDs (presence = enabled).</summary>
+    public Dictionary<string, List<ulong>> SystemRules { get; set; } = new();
+
+    /// <summary>Send firewall events to the Windows Event Log.</summary>
+    public bool EventLogEnabled { get; set; }
 }

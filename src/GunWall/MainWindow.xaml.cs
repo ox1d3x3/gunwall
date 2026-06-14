@@ -137,6 +137,7 @@ public partial class MainWindow : Window
             AlertsCheck.IsChecked = _firewall.AlertsEnabled;
             StartMinimizedCheck.IsChecked = _firewall.StartMinimized;
             RunAtStartupCheck.IsChecked = _firewall.RunAtStartup;
+            if (EventLogCheck != null) EventLogCheck.IsChecked = _firewall.EventLogEnabled;
             if (VtKeyStatus != null)
                 VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
                     ? "No key set." : "A key is saved.";
@@ -151,7 +152,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.16.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.17.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -816,6 +817,7 @@ public partial class MainWindow : Window
         PanelNetwork.Visibility = tag == "Network" ? Visibility.Visible : Visibility.Collapsed;
         PanelPackets.Visibility = tag == "Packets" ? Visibility.Visible : Visibility.Collapsed;
         PanelRules.Visibility = tag == "Rules" ? Visibility.Visible : Visibility.Collapsed;
+        PanelSystem.Visibility = tag == "System" ? Visibility.Visible : Visibility.Collapsed;
         PanelActivity.Visibility = tag == "Activity" ? Visibility.Visible : Visibility.Collapsed;
         PanelSettings.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
@@ -824,6 +826,7 @@ public partial class MainWindow : Window
         if (tag == "Connections") RebuildConnList();
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
+        if (tag == "System") SyncSystemToggles();
         if (tag == "Settings") RefreshProfilesCombo();
     }
 
@@ -934,8 +937,58 @@ public partial class MainWindow : Window
             MessageBoxButton.OK, icon);
     }
 
-    // ================================================================ services
-    private void LoadServices()
+    // ================================================================ system rules
+    private void SyncSystemToggles()
+    {
+        if (SysBlockInbound == null) return;
+        SysBlockInbound.IsChecked = _firewall.IsSystemRuleOn("block_inbound");
+        SysBlockIpv6.IsChecked = _firewall.IsSystemRuleOn("block_ipv6");
+        SysBlockSmb.IsChecked = _firewall.IsSystemRuleOn("block_smb");
+        SysBlockNetbios.IsChecked = _firewall.IsSystemRuleOn("block_netbios");
+        SysBlockRdp.IsChecked = _firewall.IsSystemRuleOn("block_rdp_in");
+        SysBlockTelnet.IsChecked = _firewall.IsSystemRuleOn("block_telnet");
+    }
+
+    private void SystemRule_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) { SyncSystemToggles(); return; }
+        if (sender is not CheckBox cb || cb.Tag is not string key) return;
+        try
+        {
+            bool on = cb.IsChecked == true;
+            _firewall.SetSystemRule(key, on);
+            // Reflect the real applied state (a rule may not apply on some systems).
+            bool actual = _firewall.IsSystemRuleOn(key);
+            if (actual != on)
+            {
+                cb.IsChecked = actual;
+                if (on)
+                    MessageBox.Show("This rule couldn't be applied on this system (the filter " +
+                        "condition may be unsupported).", "GunWall",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex) { ShowError(ex); SyncSystemToggles(); }
+    }
+
+    // ================================================================ temporary rules
+    private void BlockTemp_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        if (sender is not FrameworkElement fe || fe.Tag is not string mins) return;
+        if (!int.TryParse(mins, out int minutes)) return;
+        try
+        {
+            var until = _firewall.BlockAppTemporarily(
+                app.ExecutablePath, app.Name, TimeSpan.FromMinutes(minutes));
+            RebuildAppsList();
+            MessageBox.Show($"{app.Name} is blocked until {until:t}. It will be unblocked " +
+                "automatically (or stays blocked if you close GunWall before then).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
     {
         try
         {
@@ -1265,6 +1318,7 @@ public partial class MainWindow : Window
             if (RunAtStartupCheck != null) RunAtStartupCheck.IsChecked = _firewall.RunAtStartup;
         }
         _firewall.SetAlwaysOnTop(AlwaysOnTopCheck?.IsChecked == true);
+        _firewall.SetEventLogEnabled(EventLogCheck?.IsChecked == true);
         _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
         _firewall.SetExperimentalEvents(ExperimentalEventsCheck?.IsChecked == true);
         Topmost = _firewall.AlwaysOnTop;
