@@ -126,6 +126,7 @@ public sealed class CustomRule
     public string Protocol { get; set; } = "Any";      // Any / TCP / UDP
     public string RemoteAddress { get; set; } = "";    // empty = any
     public int RemotePort { get; set; }                // 0 = any
+    public int LocalPort { get; set; }                 // 0 = any (port on this PC)
     public bool Enabled { get; set; } = true;
     public bool Applied { get; set; }                  // did the WFP filter actually install?
     public List<ulong> FilterIds { get; set; } = new();
@@ -138,7 +139,8 @@ public sealed class CustomRule
         {
             string a = string.IsNullOrEmpty(RemoteAddress) ? "any address" : RemoteAddress;
             string p = RemotePort == 0 ? "any port" : $"port {RemotePort}";
-            return $"{Protocol} \u2192 {a}, {p}";
+            string lp = LocalPort == 0 ? "" : $", local {LocalPort}";
+            return $"{Protocol} \u2192 {a}, {p}{lp}";
         }
     }
     public string StatusText => !Enabled ? "Disabled" : Applied ? "Active" : "Not applied";

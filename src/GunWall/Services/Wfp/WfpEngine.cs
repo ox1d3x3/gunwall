@@ -108,6 +108,46 @@ public sealed class WfpEngine : IDisposable
     public List<ulong> PermitApplication(string exePath) =>
         AddAppFilters(exePath, FWP_ACTION_PERMIT, AppPermitWeight, "Allow");
 
+    /// <summary>
+    /// Blocks an application in ONE direction only — outbound (connect layers)
+    /// or inbound (accept layers), across IPv4/IPv6 and their transport layers.
+    /// Lets a user, say, block an app's incoming connections while leaving its
+    /// outbound traffic alone. Fault-tolerant per layer.
+    /// </summary>
+    public List<ulong> BlockApplicationDirectional(string exePath, bool outbound)
+    {
+        EnsureReady();
+        if (string.IsNullOrWhiteSpace(exePath))
+            throw new ArgumentException("Executable path is required.", nameof(exePath));
+
+        var layers = outbound
+            ? new[] { FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWPM_LAYER_ALE_AUTH_CONNECT_V6,
+                      FWPM_LAYER_OUTBOUND_TRANSPORT_V4, FWPM_LAYER_OUTBOUND_TRANSPORT_V6 }
+            : new[] { FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6,
+                      FWPM_LAYER_INBOUND_TRANSPORT_V4, FWPM_LAYER_INBOUND_TRANSPORT_V6 };
+
+        IntPtr appIdPtr = GetAppId(exePath, out FWP_BYTE_BLOB blob);
+        try
+        {
+            var ids = new List<ulong>(4);
+            string dir = outbound ? "outbound" : "inbound";
+            foreach (var layer in layers)
+            {
+                try
+                {
+                    ids.Add(AddAppFilter(layer, blob, AppBlockWeight, FWP_ACTION_BLOCK,
+                        $"Block {dir} {Path.GetFileName(exePath)}"));
+                }
+                catch (WfpException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"directional filter skipped: 0x{ex.Code:X8}");
+                }
+            }
+            return ids;
+        }
+        finally { FreeAppId(appIdPtr); }
+    }
+
     private List<ulong> AddAppFilters(string exePath, uint action, byte weight, string verb)
     {
         EnsureReady();
@@ -624,7 +664,7 @@ public sealed class WfpEngine : IDisposable
     /// applied" by the caller when the returned list is empty.
     /// </summary>
     public List<ulong> AddCustomRule(
-        bool block, bool outbound, string protocol, string remoteAddress, int remotePort)
+        bool block, bool outbound, string protocol, string remoteAddress, int remotePort, int localPort = 0)
     {
         var ids = new List<ulong>(2);
         try
@@ -650,7 +690,7 @@ public sealed class WfpEngine : IDisposable
             foreach (var layer in layers)
             {
                 try { ids.Add(BuildConditionedFilter(layer, weight, action,
-                    protocol, remoteAddress, remotePort, "GunWall Custom Rule")); }
+                    protocol, remoteAddress, remotePort, "GunWall Custom Rule", localPort)); }
                 catch (WfpException ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"custom rule layer skipped: 0x{ex.Code:X8}");
@@ -666,7 +706,7 @@ public sealed class WfpEngine : IDisposable
 
     private ulong BuildConditionedFilter(
         Guid layer, byte weight, uint action,
-        string protocol, string remoteAddress, int remotePort, string name)
+        string protocol, string remoteAddress, int remotePort, string name, int localPort = 0)
     {
         // Assemble the conditions we actually need.
         var conds = new List<FWPM_FILTER_CONDITION0>(3);
@@ -695,6 +735,17 @@ public sealed class WfpEngine : IDisposable
                     fieldKey = FWPM_CONDITION_IP_REMOTE_PORT,
                     matchType = FWP_MATCH_EQUAL,
                     conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_UINT16, value = (ushort)remotePort }
+                });
+            }
+
+            // Local port condition (UINT16) — matches the port on THIS machine.
+            if (localPort > 0)
+            {
+                conds.Add(new FWPM_FILTER_CONDITION0
+                {
+                    fieldKey = FWPM_CONDITION_IP_LOCAL_PORT,
+                    matchType = FWP_MATCH_EQUAL,
+                    conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_UINT16, value = (ushort)localPort }
                 });
             }
 

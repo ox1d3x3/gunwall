@@ -272,6 +272,9 @@
                                 <Separator />
                                 <MenuItem Header="Scan with VirusTotal" Click="ScanVt_Click" />
                                 <Separator />
+                                <MenuItem Header="Block outbound only" Click="BlockDirection_Click" Tag="out" />
+                                <MenuItem Header="Block inbound only" Click="BlockDirection_Click" Tag="in" />
+                                <Separator />
                                 <MenuItem Header="Block for 15 minutes" Click="BlockTemp_Click" Tag="15" />
                                 <MenuItem Header="Block for 1 hour" Click="BlockTemp_Click" Tag="60" />
                                 <MenuItem Header="Copy path" Click="CopyPath_Click" />
@@ -456,6 +459,11 @@
                                 <TextBlock Text="Port" Style="{StaticResource Muted}" Margin="2,0,0,3" />
                                 <TextBox x:Name="RulePort" Width="70" Height="32"
                                          VerticalContentAlignment="Center" ToolTip="Remote port (blank = any)" />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Local port" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <TextBox x:Name="RuleLocalPort" Width="74" Height="32"
+                                         VerticalContentAlignment="Center" ToolTip="Local port on this PC (blank = any)" />
                             </StackPanel>
                             <Button Content="Add rule" Style="{StaticResource PrimaryButton}"
                                     Click="AddRule_Click" Padding="16,9" VerticalAlignment="Bottom" />

@@ -131,6 +131,7 @@ public partial class MainWindow : Window
         {
             _firewall.Initialize();
             _engineReady = true;
+            _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
             EngineStatus.Text = "Engine: active";
             SyncLockdownButton();
             _suppressModeEvent = true;
@@ -152,7 +153,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.17.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.18.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -354,6 +355,13 @@ public partial class MainWindow : Window
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
+            int localPort = 0;
+            if (!string.IsNullOrWhiteSpace(RuleLocalPort.Text) && !int.TryParse(RuleLocalPort.Text.Trim(), out localPort))
+            {
+                MessageBox.Show("Local port must be a number (or blank for any).", "GunWall",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
             if (!string.IsNullOrEmpty(addr) &&
                 !System.Net.IPAddress.TryParse(addr, out _))
             {
@@ -369,6 +377,7 @@ public partial class MainWindow : Window
                 Protocol = protocol,
                 RemoteAddress = addr,
                 RemotePort = port,
+                LocalPort = localPort,
                 Enabled = true
             };
             _firewall.AddCustomRule(rule);
@@ -382,6 +391,7 @@ public partial class MainWindow : Window
 
             RuleAddress.Clear();
             RulePort.Clear();
+            RuleLocalPort.Clear();
         }
         catch (Exception ex) { ShowError(ex); }
     }
@@ -972,6 +982,22 @@ public partial class MainWindow : Window
     }
 
     // ================================================================ temporary rules
+    private void BlockDirection_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        if (sender is not FrameworkElement fe || fe.Tag is not string dir) return;
+        try
+        {
+            bool outbound = dir == "out";
+            _firewall.BlockAppDirection(app.ExecutablePath, app.Name, outbound);
+            RebuildAppsList();
+            MessageBox.Show($"{app.Name} is now blocked for {(outbound ? "outbound" : "inbound")} " +
+                "connections only.", "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
     private void BlockTemp_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireEngine()) return;
@@ -989,6 +1015,9 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { ShowError(ex); }
     }
+
+    // ================================================================ services
+    private void LoadServices()
     {
         try
         {

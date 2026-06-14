@@ -115,6 +115,32 @@ public sealed class FirewallManager : IDisposable
         _store.Save(_data);
     }
 
+    /// <summary>
+    /// Blocks an app in one direction only (outbound or inbound), leaving the
+    /// other direction untouched. Recorded as a normal blocked rule so it shows
+    /// in the Apps list and persists.
+    /// </summary>
+    public void BlockAppDirection(string exePath, string displayName, bool outbound)
+    {
+        RemoveAllowRule(exePath);
+        // Remove any existing full block first so directions don't stack oddly.
+        var existing = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        if (existing != null) { try { _engine.RemoveFilters(existing.FilterIds); } catch { } _data.Rules.Remove(existing); }
+
+        var ids = _engine.BlockApplicationDirectional(exePath, outbound);
+        _data.Rules.Add(new FirewallRule
+        {
+            ExecutablePath = exePath,
+            DisplayName = displayName + (outbound ? " (outbound blocked)" : " (inbound blocked)"),
+            Status = AppStatus.Blocked,
+            FilterIds = ids,
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
+        });
+        EventLog($"Blocked {(outbound ? "outbound" : "inbound")}: {displayName}");
+        _store.Save(_data);
+    }
+
     /// <summary>Removes the block for an application and persists. Idempotent.</summary>
     public void UnblockApp(string exePath)
     {
@@ -297,7 +323,7 @@ public sealed class FirewallManager : IDisposable
         if (rule.Enabled)
         {
             rule.FilterIds = _engine.AddCustomRule(
-                rule.Block, rule.Outbound, rule.Protocol, rule.RemoteAddress, rule.RemotePort);
+                rule.Block, rule.Outbound, rule.Protocol, rule.RemoteAddress, rule.RemotePort, rule.LocalPort);
             rule.Applied = rule.FilterIds.Count > 0;
         }
         _data.CustomRules.Add(rule);
@@ -405,7 +431,19 @@ public sealed class FirewallManager : IDisposable
         EventLog($"Temporary block for {duration.TotalMinutes:0} min: {displayName}");
 
         string key = exePath.ToLowerInvariant();
+        DateTime expiryUtc = DateTime.UtcNow.Add(duration);
+        _data.TempBlocks[key] = expiryUtc;   // persist so it survives a restart
+        _store.Save(_data);
+
+        ArmTempTimer(key, exePath, displayName, duration);
+        return DateTime.Now.Add(duration);
+    }
+
+    private void ArmTempTimer(string key, string exePath, string displayName, TimeSpan duration)
+    {
         if (_tempTimers.TryGetValue(key, out var existing)) { existing.Dispose(); _tempTimers.Remove(key); }
+        // Cap the timer to a sane max; if duration is negative it fires immediately.
+        if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
 
         var timer = new System.Threading.Timer(_ =>
         {
@@ -413,12 +451,44 @@ public sealed class FirewallManager : IDisposable
             catch { }
             finally
             {
+                _data.TempBlocks.Remove(key);
+                try { _store.Save(_data); } catch { }
                 if (_tempTimers.TryGetValue(key, out var t)) { t.Dispose(); _tempTimers.Remove(key); }
             }
         }, null, duration, System.Threading.Timeout.InfiniteTimeSpan);
-
         _tempTimers[key] = timer;
-        return DateTime.Now.Add(duration);
+    }
+
+    /// <summary>
+    /// On startup, reconcile persisted temporary blocks: any that have already
+    /// expired are unblocked now; the rest get their timers re-armed for the
+    /// remaining time. This makes timed rules survive a restart.
+    /// </summary>
+    public void ReconcileTempBlocks()
+    {
+        if (_data.TempBlocks.Count == 0) return;
+        var now = DateTime.UtcNow;
+        foreach (var kv in new Dictionary<string, DateTime>(_data.TempBlocks))
+        {
+            string key = kv.Key;
+            DateTime expiry = kv.Value;
+            // Find the matching rule's display name/path if we still have it.
+            var rule = _data.Rules.FirstOrDefault(r =>
+                r.ExecutablePath.Equals(key, StringComparison.OrdinalIgnoreCase));
+            string path = rule?.ExecutablePath ?? key;
+            string name = rule?.DisplayName ?? System.IO.Path.GetFileName(key);
+
+            if (expiry <= now)
+            {
+                try { UnblockApp(path); } catch { }
+                _data.TempBlocks.Remove(key);
+            }
+            else
+            {
+                ArmTempTimer(key, path, name, expiry - now);
+            }
+        }
+        _store.Save(_data);
     }
 
     public void SetRunAtStartup(bool enabled)

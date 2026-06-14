@@ -99,6 +99,8 @@ internal static class WfpNative
         new("b9f4e088-cb98-4efb-a2c7-ad07332643db");
     internal static readonly Guid FWPM_CONDITION_IP_REMOTE_PORT =
         new("c35a604d-d22b-48b1-a8dc-1377b9824a35");
+    internal static readonly Guid FWPM_CONDITION_IP_LOCAL_PORT =
+        new("0c1ba1af-5765-453f-af22-a8f791ac775b");
 
     // Address-and-mask structures for FWPM_CONDITION_IP_REMOTE_ADDRESS.
     [StructLayout(LayoutKind.Sequential)]

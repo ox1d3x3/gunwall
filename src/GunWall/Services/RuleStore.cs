@@ -185,4 +185,7 @@ public sealed class StoreData
 
     /// <summary>Send firewall events to the Windows Event Log.</summary>
     public bool EventLogEnabled { get; set; }
+
+    /// <summary>Temporary blocks: exe path (lowercase) -> UTC expiry time.</summary>
+    public Dictionary<string, DateTime> TempBlocks { get; set; } = new();
 }
