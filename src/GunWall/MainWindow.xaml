@@ -7,7 +7,7 @@
     Height="760" Width="1180"
     MinHeight="640" MinWidth="1000"
     WindowStartupLocation="CenterScreen"
-    Background="{StaticResource BgPrimary}">
+    Background="{DynamicResource BgPrimary}">
 
     <Window.Resources>
         <conv:StatusToBrushConverter x:Key="StatusToBrush" />
@@ -15,9 +15,9 @@
         <conv:StatusToTextConverter x:Key="StatusToText" />
 
         <Style x:Key="SearchBox" TargetType="TextBox">
-            <Setter Property="Background" Value="{StaticResource BgSecondary}" />
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="Background" Value="{DynamicResource BgSecondary}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="10,7" />
             <Setter Property="FontSize" Value="13" />
@@ -35,8 +35,8 @@
         </Grid.RowDefinitions>
 
         <!-- ===================== Top header bar ===================== -->
-        <Border Grid.Row="0" Background="{StaticResource BgSecondary}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Background="{DynamicResource BgSecondary}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
             <Grid Margin="20,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -52,6 +52,9 @@
 
                 <!-- Primary actions on the right -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <ToggleButton x:Name="ThemeToggle" Style="{StaticResource ThemeSwitch}"
+                                  Click="ThemeToggle_Click" Margin="0,0,16,0"
+                                  ToolTip="Switch light / dark theme" />
                     <TextBlock x:Name="EngineStatus" Text="Engine: starting"
                                Style="{StaticResource Muted}" VerticalAlignment="Center"
                                Margin="0,0,16,0" />
@@ -66,8 +69,8 @@
         </Border>
 
         <!-- ===================== Top tab strip ===================== -->
-        <Border Grid.Row="1" Background="{StaticResource BgSecondary}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="1" Background="{DynamicResource BgSecondary}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                 <StackPanel Orientation="Horizontal" Margin="16,0">
                     <RadioButton x:Name="NavDashboard" Content="Dashboard"
@@ -194,7 +197,7 @@
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="Firewall" Style="{StaticResource H1}" VerticalAlignment="Center" />
                         <CheckBox x:Name="ShowAllAppsCheck" Content="Show all running apps"
-                                  Foreground="{StaticResource TextSecondary}"
+                                  Foreground="{DynamicResource TextSecondary}"
                                   VerticalAlignment="Center" Margin="24,4,0,0"
                                   Checked="ShowAllApps_Changed" Unchecked="ShowAllApps_Changed" />
                     </StackPanel>
@@ -428,8 +431,8 @@
                                    Style="{StaticResource Muted}" Margin="0,2,0,8" TextWrapping="Wrap" />
                         <TextBox x:Name="BlocklistInput" Height="70" AcceptsReturn="True"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                                 Background="{StaticResource BgElevated}" Foreground="{StaticResource TextPrimary}"
-                                 BorderBrush="{StaticResource BorderBrush}" Padding="8" Margin="0,0,0,8" />
+                                 Background="{DynamicResource BgElevated}" Foreground="{DynamicResource TextPrimary}"
+                                 BorderBrush="{DynamicResource BorderBrush}" Padding="8" Margin="0,0,0,8" />
                         <StackPanel Orientation="Horizontal">
                             <Button Content="Add to blocklist" Style="{StaticResource PrimaryButton}"
                                     Click="AddBlocklist_Click" Margin="0,0,8,0" />
@@ -501,11 +504,11 @@
                                        Text="Alert mode allows new apps and notifies you. Strict mode takes full control: everything is blocked except apps you explicitly allow. Core Windows networking (svchost, DNS) and loopback are auto-allowed so your connection keeps working." />
                             <RadioButton x:Name="AlertModeRadio" Content="Alert mode (recommended)"
                                          GroupName="FwMode" IsChecked="True"
-                                         Foreground="{StaticResource TextPrimary}"
+                                         Foreground="{DynamicResource TextPrimary}"
                                          Checked="Mode_Changed" Margin="0,0,0,6" />
                             <RadioButton x:Name="StrictModeRadio" Content="Strict mode - block everything except allowed apps"
                                          GroupName="FwMode"
-                                         Foreground="{StaticResource TextPrimary}"
+                                         Foreground="{DynamicResource TextPrimary}"
                                          Checked="Mode_Changed" />
                         </StackPanel>
                     </Border>
@@ -516,7 +519,7 @@
                             <TextBlock Text="Show a popup the first time a new app connects to the network, with one-click Allow / Block."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <CheckBox x:Name="AlertsCheck" Content="Alert on new apps"
-                                      Foreground="{StaticResource TextPrimary}"
+                                      Foreground="{DynamicResource TextPrimary}"
                                       Checked="AlertsCheck_Changed" Unchecked="AlertsCheck_Changed" />
                         </StackPanel>
                     </Border>
@@ -527,20 +530,20 @@
                             <TextBlock Text="General behaviour. Staged - press Apply to save."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" />
                             <CheckBox x:Name="StartMinimizedCheck" Content="Start minimized to tray"
-                                      Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="RunAtStartupCheck" Content="Run GunWall when Windows starts"
-                                      Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="AlwaysOnTopCheck" Content="Keep window always on top"
-                                      Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="HashesCheck" Content="Compute SHA-256 hash of apps (tamper detection)"
-                                      Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="ExperimentalEventsCheck"
                                       Content="Experimental: kernel event detection (catches more apps, may be unstable)"
-                                      Foreground="{StaticResource TextPrimary}"
+                                      Foreground="{DynamicResource TextPrimary}"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <TextBlock Text="If GunWall becomes unstable after enabling this, turn it off and restart. Restart required to take effect."
                                        Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" />

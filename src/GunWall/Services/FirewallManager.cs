@@ -350,6 +350,8 @@ public sealed class FirewallManager : IDisposable
 
     // ------------------------------------------------ startup
     public bool RunAtStartup => _data.RunAtStartup;
+    public bool ThemeDark => _data.ThemeDark;
+    public void SetThemeDark(bool v) { _data.ThemeDark = v; _store.Save(_data); }
 
     public void SetRunAtStartup(bool enabled)
     {

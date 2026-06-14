@@ -7,10 +7,10 @@
     WindowStyle="None" ResizeMode="NoResize"
     ShowInTaskbar="False" Topmost="True"
     WindowStartupLocation="Manual"
-    Background="{StaticResource BgPrimary}"
+    Background="{DynamicResource BgPrimary}"
     MouseLeftButtonDown="Window_MouseLeftButtonDown">
 
-    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -20,7 +20,7 @@
             </Grid.RowDefinitions>
 
             <!-- Title row -->
-            <Grid Grid.Row="0" Background="{StaticResource BgSecondary}">
+            <Grid Grid.Row="0" Background="{DynamicResource BgSecondary}">
                 <TextBlock Text="Network alert - GunWall" Style="{StaticResource Muted}"
                            Margin="12,8" />
                 <Button Content="X" Width="34" Height="26" HorizontalAlignment="Right"
@@ -70,7 +70,7 @@
                 <TextBlock Grid.Row="5" Grid.Column="0" Text="Path:" Style="{StaticResource Muted}" />
                 <TextBlock Grid.Row="5" Grid.Column="1" x:Name="PathText" HorizontalAlignment="Right"
                            TextTrimming="CharacterEllipsis" FontSize="11"
-                           Foreground="{StaticResource TextSecondary}" />
+                           Foreground="{DynamicResource TextSecondary}" />
 
                 <TextBlock Grid.Row="6" Grid.Column="0" Text="Date:" Style="{StaticResource Muted}" />
                 <TextBlock Grid.Row="6" Grid.Column="1" x:Name="DateText" HorizontalAlignment="Right" />

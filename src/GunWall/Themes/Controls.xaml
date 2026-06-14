@@ -3,28 +3,19 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ============================ Palette ============================ -->
-    <!-- Blue-tinted dark surfaces with clear elevation layers and a bright
-         cyan primary accent, balanced by a violet secondary. Designed for
-         depth and contrast rather than a flat single-gray look. -->
-    <Color x:Key="BgPrimaryColor">#0E1117</Color>
-    <Color x:Key="BgSecondaryColor">#141925</Color>
-    <Color x:Key="BgCardColor">#1A2130</Color>
-    <Color x:Key="BgElevatedColor">#232C3D</Color>
-    <Color x:Key="BorderColor">#2A3446</Color>
+    <!-- Theme-VARYING surfaces/text (BgPrimary, BgSecondary, BgCard,
+         BgElevated, BorderBrush, TextPrimary, TextSecondary) live in the
+         swappable Theme.Dark.xaml / Theme.Light.xaml dictionaries and are
+         referenced with DynamicResource so they update live on theme switch.
+         The accent, status, and gradient brushes below are theme-INVARIANT —
+         the same cyan/violet identity works on both black and white. -->
     <Color x:Key="AccentColor">#3DA9FC</Color>
     <Color x:Key="Accent2Color">#7C5CFF</Color>
 
-    <SolidColorBrush x:Key="BgPrimary" Color="{StaticResource BgPrimaryColor}" />
-    <SolidColorBrush x:Key="BgSecondary" Color="{StaticResource BgSecondaryColor}" />
-    <SolidColorBrush x:Key="BgCard" Color="{StaticResource BgCardColor}" />
-    <SolidColorBrush x:Key="BgElevated" Color="{StaticResource BgElevatedColor}" />
-    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
     <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="Accent2" Color="{StaticResource Accent2Color}" />
-    <SolidColorBrush x:Key="TextPrimary" Color="#EAF0FA" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#8E9BB3" />
-    <SolidColorBrush x:Key="AllowBrush" Color="#3DD68C" />
-    <SolidColorBrush x:Key="BlockBrush" Color="#FF6B6B" />
+    <SolidColorBrush x:Key="AllowBrush" Color="#2BC97E" />
+    <SolidColorBrush x:Key="BlockBrush" Color="#FF5A5A" />
     <SolidColorBrush x:Key="InboundBrush" Color="#3DA9FC" />
     <SolidColorBrush x:Key="OutboundBrush" Color="#7C5CFF" />
 
@@ -36,35 +27,35 @@
 
     <!-- ======================= Base TextBlock ======================= -->
     <Style TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
     </Style>
 
     <Style x:Key="H1" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
         <Setter Property="FontSize" Value="22" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="H2" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
         <Setter Property="FontSize" Value="16" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="Muted" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         <Setter Property="FontSize" Value="12" />
     </Style>
 
     <!-- ========================= Card border ========================= -->
     <Style x:Key="Card" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource BgCard}" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Background" Value="{DynamicResource BgCard}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="12" />
         <Setter Property="Padding" Value="18" />
@@ -78,7 +69,7 @@
 
     <!-- ===================== Navigation button ===================== -->
     <Style x:Key="NavButton" TargetType="RadioButton">
-        <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="Margin" Value="8,2" />
         <Setter Property="Padding" Value="14,10" />
@@ -101,12 +92,75 @@
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource BgCard}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgCard}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource BgCard}" />
-                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgCard}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
                             <Setter TargetName="bar" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Animated theme switch ===================== -->
+    <!-- A pill toggle with a thumb that slides between the two ends, animated.
+         Checked = light theme, Unchecked = dark theme. Sun/moon glyphs sit on
+         each end so the meaning is clear in both states. -->
+    <Style x:Key="ThemeSwitch" TargetType="ToggleButton">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Width" Value="58" />
+        <Setter Property="Height" Value="30" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="track" CornerRadius="15"
+                            Background="{DynamicResource BgElevated}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <Grid>
+                            <TextBlock Text="&#x263E;" FontSize="13" Foreground="{DynamicResource TextSecondary}"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center" Margin="9,0,0,0" />
+                            <TextBlock Text="&#x2600;" FontSize="13" Foreground="{DynamicResource TextSecondary}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0" />
+                            <Border x:Name="thumb" Width="24" Height="24" CornerRadius="12"
+                                    Background="{StaticResource AccentGradient}"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center" Margin="3,0,0,0">
+                                <Border.RenderTransform>
+                                    <TranslateTransform x:Name="thumbShift" X="0" />
+                                </Border.RenderTransform>
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="thumbShift"
+                                                         Storyboard.TargetProperty="X"
+                                                         To="28" Duration="0:0:0.18">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseInOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="thumbShift"
+                                                         Storyboard.TargetProperty="X"
+                                                         To="0" Duration="0:0:0.18">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseInOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -116,10 +170,10 @@
 
     <!-- ======================= Top tab button ======================= -->
     <Style x:Key="TabButton" TargetType="RadioButton">
-        <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
-        <Setter Property="FontSize" Value="13.5" />
-        <Setter Property="Margin" Value="2,0" />
-        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Margin" Value="1,0" />
+        <Setter Property="Padding" Value="10,7" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
@@ -140,10 +194,10 @@
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource BgCard}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgCard}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                             <Setter TargetName="bar" Property="Visibility" Value="Visible" />
                         </Trigger>
@@ -186,9 +240,9 @@
 
     <!-- ======================= Action button ======================= -->
     <Style x:Key="ActionButton" TargetType="Button">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-        <Setter Property="Background" Value="{StaticResource BgCard}" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Background" Value="{DynamicResource BgCard}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="14,8" />
         <Setter Property="FontSize" Value="13" />
@@ -206,7 +260,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource BgSecondary}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgSecondary}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="bd" Property="Opacity" Value="0.8" />
@@ -221,24 +275,24 @@
     <Style TargetType="ListView">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
     </Style>
 
     <Style TargetType="GridViewColumnHeader">
-        <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Padding" Value="10,8" />
         <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
     </Style>
 
     <!-- Premium list rows: rounded, hover highlight, accent selection bar. -->
     <Style TargetType="ListViewItem">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="Padding" Value="6,7" />
         <Setter Property="Margin" Value="0,1" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -252,10 +306,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource BgElevated}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource BgElevated}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

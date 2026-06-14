@@ -173,4 +173,7 @@ public sealed class StoreData
 
     /// <summary>Run GunWall when Windows starts.</summary>
     public bool RunAtStartup { get; set; }
+
+    /// <summary>UI theme: true = dark, false = light.</summary>
+    public bool ThemeDark { get; set; } = true;
 }

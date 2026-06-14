@@ -116,7 +116,11 @@ public partial class MainWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        TryEnableDarkTitleBar();
+        // Apply the saved theme first so the whole window paints correctly.
+        bool dark = _firewall.ThemeDark;
+        if (ThemeToggle != null) ThemeToggle.IsChecked = !dark; // checked = light
+        ApplyTheme(dark);
+
         SetupTray();
 
         try
@@ -140,7 +144,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.13.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.14.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1199,6 +1203,39 @@ public partial class MainWindow : Window
         });
     }
 
+    // ================================================================ theme
+    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        // Checked = light, unchecked = dark.
+        bool dark = !(ThemeToggle.IsChecked == true);
+        ApplyTheme(dark);
+        _firewall.SetThemeDark(dark);
+    }
+
+    private void ApplyTheme(bool dark)
+    {
+        try
+        {
+            var dicts = Application.Current.Resources.MergedDictionaries;
+            // The palette is always the first merged dictionary (see App.xaml).
+            var palette = new ResourceDictionary
+            {
+                Source = new Uri(dark
+                    ? "Themes/Theme.Dark.xaml"
+                    : "Themes/Theme.Light.xaml", UriKind.Relative)
+            };
+            if (dicts.Count > 0) dicts[0] = palette;
+            else dicts.Insert(0, palette);
+
+            // Match the OS title bar to the theme.
+            TrySetTitleBarTheme(dark);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"ApplyTheme failed: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Genuine exit path. If the firewall is still engaged, the persistent WFP
     /// filters will keep blocking traffic after GunWall closes — and the user
@@ -1259,19 +1296,21 @@ public partial class MainWindow : Window
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int val, int size);
 
-    private void TryEnableDarkTitleBar()
+    private void TryEnableDarkTitleBar() => TrySetTitleBarTheme(true);
+
+    private void TrySetTitleBarTheme(bool dark)
     {
         try
         {
             var helper = new WindowInteropHelper(this);
             helper.EnsureHandle();
-            int useDark = 1;
+            int useDark = dark ? 1 : 0;
             const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
             DwmSetWindowAttribute(helper.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDark, sizeof(int));
         }
         catch
         {
-            Debug.WriteLine("Dark title bar not supported on this build.");
+            Debug.WriteLine("Title bar theme not supported on this build.");
         }
     }
 }
