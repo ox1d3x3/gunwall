@@ -142,6 +142,13 @@ public partial class MainWindow : Window
             if (NotifSoundCheck != null) NotifSoundCheck.IsChecked = _firewall.NotificationSound;
             if (TrayNotifCheck != null) TrayNotifCheck.IsChecked = _firewall.TrayNotifications;
             if (PacketLogFileCheck != null) PacketLogFileCheck.IsChecked = _firewall.PacketFileLogging;
+            if (PopupTimeoutCombo != null)
+                PopupTimeoutCombo.SelectedIndex = _firewall.PopupTimeoutSeconds switch
+                {
+                    15 => 0, 30 => 1, 60 => 2, 0 => 3, _ => 1
+                };
+            if (PopupDefaultCombo != null)
+                PopupDefaultCombo.SelectedIndex = _firewall.PopupDefaultAllow ? 0 : 1;
             if (VtKeyStatus != null)
                 VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
                     ? "No key set." : "A key is saved.";
@@ -156,7 +163,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.20.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.21.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -693,7 +700,9 @@ public partial class MainWindow : Window
                 _firewall.AllowApp(info.ExePath, info.ProcessName); // permits in strict mode
                 RebuildAppsList();
             },
-            strictMode: _firewall.StrictMode);
+            strictMode: _firewall.StrictMode,
+            timeoutSeconds: _firewall.PopupTimeoutSeconds,
+            defaultAllow: _firewall.PopupDefaultAllow);
         win.Owner = this;
         win.Closed += (_, _) => { _alertOpen = false; ShowNextAlert(); };
         win.Show();
@@ -1052,6 +1061,21 @@ public partial class MainWindow : Window
     }
 
     // ================================================================ dashboard / snooze / updates
+    /// <summary>Dashboard stat cards are clickable: jump to the relevant tab.</summary>
+    private void Stat_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not string target) return;
+        RadioButton? nav = target switch
+        {
+            "Firewall" => NavFirewall,
+            "Rules" => NavRules,
+            "System" => NavSystem,
+            "Connections" => NavConnections,
+            _ => null
+        };
+        if (nav != null) nav.IsChecked = true; // fires Nav_Checked -> switches panel
+    }
+
     private void RefreshDashboardStats()
     {
         if (StatApps == null) return;
@@ -1657,6 +1681,11 @@ public partial class MainWindow : Window
         _firewall.SetNotificationSound(NotifSoundCheck?.IsChecked == true);
         _firewall.SetTrayNotifications(TrayNotifCheck?.IsChecked == true);
         _firewall.SetPacketFileLogging(PacketLogFileCheck?.IsChecked == true);
+        if (PopupTimeoutCombo?.SelectedItem is ComboBoxItem pti &&
+            int.TryParse(pti.Tag?.ToString(), out int secs))
+            _firewall.SetPopupTimeoutSeconds(secs);
+        if (PopupDefaultCombo?.SelectedItem is ComboBoxItem pdi)
+            _firewall.SetPopupDefaultAllow((pdi.Tag?.ToString() ?? "allow") == "allow");
         _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
         _firewall.SetExperimentalEvents(ExperimentalEventsCheck?.IsChecked == true);
         Topmost = _firewall.AlwaysOnTop;

@@ -197,4 +197,10 @@ public sealed class StoreData
 
     /// <summary>Show a tray balloon when a new app is detected.</summary>
     public bool TrayNotifications { get; set; }
+
+    /// <summary>Seconds before a popup auto-decides; 0 = never (stays open).</summary>
+    public int PopupTimeoutSeconds { get; set; } = 20;
+
+    /// <summary>On popup timeout: true = allow, false = block.</summary>
+    public bool PopupDefaultAllow { get; set; } = true;
 }

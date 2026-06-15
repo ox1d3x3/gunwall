@@ -40,7 +40,7 @@ The biggest visible jump toward parity with zero kernel risk.
 
 Real firewall-grade protection. Each follows filter patterns already proven in GunWall.
 
-1. **Stealth mode.** Silent drops + discard-layer filters to defeat port scanning and make the machine invisible to unsolicited inbound traffic.
+1. **Stealth mode.** ✅ SHIPPED (v0.21) — Silent drops + discard-layer filters to defeat port scanning and make the machine invisible to unsolicited inbound traffic.
    *Improvement:* a clear on/off with an explainer of what it hides.
 2. **Boot-time filters.** Protection active during boot, before the app starts (BOOTTIME-flagged filters on the sublayer).
    *Improvement:* a dashboard indicator showing boot protection is armed.

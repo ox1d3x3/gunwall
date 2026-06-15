@@ -31,16 +31,22 @@ public partial class AlertWindow : Window
     private readonly Action _onBlock;
     private readonly Action? _onAllow;
     private readonly bool _strictMode;
+    private readonly int _timeoutSeconds;   // 0 = never auto-decide
+    private readonly bool _defaultAllow;     // what happens on timeout
     private System.Windows.Threading.DispatcherTimer? _countdown;
-    private int _secondsLeft = 20;
+    private int _secondsLeft;
 
-    public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null, bool strictMode = false)
+    public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null, bool strictMode = false,
+                       int timeoutSeconds = 20, bool defaultAllow = true)
     {
         InitializeComponent();
         _info = info;
         _onBlock = onBlock;
         _onAllow = onAllow;
         _strictMode = strictMode;
+        _timeoutSeconds = timeoutSeconds;
+        _defaultAllow = defaultAllow;
+        _secondsLeft = timeoutSeconds;
 
         NameText.Text = info.ProcessName;
         AddressText.Text = string.IsNullOrEmpty(info.RemoteAddress)
@@ -119,12 +125,16 @@ public partial class AlertWindow : Window
 
     private void StartCountdown()
     {
-        // The grace timer's default action depends on mode:
-        //  - Strict (Zero Trust): timeout = stay BLOCKED (just dismiss). The
-        //    app is denied by default, so doing nothing keeps it denied.
-        //  - Monitoring: timeout = keep ALLOWED (dismiss; allowed by default).
-        // Either way the popup never traps the user indefinitely, and the safe
-        // default for the active mode is what happens on timeout.
+        // "Never" (0): no auto-decision — the popup stays until the user chooses.
+        if (_timeoutSeconds <= 0)
+        {
+            if (CountdownHint != null)
+                CountdownHint.Text = "Waiting for your choice";
+            return;
+        }
+
+        // Otherwise count down and, on expiry, apply the user's chosen default
+        // action (Allow or Block).
         _countdown = new System.Windows.Threading.DispatcherTimer
         {
             Interval = TimeSpan.FromSeconds(1)
@@ -132,16 +142,14 @@ public partial class AlertWindow : Window
         _countdown.Tick += (_, _) =>
         {
             _secondsLeft--;
-            string label = _strictMode ? $"Dismiss ({_secondsLeft}s)" : $"Allow ({_secondsLeft}s)";
-            if (_strictMode && CountdownHint != null)
-                CountdownHint.Text = $"Stays blocked in {_secondsLeft}s if no choice";
-            else if (AllowButton != null)
-                AllowButton.Content = BuildAllowContent(label);
+            string verb = _defaultAllow ? "Allow" : "Block";
+            if (CountdownHint != null)
+                CountdownHint.Text = $"{verb}s automatically in {_secondsLeft}s";
             if (_secondsLeft <= 0)
             {
                 _countdown?.Stop();
-                if (_strictMode) { Close(); }       // stay blocked
-                else { Allow_Click(this, new RoutedEventArgs()); }
+                if (_defaultAllow) Allow_Click(this, new RoutedEventArgs());
+                else Block_Click(this, new RoutedEventArgs());
             }
         };
         _countdown.Start();

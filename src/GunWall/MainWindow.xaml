@@ -183,29 +183,41 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                                <StackPanel Margin="0,0,28,8">
+                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                                            Tag="Firewall" MouseLeftButtonUp="Stat_Click"
+                                            ToolTip="Open the Apps list">
                                     <TextBlock x:Name="StatApps" Text="0" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="Apps seen" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,28,8">
+                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                                            Tag="Firewall" MouseLeftButtonUp="Stat_Click"
+                                            ToolTip="Open the Apps list">
                                     <TextBlock x:Name="StatBlocked" Text="0" FontSize="20" FontWeight="SemiBold"
                                                Foreground="{StaticResource BlockBrush}" />
                                     <TextBlock Text="Blocked" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,28,8">
+                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                                            Tag="Firewall" MouseLeftButtonUp="Stat_Click"
+                                            ToolTip="Open the Apps list">
                                     <TextBlock x:Name="StatAllowed" Text="0" FontSize="20" FontWeight="SemiBold"
                                                Foreground="{StaticResource AllowBrush}" />
                                     <TextBlock Text="Allowed" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,28,8">
+                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                                            Tag="Rules" MouseLeftButtonUp="Stat_Click"
+                                            ToolTip="Open Custom Rules">
                                     <TextBlock x:Name="StatRules" Text="0" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="Custom rules" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,28,8">
+                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                                            Tag="System" MouseLeftButtonUp="Stat_Click"
+                                            ToolTip="Open System Rules">
                                     <TextBlock x:Name="StatSystem" Text="0" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="System rules" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,0,8">
+                                <StackPanel Margin="0,0,0,8" Background="Transparent" Cursor="Hand"
+                                            Tag="Rules" MouseLeftButtonUp="Stat_Click"
+                                            ToolTip="Open the IP blocklist">
                                     <TextBlock x:Name="StatBlocklist" Text="0" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="Blocklisted" Style="{StaticResource Muted}" />
                                 </StackPanel>
@@ -810,6 +822,24 @@
                             <CheckBox x:Name="TrayNotifCheck" Content="Show a tray notification when a new app is detected"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
+                                <TextBlock Text="Popup stays open for" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
+                                <ComboBox x:Name="PopupTimeoutCombo" Width="120" Height="30"
+                                          SelectionChanged="Pref_Changed">
+                                    <ComboBoxItem Content="15 seconds" Tag="15" />
+                                    <ComboBoxItem Content="30 seconds" Tag="30" />
+                                    <ComboBoxItem Content="60 seconds" Tag="60" />
+                                    <ComboBoxItem Content="Never (wait for me)" Tag="0" />
+                                </ComboBox>
+                                <TextBlock Text="then" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimary}" Margin="12,0,8,0" />
+                                <ComboBox x:Name="PopupDefaultCombo" Width="100" Height="30"
+                                          SelectionChanged="Pref_Changed">
+                                    <ComboBoxItem Content="Allow" Tag="allow" />
+                                    <ComboBoxItem Content="Block" Tag="block" />
+                                </ComboBox>
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                 <CheckBox x:Name="PacketLogFileCheck" Content="Log packets to a CSV file"
                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"

@@ -332,6 +332,16 @@ public sealed class WfpEngine : IDisposable
                     TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V6, AppBlockWeight, "Block IPv6"));
                     TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, AppBlockWeight, "Block IPv6"));
                     break;
+                case "stealth":
+                    // 1) Block all unsolicited inbound connections.
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, AppBlockWeight, "Stealth: block inbound"));
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, AppBlockWeight, "Stealth: block inbound"));
+                    // 2) Suppress outbound ICMP "destination unreachable" replies (non-loopback)
+                    //    so a port scan gets silence instead of a "closed" signal.
+                    uint loopbackFlags = FWP_CONDITION_FLAG_IS_LOOPBACK | FWP_CONDITION_FLAG_IS_APPCONTAINER_LOOPBACK;
+                    TryAdd(ids, () => AddIcmpErrorBlock(FWPM_LAYER_OUTBOUND_ICMP_ERROR_V4, loopbackFlags, "Stealth: ICMP v4"));
+                    TryAdd(ids, () => AddIcmpErrorBlock(FWPM_LAYER_OUTBOUND_ICMP_ERROR_V6, loopbackFlags, "Stealth: ICMP v6"));
+                    break;
                 case "block_smb":
                     AddPortBlock(ids, 445, tcp: true, "Block SMB 445");
                     break;
@@ -580,6 +590,50 @@ public sealed class WfpEngine : IDisposable
         {
             Marshal.FreeHGlobal(condPtr);
         }
+    }
+
+    /// <summary>
+    /// Stealth helper: blocks outbound ICMP "destination unreachable" (type 3)
+    /// for non-loopback traffic, so closed ports don't announce themselves to a
+    /// scanner. Two conditions: FLAGS none-of(loopback) + ICMP_TYPE == 3.
+    /// </summary>
+    private ulong AddIcmpErrorBlock(Guid layer, uint loopbackFlags, string name)
+    {
+        int condSize = Marshal.SizeOf<FWPM_FILTER_CONDITION0>();
+        IntPtr conds = Marshal.AllocHGlobal(condSize * 2);
+        try
+        {
+            var c0 = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_FLAGS,
+                matchType = FWP_MATCH_FLAGS_NONE_SET,
+                conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_UINT32, value = loopbackFlags }
+            };
+            var c1 = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_ICMP_TYPE,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_UINT16, value = 3 } // destination unreachable
+            };
+            Marshal.StructureToPtr(c0, conds, false);
+            Marshal.StructureToPtr(c1, conds + condSize, false);
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = FWPM_FILTER_FLAG_PERSISTENT,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
+                numFilterConditions = 2,
+                filterCondition = conds,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_BLOCK },
+                displayData = new FWPM_DISPLAY_DATA0 { name = "GunWall Stealth", description = name }
+            };
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally { Marshal.FreeHGlobal(conds); }
     }
 
     /// <summary>Permits an outbound/inbound IPv4 CIDR range at highest importance.</summary>

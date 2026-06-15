@@ -51,9 +51,11 @@ internal static class WfpNative
     // ----- FWP_MATCH_TYPE ---------------------------------------------------
     internal const uint FWP_MATCH_EQUAL = 0;
     internal const uint FWP_MATCH_FLAGS_ALL_SET = 6;
+    internal const uint FWP_MATCH_FLAGS_NONE_SET = 8;
 
     // ----- Condition flag bits ------------------------------------------------
     internal const uint FWP_CONDITION_FLAG_IS_LOOPBACK = 0x00000001;
+    internal const uint FWP_CONDITION_FLAG_IS_APPCONTAINER_LOOPBACK = 0x00000400;
 
     // ----- FWP_ACTION_TYPE --------------------------------------------------
     internal const uint FWP_ACTION_FLAG_TERMINATING = 0x00001000;
@@ -85,6 +87,12 @@ internal static class WfpNative
         new("5926dfc8-e3cf-4426-a283-dc393f5d0f9d");
     internal static readonly Guid FWPM_LAYER_INBOUND_TRANSPORT_V6 =
         new("634a869f-fc23-4b90-b0c1-bf620a36ae6f");
+    // Outbound ICMP error layers — used by stealth mode to suppress the
+    // "destination unreachable" replies that reveal closed ports to scanners.
+    internal static readonly Guid FWPM_LAYER_OUTBOUND_ICMP_ERROR_V4 =
+        new("41390100-564c-4b32-8ec8-bd9af1752f47");
+    internal static readonly Guid FWPM_LAYER_OUTBOUND_ICMP_ERROR_V6 =
+        new("7fb03b60-7b8d-4dfa-badd-980176fc4e12");
 
     // ----- Condition field GUIDs --------------------------------------------
     internal static readonly Guid FWPM_CONDITION_ALE_APP_ID =

@@ -441,6 +441,11 @@ public sealed class FirewallManager : IDisposable
     public bool TrayNotifications => _data.TrayNotifications;
     public void SetTrayNotifications(bool v) { _data.TrayNotifications = v; _store.Save(_data); }
 
+    public int PopupTimeoutSeconds => _data.PopupTimeoutSeconds;
+    public void SetPopupTimeoutSeconds(int v) { _data.PopupTimeoutSeconds = v < 0 ? 0 : v; _store.Save(_data); }
+    public bool PopupDefaultAllow => _data.PopupDefaultAllow;
+    public void SetPopupDefaultAllow(bool v) { _data.PopupDefaultAllow = v; _store.Save(_data); }
+
     /// <summary>Writes to the Windows Event Log if the user enabled it.</summary>
     public void EventLog(string message)
     {

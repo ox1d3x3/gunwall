@@ -43,6 +43,9 @@ public static class SystemRuleCatalog
         new("svc_pop3",  "POP3",  "Incoming mail, POP3 (ports 110, 995).", "allow", false, false, "out", "TCP", new[]{110,995}),
 
         // ----------------------------- Harden against risky traffic (blocks)
+        new("stealth", "Stealth mode",
+            "Makes this PC quieter to port scans: blocks unsolicited inbound connections and suppresses the ICMP 'unreachable' replies that reveal closed ports.",
+            "block", true, true, "both", "Any", System.Array.Empty<int>()),
         new("block_inbound", "Block all inbound connections",
             "Stops any device from initiating a connection to this PC. Outbound still works.",
             "block", true, true, "in", "Any", System.Array.Empty<int>()),
