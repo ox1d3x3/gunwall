@@ -203,4 +203,7 @@ public sealed class StoreData
 
     /// <summary>On popup timeout: true = allow, false = block.</summary>
     public bool PopupDefaultAllow { get; set; } = true;
+
+    /// <summary>Automatically save a timestamped backup of the profile on changes.</summary>
+    public bool AutoBackup { get; set; }
 }

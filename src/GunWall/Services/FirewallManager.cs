@@ -645,6 +645,79 @@ public sealed class FirewallManager : IDisposable
         return name.Trim();
     }
 
+    // ------------------------------------------------ auto-backup / versioned profiles
+    private const int MaxBackups = 15;
+
+    public bool AutoBackup => _data.AutoBackup;
+    public void SetAutoBackup(bool v) { _data.AutoBackup = v; _store.Save(_data); }
+
+    private string BackupsFolder
+    {
+        get
+        {
+            string dir = System.IO.Path.Combine(_store.ProfileFolder, "backups");
+            try { System.IO.Directory.CreateDirectory(dir); } catch { }
+            return dir;
+        }
+    }
+
+    /// <summary>Writes a timestamped backup of the current profile and prunes old ones.</summary>
+    public string CreateBackup()
+    {
+        string name = "backup_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string path = System.IO.Path.Combine(BackupsFolder, name + ".json");
+        _store.Export(_data, path);
+        PruneBackups();
+        return name;
+    }
+
+    /// <summary>Called after meaningful changes when auto-backup is on (best-effort).</summary>
+    public void AutoBackupIfEnabled()
+    {
+        if (!_data.AutoBackup) return;
+        try { CreateBackup(); } catch { }
+    }
+
+    /// <summary>Backups newest-first, as (name, timestamp) pairs.</summary>
+    public List<(string Name, DateTime When)> ListBackups()
+    {
+        var list = new List<(string, DateTime)>();
+        try
+        {
+            foreach (var f in System.IO.Directory.GetFiles(BackupsFolder, "backup_*.json"))
+            {
+                var fi = new System.IO.FileInfo(f);
+                list.Add((System.IO.Path.GetFileNameWithoutExtension(f), fi.LastWriteTime));
+            }
+        }
+        catch { }
+        list.Sort((a, b) => b.Item2.CompareTo(a.Item2)); // newest first
+        return list;
+    }
+
+    /// <summary>Restores a backup as the active configuration.</summary>
+    public int RestoreBackup(string name)
+    {
+        string path = System.IO.Path.Combine(BackupsFolder, SanitizeName(name) + ".json");
+        if (!System.IO.File.Exists(path))
+            throw new System.IO.FileNotFoundException("That backup no longer exists.");
+        return ImportProfile(path);
+    }
+
+    private void PruneBackups()
+    {
+        try
+        {
+            var files = new List<System.IO.FileInfo>();
+            foreach (var f in System.IO.Directory.GetFiles(BackupsFolder, "backup_*.json"))
+                files.Add(new System.IO.FileInfo(f));
+            files.Sort((a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
+            for (int i = MaxBackups; i < files.Count; i++)
+                try { files[i].Delete(); } catch { }
+        }
+        catch { }
+    }
+
     /// <summary>
     /// Replaces current rules/settings with those from a file. Note: this loads
     /// the records; the live WFP filters are reconciled on next strict-mode

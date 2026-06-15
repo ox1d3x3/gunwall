@@ -59,7 +59,7 @@ Coexist with and absorb the built-in Windows stack.
 2. **Import existing Windows Firewall rules.** Read current WF rules so users don't start from scratch.
 3. **App process categorization.** Detect system / pico / undeletable processes and protect critical system apps from accidental blocking.
 4. **Refresh filters on device connect** + advanced engine options (keep-unused-apps, single-click tray, similar-notification timeout).
-5. **Auto-backup + versioned profiles.** Automatic profile backups with restore points.
+5. **Auto-backup + versioned profiles.** ✅ SHIPPED (v0.22) — Automatic profile backups with restore points.
    *Improvement:* timestamped, browsable backup history.
 
 ## Phase D — v0.23 "UWP & Store Apps" *(risky — dedicated, fewer features, more iteration)*

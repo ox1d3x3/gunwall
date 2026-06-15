@@ -901,6 +901,25 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
+                            <TextBlock Text="Backups" Style="{StaticResource H2}" />
+                            <TextBlock Text="Versioned snapshots of your rules and settings. Restore points let you roll back if a change goes wrong. The newest 15 are kept."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <CheckBox x:Name="AutoBackupCheck" Content="Automatically back up on each launch"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,10"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <ComboBox x:Name="BackupsCombo" Width="240" Height="30" Margin="0,0,8,0" />
+                                <Button Content="Restore" Style="{StaticResource ActionButton}"
+                                        Click="RestoreBackup_Click" Margin="0,0,8,0" />
+                                <Button Content="Back up now" Style="{StaticResource ActionButton}"
+                                        Click="BackupNow_Click" />
+                            </StackPanel>
+                            <TextBlock x:Name="BackupStatus" Style="{StaticResource Muted}" Margin="0,4,0,0" Text="" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
                             <TextBlock Text="VirusTotal" Style="{StaticResource H2}" />
                             <TextBlock Text="Add your VirusTotal API key to scan apps by hash (right-click an app in the Apps tab). Only the file hash is sent, never the file."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />

@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Navigation;
@@ -132,6 +133,7 @@ public partial class MainWindow : Window
             _firewall.Initialize();
             _engineReady = true;
             _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
+            _firewall.AutoBackupIfEnabled(); // snapshot the profile on launch (if enabled)
             EngineStatus.Text = "Engine: active";
             SyncLockdownButton();
             _suppressModeEvent = true;
@@ -149,6 +151,7 @@ public partial class MainWindow : Window
                 };
             if (PopupDefaultCombo != null)
                 PopupDefaultCombo.SelectedIndex = _firewall.PopupDefaultAllow ? 0 : 1;
+            if (AutoBackupCheck != null) AutoBackupCheck.IsChecked = _firewall.AutoBackup;
             if (VtKeyStatus != null)
                 VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
                     ? "No key set." : "A key is saved.";
@@ -163,7 +166,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.21.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.22.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -992,7 +995,7 @@ public partial class MainWindow : Window
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
         if (tag == "System") BuildSystemRulesUi();
-        if (tag == "Settings") RefreshProfilesCombo();
+        if (tag == "Settings") { RefreshProfilesCombo(); RefreshBackupsCombo(); }
     }
 
     // ================================================================ actions
@@ -1453,6 +1456,53 @@ public partial class MainWindow : Window
         if (sel != null) ProfilesCombo.SelectedItem = sel;
     }
 
+    // ---------------------------------------------- versioned backups
+    private void RefreshBackupsCombo()
+    {
+        if (BackupsCombo == null) return;
+        BackupsCombo.Items.Clear();
+        foreach (var (name, when) in _firewall.ListBackups())
+            BackupsCombo.Items.Add(new ComboBoxItem
+            {
+                Content = when.ToString("ddd dd MMM yyyy, h:mm tt"),
+                Tag = name
+            });
+        if (BackupsCombo.Items.Count > 0) BackupsCombo.SelectedIndex = 0;
+    }
+
+    private void BackupNow_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _firewall.CreateBackup();
+            RefreshBackupsCombo();
+            if (BackupStatus != null) BackupStatus.Text = "Backup created.";
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void RestoreBackup_Click(object sender, RoutedEventArgs e)
+    {
+        if (BackupsCombo?.SelectedItem is not ComboBoxItem item || item.Tag is not string name)
+        {
+            if (BackupStatus != null) BackupStatus.Text = "Select a backup to restore.";
+            return;
+        }
+        var ask = MessageBox.Show(
+            "Restore this backup? It replaces your current rules and settings.\n\n" +
+            "Filters are re-applied when you next toggle strict mode.",
+            "Restore backup", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (ask != MessageBoxResult.OK) return;
+        try
+        {
+            int n = _firewall.RestoreBackup(name);
+            RebuildAppsList();
+            RefreshRulesList();
+            if (BackupStatus != null) BackupStatus.Text = $"Restored ({n} app rules).";
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
     private void SaveProfile_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -1686,6 +1736,7 @@ public partial class MainWindow : Window
             _firewall.SetPopupTimeoutSeconds(secs);
         if (PopupDefaultCombo?.SelectedItem is ComboBoxItem pdi)
             _firewall.SetPopupDefaultAllow((pdi.Tag?.ToString() ?? "allow") == "allow");
+        _firewall.SetAutoBackup(AutoBackupCheck?.IsChecked == true);
         _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
         _firewall.SetExperimentalEvents(ExperimentalEventsCheck?.IsChecked == true);
         Topmost = _firewall.AlwaysOnTop;
