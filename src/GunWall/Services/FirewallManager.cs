@@ -651,6 +651,60 @@ public sealed class FirewallManager : IDisposable
     public bool AutoBackup => _data.AutoBackup;
     public void SetAutoBackup(bool v) { _data.AutoBackup = v; _store.Save(_data); }
 
+    // ------------------------------------------------ curated blocklists (telemetry/update/ads)
+    public bool IsBlocklistOn(string key) =>
+        _data.Blocklists.TryGetValue(key, out var ids) && ids.Count > 0;
+
+    public int BlocklistFilterCount(string key) =>
+        _data.Blocklists.TryGetValue(key, out var ids) ? ids.Count : 0;
+
+    /// <summary>
+    /// Resolves a category's hostnames to current IPv4 addresses and blocks them
+    /// outbound (plus any literal CIDRs). Persistent filters, so they survive a
+    /// reboot. Runs DNS + filter creation, so call it off the UI thread. Returns
+    /// the number of distinct addresses blocked.
+    /// </summary>
+    public int EnableBlocklist(Models.BlocklistCategory cat)
+    {
+        if (IsBlocklistOn(cat.Key)) return BlocklistFilterCount(cat.Key);
+
+        var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var cidr in cat.Cidrs) targets.Add(cidr);
+        foreach (var host in cat.Hosts)
+        {
+            try
+            {
+                foreach (var addr in System.Net.Dns.GetHostAddresses(host))
+                    if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        targets.Add(addr.ToString());
+            }
+            catch { /* unresolvable host — skip it */ }
+        }
+
+        var ids = new List<ulong>();
+        foreach (var ip in targets)
+        {
+            try { ids.AddRange(_engine.AddCustomRule(true, true, "Any", ip, 0)); } // block outbound
+            catch { /* skip a bad entry, keep going */ }
+        }
+
+        _data.Blocklists[cat.Key] = ids;
+        _store.Save(_data);
+        EventLog($"Blocklist enabled: {cat.Name} ({targets.Count} addresses)");
+        return targets.Count;
+    }
+
+    public void DisableBlocklist(string key)
+    {
+        if (_data.Blocklists.TryGetValue(key, out var ids))
+        {
+            try { _engine.RemoveFilters(ids); } catch { }
+            _data.Blocklists.Remove(key);
+            _store.Save(_data);
+            EventLog($"Blocklist disabled: {key}");
+        }
+    }
+
     // ------------------------------------------------ Windows Firewall import
     /// <summary>
     /// Imports BLOCK rules from Windows Defender Firewall as GunWall blocks

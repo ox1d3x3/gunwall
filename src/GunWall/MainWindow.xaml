@@ -599,23 +599,35 @@
                 </Border>
 
                 <!-- Blocklist -->
-                <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,12,0,0">
-                    <StackPanel>
-                        <TextBlock Text="IP Blocklist" Style="{StaticResource H2}" />
-                        <TextBlock x:Name="BlocklistCount"
-                                   Text="Paste IPv4 addresses (one per line) to block them outright."
-                                   Style="{StaticResource Muted}" Margin="0,2,0,8" TextWrapping="Wrap" />
-                        <TextBox x:Name="BlocklistInput" Height="68" AcceptsReturn="True"
-                                 TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                                 VerticalContentAlignment="Top" Margin="0,0,0,8" />
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Add to blocklist" Style="{StaticResource PrimaryButton}"
-                                    Click="AddBlocklist_Click" Margin="0,0,8,0" Padding="16,8" />
-                            <Button Content="Clear blocklist" Style="{StaticResource ActionButton}"
-                                    Click="ClearBlocklist_Click" />
+                <StackPanel Grid.Row="3" Margin="0,12,0,0">
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Threat &amp; telemetry blocklists" Style="{StaticResource H2}" />
+                            <TextBlock Text="Curated lists that block known endpoints by category. GunWall resolves each list to current addresses and blocks them outbound. Aggressive blocking can occasionally affect a legitimate service - just toggle a list off if so."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel x:Name="BlocklistCatList" />
+                            <TextBlock x:Name="BlocklistCatStatus" Style="{StaticResource Muted}" Margin="0,6,0,0" Text="" />
                         </StackPanel>
-                    </StackPanel>
-                </Border>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="IP Blocklist" Style="{StaticResource H2}" />
+                            <TextBlock x:Name="BlocklistCount"
+                                       Text="Paste IPv4 addresses or subnets (one per line) to block them outright."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,8" TextWrapping="Wrap" />
+                            <TextBox x:Name="BlocklistInput" Height="68" AcceptsReturn="True"
+                                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                     VerticalContentAlignment="Top" Margin="0,0,0,8" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Add to blocklist" Style="{StaticResource PrimaryButton}"
+                                        Click="AddBlocklist_Click" Margin="0,0,8,0" Padding="16,8" />
+                                <Button Content="Clear blocklist" Style="{StaticResource ActionButton}"
+                                        Click="ClearBlocklist_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </Grid>
 
             <!-- ========== Services ========== -->

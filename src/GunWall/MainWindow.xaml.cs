@@ -172,7 +172,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.23.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.24.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -998,7 +998,7 @@ public partial class MainWindow : Window
         if (tag == "Dashboard") RefreshDashboardStats();
         if (tag == "Firewall") RebuildAppsList();
         if (tag == "Connections") RebuildConnList();
-        if (tag == "Rules") RefreshRulesList();
+        if (tag == "Rules") { RefreshRulesList(); BuildBlocklistCatUi(); }
         if (tag == "Services" && _services.Count == 0) LoadServices();
         if (tag == "System") BuildSystemRulesUi();
         if (tag == "Settings") { RefreshProfilesCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
@@ -1225,6 +1225,92 @@ public partial class MainWindow : Window
 
     // ================================================================ system rules
     private string _systemFilter = "";
+
+    // ---------------------------------------------- curated blocklists UI
+    private void BuildBlocklistCatUi()
+    {
+        if (BlocklistCatList == null) return;
+        BlocklistCatList.Children.Clear();
+        foreach (var cat in Models.BlocklistCatalog.All)
+            BlocklistCatList.Children.Add(BuildBlocklistCard(cat));
+    }
+
+    private Border BuildBlocklistCard(Models.BlocklistCategory cat)
+    {
+        bool on = _firewall.IsBlocklistOn(cat.Key);
+        int count = _firewall.BlocklistFilterCount(cat.Key);
+
+        var name = new TextBlock { Text = cat.Name, FontWeight = FontWeights.SemiBold };
+        var desc = new TextBlock
+        {
+            Text = on && count > 0 ? $"{cat.Description}  (blocking {count})" : cat.Description,
+            Style = (Style)FindResource("Muted"),
+            Margin = new Thickness(0, 2, 0, 0),
+            TextWrapping = TextWrapping.Wrap
+        };
+        var left = new StackPanel { MaxWidth = 620 };
+        left.Children.Add(name);
+        left.Children.Add(desc);
+        DockPanel.SetDock(left, Dock.Left);
+
+        var toggle = new CheckBox
+        {
+            Style = (Style)FindResource("SlideToggle"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Tag = cat.Key,
+            IsChecked = on
+        };
+        toggle.Click += Blocklist_Click;
+        DockPanel.SetDock(toggle, Dock.Right);
+
+        var dock = new DockPanel { LastChildFill = false };
+        dock.Children.Add(toggle);
+        dock.Children.Add(left);
+        return new Border
+        {
+            Style = (Style)FindResource("Card"),
+            Margin = new Thickness(0, 0, 0, 8),
+            Child = dock
+        };
+    }
+
+    private async void Blocklist_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) { BuildBlocklistCatUi(); return; }
+        if (sender is not CheckBox cb || cb.Tag is not string key) return;
+        var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+        if (cat == null) return;
+
+        bool on = cb.IsChecked == true;
+        cb.IsEnabled = false;
+        if (BlocklistCatStatus != null)
+            BlocklistCatStatus.Text = on
+                ? $"Resolving and blocking \u201c{cat.Name}\u201d\u2026 this can take a few seconds."
+                : $"Removing \u201c{cat.Name}\u201d\u2026";
+        try
+        {
+            if (on)
+            {
+                int n = await System.Threading.Tasks.Task.Run(() => _firewall.EnableBlocklist(cat));
+                if (BlocklistCatStatus != null)
+                    BlocklistCatStatus.Text = n > 0
+                        ? $"\u201c{cat.Name}\u201d is blocking {n} addresses."
+                        : $"\u201c{cat.Name}\u201d: no addresses resolved (nothing to block).";
+            }
+            else
+            {
+                await System.Threading.Tasks.Task.Run(() => _firewall.DisableBlocklist(key));
+                if (BlocklistCatStatus != null) BlocklistCatStatus.Text = $"\u201c{cat.Name}\u201d turned off.";
+            }
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally
+        {
+            if (cb != null) cb.IsEnabled = true;
+            BuildBlocklistCatUi();
+        }
+    }
+
 
     /// <summary>Builds the System Rules cards from the catalog (filtered by search).</summary>
     private void BuildSystemRulesUi()

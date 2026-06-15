@@ -1,97 +1,71 @@
-# GunWall — Feature Roadmap
+# GunWall — Roadmap
 
-**Goal:** match every feature in the leading open-source WFP firewall, then improve on each in GunWall's own way (modern WPF UI, themes, VirusTotal, LAN scanner, update checks — things the reference doesn't have).
+**Goal:** full feature parity with the leading open-source WFP firewall, then improve on each. Ship 4-5 features per release, sequenced **safe → kernel-risky**, validating each on real hardware. GunWall stays **portable and free** — no installer or paid code-signing on the main path.
 
-**Delivery rule:** 4–5 big features per release, grouped so each release is fast to test and low-risk to validate. Releases are sequenced **safe (managed code) → moderate (WFP kernel work) → risky (UWP SID interop) → production**.
-
-**Every release is verified before shipping:** Roslyn syntax-check on all sources, then the finished zip is extracted and re-checked byte-for-byte against the working copy (the discipline that closed the truncated-file bug).
+**Verification (every release):** Roslyn syntax-check all sources, a missing-`using` check for WPF types, then the finished zip is extracted and compared byte-for-byte against the working copy.
 
 ---
 
-## Already shipped (through v0.19.0)
+## ✅ Shipped (v0.1 → v0.23)
 
-Engine & detection: WFP engine (8 layers), event-driven kernel detection with crash-loop self-recovery, transport-layer ICMP coverage, strict/Zero-Trust block-all mode, lockdown.
-
-App control: per-app allow/block, **directional** (in/out only), **temporary/timed** blocks (now persistent across restart), silent/mute, SHA-256 hashing + tamper detection, Authenticode publisher info.
-
-Rules: custom rules (IP / port / protocol / direction / local-port / **CIDR subnet**), IP blocklist (+ CIDR), 6 hardening system-rule toggles, profiles (save/load/switch).
-
-UI & ops: Apps, Connections, Packets Log, Custom Rules, System Rules, Services, **Network scanner (LAN devices)**, Activity, Dashboard (live stats), Settings. Light/dark theme + animated slide toggles, modern connection-alert popup, **VirusTotal scanning**, run-at-startup (scheduled task), close-to-tray + safe exit, **snooze/pause protection**, **update checker**, Windows Event Log.
-
-> GunWall already exceeds the reference on: LAN network scanner, built-in VirusTotal, update checking, and full light/dark theming.
+Engine: WFP engine (8 layers), event-driven detection with crash-loop recovery, transport-layer ICMP, strict/Zero-Trust block-all, lockdown, stealth mode.
+App control: per-app allow/block, directional, temporary/timed (persistent), silent, SHA-256 + tamper detection, publisher info, color-coding, critical-process protection.
+Rules: custom rules (IP/port/protocol/direction/local-port/CIDR), manual IP blocklist, curated system-rule library (~21 presets + secure baseline), profiles, versioned backups.
+Windows integration: Windows Firewall status / on-off / rule import, auto-refresh on network change.
+UI/ops: clickable Dashboard, Apps, Connections (+ close/block-and-close), Packets Log (+ CSV export), Custom/System Rules, Services, LAN scanner, Activity, Settings, light/dark theme, configurable alert popup, VirusTotal, run-at-startup, close-to-tray, snooze, update checker, Event Log, notification sound/tray.
 
 ---
 
-## Phase A — v0.20 "Visibility & Control" *(all safe, managed code)*  ✅ SHIPPED
+## 🔜 Remaining work (re-prioritised after deep source review)
 
-The biggest visible jump toward parity with zero kernel risk.
+### 1. Curated blocklists — ✅ SHIPPED (v0.24) *(mostly safe: managed + existing block engine)*
+Built-in, toggleable threat/telemetry blocklists like the reference's spy/update/extra sets:
+- **Telemetry / tracking blocklist** — block known Windows telemetry & tracking endpoints. The headline missing feature.
+- **Windows Update servers blocklist** — optional (off by default; blocking breaks updates).
+- **Ads / extra blocklist** — optional.
+- Each a simple per-list **Off / Block** toggle, applied via the existing CIDR block engine.
 
-1. **Curated system-rule library (~37 named presets).** Replace the 6 toggles with the reference's full preset set — DNS, DHCP, mDNS, LLMNR, SSDP, UPnP, NTP, NetBIOS, SMB, RDP, KMS, IGMP, ICMPv4/v6, QUIC, SSH, FTP, IMAP/POP3/SMTP, Windows Update, and more — each individually toggleable.
-   *Improvement:* grouped by category, searchable, with plain-English descriptions and a "recommended secure baseline" one-click profile.
-2. **Close active connection.** Right-click a live connection → terminate it (TCP RST via `SetTcpEntry`).
-   *Improvement:* a combined "Block app + close all its connections" action.
-3. **App color-coding / highlighting.** Categorize apps (signed / unsigned / system / invalid-or-missing-file / has-active-connection) with a color legend, like the reference's 7 highlight types.
-   *Improvement:* click a category to filter the list to just those apps.
-4. **Packets log to file.** Stream the packet log to disk, not just the in-app view.
-   *Improvement:* rotating log files + CSV/JSON export for analysis.
-5. **Notification upgrades.** Sound on popup, tray balloon notifications, fullscreen-silent mode, and a per-app "remember my choice" default action.
+  *GunWall will ship its own curated lists (built from public threat/telemetry sources), not copied from any GPL project. Improvement angle: live count, last-updated date, and a future "update lists" fetch.*
 
-## Phase B — v0.21 "Kernel Hardening" *(moderate WFP work, fault-tolerant)*
+### 2. Process & app control gaps — *safe, managed*
+- **Kill / terminate process** — end a running process, not just block it.
+- **Certificate verification** — actually validate the Authenticode signature (valid / invalid / unsigned), beyond just reading the publisher name.
+- **Per-app & per-rule comments** — annotate entries with notes.
+- **Keep-unused-apps** toggle — keep apps listed even when not running.
 
-Real firewall-grade protection. Each follows filter patterns already proven in GunWall.
+### 3. Notifications & interface polish — *safe, managed*
+- **Fullscreen silent mode** — suppress popups while a fullscreen app/game runs.
+- **Highlighting controls** — toggle each category, customize colors, add Pico / Special / Undeletable categories.
+- **Confirmation prompts** — confirm-before-allow, confirm-on-exit, confirm-clear-log, etc.
+- **Notification exclusions** — don't notify for blocklist / custom-rule / stealth / inbound hits.
+- **Smaller display prefs** — tray single-click, configurable log path + size limit, short-path display, hide icons, network-resolution/monitor toggles.
 
-1. **Stealth mode.** ✅ SHIPPED (v0.21) — Silent drops + discard-layer filters to defeat port scanning and make the machine invisible to unsolicited inbound traffic.
-   *Improvement:* a clear on/off with an explainer of what it hides.
-2. **Boot-time filters.** Protection active during boot, before the app starts (BOOTTIME-flagged filters on the sublayer).
-   *Improvement:* a dashboard indicator showing boot protection is armed.
-3. **Filter tamper protection.** A secure sublayer so other software can't delete GunWall's WFP filters.
-   *Improvement:* detect tampering attempts and surface an alert.
-4. **WUFix (Windows Update keep-alive).** Preset rules that keep Windows Update working under lockdown.
-   *Improvement:* auto-detect when Update is being blocked and offer the fix inline.
-5. **Expanded WFP layer coverage.** Add LISTEN, RESOURCE_ASSIGNMENT, and ICMP_ERROR layers toward the reference's 22 (added fault-tolerantly so an unsupported layer can't break the engine).
-   *Improvement:* a per-layer health/diagnostics view.
+### 4. Kernel hardening — *Phase B leftovers (high risk, careful hardware testing)*
+- **Expanded WFP layer coverage** — add LISTEN, RESOURCE_ASSIGNMENT, ICMP_ERROR, IPFORWARD toward the reference's 22 (we use 8). *Safest kernel item, biggest coverage gain.*
+- **Filter tamper protection** — secured sublayer so other software can't delete GunWall's filters.
+- **Boot-time filters** ⚠️ — protection during boot. Dangerous failure mode (boot networking).
+- **WUFix** ⚠️ — keeps Windows Update working under lockdown. Invasive (rewrites WU service registry entries).
+- **Allow-loopback toggle**, packet-queuing, app-monitor — small advanced engine options.
 
-## Phase C — "Windows Integration" *(moderate)*  ✅ MOSTLY SHIPPED (v0.23)
+### 5. UWP / Microsoft Store apps — *high risk, dedicated effort*
+- Enumerate Store packages, resolve package SIDs, block via the package-ID WFP condition, add a "Store apps" tab + rule persistence. Untestable here, so expect several iterate-and-test rounds.
 
-Coexist with and absorb the built-in Windows stack.
-
-1. **Windows Firewall enable/disable + coexistence.** Control Windows Defender Firewall from GunWall.
-2. **Import existing Windows Firewall rules.** Read current WF rules so users don't start from scratch.
-3. **App process categorization.** Detect system / pico / undeletable processes and protect critical system apps from accidental blocking.
-4. **Refresh filters on device connect** + advanced engine options (keep-unused-apps, single-click tray, similar-notification timeout).
-5. **Auto-backup + versioned profiles.** ✅ SHIPPED (v0.22) — Automatic profile backups with restore points.
-   *Improvement:* timestamped, browsable backup history.
-
-## Phase D — v0.23 "UWP & Store Apps" *(risky — dedicated, fewer features, more iteration)*
-
-The reference's package-SID filtering. Hand-written SID interop that can't be compile-tested here, so this phase is deliberately smaller and expects several test rounds.
-
-1. **UWP / Store app enumeration** — list installed packages (registry / COM).
-2. **Package SID resolution** + app-container handling.
-3. **UWP app blocking** via `FWPM_CONDITION_ALE_PACKAGE_ID`.
-4. **UWP rules persistence** + a dedicated "Store apps" tab.
-
-## Phase E — v1.0 "Production" *(ship to real users)*
-
-1. **Installer** (Inno Setup) — Start-menu shortcut, uninstall, no more unzip-and-run.
-2. **Auto-update** — download and apply updates, not just check.
-3. **Code signing** — sign the EXE so SmartScreen/UAC trust it. *(Requires you to obtain a code-signing certificate — the only step that lives outside the code.)*
-4. **Localization** — multi-language framework + an initial set of languages.
-5. **Final audit** — stability, performance, and security pass + user documentation.
+### 6. Localization — *anytime*
+- Multi-language support.
 
 ---
 
-## What needs your input
+## Deliberately NOT doing (for now)
+- **Installer** — GunWall stays portable (unzip-and-run). Maybe much later.
+- **Code signing** — needs a paid certificate; not worth the cost for a free/open-source project. Users can run the portable build.
 
-- **Code signing (Phase E):** a paid code-signing certificate. Everything else I can build; signing requires the cert on your side.
-- **Testing each release on real Windows 11 hardware** — I can't compile or run WPF here, so your build-and-report loop is what validates every phase. Phases B and D especially will need a few iterations.
+## Recommended order
+1. **Curated telemetry/update/extra blocklists** (the big missed feature; safe).
+2. **Kill process + certificate verification + comments** (safe control gaps).
+3. **Notification & interface polish** (fullscreen-silent, highlighting, confirmations, exclusions).
+4. **Expanded WFP layers**, then tamper protection (kernel).
+5. **Boot-time filters + WUFix** (the dangerous pair, slow & careful).
+6. **UWP / Store apps**, then localization.
 
-## Risk summary
-
-| Phase | Risk | Why |
-|-------|------|-----|
-| A | Low | Managed code + engines we already have |
-| B | Medium | New WFP filters, but proven patterns + fault-tolerant |
-| C | Medium | OS integration (netsh/COM), mostly managed |
-| D | High | Hand-written package-SID kernel interop, untestable here |
-| E | Low–Medium | Tooling + packaging; signing needs your certificate |
+## Needs your input
+- **Testing each kernel release** on real Windows 11 — the only way to validate kernel changes.

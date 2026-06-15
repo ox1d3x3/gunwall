@@ -206,4 +206,7 @@ public sealed class StoreData
 
     /// <summary>Automatically save a timestamped backup of the profile on changes.</summary>
     public bool AutoBackup { get; set; }
+
+    /// <summary>Curated blocklist categories that are on: key -> filter IDs.</summary>
+    public Dictionary<string, List<ulong>> Blocklists { get; set; } = new();
 }
