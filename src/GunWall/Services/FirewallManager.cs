@@ -651,6 +651,50 @@ public sealed class FirewallManager : IDisposable
     public bool AutoBackup => _data.AutoBackup;
     public void SetAutoBackup(bool v) { _data.AutoBackup = v; _store.Save(_data); }
 
+    // ------------------------------------------------ Windows Firewall import
+    /// <summary>
+    /// Imports BLOCK rules from Windows Defender Firewall as GunWall blocks
+    /// (allow rules are skipped — GunWall allows by default). Returns the count
+    /// of programs newly blocked.
+    /// </summary>
+    public int ImportWindowsFirewallRules()
+    {
+        int added = 0;
+        foreach (var r in WindowsFirewallService.GetAppRules())
+        {
+            if (!r.Block) continue;                       // only import blocks
+            if (string.IsNullOrEmpty(r.AppPath)) continue;
+            string path = Environment.ExpandEnvironmentVariables(r.AppPath);
+            if (!System.IO.File.Exists(path)) continue;
+            if (IsBlocked(path)) continue;                // already blocked here
+            try
+            {
+                BlockApp(path, System.IO.Path.GetFileName(path));
+                added++;
+            }
+            catch { /* skip a problematic rule, keep importing */ }
+        }
+        if (added > 0) { EventLog($"Imported {added} block rule(s) from Windows Firewall"); AutoBackupIfEnabled(); }
+        return added;
+    }
+
+    // ------------------------------------------------ critical-process guard
+    private static readonly HashSet<string> CriticalProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "system", "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
+        "services.exe", "lsass.exe", "svchost.exe", "fontdrvhost.exe",
+        "dwm.exe", "spoolsv.exe", "explorer.exe", "ntoskrnl.exe",
+        "lsm.exe", "conhost.exe", "RuntimeBroker.exe", "sihost.exe"
+    };
+
+    /// <summary>True if blocking this executable could destabilise Windows.</summary>
+    public static bool IsCriticalProcess(string exePath)
+    {
+        if (string.IsNullOrEmpty(exePath)) return false;
+        string name = System.IO.Path.GetFileName(exePath);
+        return CriticalProcesses.Contains(name);
+    }
+
     private string BackupsFolder
     {
         get

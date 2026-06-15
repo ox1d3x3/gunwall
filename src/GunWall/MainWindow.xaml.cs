@@ -134,6 +134,12 @@ public partial class MainWindow : Window
             _engineReady = true;
             _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
             _firewall.AutoBackupIfEnabled(); // snapshot the profile on launch (if enabled)
+
+            // Auto-refresh views when the network changes (Wi-Fi switch, VPN up/down).
+            System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += (_, _) =>
+                Dispatcher.Invoke(() => { try { RebuildConnList(); RebuildAppsList(); } catch { } });
+            System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += (_, _) =>
+                Dispatcher.Invoke(() => { try { RebuildConnList(); } catch { } });
             EngineStatus.Text = "Engine: active";
             SyncLockdownButton();
             _suppressModeEvent = true;
@@ -166,7 +172,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.22.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.23.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -995,7 +1001,7 @@ public partial class MainWindow : Window
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
         if (tag == "System") BuildSystemRulesUi();
-        if (tag == "Settings") { RefreshProfilesCombo(); RefreshBackupsCombo(); }
+        if (tag == "Settings") { RefreshProfilesCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
     }
 
     // ================================================================ actions
@@ -1009,7 +1015,17 @@ public partial class MainWindow : Window
             if (_firewall.EffectiveStatus(app.ExecutablePath) == AppStatus.Blocked)
                 _firewall.AllowApp(app.ExecutablePath, app.Name);
             else
+            {
+                if (FirewallManager.IsCriticalProcess(app.ExecutablePath))
+                {
+                    var ask = MessageBox.Show(
+                        $"{app.Name} is a core Windows process. Blocking it can break networking, " +
+                        "updates, or sign-in.\n\nBlock it anyway?",
+                        "Caution: system process", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (ask != MessageBoxResult.Yes) return;
+                }
                 _firewall.BlockApp(app.ExecutablePath, app.Name);
+            }
 
             RebuildAppsList();
         }
@@ -1454,6 +1470,74 @@ public partial class MainWindow : Window
         ProfilesCombo.ItemsSource = null;
         ProfilesCombo.ItemsSource = _firewall.ListProfiles();
         if (sel != null) ProfilesCombo.SelectedItem = sel;
+    }
+
+    // ---------------------------------------------- Windows Firewall integration
+    private void RefreshWinFwStatus()
+    {
+        if (WinFwStatus == null) return;
+        try
+        {
+            var s = WindowsFirewallService.GetState();
+            if (s.Domain == null && s.Private == null && s.Public == null)
+            {
+                WinFwStatus.Text = "Windows Firewall status: unavailable.";
+                return;
+            }
+            string On(bool? b) => b == null ? "?" : (b.Value ? "On" : "Off");
+            WinFwStatus.Text = s.AllOff
+                ? "Windows Firewall is OFF on all profiles."
+                : $"Windows Firewall - Domain: {On(s.Domain)}, Private: {On(s.Private)}, Public: {On(s.Public)}.";
+        }
+        catch { WinFwStatus.Text = "Windows Firewall status: unavailable."; }
+    }
+
+    private void WinFwRefresh_Click(object sender, RoutedEventArgs e) => RefreshWinFwStatus();
+
+    private void WinFwOff_Click(object sender, RoutedEventArgs e)
+    {
+        var ask = MessageBox.Show(
+            "Turn off Windows Defender Firewall for all network profiles?\n\n" +
+            "GunWall will keep protecting you, but turning the Windows firewall back on " +
+            "later is recommended if you stop using GunWall.",
+            "Turn off Windows Firewall", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (ask != MessageBoxResult.OK) return;
+        bool ok = WindowsFirewallService.SetEnabled(false);
+        _firewall.EventLog("Windows Firewall turned off");
+        RefreshWinFwStatus();
+        if (!ok)
+            MessageBox.Show("Couldn't change Windows Firewall (the command was blocked or failed).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void WinFwOn_Click(object sender, RoutedEventArgs e)
+    {
+        bool ok = WindowsFirewallService.SetEnabled(true);
+        _firewall.EventLog("Windows Firewall turned on");
+        RefreshWinFwStatus();
+        if (!ok)
+            MessageBox.Show("Couldn't change Windows Firewall (the command was blocked or failed).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void WinFwImport_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        var ask = MessageBox.Show(
+            "Import the BLOCK rules from Windows Firewall as GunWall blocks?\n\n" +
+            "(Allow rules are skipped, since GunWall allows by default.)",
+            "Import Windows Firewall rules", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (ask != MessageBoxResult.OK) return;
+        try
+        {
+            int n = _firewall.ImportWindowsFirewallRules();
+            RebuildAppsList();
+            if (WinFwImportStatus != null)
+                WinFwImportStatus.Text = n > 0
+                    ? $"Imported {n} blocked program(s)."
+                    : "No new block rules with a program path were found.";
+        }
+        catch (Exception ex) { ShowError(ex); }
     }
 
     // ---------------------------------------------- versioned backups

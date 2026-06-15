@@ -878,6 +878,27 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
+                            <TextBlock Text="Windows Firewall" Style="{StaticResource H2}" />
+                            <TextBlock Text="GunWall and Windows Defender Firewall both use the Windows Filtering Platform. Running both can cause confusing conflicts - you can turn Windows Firewall off here, or import its existing block rules into GunWall."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <TextBlock x:Name="WinFwStatus" Text="Checking Windows Firewall status..."
+                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,10" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Turn Windows Firewall off" Style="{StaticResource ActionButton}"
+                                        Click="WinFwOff_Click" Margin="0,0,8,0" />
+                                <Button Content="Turn it back on" Style="{StaticResource ActionButton}"
+                                        Click="WinFwOn_Click" Margin="0,0,8,0" />
+                                <Button Content="Refresh status" Style="{StaticResource ActionButton}"
+                                        Click="WinFwRefresh_Click" Margin="0,0,8,0" />
+                                <Button Content="Import its block rules" Style="{StaticResource ActionButton}"
+                                        Click="WinFwImport_Click" />
+                            </StackPanel>
+                            <TextBlock x:Name="WinFwImportStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
                             <TextBlock Text="Profiles" Style="{StaticResource H2}" />
                             <TextBlock Text="Save the current rules and settings as a named profile, then switch between profiles (e.g. Home, Work, Travel)."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />

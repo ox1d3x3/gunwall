@@ -51,7 +51,7 @@ Real firewall-grade protection. Each follows filter patterns already proven in G
 5. **Expanded WFP layer coverage.** Add LISTEN, RESOURCE_ASSIGNMENT, and ICMP_ERROR layers toward the reference's 22 (added fault-tolerantly so an unsupported layer can't break the engine).
    *Improvement:* a per-layer health/diagnostics view.
 
-## Phase C — v0.22 "Windows Integration" *(moderate)*
+## Phase C — "Windows Integration" *(moderate)*  ✅ MOSTLY SHIPPED (v0.23)
 
 Coexist with and absorb the built-in Windows stack.
 
