@@ -188,4 +188,13 @@ public sealed class StoreData
 
     /// <summary>Temporary blocks: exe path (lowercase) -> UTC expiry time.</summary>
     public Dictionary<string, DateTime> TempBlocks { get; set; } = new();
+
+    /// <summary>Write each packet-log entry to a CSV file in the profile folder.</summary>
+    public bool PacketFileLogging { get; set; }
+
+    /// <summary>Play a sound when a notification popup appears.</summary>
+    public bool NotificationSound { get; set; }
+
+    /// <summary>Show a tray balloon when a new app is detected.</summary>
+    public bool TrayNotifications { get; set; }
 }

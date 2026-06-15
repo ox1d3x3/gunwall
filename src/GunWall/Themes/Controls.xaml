@@ -106,6 +106,66 @@
         </Setter>
     </Style>
 
+    <!-- ===================== Slide on/off toggle ===================== -->
+    <!-- A CheckBox rendered as an animated pill switch: gray when off, green
+         when on, with a thumb that slides across. IsChecked / Click behave
+         exactly like a normal CheckBox. -->
+    <Style x:Key="SlideToggle" TargetType="CheckBox">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Width" Value="46" />
+        <Setter Property="Height" Value="24" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Border x:Name="track" CornerRadius="12"
+                            Background="{DynamicResource BgElevated}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <Border x:Name="thumb" Width="18" Height="18" CornerRadius="9"
+                                Background="{DynamicResource TextSecondary}"
+                                HorizontalAlignment="Left" VerticalAlignment="Center" Margin="2,0,0,0">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="thumbShift" X="0" />
+                            </Border.RenderTransform>
+                        </Border>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="track" Property="Background" Value="{StaticResource AllowBrush}" />
+                            <Setter TargetName="track" Property="BorderBrush" Value="{StaticResource AllowBrush}" />
+                            <Setter TargetName="thumb" Property="Background" Value="#FFFFFF" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="thumbShift"
+                                                         Storyboard.TargetProperty="X"
+                                                         To="22" Duration="0:0:0.16">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseInOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="thumbShift"
+                                                         Storyboard.TargetProperty="X"
+                                                         To="0" Duration="0:0:0.16">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseInOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===================== Animated theme switch ===================== -->
     <!-- A pill toggle with a thumb that slides between the two ends, animated.
          Checked = light theme, Unchecked = dark theme. Sun/moon glyphs sit on

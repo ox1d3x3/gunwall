@@ -367,6 +367,39 @@ public sealed class WfpEngine : IDisposable
             AppBlockWeight, FWP_ACTION_BLOCK, proto, "", port, name));
     }
 
+    /// <summary>
+    /// Generic catalog-driven rule used by the curated system-rule library.
+    /// Applies a permit or block on the given protocol/ports in the requested
+    /// direction ("out" = connect, "in" = recv-accept, "both" = both). When
+    /// <paramref name="ports"/> is empty a single protocol-only filter is made.
+    /// Fully fault-tolerant; returns the filter IDs actually created.
+    /// </summary>
+    public List<ulong> AddServiceRule(bool block, string direction, string protocol, int[] ports, string name)
+    {
+        var ids = new List<ulong>(4);
+        try
+        {
+            EnsureReady();
+            byte weight = block ? AppBlockWeight : AppPermitWeight;
+            uint action = block ? FWP_ACTION_BLOCK : FWP_ACTION_PERMIT;
+
+            var layers = new List<Guid>(2);
+            if (direction is "out" or "both") layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V4);
+            if (direction is "in" or "both") layers.Add(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4);
+            if (layers.Count == 0) layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V4);
+
+            int[] portList = (ports == null || ports.Length == 0) ? new[] { 0 } : ports;
+            foreach (int port in portList)
+                foreach (var layer in layers)
+                    TryAdd(ids, () => BuildConditionedFilter(layer, weight, action, protocol, "", port, name));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"AddServiceRule({name}) failed: {ex.Message}");
+        }
+        return ids;
+    }
+
     /// <summary>Removes a set of previously created filters by ID.</summary>
     public void RemoveFilters(IEnumerable<ulong> filterIds)
     {
@@ -749,10 +782,24 @@ public sealed class WfpEngine : IDisposable
                 });
             }
 
-            // Remote address condition (single IPv4 via addr+mask /32).
+            // Remote address condition. Accepts a single IPv4 (treated as /32)
+            // or CIDR notation like 192.168.1.0/24 to match a whole subnet.
             if (!string.IsNullOrEmpty(remoteAddress))
             {
-                var mask = new FWP_V4_ADDR_AND_MASK { addr = IpToHost(remoteAddress), mask = 0xFFFFFFFF };
+                string addrPart = remoteAddress;
+                uint maskBits = 0xFFFFFFFF; // /32 default
+                int slash = remoteAddress.IndexOf('/');
+                if (slash >= 0)
+                {
+                    addrPart = remoteAddress[..slash];
+                    if (int.TryParse(remoteAddress[(slash + 1)..], out int prefix) &&
+                        prefix is >= 0 and <= 32)
+                    {
+                        maskBits = prefix == 0 ? 0u : 0xFFFFFFFF << (32 - prefix);
+                    }
+                }
+
+                var mask = new FWP_V4_ADDR_AND_MASK { addr = IpToHost(addrPart), mask = maskBits };
                 IntPtr maskPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWP_V4_ADDR_AND_MASK>());
                 Marshal.StructureToPtr(mask, maskPtr, false);
                 holds.Add(maskPtr);

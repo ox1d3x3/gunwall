@@ -33,12 +33,18 @@ public enum AppStatus
     Blocked
 }
 
+/// <summary>Visual category for color-coding apps in the list.</summary>
+public enum AppCategory { Unknown, Signed, Unsigned, System, Invalid }
+
 /// <summary>An application known to GunWall, with its current policy.</summary>
 public sealed class AppInfo
 {
     public string Name { get; set; } = "";
     public string ExecutablePath { get; set; } = "";
     public AppStatus Status { get; set; } = AppStatus.Allowed;
+
+    /// <summary>Signed / unsigned / system / invalid — drives the colored dot.</summary>
+    public AppCategory Category { get; set; } = AppCategory.Unknown;
 
     /// <summary>Number of live connections currently attributed to this app.</summary>
     public int ActiveConnections { get; set; }

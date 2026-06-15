@@ -139,6 +139,9 @@ public partial class MainWindow : Window
             StartMinimizedCheck.IsChecked = _firewall.StartMinimized;
             RunAtStartupCheck.IsChecked = _firewall.RunAtStartup;
             if (EventLogCheck != null) EventLogCheck.IsChecked = _firewall.EventLogEnabled;
+            if (NotifSoundCheck != null) NotifSoundCheck.IsChecked = _firewall.NotificationSound;
+            if (TrayNotifCheck != null) TrayNotifCheck.IsChecked = _firewall.TrayNotifications;
+            if (PacketLogFileCheck != null) PacketLogFileCheck.IsChecked = _firewall.PacketFileLogging;
             if (VtKeyStatus != null)
                 VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
                     ? "No key set." : "A key is saved.";
@@ -153,7 +156,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.18.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.20.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -362,10 +365,10 @@ public partial class MainWindow : Window
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            if (!string.IsNullOrEmpty(addr) &&
-                !System.Net.IPAddress.TryParse(addr, out _))
+            if (!string.IsNullOrEmpty(addr) && !IsValidIpOrCidr(addr))
             {
-                MessageBox.Show("Address must be a valid IPv4 (or blank for any).", "GunWall",
+                MessageBox.Show("Address must be a valid IPv4 (e.g. 1.2.3.4) or subnet " +
+                    "(e.g. 192.168.1.0/24), or blank for any.", "GunWall",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -403,6 +406,22 @@ public partial class MainWindow : Window
             try { _firewall.RemoveCustomRule(id); RefreshRulesList(); }
             catch (Exception ex) { ShowError(ex); }
         }
+    }
+
+    /// <summary>Accepts a bare IPv4 or IPv4/prefix CIDR (e.g. 10.0.0.0/8).</summary>
+    private static bool IsValidIpOrCidr(string s)
+    {
+        int slash = s.IndexOf('/');
+        string ipPart = slash >= 0 ? s[..slash] : s;
+        if (!System.Net.IPAddress.TryParse(ipPart, out var ip) ||
+            ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return false;
+        if (slash >= 0)
+        {
+            if (!int.TryParse(s[(slash + 1)..], out int prefix) || prefix is < 0 or > 32)
+                return false;
+        }
+        return true;
     }
 
     private void AddBlocklist_Click(object sender, RoutedEventArgs e)
@@ -551,6 +570,11 @@ public partial class MainWindow : Window
             });
             while (_packets.Count > MaxPackets) _packets.RemoveAt(_packets.Count - 1);
 
+            // Optional: persist this entry to the CSV log file.
+            _firewall.LogPacketToFile(DateTime.Now, blocked, appName, e.Protocol, "Out",
+                string.IsNullOrEmpty(e.RemoteAddress) ? "" : $"{e.RemoteAddress}:{e.RemotePort}",
+                e.AppPath);
+
             // Approval pipeline: prompt once for any undecided app.
             string path = e.AppPath;
             if (_firewall.IsBlocked(path) || _firewall.IsAllowed(path) || _firewall.IsSilent(path))
@@ -642,6 +666,22 @@ public partial class MainWindow : Window
         var info = _alertQueue.Dequeue();
         _alertOpen = true;
 
+        // Optional notification sound.
+        if (_firewall.NotificationSound)
+            try { System.Media.SystemSounds.Asterisk.Play(); } catch { }
+
+        // Optional tray balloon for the newly detected app.
+        if (_firewall.TrayNotifications && _tray != null)
+        {
+            try
+            {
+                _tray.BalloonTipTitle = "New network access";
+                _tray.BalloonTipText = $"{info.ProcessName} is trying to connect.";
+                _tray.ShowBalloonTip(3000);
+            }
+            catch { }
+        }
+
         var win = new AlertWindow(info,
             onBlock: () =>
             {
@@ -698,6 +738,7 @@ public partial class MainWindow : Window
             a.Status = _firewall.EffectiveStatus(a.ExecutablePath);
             a.Silent = _firewall.IsSilent(a.ExecutablePath);
             a.Hash = _firewall.GetHash(a.ExecutablePath);
+            a.Category = ComputeCategory(a.ExecutablePath);
         }
 
         IEnumerable<AppInfo> view = known.Values;
@@ -712,6 +753,23 @@ public partial class MainWindow : Window
                      .ThenByDescending(a => a.ActiveConnections)
                      .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase))
             _apps.Add(a);
+    }
+
+    /// <summary>Cheap visual category: missing file, system path, signed, or unsigned.</summary>
+    private static AppCategory ComputeCategory(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return AppCategory.System;
+        try
+        {
+            if (!System.IO.File.Exists(path)) return AppCategory.Invalid;
+            string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            if (!string.IsNullOrEmpty(win) &&
+                path.StartsWith(win, StringComparison.OrdinalIgnoreCase))
+                return AppCategory.System;
+            string pub = NetInfoService.GetPublisher(path);   // cached
+            return string.IsNullOrWhiteSpace(pub) ? AppCategory.Unsigned : AppCategory.Signed;
+        }
+        catch { return AppCategory.Unknown; }
     }
 
     private void RebuildConnList()
@@ -733,6 +791,93 @@ public partial class MainWindow : Window
     {
         _appFilter = AppSearch.Text;
         RebuildAppsList();
+    }
+
+    // ---------------------------------------------- connection context menu
+    private void CloseConn_Click(object sender, RoutedEventArgs e)
+    {
+        if (ConnList.SelectedItem is not ConnectionInfo c) return;
+        if (!c.Protocol.StartsWith("TCP", StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show("Only TCP connections can be closed (UDP is connectionless).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        bool ok = ConnectionService.CloseTcpConnection(c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
+        if (ok)
+        {
+            _firewall.EventLog($"Closed connection {c.RemoteEndpoint} ({c.ProcessName})");
+            RebuildConnList();
+        }
+        else
+        {
+            MessageBox.Show("Couldn't close that connection. It may have already closed, or it's " +
+                "owned by a protected system process.", "GunWall",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private string ResolveConnPath(ConnectionInfo c)
+    {
+        try
+        {
+            var procs = _processes.SnapshotProcesses();
+            if (procs.TryGetValue(c.ProcessId, out var info)) return info.Path;
+        }
+        catch { }
+        return "";
+    }
+
+    private void BlockConnApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        if (ConnList.SelectedItem is not ConnectionInfo c) return;
+        string path = ResolveConnPath(c);
+        if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
+        {
+            MessageBox.Show("Couldn't resolve this connection's program (it may be a protected " +
+                "system process).", "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        try
+        {
+            _firewall.BlockApp(path, c.ProcessName);
+            MessageBox.Show($"Blocked {c.ProcessName}.", "GunWall",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void BlockAndCloseConn_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        if (ConnList.SelectedItem is not ConnectionInfo c) return;
+        string path = ResolveConnPath(c);
+        try
+        {
+            if (!string.IsNullOrEmpty(path) && System.IO.File.Exists(path))
+                _firewall.BlockApp(path, c.ProcessName);
+
+            // Close every current TCP connection belonging to that process.
+            int closed = 0;
+            foreach (var other in _lastConns.Where(x => x.ProcessId == c.ProcessId &&
+                                                        x.Protocol.StartsWith("TCP", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (ConnectionService.CloseTcpConnection(other.LocalAddress, other.LocalPort,
+                        other.RemoteAddress, other.RemotePort)) closed++;
+            }
+            _firewall.EventLog($"Blocked {c.ProcessName} and closed {closed} connection(s)");
+            RebuildConnList();
+            MessageBox.Show($"Blocked {c.ProcessName} and closed {closed} active connection(s).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void CopyConnRemote_Click(object sender, RoutedEventArgs e)
+    {
+        if (ConnList.SelectedItem is not ConnectionInfo c) return;
+        try { Clipboard.SetText(c.RemoteAddress); } catch { /* clipboard busy */ }
     }
 
     private void ConnSearch_TextChanged(object sender, TextChangedEventArgs e)
@@ -832,11 +977,12 @@ public partial class MainWindow : Window
         PanelSettings.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
         // Populate immediately on switch instead of waiting for the next tick.
+        if (tag == "Dashboard") RefreshDashboardStats();
         if (tag == "Firewall") RebuildAppsList();
         if (tag == "Connections") RebuildConnList();
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
-        if (tag == "System") SyncSystemToggles();
+        if (tag == "System") BuildSystemRulesUi();
         if (tag == "Settings") RefreshProfilesCombo();
     }
 
@@ -905,6 +1051,93 @@ public partial class MainWindow : Window
         try { Clipboard.SetText(app.ExecutablePath); } catch { /* clipboard busy */ }
     }
 
+    // ================================================================ dashboard / snooze / updates
+    private void RefreshDashboardStats()
+    {
+        if (StatApps == null) return;
+        try
+        {
+            StatApps.Text = _apps.Count.ToString();
+            StatBlocked.Text = _apps.Count(a => a.Status == AppStatus.Blocked).ToString();
+            StatAllowed.Text = _apps.Count(a => a.Status == AppStatus.Allowed).ToString();
+            StatRules.Text = _firewall.CustomRules.Count.ToString();
+            StatBlocklist.Text = _firewall.Blocklist.Count.ToString();
+            int sys = 0;
+            foreach (var k in new[] { "block_inbound", "block_ipv6", "block_smb", "block_netbios", "block_rdp_in", "block_telnet" })
+                if (_firewall.IsSystemRuleOn(k)) sys++;
+            StatSystem.Text = sys.ToString();
+            UpdateSnoozeUi();
+        }
+        catch { /* stats are cosmetic */ }
+    }
+
+    private void UpdateSnoozeUi()
+    {
+        if (SnoozeStatus == null) return;
+        if (_firewall.IsSnoozed)
+        {
+            SnoozeStatus.Text = $"Protection paused until {_firewall.SnoozeUntil:t}";
+            if (ResumeButton != null) ResumeButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            SnoozeStatus.Text = "";
+            if (ResumeButton != null) ResumeButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void Snooze_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not string mins) return;
+        if (!int.TryParse(mins, out int minutes)) return;
+        try
+        {
+            var until = _firewall.SnoozeProtection(TimeSpan.FromMinutes(minutes));
+            UpdateSnoozeUi();
+            SyncLockdownButton();
+            MessageBox.Show($"Protection paused until {until:t}. It resumes automatically " +
+                "(and always comes back if you restart GunWall).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void Resume_Click(object sender, RoutedEventArgs e)
+    {
+        try { _firewall.EndSnooze(); UpdateSnoozeUi(); SyncLockdownButton(); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string folder = _firewall.ProfileFolder;
+            System.IO.Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (UpdateStatus == null) return;
+        UpdateStatus.Text = "Checking for updates...";
+        try
+        {
+            var r = await UpdateService.CheckAsync();
+            UpdateStatus.Text = r.Message;
+            if (r.Ok && r.UpdateAvailable)
+            {
+                var ask = MessageBox.Show($"{r.Message}\n\nOpen the downloads page?",
+                    "Update available", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                if (ask == MessageBoxResult.Yes)
+                    try { Process.Start(new ProcessStartInfo(r.Url) { UseShellExecute = true }); } catch { }
+            }
+        }
+        catch (Exception ex) { UpdateStatus.Text = "Update check failed."; Debug.WriteLine(ex.Message); }
+    }
+
     // ================================================================ VirusTotal
     private void SaveVtKey_Click(object sender, RoutedEventArgs e)
     {
@@ -948,20 +1181,93 @@ public partial class MainWindow : Window
     }
 
     // ================================================================ system rules
-    private void SyncSystemToggles()
+    private string _systemFilter = "";
+
+    /// <summary>Builds the System Rules cards from the catalog (filtered by search).</summary>
+    private void BuildSystemRulesUi()
     {
-        if (SysBlockInbound == null) return;
-        SysBlockInbound.IsChecked = _firewall.IsSystemRuleOn("block_inbound");
-        SysBlockIpv6.IsChecked = _firewall.IsSystemRuleOn("block_ipv6");
-        SysBlockSmb.IsChecked = _firewall.IsSystemRuleOn("block_smb");
-        SysBlockNetbios.IsChecked = _firewall.IsSystemRuleOn("block_netbios");
-        SysBlockRdp.IsChecked = _firewall.IsSystemRuleOn("block_rdp_in");
-        SysBlockTelnet.IsChecked = _firewall.IsSystemRuleOn("block_telnet");
+        if (SystemBlockList == null || SystemAllowList == null) return;
+        SystemBlockList.Children.Clear();
+        SystemAllowList.Children.Clear();
+
+        foreach (var preset in Models.SystemRuleCatalog.All)
+        {
+            if (_systemFilter.Length > 0 &&
+                !preset.Name.Contains(_systemFilter, StringComparison.OrdinalIgnoreCase) &&
+                !preset.Description.Contains(_systemFilter, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var target = preset.Category == "allow" ? SystemAllowList : SystemBlockList;
+            target.Children.Add(BuildSystemRuleCard(preset));
+        }
+    }
+
+    private Border BuildSystemRuleCard(Models.SystemRulePreset preset)
+    {
+        var name = new TextBlock { Text = preset.Name, FontWeight = FontWeights.SemiBold };
+        var desc = new TextBlock
+        {
+            Text = preset.Description,
+            Style = (Style)FindResource("Muted"),
+            Margin = new Thickness(0, 2, 0, 0),
+            TextWrapping = TextWrapping.Wrap
+        };
+        var left = new StackPanel { MaxWidth = 640 };
+        left.Children.Add(name);
+        left.Children.Add(desc);
+        DockPanel.SetDock(left, Dock.Left);
+
+        var toggle = new CheckBox
+        {
+            Style = (Style)FindResource("SlideToggle"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Tag = preset.Key,
+            IsChecked = _firewall.IsSystemRuleOn(preset.Key)
+        };
+        toggle.Click += SystemRule_Click;
+        DockPanel.SetDock(toggle, Dock.Right);
+
+        var dock = new DockPanel { LastChildFill = false };
+        dock.Children.Add(toggle);
+        dock.Children.Add(left);
+
+        return new Border
+        {
+            Style = (Style)FindResource("Card"),
+            Margin = new Thickness(0, 0, 0, 10),
+            Child = dock
+        };
+    }
+
+    private void SystemSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _systemFilter = SystemSearch.Text?.Trim() ?? "";
+        BuildSystemRulesUi();
+    }
+
+    private void SecureBaseline_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        var ask = MessageBox.Show(
+            "Turn on a recommended hardening baseline?\n\n" +
+            "This enables: block inbound RDP, block SMB, block NetBIOS, and block Telnet. " +
+            "It won't touch your other rules, and you can turn any of them back off.",
+            "Secure baseline", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (ask != MessageBoxResult.OK) return;
+        try
+        {
+            foreach (var key in new[] { "block_rdp_in", "block_smb", "block_netbios", "block_telnet" })
+                if (!_firewall.IsSystemRuleOn(key)) _firewall.SetSystemRule(key, true);
+            BuildSystemRulesUi();
+            MessageBox.Show("Secure baseline applied.", "GunWall",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
     }
 
     private void SystemRule_Click(object sender, RoutedEventArgs e)
     {
-        if (!RequireEngine()) { SyncSystemToggles(); return; }
+        if (!RequireEngine()) { BuildSystemRulesUi(); return; }
         if (sender is not CheckBox cb || cb.Tag is not string key) return;
         try
         {
@@ -978,7 +1284,7 @@ public partial class MainWindow : Window
                         MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
-        catch (Exception ex) { ShowError(ex); SyncSystemToggles(); }
+        catch (Exception ex) { ShowError(ex); BuildSystemRulesUi(); }
     }
 
     // ================================================================ temporary rules
@@ -1348,6 +1654,9 @@ public partial class MainWindow : Window
         }
         _firewall.SetAlwaysOnTop(AlwaysOnTopCheck?.IsChecked == true);
         _firewall.SetEventLogEnabled(EventLogCheck?.IsChecked == true);
+        _firewall.SetNotificationSound(NotifSoundCheck?.IsChecked == true);
+        _firewall.SetTrayNotifications(TrayNotifCheck?.IsChecked == true);
+        _firewall.SetPacketFileLogging(PacketLogFileCheck?.IsChecked == true);
         _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
         _firewall.SetExperimentalEvents(ExperimentalEventsCheck?.IsChecked == true);
         Topmost = _firewall.AlwaysOnTop;

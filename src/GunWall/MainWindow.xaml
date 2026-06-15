@@ -14,6 +14,8 @@
         <conv:StatusToFillConverter x:Key="StatusToFill" />
         <conv:StatusToActionTextConverter x:Key="StatusToAction" />
         <conv:StatusToTextConverter x:Key="StatusToText" />
+        <conv:CategoryToBrushConverter x:Key="CategoryToBrush" />
+        <conv:CategoryToTextConverter x:Key="CategoryToText" />
 
         <Style x:Key="SearchBox" TargetType="TextBox">
             <Setter Property="Background" Value="{DynamicResource BgSecondary}" />
@@ -173,6 +175,60 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+
+                    <Border Style="{StaticResource Card}" Padding="14,12" Margin="0,12,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                                <StackPanel Margin="0,0,28,8">
+                                    <TextBlock x:Name="StatApps" Text="0" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock Text="Apps seen" Style="{StaticResource Muted}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,28,8">
+                                    <TextBlock x:Name="StatBlocked" Text="0" FontSize="20" FontWeight="SemiBold"
+                                               Foreground="{StaticResource BlockBrush}" />
+                                    <TextBlock Text="Blocked" Style="{StaticResource Muted}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,28,8">
+                                    <TextBlock x:Name="StatAllowed" Text="0" FontSize="20" FontWeight="SemiBold"
+                                               Foreground="{StaticResource AllowBrush}" />
+                                    <TextBlock Text="Allowed" Style="{StaticResource Muted}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,28,8">
+                                    <TextBlock x:Name="StatRules" Text="0" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock Text="Custom rules" Style="{StaticResource Muted}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,28,8">
+                                    <TextBlock x:Name="StatSystem" Text="0" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock Text="System rules" Style="{StaticResource Muted}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock x:Name="StatBlocklist" Text="0" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock Text="Blocklisted" Style="{StaticResource Muted}" />
+                                </StackPanel>
+                            </WrapPanel>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock x:Name="SnoozeStatus" Style="{StaticResource Muted}"
+                                           HorizontalAlignment="Right" Margin="0,0,0,6" Text="" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="Snooze 15 min" Style="{StaticResource ActionButton}"
+                                            Click="Snooze_Click" Tag="15" Margin="0,0,8,0" />
+                                    <Button Content="Snooze 1 hr" Style="{StaticResource ActionButton}"
+                                            Click="Snooze_Click" Tag="60" Margin="0,0,8,0" />
+                                    <Button x:Name="ResumeButton" Content="Resume" Style="{StaticResource ActionButton}"
+                                            Click="Resume_Click" Visibility="Collapsed" />
+                                </StackPanel>
+                                <Button Content="Check for updates" Style="{StaticResource ActionButton}"
+                                        Click="CheckUpdate_Click" HorizontalAlignment="Right" Margin="0,8,0,0" />
+                                <TextBlock x:Name="UpdateStatus" Style="{StaticResource Muted}"
+                                           HorizontalAlignment="Right" Margin="0,6,0,0"
+                                           TextWrapping="Wrap" MaxWidth="280" TextAlignment="Right" Text="" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
                 </StackPanel>
 
                 <Grid Grid.Row="1" Margin="0,0,0,16">
@@ -250,6 +306,16 @@
                                   Foreground="{DynamicResource TextSecondary}"
                                   VerticalAlignment="Center" Margin="24,4,0,0"
                                   Checked="ShowAllApps_Changed" Unchecked="ShowAllApps_Changed" />
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="24,4,0,0">
+                            <Ellipse Width="9" Height="9" Fill="#3FB868" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock Text="Signed" Style="{StaticResource Muted}" Margin="0,0,12,0" />
+                            <Ellipse Width="9" Height="9" Fill="#E0A53F" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock Text="Unsigned" Style="{StaticResource Muted}" Margin="0,0,12,0" />
+                            <Ellipse Width="9" Height="9" Fill="#5B8DEF" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock Text="System" Style="{StaticResource Muted}" Margin="0,0,12,0" />
+                            <Ellipse Width="9" Height="9" Fill="#E25C5C" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock Text="Missing" Style="{StaticResource Muted}" />
+                        </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <TextBox x:Name="AppSearch" Style="{StaticResource SearchBox}"
@@ -282,8 +348,19 @@
                         </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Application" Width="220"
-                                                DisplayMemberBinding="{Binding Name}" />
+                                <GridViewColumn Header="Application" Width="220">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                                                         Margin="0,0,8,0"
+                                                         Fill="{Binding Category, Converter={StaticResource CategoryToBrush}}"
+                                                         ToolTip="{Binding Category, Converter={StaticResource CategoryToText}}" />
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="Path" Width="380"
                                                 DisplayMemberBinding="{Binding ExecutablePath}" />
                                 <GridViewColumn Header="Conns" Width="70"
@@ -335,6 +412,15 @@
                 <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
                     <ListView x:Name="ConnList" VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Close this connection" Click="CloseConn_Click" />
+                                <MenuItem Header="Block this app" Click="BlockConnApp_Click" />
+                                <MenuItem Header="Block app and close connections" Click="BlockAndCloseConn_Click" />
+                                <Separator />
+                                <MenuItem Header="Copy remote address" Click="CopyConnRemote_Click" />
+                            </ContextMenu>
+                        </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="Process" Width="170"
@@ -597,81 +683,28 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                    <TextBlock Text="System Rules" Style="{StaticResource H1}" />
-                    <TextBlock Text="One-tap hardening rules for common risky traffic. Each applies a firewall filter immediately."
-                               Style="{StaticResource Muted}" Margin="0,4,0,0" />
-                </StackPanel>
+                <Grid Grid.Row="0" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="System Rules" Style="{StaticResource H1}" />
+                        <TextBlock Text="A curated library of named firewall rules. Allow common services, or harden against risky traffic. Each applies immediately."
+                                   Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <TextBox x:Name="SystemSearch" Width="190" Height="32" VerticalContentAlignment="Center"
+                                 ToolTip="Search rules" Margin="0,0,8,0" TextChanged="SystemSearch_TextChanged" />
+                        <Button Content="Secure baseline" Style="{StaticResource ActionButton}"
+                                Click="SecureBaseline_Click"
+                                ToolTip="Turn on a recommended set of hardening rules" />
+                    </StackPanel>
+                </Grid>
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
-                            <StackPanel>
-                                <DockPanel LastChildFill="False">
-                                    <StackPanel DockPanel.Dock="Left" MaxWidth="640">
-                                        <TextBlock Text="Block all inbound connections" FontWeight="SemiBold" />
-                                        <TextBlock Text="Stops any device from initiating a connection to this PC. Outbound still works."
-                                                   Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <CheckBox x:Name="SysBlockInbound" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                              Click="SystemRule_Click" Tag="block_inbound" />
-                                </DockPanel>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
-                            <DockPanel LastChildFill="False">
-                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
-                                    <TextBlock Text="Block IPv6" FontWeight="SemiBold" />
-                                    <TextBlock Text="Blocks all IPv6 traffic. Useful if you only use IPv4 and want to reduce exposure."
-                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <CheckBox x:Name="SysBlockIpv6" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                          Click="SystemRule_Click" Tag="block_ipv6" />
-                            </DockPanel>
-                        </Border>
-                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
-                            <DockPanel LastChildFill="False">
-                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
-                                    <TextBlock Text="Block file sharing (SMB, port 445)" FontWeight="SemiBold" />
-                                    <TextBlock Text="Blocks SMB traffic, a common ransomware and lateral-movement vector."
-                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <CheckBox x:Name="SysBlockSmb" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                          Click="SystemRule_Click" Tag="block_smb" />
-                            </DockPanel>
-                        </Border>
-                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
-                            <DockPanel LastChildFill="False">
-                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
-                                    <TextBlock Text="Block NetBIOS (ports 137-139)" FontWeight="SemiBold" />
-                                    <TextBlock Text="Legacy Windows networking ports, rarely needed and often probed."
-                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <CheckBox x:Name="SysBlockNetbios" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                          Click="SystemRule_Click" Tag="block_netbios" />
-                            </DockPanel>
-                        </Border>
-                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
-                            <DockPanel LastChildFill="False">
-                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
-                                    <TextBlock Text="Block inbound Remote Desktop (RDP, port 3389)" FontWeight="SemiBold" />
-                                    <TextBlock Text="Prevents incoming RDP connections — a frequent brute-force target."
-                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <CheckBox x:Name="SysBlockRdp" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                          Click="SystemRule_Click" Tag="block_rdp_in" />
-                            </DockPanel>
-                        </Border>
-                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
-                            <DockPanel LastChildFill="False">
-                                <StackPanel DockPanel.Dock="Left" MaxWidth="640">
-                                    <TextBlock Text="Block Telnet (port 23)" FontWeight="SemiBold" />
-                                    <TextBlock Text="Blocks unencrypted Telnet, which should never be used over a network."
-                                               Style="{StaticResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <CheckBox x:Name="SysBlockTelnet" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                          Click="SystemRule_Click" Tag="block_telnet" />
-                            </DockPanel>
-                        </Border>
+                        <TextBlock Text="Harden against risky traffic" Style="{StaticResource H2}" Margin="0,0,0,8" />
+                        <StackPanel x:Name="SystemBlockList" Margin="0,0,0,8" />
+                        <TextBlock Text="Allow common services" Style="{StaticResource H2}" Margin="0,8,0,8" />
+                        <TextBlock Text="These permit a service outbound. They matter most when you've blocked traffic by default (strict mode or block-all-inbound)."
+                                   Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
+                        <StackPanel x:Name="SystemAllowList" />
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
@@ -771,6 +804,19 @@
                             <CheckBox x:Name="EventLogCheck" Content="Send firewall events to the Windows Event Log"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="NotifSoundCheck" Content="Play a sound on notification popups"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="TrayNotifCheck" Content="Show a tray notification when a new app is detected"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <CheckBox x:Name="PacketLogFileCheck" Content="Log packets to a CSV file"
+                                          Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                          Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                                <Button Content="Open log folder" Style="{StaticResource ActionButton}"
+                                        Click="OpenLogFolder_Click" Margin="12,0,0,0" Padding="10,3" />
+                            </StackPanel>
                             <CheckBox x:Name="AlwaysOnTopCheck" Content="Keep window always on top"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />

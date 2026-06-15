@@ -351,9 +351,12 @@ public sealed class FirewallManager : IDisposable
             string ip = raw.Trim();
             if (string.IsNullOrEmpty(ip) || ip.StartsWith('#')) continue;
             if (_data.Blocklist.Contains(ip, StringComparer.OrdinalIgnoreCase)) continue;
-            // Only IPv4 literals are filtered here; non-IP entries are stored but
-            // not applied (kept for a future DNS-resolving blocklist).
-            if (System.Net.IPAddress.TryParse(ip, out var parsed) &&
+
+            // Accept a single IPv4 or an IPv4/prefix subnet. Both apply via the
+            // conditioned-filter address+mask path. Non-IP entries are stored
+            // but not filtered (kept for a future DNS-resolving blocklist).
+            string ipPart = ip.Contains('/') ? ip[..ip.IndexOf('/')] : ip;
+            if (System.Net.IPAddress.TryParse(ipPart, out var parsed) &&
                 parsed.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
             {
                 var ids = _engine.AddCustomRule(true, true, "Any", ip, 0);
@@ -391,7 +394,12 @@ public sealed class FirewallManager : IDisposable
         if (enabled)
         {
             if (IsSystemRuleOn(key)) return;
-            var ids = _engine.AddSystemRule(key);
+            var preset = Models.SystemRuleCatalog.All.FirstOrDefault(p => p.Key == key);
+            List<ulong> ids;
+            if (preset == null || preset.Special)
+                ids = _engine.AddSystemRule(key);   // special handling (block-all / IPv6)
+            else
+                ids = _engine.AddServiceRule(preset.Block, preset.Direction, preset.Protocol, preset.Ports, preset.Name);
             _data.SystemRules[key] = ids;
             EventLog($"System rule enabled: {key}");
         }
@@ -410,6 +418,28 @@ public sealed class FirewallManager : IDisposable
     // ------------------------------------------------ event log
     public bool EventLogEnabled => _data.EventLogEnabled;
     public void SetEventLogEnabled(bool v) { _data.EventLogEnabled = v; _store.Save(_data); }
+
+    // ------------------------------------------------ packet file logging
+    private PacketLogFile? _packetLog;
+    public bool PacketFileLogging => _data.PacketFileLogging;
+    public void SetPacketFileLogging(bool v) { _data.PacketFileLogging = v; _store.Save(_data); }
+
+    /// <summary>Writes one packet entry to the CSV log if file logging is on.</summary>
+    public void LogPacketToFile(DateTime time, bool blocked, string app, string protocol,
+                                string direction, string remote, string exePath)
+    {
+        if (!_data.PacketFileLogging) return;
+        _packetLog ??= new PacketLogFile(_store.ProfileFolder);
+        _packetLog.Append(time, blocked ? "Blocked" : "Allowed", app, protocol, direction, remote, exePath);
+    }
+
+    public string PacketLogPath => System.IO.Path.Combine(_store.ProfileFolder, "packets.csv");
+
+    // ------------------------------------------------ notification options
+    public bool NotificationSound => _data.NotificationSound;
+    public void SetNotificationSound(bool v) { _data.NotificationSound = v; _store.Save(_data); }
+    public bool TrayNotifications => _data.TrayNotifications;
+    public void SetTrayNotifications(bool v) { _data.TrayNotifications = v; _store.Save(_data); }
 
     /// <summary>Writes to the Windows Event Log if the user enabled it.</summary>
     public void EventLog(string message)
@@ -489,6 +519,47 @@ public sealed class FirewallManager : IDisposable
             }
         }
         _store.Save(_data);
+    }
+
+    // ------------------------------------------------ snooze (pause protection)
+    private System.Threading.Timer? _snoozeTimer;
+    private bool _wasStrictBeforeSnooze;
+    public bool IsSnoozed { get; private set; }
+    public DateTime SnoozeUntil { get; private set; }
+
+    /// <summary>
+    /// Temporarily lifts strict-mode blocking for the given duration, then
+    /// automatically restores it. In-memory only — closing GunWall ends the
+    /// snooze and protection comes back on next launch (the safe default).
+    /// Returns the time protection resumes.
+    /// </summary>
+    public DateTime SnoozeProtection(TimeSpan duration)
+    {
+        if (!IsSnoozed)
+        {
+            _wasStrictBeforeSnooze = StrictMode;
+            if (StrictMode) SetStrictMode(false);
+        }
+        IsSnoozed = true;
+        SnoozeUntil = DateTime.Now.Add(duration);
+        EventLog($"Protection snoozed for {duration.TotalMinutes:0} min");
+
+        _snoozeTimer?.Dispose();
+        _snoozeTimer = new System.Threading.Timer(_ => EndSnooze(), null, duration,
+            System.Threading.Timeout.InfiniteTimeSpan);
+        return SnoozeUntil;
+    }
+
+    /// <summary>Ends a snooze early and restores the prior protection state.</summary>
+    public void EndSnooze()
+    {
+        if (!IsSnoozed) return;
+        try { if (_wasStrictBeforeSnooze && !StrictMode) SetStrictMode(true); }
+        catch { }
+        IsSnoozed = false;
+        _snoozeTimer?.Dispose();
+        _snoozeTimer = null;
+        EventLog("Protection resumed");
     }
 
     public void SetRunAtStartup(bool enabled)
