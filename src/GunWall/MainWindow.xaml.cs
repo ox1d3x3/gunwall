@@ -175,7 +175,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.26.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.27.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -994,6 +994,7 @@ public partial class MainWindow : Window
         PanelPackets.Visibility = tag == "Packets" ? Visibility.Visible : Visibility.Collapsed;
         PanelRules.Visibility = tag == "Rules" ? Visibility.Visible : Visibility.Collapsed;
         PanelSystem.Visibility = tag == "System" ? Visibility.Visible : Visibility.Collapsed;
+        PanelSecurity.Visibility = tag == "Security" ? Visibility.Visible : Visibility.Collapsed;
         PanelActivity.Visibility = tag == "Activity" ? Visibility.Visible : Visibility.Collapsed;
         PanelSettings.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1001,10 +1002,11 @@ public partial class MainWindow : Window
         if (tag == "Dashboard") RefreshDashboardStats();
         if (tag == "Firewall") RebuildAppsList();
         if (tag == "Connections") RebuildConnList();
-        if (tag == "Rules") { RefreshRulesList(); BuildBlocklistCatUi(); }
+        if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
         if (tag == "System") BuildSystemRulesUi();
-        if (tag == "Settings") { RefreshProfilesCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); RefreshDnsCombo(); }
+        if (tag == "Security") { BuildBlocklistCatUi(); RefreshDnsCombo(); }
+        if (tag == "Settings") { RefreshProfilesCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
     }
 
     // ================================================================ actions
@@ -1263,9 +1265,13 @@ public partial class MainWindow : Window
     private string _systemFilter = "";
 
     // ---------------------------------------------- curated blocklists UI
+    private readonly List<CheckBox> _blocklistToggles = new();
+    private bool _blocklistBusy;
+
     private void BuildBlocklistCatUi()
     {
         if (BlocklistCatList == null) return;
+        _blocklistToggles.Clear();
         BlocklistCatList.Children.Clear();
         foreach (var cat in Models.BlocklistCatalog.All)
             BlocklistCatList.Children.Add(BuildBlocklistCard(cat));
@@ -1297,6 +1303,7 @@ public partial class MainWindow : Window
             IsChecked = on
         };
         toggle.Click += Blocklist_Click;
+        _blocklistToggles.Add(toggle);
         DockPanel.SetDock(toggle, Dock.Right);
 
         var dock = new DockPanel { LastChildFill = false };
@@ -1316,28 +1323,43 @@ public partial class MainWindow : Window
         var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
         if (cat == null) return;
 
+        // Serialize: a hosts-file rewrite must not overlap another. Ignore clicks
+        // while one is running (and revert this checkbox so it doesn't desync).
+        if (_blocklistBusy) { cb.IsChecked = _firewall.IsBlocklistOn(key); return; }
+
         bool on = cb.IsChecked == true;
-        cb.IsEnabled = false;
+        _blocklistBusy = true;
+        foreach (var t in _blocklistToggles) t.IsEnabled = false;   // freeze all toggles
+        if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = false;
         if (BlocklistCatStatus != null)
             BlocklistCatStatus.Text = on ? $"Enabling \u201c{cat.Name}\u201d\u2026" : $"Disabling \u201c{cat.Name}\u201d\u2026";
         try
         {
             bool ok = await System.Threading.Tasks.Task.Run(() => _firewall.SetBlocklistEnabled(key, on));
+            if (!ok) cb.IsChecked = !on; // revert the visual without re-rebuilding everything
             if (BlocklistCatStatus != null)
                 BlocklistCatStatus.Text = ok
                     ? $"\u201c{cat.Name}\u201d is {(on ? "on" : "off")}."
-                    : "Couldn't update the hosts file (it may be locked by security software).";
+                    : "Couldn't update the hosts file (it may be locked by security software, or GunWall isn't elevated).";
         }
-        catch (Exception ex) { ShowError(ex); }
+        catch (Exception ex)
+        {
+            cb.IsChecked = !on; // revert on error
+            ShowError(ex);
+        }
         finally
         {
-            if (cb != null) cb.IsEnabled = true;
-            BuildBlocklistCatUi();
+            _blocklistBusy = false;
+            foreach (var t in _blocklistToggles) t.IsEnabled = true;
+            if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = true;
         }
     }
 
     private async void UpdateLists_Click(object sender, RoutedEventArgs e)
     {
+        if (_blocklistBusy) return;
+        _blocklistBusy = true;
+        foreach (var t in _blocklistToggles) t.IsEnabled = false;
         if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = false;
         if (BlocklistCatStatus != null)
             BlocklistCatStatus.Text = "Downloading the latest community blocklists\u2026 this can take up to a minute.";
@@ -1349,8 +1371,9 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError(ex); }
         finally
         {
+            _blocklistBusy = false;
             if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = true;
-            BuildBlocklistCatUi();
+            BuildBlocklistCatUi(); // domain counts changed; rebuild reflects them (toggles re-enabled here)
         }
     }
 

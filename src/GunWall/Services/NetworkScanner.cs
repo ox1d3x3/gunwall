@@ -134,7 +134,10 @@ public sealed class NetworkScanner
         {
             // Short timeout so a device without a PTR record doesn't stall.
             var task = Dns.GetHostEntryAsync(ip);
-            if (await Task.WhenAny(task, Task.Delay(1200)) == task)
+            _ = task.ContinueWith(t => { _ = t.Exception; },
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+            if (await Task.WhenAny(task, Task.Delay(1200)) == task &&
+                task.Status == TaskStatus.RanToCompletion)
                 return task.Result.HostName;
         }
         catch { }

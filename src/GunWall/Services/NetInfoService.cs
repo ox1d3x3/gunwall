@@ -53,8 +53,14 @@ public static class NetInfoService
         try
         {
             var resolve = Dns.GetHostEntryAsync(ip);
-            var done = await Task.WhenAny(resolve, Task.Delay(1500));
-            if (done == resolve) host = resolve.Result.HostName;
+            // Observe the task's exception even if the timeout wins the race, so a
+            // late reverse-DNS failure can't resurface as an UnobservedTaskException.
+            _ = resolve.ContinueWith(t => { _ = t.Exception; },
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+
+            if (await Task.WhenAny(resolve, Task.Delay(1500)) == resolve &&
+                resolve.Status == TaskStatus.RanToCompletion)
+                host = resolve.Result.HostName;
         }
         catch
         {

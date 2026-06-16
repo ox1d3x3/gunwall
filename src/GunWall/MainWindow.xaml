@@ -132,6 +132,13 @@
                             <TextBlock Style="{StaticResource TabLabel}" Text="System Rules" />
                         </StackPanel>
                     </RadioButton>
+                    <RadioButton x:Name="NavSecurity" Style="{StaticResource TabButton}"
+                                 Checked="Nav_Checked" Tag="Security">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xEA18;" />
+                            <TextBlock Style="{StaticResource TabLabel}" Text="Security" />
+                        </StackPanel>
+                    </RadioButton>
                     <RadioButton x:Name="NavActivity" Style="{StaticResource TabButton}"
                                  Checked="Nav_Checked" Tag="Activity">
                         <StackPanel>
@@ -598,23 +605,8 @@
                     </ListView>
                 </Border>
 
-                <!-- Blocklist -->
+                <!-- Manual IP blocklist (curated lists live in the Security tab) -->
                 <StackPanel Grid.Row="3" Margin="0,12,0,0">
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
-                        <StackPanel>
-                            <TextBlock Text="Threat &amp; telemetry blocklists" Style="{StaticResource H2}" />
-                            <TextBlock Text="Domain-based blocking via the Windows hosts file - instant to toggle and robust to servers changing IP. Click &quot;Update lists&quot; to pull the latest community lists (telemetry from WindowsSpyBlocker, ads/trackers from StevenBlack - both MIT). Toggle a list off if a legitimate service is ever affected."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
-                            <StackPanel x:Name="BlocklistCatList" />
-                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                <Button x:Name="UpdateListsBtn" Content="Update lists from online"
-                                        Style="{StaticResource PrimaryButton}" Click="UpdateLists_Click"
-                                        Padding="16,8" Margin="0,0,8,0" />
-                            </StackPanel>
-                            <TextBlock x:Name="BlocklistCatStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="IP Blocklist" Style="{StaticResource H2}" />
@@ -734,6 +726,46 @@
                         <TextBlock Text="These permit a service outbound. They matter most when you've blocked traffic by default (strict mode or block-all-inbound)."
                                    Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
                         <StackPanel x:Name="SystemAllowList" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- ========== Security & Privacy ========== -->
+            <Grid x:Name="PanelSecurity" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Security &amp; Privacy" Style="{StaticResource H1}" Margin="0,0,0,12" />
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Threat &amp; telemetry blocklists" Style="{StaticResource H2}" />
+                                <TextBlock Text="Domain-based blocking via the Windows hosts file - instant to toggle and robust to servers changing IP. Click &quot;Update lists from online&quot; to pull the latest community lists (telemetry from WindowsSpyBlocker, ads/trackers from StevenBlack - both MIT). Toggle a list off if a legitimate service is ever affected."
+                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel x:Name="BlocklistCatList" />
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <Button x:Name="UpdateListsBtn" Content="Update lists from online"
+                                            Style="{StaticResource PrimaryButton}" Click="UpdateLists_Click"
+                                            Padding="16,8" Margin="0,0,8,0" />
+                                </StackPanel>
+                                <TextBlock x:Name="BlocklistCatStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Filtering DNS" Style="{StaticResource H2}" />
+                                <TextBlock Text="Point Windows at a filtering resolver for a second blocking layer that needs no list upkeep. AdGuard blocks ads &amp; trackers; Quad9 blocks malware &amp; phishing. Applies to all active adapters."
+                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal">
+                                    <ComboBox x:Name="DnsCombo" Width="320" Height="30" Margin="0,0,8,0" />
+                                    <Button Content="Apply DNS" Style="{StaticResource ActionButton}" Click="DnsApply_Click" />
+                                </StackPanel>
+                                <TextBlock x:Name="DnsStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
@@ -911,19 +943,6 @@
                                         Click="WinFwImport_Click" />
                             </StackPanel>
                             <TextBlock x:Name="WinFwImportStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
-                        <StackPanel>
-                            <TextBlock Text="Filtering DNS" Style="{StaticResource H2}" />
-                            <TextBlock Text="Point Windows at a filtering resolver for a second blocking layer that needs no list upkeep. AdGuard blocks ads &amp; trackers; Quad9 blocks malware &amp; phishing. Applies to all active adapters."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
-                            <StackPanel Orientation="Horizontal">
-                                <ComboBox x:Name="DnsCombo" Width="320" Height="30" Margin="0,0,8,0" />
-                                <Button Content="Apply DNS" Style="{StaticResource ActionButton}" Click="DnsApply_Click" />
-                            </StackPanel>
-                            <TextBlock x:Name="DnsStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 
