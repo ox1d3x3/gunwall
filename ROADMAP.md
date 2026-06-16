@@ -28,7 +28,7 @@ Built-in, toggleable threat/telemetry blocklists like the reference's spy/update
   *GunWall will ship its own curated lists (built from public threat/telemetry sources), not copied from any GPL project. Improvement angle: live count, last-updated date, and a future "update lists" fetch.*
 
 ### 2. Process & app control gaps — *safe, managed*
-- **Kill / terminate process** — end a running process, not just block it.
+- **Kill / terminate process** — ✅ SHIPPED (v0.28) — end a running process from Connections, not just block it.
 - **Certificate verification** — actually validate the Authenticode signature (valid / invalid / unsigned), beyond just reading the publisher name.
 - **Per-app & per-rule comments** — annotate entries with notes.
 - **Keep-unused-apps** toggle — keep apps listed even when not running.

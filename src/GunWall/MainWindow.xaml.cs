@@ -175,7 +175,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.27.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.28.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -815,6 +815,39 @@ public partial class MainWindow : Window
     }
 
     // ---------------------------------------------- connection context menu
+    private void KillProcess_Click(object sender, RoutedEventArgs e)
+    {
+        if (ConnList.SelectedItem is not ConnectionInfo c) return;
+        if (c.ProcessId <= 0)
+        {
+            MessageBox.Show("No process is associated with this row.",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (FirewallManager.IsCriticalProcessName(c.ProcessName))
+        {
+            var crit = MessageBox.Show(
+                $"{c.ProcessName} is a core Windows process. Ending it can crash Windows or force a restart.\n\nEnd it anyway?",
+                "Caution: system process", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (crit != MessageBoxResult.Yes) return;
+        }
+        var ask = MessageBox.Show(
+            $"End process {c.ProcessName} (PID {c.ProcessId})?\n\nUnsaved work in that program will be lost.",
+            "End process", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (ask != MessageBoxResult.OK) return;
+
+        if (ProcessService.KillProcess(c.ProcessId))
+        {
+            _firewall.EventLog($"Ended process {c.ProcessName} (PID {c.ProcessId})");
+            RebuildConnList();
+        }
+        else
+        {
+            MessageBox.Show("Couldn't end that process (it may have already exited, or it needs higher privileges).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
     private void CloseConn_Click(object sender, RoutedEventArgs e)
     {
         if (ConnList.SelectedItem is not ConnectionInfo c) return;

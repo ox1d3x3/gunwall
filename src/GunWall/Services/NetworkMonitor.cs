@@ -21,6 +21,7 @@ public sealed class NetworkMonitor
     private const int AF_INET = 2;
     private const int AF_INET6 = 23;
     private const int TCP_TABLE_OWNER_PID_ALL = 5;
+    private const uint ERROR_INSUFFICIENT_BUFFER = 122;
 
     [DllImport("iphlpapi.dll", SetLastError = true)]
     private static extern uint GetExtendedTcpTable(
@@ -55,10 +56,13 @@ public sealed class NetworkMonitor
     public List<ConnectionInfo> GetTcpConnections()
     {
         var result = new List<ConnectionInfo>();
-        ReadTcpTable(AF_INET, result);
-        ReadTcpTable(AF_INET6, result);
-        ReadUdpTable(AF_INET, result);
-        ReadUdpTable(AF_INET6, result);
+        // Each read is isolated: if one address family or table fails (e.g. an
+        // IPv6 quirk on some adapters), the others still populate. Previously a
+        // single failing read threw and left the whole connection list empty.
+        try { ReadTcpTable(AF_INET, result); } catch { }
+        try { ReadTcpTable(AF_INET6, result); } catch { }
+        try { ReadUdpTable(AF_INET, result); } catch { }
+        try { ReadUdpTable(AF_INET6, result); } catch { }
         return result;
     }
 
@@ -91,12 +95,18 @@ public sealed class NetworkMonitor
     {
         int size = 0;
         GetExtendedUdpTable(IntPtr.Zero, ref size, true, family, UDP_TABLE_OWNER_PID, 0);
-        if (size <= 0) return;
 
-        IntPtr table = Marshal.AllocHGlobal(size);
+        IntPtr table = IntPtr.Zero;
         try
         {
-            uint err = GetExtendedUdpTable(table, ref size, true, family, UDP_TABLE_OWNER_PID, 0);
+            uint err = ERROR_INSUFFICIENT_BUFFER;
+            for (int attempt = 0; attempt < 6 && err == ERROR_INSUFFICIENT_BUFFER; attempt++)
+            {
+                if (size <= 0) return;
+                if (table != IntPtr.Zero) Marshal.FreeHGlobal(table);
+                table = Marshal.AllocHGlobal(size);
+                err = GetExtendedUdpTable(table, ref size, true, family, UDP_TABLE_OWNER_PID, 0);
+            }
             if (err != 0) return;
 
             int numEntries = Marshal.ReadInt32(table);
@@ -150,14 +160,23 @@ public sealed class NetworkMonitor
     private void ReadTcpTable(int family, List<ConnectionInfo> output)
     {
         int size = 0;
-        // First call sizes the buffer.
+        // First call sizes the buffer (returns ERROR_INSUFFICIENT_BUFFER).
         GetExtendedTcpTable(IntPtr.Zero, ref size, true, family, TCP_TABLE_OWNER_PID_ALL, 0);
-        if (size <= 0) return;
 
-        IntPtr table = Marshal.AllocHGlobal(size);
+        IntPtr table = IntPtr.Zero;
         try
         {
-            uint err = GetExtendedTcpTable(table, ref size, true, family, TCP_TABLE_OWNER_PID_ALL, 0);
+            // Retry: on a busy machine the table can grow between the sizing call
+            // and the data read, returning ERROR_INSUFFICIENT_BUFFER. Re-size and
+            // retry so the list never comes back empty under load.
+            uint err = ERROR_INSUFFICIENT_BUFFER;
+            for (int attempt = 0; attempt < 6 && err == ERROR_INSUFFICIENT_BUFFER; attempt++)
+            {
+                if (size <= 0) return;
+                if (table != IntPtr.Zero) Marshal.FreeHGlobal(table);
+                table = Marshal.AllocHGlobal(size);
+                err = GetExtendedTcpTable(table, ref size, true, family, TCP_TABLE_OWNER_PID_ALL, 0);
+            }
             if (err != 0) return;
 
             int numEntries = Marshal.ReadInt32(table);

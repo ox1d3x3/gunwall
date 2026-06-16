@@ -36,6 +36,21 @@ public sealed class ProcessService
 
     private readonly Dictionary<int, (string Name, string Path)> _cache = new();
 
+    /// <summary>Terminates a process by PID. Returns false if it can't be ended.</summary>
+    public static bool KillProcess(int pid)
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.GetProcessById(pid);
+            p.Kill();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public Dictionary<int, (string Name, string Path)> SnapshotProcesses()
     {
         var live = new HashSet<int>();

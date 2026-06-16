@@ -538,6 +538,8 @@ public sealed class FirewallManager : IDisposable
             var st = new System.Text.StringBuilder();
             st.AppendLine("Lockdown:    " + LockdownEngaged);
             st.AppendLine("Strict mode: " + StrictMode);
+            try { st.AppendLine("Live TCP/UDP rows: " + new NetworkMonitor().GetTcpConnections().Count); }
+            catch (Exception cex) { st.AppendLine("Live TCP/UDP rows: ERROR - " + cex.Message); }
             st.AppendLine("DNS provider: " + CurrentDnsProvider);
             st.AppendLine("Enabled blocklists: " + (_data.EnabledBlocklists.Count == 0 ? "(none)" : string.Join(", ", _data.EnabledBlocklists)));
             foreach (var cat in Models.BlocklistCatalog.All)
@@ -1002,6 +1004,13 @@ public sealed class FirewallManager : IDisposable
         if (string.IsNullOrEmpty(exePath)) return false;
         string name = System.IO.Path.GetFileName(exePath);
         return CriticalProcesses.Contains(name);
+    }
+
+    /// <summary>Critical check by process name (with or without the .exe suffix).</summary>
+    public static bool IsCriticalProcessName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        return CriticalProcesses.Contains(name) || CriticalProcesses.Contains(name + ".exe");
     }
 
     private string BackupsFolder

@@ -437,6 +437,8 @@
                                 <MenuItem Header="Block this app" Click="BlockConnApp_Click" />
                                 <MenuItem Header="Block app and close connections" Click="BlockAndCloseConn_Click" />
                                 <Separator />
+                                <MenuItem Header="End process (terminate)" Click="KillProcess_Click" />
+                                <Separator />
                                 <MenuItem Header="Copy remote address" Click="CopyConnRemote_Click" />
                             </ContextMenu>
                         </ListView.ContextMenu>
