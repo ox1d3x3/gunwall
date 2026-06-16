@@ -839,32 +839,131 @@ public sealed class FirewallManager : IDisposable
 
     public bool IsBlocklistOn(string key) => _data.EnabledBlocklists.Contains(key);
 
+    /// <summary>True when a category is being enforced via WFP IP filters rather
+    /// than the hosts file (because security software blocked the hosts write).</summary>
+    public bool IsBlocklistViaWfp(string key) => _data.BlocklistWfpFilters.ContainsKey(key);
+
     public int BlocklistDomainCount(string key)
     {
         var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
         return cat == null ? 0 : DomainsFor(cat).Count;
     }
 
-    /// <summary>Rewrites the GunWall hosts block from every enabled category.</summary>
+    // Lists larger than this won't fall back to WFP (one filter per resolved IP
+    // doesn't scale to tens of thousands of ad domains — those use hosts/DNS).
+    private const int MaxWfpBlocklistDomains = 5000;
+
+    /// <summary>Rewrites the GunWall hosts block from every hosts-enforced category
+    /// (WFP-enforced categories are excluded — they're handled by the engine).</summary>
     public bool RebuildHostsBlock()
     {
         var all = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var cat in Models.BlocklistCatalog.All)
-            if (_data.EnabledBlocklists.Contains(cat.Key))
+            if (_data.EnabledBlocklists.Contains(cat.Key) && !_data.BlocklistWfpFilters.ContainsKey(cat.Key))
                 foreach (var d in DomainsFor(cat)) all.Add(d);
         return HostsFileService.SetBlockedDomains(all, _store.ProfileFolder);
     }
 
-    /// <summary>Turns a category on/off and re-applies the hosts block. Fast (file write).</summary>
+    /// <summary>
+    /// Resolves a category's domains to IPv4 addresses (in parallel) and blocks
+    /// them outbound via WFP. Defender can't revert WFP filters, so this is the
+    /// fallback when the hosts file is locked/reverted. Returns the filter IDs.
+    /// </summary>
+    private List<ulong> BlockDomainsViaWfp(IReadOnlyList<string> domains)
+    {
+        var ips = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
+        using (var sem = new System.Threading.SemaphoreSlim(64))
+        {
+            var tasks = new List<System.Threading.Tasks.Task>();
+            foreach (var d in domains)
+            {
+                sem.Wait();
+                tasks.Add(System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        foreach (var a in System.Net.Dns.GetHostAddresses(d))
+                            if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                                ips.TryAdd(a.ToString(), 0);
+                    }
+                    catch { /* unresolvable — skip */ }
+                    finally { sem.Release(); }
+                }));
+            }
+            try { System.Threading.Tasks.Task.WaitAll(tasks.ToArray()); } catch { }
+        }
+
+        var idList = new List<ulong>();
+        foreach (var ip in ips.Keys)
+        {
+            try { idList.AddRange(_engine.AddCustomRule(true, true, "Any", ip, 0)); } // block outbound
+            catch { /* skip a bad entry, keep going */ }
+        }
+        return idList;
+    }
+
+    /// <summary>
+    /// Turns a category on/off. Tries the hosts file first (fast, scales). If the
+    /// hosts write is blocked/reverted by security software, small lists fall back
+    /// to WFP IP blocking (which can't be reverted). Only commits the logical state
+    /// when blocking actually took effect, so a toggle never falsely shows "on".
+    /// </summary>
     public bool SetBlocklistEnabled(string key, bool on)
     {
         bool has = _data.EnabledBlocklists.Contains(key);
-        if (on && !has) _data.EnabledBlocklists.Add(key);
-        else if (!on && has) _data.EnabledBlocklists.Remove(key);
+
+        if (!on)
+        {
+            // Disable: drop any WFP filters and re-assert the hosts block without it.
+            if (_data.BlocklistWfpFilters.TryGetValue(key, out var existing))
+            {
+                try { _engine.RemoveFilters(existing); } catch { }
+                _data.BlocklistWfpFilters.Remove(key);
+            }
+            _data.EnabledBlocklists.Remove(key);
+            RebuildHostsBlock(); // best effort for any remaining hosts-enforced lists
+            _store.Save(_data);
+            EventLog($"Blocklist disabled: {key}");
+            return true;
+        }
+
+        if (has) return true; // already on
+
+        // 1) Try the hosts file.
+        _data.EnabledBlocklists.Add(key);
+        if (RebuildHostsBlock())
+        {
+            _store.Save(_data);
+            EventLog($"Blocklist enabled (hosts file): {key}");
+            return true;
+        }
+
+        // 2) Hosts blocked (e.g. Defender). Fall back to WFP IP blocking for lists
+        //    small enough that one-filter-per-IP is practical.
+        var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+        var domains = cat == null ? new List<string>() : DomainsFor(cat);
+        if (cat == null || domains.Count == 0 || domains.Count > MaxWfpBlocklistDomains)
+        {
+            _data.EnabledBlocklists.Remove(key);
+            RebuildHostsBlock(); // leave the file consistent
+            EventLog($"Blocklist enable failed (hosts blocked; {domains.Count} domains too large for WFP fallback): {key}");
+            return false;
+        }
+
+        var ids = BlockDomainsViaWfp(domains);
+        if (ids.Count == 0)
+        {
+            _data.EnabledBlocklists.Remove(key);
+            RebuildHostsBlock();
+            EventLog($"Blocklist enable failed (hosts blocked; WFP fallback produced no filters): {key}");
+            return false;
+        }
+
+        _data.BlocklistWfpFilters[key] = ids;       // enforced via WFP now
+        RebuildHostsBlock();                         // ensure this one isn't in the hosts file
         _store.Save(_data);
-        bool ok = RebuildHostsBlock();
-        EventLog($"Blocklist {(on ? "enabled" : "disabled")}: {key}");
-        return ok;
+        EventLog($"Blocklist enabled (WFP fallback, {ids.Count} filters): {key}");
+        return true;
     }
 
     /// <summary>

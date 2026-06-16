@@ -744,7 +744,7 @@
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
                                 <TextBlock Text="Threat &amp; telemetry blocklists" Style="{StaticResource H2}" />
-                                <TextBlock Text="Domain-based blocking via the Windows hosts file - instant to toggle and robust to servers changing IP. Click &quot;Update lists from online&quot; to pull the latest community lists (telemetry from WindowsSpyBlocker, ads/trackers from StevenBlack - both MIT). Toggle a list off if a legitimate service is ever affected."
+                                <TextBlock Text="Blocks known bad domains by category. GunWall uses the Windows hosts file; if security software (e.g. Windows Defender) blocks that, the smaller lists fall back automatically to firewall rules so they still work. The large Ads list can't use that fallback - if the hosts file is blocked, use Filtering DNS below for ads/trackers. Click &quot;Update lists from online&quot; for the latest community lists (telemetry from WindowsSpyBlocker, ads/trackers from StevenBlack - both MIT)."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel x:Name="BlocklistCatList" />
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
@@ -753,6 +753,8 @@
                                             Padding="16,8" Margin="0,0,8,0" />
                                 </StackPanel>
                                 <TextBlock x:Name="BlocklistCatStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
+                                <ProgressBar x:Name="BlocklistProgress" IsIndeterminate="True" Height="3"
+                                             Margin="0,8,0,0" Visibility="Collapsed" Background="Transparent" BorderThickness="0" />
                             </StackPanel>
                         </Border>
 

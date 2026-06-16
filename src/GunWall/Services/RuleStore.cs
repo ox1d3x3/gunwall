@@ -213,6 +213,11 @@ public sealed class StoreData
     /// <summary>Curated blocklist category keys that are enabled (hosts-file based).</summary>
     public List<string> EnabledBlocklists { get; set; } = new();
 
+    /// <summary>Categories enforced via WFP IP filters instead of the hosts file
+    /// (used automatically when security software blocks the hosts write):
+    /// key -> filter IDs.</summary>
+    public Dictionary<string, List<ulong>> BlocklistWfpFilters { get; set; } = new();
+
     /// <summary>Selected filtering-DNS provider key ("auto" = network default).</summary>
     public string DnsProvider { get; set; } = "auto";
 }

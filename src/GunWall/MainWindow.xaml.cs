@@ -175,7 +175,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.28.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.30.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1364,16 +1364,31 @@ public partial class MainWindow : Window
         _blocklistBusy = true;
         foreach (var t in _blocklistToggles) t.IsEnabled = false;   // freeze all toggles
         if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = false;
+        if (BlocklistProgress != null) BlocklistProgress.Visibility = Visibility.Visible;
         if (BlocklistCatStatus != null)
-            BlocklistCatStatus.Text = on ? $"Enabling \u201c{cat.Name}\u201d\u2026" : $"Disabling \u201c{cat.Name}\u201d\u2026";
+            BlocklistCatStatus.Text = on
+                ? $"Applying \u201c{cat.Name}\u201d\u2026 this can take a few seconds."
+                : $"Removing \u201c{cat.Name}\u201d\u2026";
         try
         {
-            bool ok = await System.Threading.Tasks.Task.Run(() => _firewall.SetBlocklistEnabled(key, on));
-            if (!ok) cb.IsChecked = !on; // revert the visual without re-rebuilding everything
+            // Run the work, but keep the loading state visible for a moment so the
+            // toggle reads as a deliberate action rather than an instant flicker.
+            var op = System.Threading.Tasks.Task.Run(() => _firewall.SetBlocklistEnabled(key, on));
+            await System.Threading.Tasks.Task.WhenAll(op, System.Threading.Tasks.Task.Delay(600));
+            bool ok = op.Result;
+
+            if (!ok) cb.IsChecked = !on; // revert the visual to match reality (nothing was applied)
             if (BlocklistCatStatus != null)
-                BlocklistCatStatus.Text = ok
-                    ? $"\u201c{cat.Name}\u201d is {(on ? "on" : "off")}."
-                    : "Couldn't update the hosts file (it may be locked by security software, or GunWall isn't elevated).";
+            {
+                if (!ok)
+                    BlocklistCatStatus.Text =
+                        $"Couldn't apply \u201c{cat.Name}\u201d \u2014 it's too large to block without the hosts file, which Windows Defender is blocking here. Use the Filtering DNS option below for ads/trackers.";
+                else if (on && _firewall.IsBlocklistViaWfp(key))
+                    BlocklistCatStatus.Text =
+                        $"\u201c{cat.Name}\u201d is on \u2014 enforced via firewall rules (Windows Defender blocked the hosts-file method, so GunWall blocked the addresses directly).";
+                else
+                    BlocklistCatStatus.Text = $"\u201c{cat.Name}\u201d is {(on ? "on" : "off")}.";
+            }
         }
         catch (Exception ex)
         {
@@ -1385,6 +1400,7 @@ public partial class MainWindow : Window
             _blocklistBusy = false;
             foreach (var t in _blocklistToggles) t.IsEnabled = true;
             if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = true;
+            if (BlocklistProgress != null) BlocklistProgress.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -1394,6 +1410,7 @@ public partial class MainWindow : Window
         _blocklistBusy = true;
         foreach (var t in _blocklistToggles) t.IsEnabled = false;
         if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = false;
+        if (BlocklistProgress != null) BlocklistProgress.Visibility = Visibility.Visible;
         if (BlocklistCatStatus != null)
             BlocklistCatStatus.Text = "Downloading the latest community blocklists\u2026 this can take up to a minute.";
         try
@@ -1406,6 +1423,7 @@ public partial class MainWindow : Window
         {
             _blocklistBusy = false;
             if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = true;
+            if (BlocklistProgress != null) BlocklistProgress.Visibility = Visibility.Collapsed;
             BuildBlocklistCatUi(); // domain counts changed; rebuild reflects them (toggles re-enabled here)
         }
     }

@@ -47,48 +47,63 @@ public static class HostsFileService
     /// </summary>
     public static bool SetBlockedDomains(IEnumerable<string> domains, string dataFolder)
     {
+        var sorted = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var d in domains)
+        {
+            var dd = (d ?? "").Trim();
+            if (dd.Length > 0) sorted.Add(dd);
+        }
+
+        // One-time backup of the user's original hosts file.
         try
         {
-            // One-time backup of the user's original hosts file.
+            string backup = BackupPath(dataFolder);
+            if (!File.Exists(backup) && File.Exists(HostsPath))
+                File.Copy(HostsPath, backup);
+        }
+        catch { }
+
+        // The hosts file is a favourite target of security software: Windows
+        // Defender's tamper / hosts-hijack protection can lock the write or
+        // silently revert it. So we retry a few times, and after each write we
+        // read the file back to confirm the change actually stuck - rather than
+        // reporting a false success when something reverted it.
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
             try
             {
-                string backup = BackupPath(dataFolder);
-                if (!File.Exists(backup) && File.Exists(HostsPath))
-                    File.Copy(HostsPath, backup);
-            }
-            catch { }
+                string existing = File.Exists(HostsPath) ? File.ReadAllText(HostsPath) : "";
+                string userContent = StripBlock(existing);
 
-            string existing = File.Exists(HostsPath) ? File.ReadAllText(HostsPath) : "";
-            string userContent = StripBlock(existing);
-
-            var sorted = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var d in domains)
-            {
-                var dd = (d ?? "").Trim();
-                if (dd.Length > 0) sorted.Add(dd);
-            }
-
-            var sb = new System.Text.StringBuilder();
-            sb.Append(userContent.TrimEnd('\r', '\n'));
-            if (sorted.Count > 0)
-            {
+                var sb = new System.Text.StringBuilder();
+                sb.Append(userContent.TrimEnd('\r', '\n'));
+                if (sorted.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine();
+                    sb.AppendLine(BeginMarker);
+                    sb.AppendLine($"# {sorted.Count} domains blocked by GunWall. Manage these from the app, not by hand.");
+                    foreach (var d in sorted) sb.Append("0.0.0.0 ").AppendLine(d);
+                    sb.AppendLine(EndMarker);
+                }
                 sb.AppendLine();
-                sb.AppendLine();
-                sb.AppendLine(BeginMarker);
-                sb.AppendLine($"# {sorted.Count} domains blocked by GunWall. Manage these from the app, not by hand.");
-                foreach (var d in sorted) sb.Append("0.0.0.0 ").AppendLine(d);
-                sb.AppendLine(EndMarker);
-            }
-            sb.AppendLine();
 
-            File.WriteAllText(HostsPath, sb.ToString());
-            FlushDns();
-            return true;
+                File.WriteAllText(HostsPath, sb.ToString());
+
+                // Confirm it's really on disk (Defender may have reverted it)
+                // BEFORE spending time on a DNS flush.
+                int onDisk = GetBlockedDomains().Count;
+                if (sorted.Count == 0 ? onDisk == 0 : onDisk > 0)
+                {
+                    FlushDns();
+                    return true;
+                }
+            }
+            catch { /* locked or access-denied — wait and retry */ }
+
+            System.Threading.Thread.Sleep(350);
         }
-        catch
-        {
-            return false;
-        }
+        return false;
     }
 
     private static string StripBlock(string content)
