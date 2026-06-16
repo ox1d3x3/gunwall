@@ -34,7 +34,16 @@ public sealed class FirewallManager : IDisposable
     /// <summary>Opens the WFP engine and loads persisted rules. Call once at startup.</summary>
     public void Initialize()
     {
-        _engine.Initialize();
+        try
+        {
+            _engine.Initialize();
+            DiagnosticLog.Log($"WFP engine initialised (handle {(EngineHandle != IntPtr.Zero ? "valid" : "NULL")}).");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("WfpEngine.Initialize", ex);
+            throw;
+        }
         _data = _store.Load();
         // Filters created in previous sessions are PERSISTENT, so they are already
         // active in WFP. We simply trust the saved record as the source of truth.
@@ -446,10 +455,155 @@ public sealed class FirewallManager : IDisposable
     public bool PopupDefaultAllow => _data.PopupDefaultAllow;
     public void SetPopupDefaultAllow(bool v) { _data.PopupDefaultAllow = v; _store.Save(_data); }
 
-    /// <summary>Writes to the Windows Event Log if the user enabled it.</summary>
+    /// <summary>Writes to the Windows Event Log if the user enabled it, and always to the diagnostic log.</summary>
     public void EventLog(string message)
     {
+        DiagnosticLog.Log(message);
         if (_data.EventLogEnabled) EventLogService.Write("GunWall: " + message);
+    }
+
+    // ------------------------------------------------ diagnostics bundle
+    private static bool IsElevated()
+    {
+        try
+        {
+            using var id = System.Security.Principal.WindowsIdentity.GetCurrent();
+            return new System.Security.Principal.WindowsPrincipal(id)
+                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
+    }
+
+    private static string RunCapture(string exe, string args)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo(exe, args)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) return $"(failed to start {exe})";
+            string o = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(8000);
+            return o;
+        }
+        catch (Exception ex) { return $"(error running {exe}: {ex.Message})"; }
+    }
+
+    private string SanitizedConfigJson()
+    {
+        string saved = _data.VirusTotalApiKey;
+        try
+        {
+            _data.VirusTotalApiKey = string.IsNullOrEmpty(saved) ? "" : "(redacted)";
+            return System.Text.Json.JsonSerializer.Serialize(_data,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex) { return "(failed to serialize config: " + ex.Message + ")"; }
+        finally { _data.VirusTotalApiKey = saved; }
+    }
+
+    /// <summary>
+    /// Builds a diagnostics zip at <paramref name="destZipPath"/>: app/system info,
+    /// the user's settings (secrets redacted), the runtime diagnostic log, recent
+    /// packets, the GunWall hosts block, and network/firewall/DNS state. Intended
+    /// to be attached to a bug report.
+    /// </summary>
+    public void ExportDiagnostics(string destZipPath)
+    {
+        DiagnosticLog.Log("Diagnostics export requested.");
+        string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "GunWallDiag_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(tmp);
+        try
+        {
+            // 1. system + app info
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("GunWall diagnostics");
+            sb.AppendLine("Generated:        " + DateTime.Now.ToString("u"));
+            sb.AppendLine("App version:      " + UpdateService.CurrentVersion);
+            sb.AppendLine("OS:               " + Environment.OSVersion + (Environment.Is64BitOperatingSystem ? " (x64)" : " (x86)"));
+            sb.AppendLine(".NET:             " + System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription);
+            sb.AppendLine("Process 64-bit:   " + Environment.Is64BitProcess);
+            sb.AppendLine("Elevated (admin): " + IsElevated());
+            sb.AppendLine("Engine started:   " + (EngineHandle != IntPtr.Zero));
+            sb.AppendLine("Culture:          " + System.Globalization.CultureInfo.CurrentCulture.Name);
+            sb.AppendLine("Machine:          " + Environment.MachineName);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "system-info.txt"), sb.ToString());
+
+            // 2. current state summary
+            var st = new System.Text.StringBuilder();
+            st.AppendLine("Lockdown:    " + LockdownEngaged);
+            st.AppendLine("Strict mode: " + StrictMode);
+            st.AppendLine("DNS provider: " + CurrentDnsProvider);
+            st.AppendLine("Enabled blocklists: " + (_data.EnabledBlocklists.Count == 0 ? "(none)" : string.Join(", ", _data.EnabledBlocklists)));
+            foreach (var cat in Models.BlocklistCatalog.All)
+                st.AppendLine($"  {cat.Key}: on={IsBlocklistOn(cat.Key)}, domains={BlocklistDomainCount(cat.Key)}");
+            st.AppendLine("App rules:    " + _data.Rules.Count);
+            st.AppendLine("Custom rules: " + _data.CustomRules.Count);
+            st.AppendLine("System rules: " + _data.SystemRules.Count);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "state.txt"), st.ToString());
+
+            // 3. settings (secrets redacted)
+            System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "config.json"), SanitizedConfigJson());
+
+            // 4. runtime diagnostic log(s)
+            try
+            {
+                if (DiagnosticLog.LogPath != null && System.IO.File.Exists(DiagnosticLog.LogPath))
+                    System.IO.File.Copy(DiagnosticLog.LogPath, System.IO.Path.Combine(tmp, "diagnostics.log"), true);
+                if (DiagnosticLog.PreviousLogPath != null && System.IO.File.Exists(DiagnosticLog.PreviousLogPath))
+                    System.IO.File.Copy(DiagnosticLog.PreviousLogPath, System.IO.Path.Combine(tmp, "diagnostics.previous.log"), true);
+            }
+            catch { }
+
+            // 5. recent packets (if file logging is on)
+            try
+            {
+                string pkts = System.IO.Path.Combine(_store.ProfileFolder, "packets.csv");
+                if (System.IO.File.Exists(pkts))
+                    System.IO.File.Copy(pkts, System.IO.Path.Combine(tmp, "packets.csv"), true);
+            }
+            catch { }
+
+            // 6. GunWall hosts block
+            try
+            {
+                var domains = HostsFileService.GetBlockedDomains();
+                var hb = new System.Text.StringBuilder();
+                hb.AppendLine($"GunWall is blocking {domains.Count} domains via the hosts file.");
+                hb.AppendLine();
+                foreach (var d in domains.Take(20000)) hb.AppendLine(d);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "hosts-gunwall-block.txt"), hb.ToString());
+            }
+            catch { }
+
+            // 7. network / firewall / DNS state
+            try
+            {
+                var net = new System.Text.StringBuilder();
+                var wf = WindowsFirewallService.GetState();
+                net.AppendLine($"Windows Firewall - Domain: {wf.Domain}, Private: {wf.Private}, Public: {wf.Public}");
+                net.AppendLine("GunWall DNS selection: " + CurrentDnsProvider);
+                net.AppendLine();
+                net.AppendLine("===== ipconfig /all =====");
+                net.AppendLine(RunCapture("ipconfig", "/all"));
+                System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "network.txt"), net.ToString());
+            }
+            catch { }
+
+            // zip it up
+            if (System.IO.File.Exists(destZipPath)) System.IO.File.Delete(destZipPath);
+            System.IO.Compression.ZipFile.CreateFromDirectory(tmp, destZipPath);
+            DiagnosticLog.Log("Diagnostics export written: " + destZipPath);
+        }
+        finally
+        {
+            try { System.IO.Directory.Delete(tmp, true); } catch { }
+        }
     }
 
     // ------------------------------------------------ temporary (timed) rules
@@ -651,58 +805,159 @@ public sealed class FirewallManager : IDisposable
     public bool AutoBackup => _data.AutoBackup;
     public void SetAutoBackup(bool v) { _data.AutoBackup = v; _store.Save(_data); }
 
-    // ------------------------------------------------ curated blocklists (telemetry/update/ads)
-    public bool IsBlocklistOn(string key) =>
-        _data.Blocklists.TryGetValue(key, out var ids) && ids.Count > 0;
-
-    public int BlocklistFilterCount(string key) =>
-        _data.Blocklists.TryGetValue(key, out var ids) ? ids.Count : 0;
-
-    /// <summary>
-    /// Resolves a category's hostnames to current IPv4 addresses and blocks them
-    /// outbound (plus any literal CIDRs). Persistent filters, so they survive a
-    /// reboot. Runs DNS + filter creation, so call it off the UI thread. Returns
-    /// the number of distinct addresses blocked.
-    /// </summary>
-    public int EnableBlocklist(Models.BlocklistCategory cat)
+    // ------------------------------------------------ curated blocklists (hosts-file based)
+    private string ListsFolder
     {
-        if (IsBlocklistOn(cat.Key)) return BlocklistFilterCount(cat.Key);
-
-        var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var cidr in cat.Cidrs) targets.Add(cidr);
-        foreach (var host in cat.Hosts)
+        get
         {
-            try
-            {
-                foreach (var addr in System.Net.Dns.GetHostAddresses(host))
-                    if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                        targets.Add(addr.ToString());
-            }
-            catch { /* unresolvable host — skip it */ }
+            string d = System.IO.Path.Combine(_store.ProfileFolder, "lists");
+            try { System.IO.Directory.CreateDirectory(d); } catch { }
+            return d;
         }
-
-        var ids = new List<ulong>();
-        foreach (var ip in targets)
-        {
-            try { ids.AddRange(_engine.AddCustomRule(true, true, "Any", ip, 0)); } // block outbound
-            catch { /* skip a bad entry, keep going */ }
-        }
-
-        _data.Blocklists[cat.Key] = ids;
-        _store.Save(_data);
-        EventLog($"Blocklist enabled: {cat.Name} ({targets.Count} addresses)");
-        return targets.Count;
     }
 
-    public void DisableBlocklist(string key)
+    /// <summary>Baked-in + downloaded domains for a category, de-duplicated.</summary>
+    private List<string> DomainsFor(Models.BlocklistCategory cat)
     {
-        if (_data.Blocklists.TryGetValue(key, out var ids))
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var h in cat.Hosts) set.Add(h);
+        try
         {
-            try { _engine.RemoveFilters(ids); } catch { }
-            _data.Blocklists.Remove(key);
-            _store.Save(_data);
-            EventLog($"Blocklist disabled: {key}");
+            string f = System.IO.Path.Combine(ListsFolder, cat.Key + ".txt");
+            if (System.IO.File.Exists(f))
+                foreach (var line in System.IO.File.ReadAllLines(f))
+                {
+                    var d = line.Trim();
+                    if (d.Length > 0) set.Add(d);
+                }
         }
+        catch { }
+        return set.ToList();
+    }
+
+    public bool IsBlocklistOn(string key) => _data.EnabledBlocklists.Contains(key);
+
+    public int BlocklistDomainCount(string key)
+    {
+        var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+        return cat == null ? 0 : DomainsFor(cat).Count;
+    }
+
+    /// <summary>Rewrites the GunWall hosts block from every enabled category.</summary>
+    public bool RebuildHostsBlock()
+    {
+        var all = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var cat in Models.BlocklistCatalog.All)
+            if (_data.EnabledBlocklists.Contains(cat.Key))
+                foreach (var d in DomainsFor(cat)) all.Add(d);
+        return HostsFileService.SetBlockedDomains(all, _store.ProfileFolder);
+    }
+
+    /// <summary>Turns a category on/off and re-applies the hosts block. Fast (file write).</summary>
+    public bool SetBlocklistEnabled(string key, bool on)
+    {
+        bool has = _data.EnabledBlocklists.Contains(key);
+        if (on && !has) _data.EnabledBlocklists.Add(key);
+        else if (!on && has) _data.EnabledBlocklists.Remove(key);
+        _store.Save(_data);
+        bool ok = RebuildHostsBlock();
+        EventLog($"Blocklist {(on ? "enabled" : "disabled")}: {key}");
+        return ok;
+    }
+
+    /// <summary>
+    /// Downloads the latest community lists for every category, caches them, and
+    /// re-applies the hosts block. Returns a short per-category summary. Network +
+    /// file I/O, so call it off the UI thread.
+    /// </summary>
+    public async System.Threading.Tasks.Task<string> UpdateBlocklistsOnlineAsync()
+    {
+        var results = new List<string>();
+        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+        http.DefaultRequestHeaders.Add("User-Agent", "GunWall");
+
+        foreach (var cat in Models.BlocklistCatalog.All)
+        {
+            var domains = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var url in cat.SourceUrls)
+            {
+                try
+                {
+                    string text = await http.GetStringAsync(url);
+                    foreach (var d in ParseHostsDomains(text)) domains.Add(d);
+                }
+                catch { /* one source failed - keep others */ }
+            }
+
+            if (domains.Count > 0)
+            {
+                try { System.IO.File.WriteAllLines(System.IO.Path.Combine(ListsFolder, cat.Key + ".txt"), domains); }
+                catch { }
+                results.Add($"{cat.Name}: {domains.Count:n0}");
+            }
+            else
+            {
+                results.Add($"{cat.Name}: not updated");
+            }
+        }
+
+        RebuildHostsBlock();
+        return string.Join("   \u2022   ", results);
+    }
+
+    private static IEnumerable<string> ParseHostsDomains(string text)
+    {
+        foreach (var raw in text.Replace("\r", "").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line[0] == '#') continue;
+
+            string domain;
+            if (line.StartsWith("0.0.0.0 ", StringComparison.Ordinal) ||
+                line.StartsWith("127.0.0.1 ", StringComparison.Ordinal))
+            {
+                var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) continue;
+                domain = parts[1];
+            }
+            else if (!line.Contains(' ') && line.Contains('.'))
+            {
+                domain = line; // bare-domain list
+            }
+            else continue;
+
+            domain = domain.Trim().TrimEnd('.').ToLowerInvariant();
+            if (domain.Length == 0 || domain == "0.0.0.0" || domain == "localhost" || domain.Contains('/'))
+                continue;
+            yield return domain;
+        }
+    }
+
+    /// <summary>v0.24 used WFP filters for blocklists; remove those and move to the hosts model.</summary>
+    public void MigrateLegacyBlocklists()
+    {
+        if (_data.Blocklists.Count == 0) return;
+        foreach (var kv in _data.Blocklists)
+        {
+            try { _engine.RemoveFilters(kv.Value); } catch { }
+            if (!_data.EnabledBlocklists.Contains(kv.Key)) _data.EnabledBlocklists.Add(kv.Key);
+        }
+        _data.Blocklists.Clear();
+        _store.Save(_data);
+        try { RebuildHostsBlock(); } catch { }
+    }
+
+    // ------------------------------------------------ filtering DNS
+    public string CurrentDnsProvider => string.IsNullOrEmpty(_data.DnsProvider) ? "auto" : _data.DnsProvider;
+
+    public int SetDnsProvider(string key)
+    {
+        var preset = DnsService.ByKey(key);
+        int n = DnsService.Apply(preset);
+        _data.DnsProvider = preset.Key;
+        _store.Save(_data);
+        EventLog($"DNS set to {preset.Name} on {n} adapter(s)");
+        return n;
     }
 
     // ------------------------------------------------ Windows Firewall import

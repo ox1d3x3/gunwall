@@ -134,6 +134,9 @@ public partial class MainWindow : Window
             _engineReady = true;
             _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
             _firewall.AutoBackupIfEnabled(); // snapshot the profile on launch (if enabled)
+            _firewall.MigrateLegacyBlocklists(); // move v0.24 IP-filter blocklists to the hosts model
+            Services.DiagnosticLog.Init(_firewall.ProfileFolder); // point the log at the real data folder
+            Services.DiagnosticLog.Log($"GunWall {Services.UpdateService.CurrentVersion} loaded. Engine started: {_firewall.EngineHandle != IntPtr.Zero}.");
 
             // Auto-refresh views when the network changes (Wi-Fi switch, VPN up/down).
             System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += (_, _) =>
@@ -172,7 +175,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.24.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.26.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1001,7 +1004,7 @@ public partial class MainWindow : Window
         if (tag == "Rules") { RefreshRulesList(); BuildBlocklistCatUi(); }
         if (tag == "Services" && _services.Count == 0) LoadServices();
         if (tag == "System") BuildSystemRulesUi();
-        if (tag == "Settings") { RefreshProfilesCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
+        if (tag == "Settings") { RefreshProfilesCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); RefreshDnsCombo(); }
     }
 
     // ================================================================ actions
@@ -1162,6 +1165,39 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError(ex); }
     }
 
+    private async void ExportDiag_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new SaveFileDialog
+        {
+            Title = "Save GunWall diagnostics",
+            Filter = "Zip archive (*.zip)|*.zip",
+            FileName = "GunWall-diagnostics-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        string path = dlg.FileName;
+        if (ExportDiagBtn != null) ExportDiagBtn.IsEnabled = false;
+        if (DiagStatus != null) DiagStatus.Text = "Collecting diagnostics\u2026 this takes a few seconds.";
+        try
+        {
+            await System.Threading.Tasks.Task.Run(() => _firewall.ExportDiagnostics(path));
+            if (DiagStatus != null) DiagStatus.Text = "Saved to: " + path;
+            // Reveal the file in Explorer so it's easy to attach.
+            try { Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true }); }
+            catch { }
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+            if (DiagStatus != null) DiagStatus.Text = "Export failed: " + ex.Message;
+        }
+        finally
+        {
+            if (ExportDiagBtn != null) ExportDiagBtn.IsEnabled = true;
+        }
+    }
+
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
         if (UpdateStatus == null) return;
@@ -1238,12 +1274,12 @@ public partial class MainWindow : Window
     private Border BuildBlocklistCard(Models.BlocklistCategory cat)
     {
         bool on = _firewall.IsBlocklistOn(cat.Key);
-        int count = _firewall.BlocklistFilterCount(cat.Key);
+        int count = _firewall.BlocklistDomainCount(cat.Key);
 
         var name = new TextBlock { Text = cat.Name, FontWeight = FontWeights.SemiBold };
         var desc = new TextBlock
         {
-            Text = on && count > 0 ? $"{cat.Description}  (blocking {count})" : cat.Description,
+            Text = $"{cat.Description}  ({count:n0} domains)",
             Style = (Style)FindResource("Muted"),
             Margin = new Thickness(0, 2, 0, 0),
             TextWrapping = TextWrapping.Wrap
@@ -1276,7 +1312,6 @@ public partial class MainWindow : Window
 
     private async void Blocklist_Click(object sender, RoutedEventArgs e)
     {
-        if (!RequireEngine()) { BuildBlocklistCatUi(); return; }
         if (sender is not CheckBox cb || cb.Tag is not string key) return;
         var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
         if (cat == null) return;
@@ -1284,29 +1319,37 @@ public partial class MainWindow : Window
         bool on = cb.IsChecked == true;
         cb.IsEnabled = false;
         if (BlocklistCatStatus != null)
-            BlocklistCatStatus.Text = on
-                ? $"Resolving and blocking \u201c{cat.Name}\u201d\u2026 this can take a few seconds."
-                : $"Removing \u201c{cat.Name}\u201d\u2026";
+            BlocklistCatStatus.Text = on ? $"Enabling \u201c{cat.Name}\u201d\u2026" : $"Disabling \u201c{cat.Name}\u201d\u2026";
         try
         {
-            if (on)
-            {
-                int n = await System.Threading.Tasks.Task.Run(() => _firewall.EnableBlocklist(cat));
-                if (BlocklistCatStatus != null)
-                    BlocklistCatStatus.Text = n > 0
-                        ? $"\u201c{cat.Name}\u201d is blocking {n} addresses."
-                        : $"\u201c{cat.Name}\u201d: no addresses resolved (nothing to block).";
-            }
-            else
-            {
-                await System.Threading.Tasks.Task.Run(() => _firewall.DisableBlocklist(key));
-                if (BlocklistCatStatus != null) BlocklistCatStatus.Text = $"\u201c{cat.Name}\u201d turned off.";
-            }
+            bool ok = await System.Threading.Tasks.Task.Run(() => _firewall.SetBlocklistEnabled(key, on));
+            if (BlocklistCatStatus != null)
+                BlocklistCatStatus.Text = ok
+                    ? $"\u201c{cat.Name}\u201d is {(on ? "on" : "off")}."
+                    : "Couldn't update the hosts file (it may be locked by security software).";
         }
         catch (Exception ex) { ShowError(ex); }
         finally
         {
             if (cb != null) cb.IsEnabled = true;
+            BuildBlocklistCatUi();
+        }
+    }
+
+    private async void UpdateLists_Click(object sender, RoutedEventArgs e)
+    {
+        if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = false;
+        if (BlocklistCatStatus != null)
+            BlocklistCatStatus.Text = "Downloading the latest community blocklists\u2026 this can take up to a minute.";
+        try
+        {
+            string summary = await _firewall.UpdateBlocklistsOnlineAsync();
+            if (BlocklistCatStatus != null) BlocklistCatStatus.Text = "Updated \u2014 " + summary;
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally
+        {
+            if (UpdateListsBtn != null) UpdateListsBtn.IsEnabled = true;
             BuildBlocklistCatUi();
         }
     }
@@ -1579,6 +1622,42 @@ public partial class MainWindow : Window
     }
 
     private void WinFwRefresh_Click(object sender, RoutedEventArgs e) => RefreshWinFwStatus();
+
+    // ---------------------------------------------- filtering DNS
+    private void RefreshDnsCombo()
+    {
+        if (DnsCombo == null) return;
+        if (DnsCombo.Items.Count == 0)
+            foreach (var p in Services.DnsService.All)
+                DnsCombo.Items.Add(new ComboBoxItem { Content = p.Name, Tag = p.Key });
+        string cur = _firewall.CurrentDnsProvider;
+        foreach (ComboBoxItem it in DnsCombo.Items)
+            if ((it.Tag as string) == cur) { DnsCombo.SelectedItem = it; break; }
+        if (DnsCombo.SelectedItem == null && DnsCombo.Items.Count > 0) DnsCombo.SelectedIndex = 0;
+    }
+
+    private void DnsApply_Click(object sender, RoutedEventArgs e)
+    {
+        if (DnsCombo?.SelectedItem is not ComboBoxItem it || it.Tag is not string key) return;
+        var preset = Services.DnsService.ByKey(key);
+        if (key != "auto")
+        {
+            var ask = MessageBox.Show(
+                $"Set DNS to {preset.Name} on all active adapters?\n\n" +
+                "You can return to your network's automatic DNS here at any time.",
+                "Apply filtering DNS", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            if (ask != MessageBoxResult.OK) { RefreshDnsCombo(); return; }
+        }
+        try
+        {
+            int n = _firewall.SetDnsProvider(key);
+            if (DnsStatus != null)
+                DnsStatus.Text = n > 0
+                    ? $"{preset.Name} applied to {n} adapter(s)."
+                    : "No active adapters were changed (the command may have been blocked).";
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
 
     private void WinFwOff_Click(object sender, RoutedEventArgs e)
     {
@@ -2126,8 +2205,11 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private static void ShowError(Exception ex) =>
+    private static void ShowError(Exception ex)
+    {
+        Services.DiagnosticLog.LogException("ShowError", ex);
         MessageBox.Show(ex.Message, "GunWall", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
 
     private static string FormatRate(double bytesPerSec)
     {

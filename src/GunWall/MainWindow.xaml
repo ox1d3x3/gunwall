@@ -603,10 +603,15 @@
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock Text="Threat &amp; telemetry blocklists" Style="{StaticResource H2}" />
-                            <TextBlock Text="Curated lists that block known endpoints by category. GunWall resolves each list to current addresses and blocks them outbound. Aggressive blocking can occasionally affect a legitimate service - just toggle a list off if so."
+                            <TextBlock Text="Domain-based blocking via the Windows hosts file - instant to toggle and robust to servers changing IP. Click &quot;Update lists&quot; to pull the latest community lists (telemetry from WindowsSpyBlocker, ads/trackers from StevenBlack - both MIT). Toggle a list off if a legitimate service is ever affected."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <StackPanel x:Name="BlocklistCatList" />
-                            <TextBlock x:Name="BlocklistCatStatus" Style="{StaticResource Muted}" Margin="0,6,0,0" Text="" />
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <Button x:Name="UpdateListsBtn" Content="Update lists from online"
+                                        Style="{StaticResource PrimaryButton}" Click="UpdateLists_Click"
+                                        Padding="16,8" Margin="0,0,8,0" />
+                            </StackPanel>
+                            <TextBlock x:Name="BlocklistCatStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 
@@ -906,6 +911,35 @@
                                         Click="WinFwImport_Click" />
                             </StackPanel>
                             <TextBlock x:Name="WinFwImportStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Filtering DNS" Style="{StaticResource H2}" />
+                            <TextBlock Text="Point Windows at a filtering resolver for a second blocking layer that needs no list upkeep. AdGuard blocks ads &amp; trackers; Quad9 blocks malware &amp; phishing. Applies to all active adapters."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal">
+                                <ComboBox x:Name="DnsCombo" Width="320" Height="30" Margin="0,0,8,0" />
+                                <Button Content="Apply DNS" Style="{StaticResource ActionButton}" Click="DnsApply_Click" />
+                            </StackPanel>
+                            <TextBlock x:Name="DnsStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Diagnostics" Style="{StaticResource H2}" />
+                            <TextBlock Text="Hit a problem? Export a diagnostics bundle and send it over. It packages GunWall's real-time log (including any errors as they happened), your settings with secrets removed, the active rules and blocklist/DNS state, the hosts block, and your network/firewall configuration - everything needed to pinpoint the issue. No browsing history or personal data is included."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="ExportDiagBtn" Content="Export diagnostics (.zip)"
+                                        Style="{StaticResource PrimaryButton}" Click="ExportDiag_Click"
+                                        Padding="16,8" Margin="0,0,8,0" />
+                                <Button Content="Open data folder" Style="{StaticResource ActionButton}"
+                                        Click="OpenLogFolder_Click" />
+                            </StackPanel>
+                            <TextBlock x:Name="DiagStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 

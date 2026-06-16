@@ -18,7 +18,7 @@ UI/ops: clickable Dashboard, Apps, Connections (+ close/block-and-close), Packet
 
 ## 🔜 Remaining work (re-prioritised after deep source review)
 
-### 1. Curated blocklists — ✅ SHIPPED (v0.24) *(mostly safe: managed + existing block engine)*
+### 1. Curated blocklists — ✅ SHIPPED (v0.24, upgraded v0.25) *(hosts-file domain blocking + online MIT lists + filtering DNS)*
 Built-in, toggleable threat/telemetry blocklists like the reference's spy/update/extra sets:
 - **Telemetry / tracking blocklist** — block known Windows telemetry & tracking endpoints. The headline missing feature.
 - **Windows Update servers blocklist** — optional (off by default; blocking breaks updates).

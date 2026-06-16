@@ -12,7 +12,7 @@ public sealed record BlocklistCategory(
     string Name,
     string Description,
     string[] Hosts,
-    string[] Cidrs);
+    string[] SourceUrls);
 
 public static class BlocklistCatalog
 {
@@ -90,18 +90,28 @@ public static class BlocklistCatalog
 
     public static readonly BlocklistCategory Telemetry = new(
         "telemetry", "Windows telemetry & tracking",
-        "Blocks known Windows diagnostic and telemetry endpoints (outbound).",
-        TelemetryHosts, System.Array.Empty<string>());
+        "Blocks known Windows diagnostic and telemetry domains.",
+        TelemetryHosts,
+        new[] { "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt" });
 
     public static readonly BlocklistCategory Update = new(
         "update", "Windows Update servers",
-        "Blocks Windows Update delivery servers. Leave OFF unless you intend to stop updates.",
-        UpdateHosts, System.Array.Empty<string>());
+        "Blocks Windows Update delivery domains. Leave OFF unless you intend to stop updates.",
+        UpdateHosts,
+        new[] { "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/update.txt" });
 
     public static readonly BlocklistCategory Ads = new(
         "ads", "Ads & trackers",
-        "Blocks common ad and tracking endpoints (outbound).",
-        AdsHosts, System.Array.Empty<string>());
+        "Blocks common ad and tracking domains.",
+        AdsHosts,
+        new[]
+        {
+            "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+            "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/extra.txt",
+        });
 
     public static readonly IReadOnlyList<BlocklistCategory> All = new[] { Telemetry, Update, Ads };
+
+    // Online lists are fetched from these open-source, MIT-licensed projects:
+    //   WindowsSpyBlocker (crazy-max) and StevenBlack/hosts.
 }

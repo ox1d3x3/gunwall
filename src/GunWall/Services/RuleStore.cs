@@ -207,6 +207,12 @@ public sealed class StoreData
     /// <summary>Automatically save a timestamped backup of the profile on changes.</summary>
     public bool AutoBackup { get; set; }
 
-    /// <summary>Curated blocklist categories that are on: key -> filter IDs.</summary>
+    /// <summary>Curated blocklist categories that are on: key -> filter IDs. (Legacy v0.24, migrated on load.)</summary>
     public Dictionary<string, List<ulong>> Blocklists { get; set; } = new();
+
+    /// <summary>Curated blocklist category keys that are enabled (hosts-file based).</summary>
+    public List<string> EnabledBlocklists { get; set; } = new();
+
+    /// <summary>Selected filtering-DNS provider key ("auto" = network default).</summary>
+    public string DnsProvider { get; set; } = "auto";
 }
