@@ -175,7 +175,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.30.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.32.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -760,6 +760,9 @@ public partial class MainWindow : Window
             a.Silent = _firewall.IsSilent(a.ExecutablePath);
             a.Hash = _firewall.GetHash(a.ExecutablePath);
             a.Category = ComputeCategory(a.ExecutablePath);
+            a.Publisher = a.Category == AppCategory.System
+                ? "Windows / system"
+                : Services.SignatureService.PublisherLabel(a.ExecutablePath);
         }
 
         IEnumerable<AppInfo> view = known.Values;
@@ -782,13 +785,22 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(path)) return AppCategory.System;
         try
         {
-            if (!System.IO.File.Exists(path)) return AppCategory.Invalid;
+            if (!System.IO.File.Exists(path)) return AppCategory.Unknown;
             string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
             if (!string.IsNullOrEmpty(win) &&
                 path.StartsWith(win, StringComparison.OrdinalIgnoreCase))
                 return AppCategory.System;
-            string pub = NetInfoService.GetPublisher(path);   // cached
-            return string.IsNullOrWhiteSpace(pub) ? AppCategory.Unsigned : AppCategory.Signed;
+
+            // Real Authenticode validation (cached), not just a name read: a file
+            // with a broken, expired, untrusted or forged signature is flagged
+            // Invalid rather than trusted.
+            return SignatureService.Verify(path).Status switch
+            {
+                SignatureStatus.Valid    => AppCategory.Signed,
+                SignatureStatus.Unsigned => AppCategory.Unsigned,
+                SignatureStatus.Invalid  => AppCategory.Invalid,
+                _                        => AppCategory.Unknown
+            };
         }
         catch { return AppCategory.Unknown; }
     }
@@ -1318,7 +1330,9 @@ public partial class MainWindow : Window
         var name = new TextBlock { Text = cat.Name, FontWeight = FontWeights.SemiBold };
         var desc = new TextBlock
         {
-            Text = $"{cat.Description}  ({count:n0} domains)",
+            Text = cat.Key == "ads"
+                ? $"{cat.Description}  (via AdGuard DNS)"
+                : $"{cat.Description}  ({count:n0} domains)",
             Style = (Style)FindResource("Muted"),
             Margin = new Thickness(0, 2, 0, 0),
             TextWrapping = TextWrapping.Wrap
@@ -1383,12 +1397,17 @@ public partial class MainWindow : Window
                 if (!ok)
                     BlocklistCatStatus.Text =
                         $"Couldn't apply \u201c{cat.Name}\u201d \u2014 it's too large to block without the hosts file, which Windows Defender is blocking here. Use the Filtering DNS option below for ads/trackers.";
+                else if (key == "ads")
+                    BlocklistCatStatus.Text = on
+                        ? "Ads & trackers is on \u2014 blocking at the DNS layer with AdGuard. (Changing the Filtering DNS provider below overrides this.)"
+                        : "Ads & trackers is off \u2014 DNS set back to automatic.";
                 else if (on && _firewall.IsBlocklistViaWfp(key))
                     BlocklistCatStatus.Text =
                         $"\u201c{cat.Name}\u201d is on \u2014 enforced via firewall rules (Windows Defender blocked the hosts-file method, so GunWall blocked the addresses directly).";
                 else
                     BlocklistCatStatus.Text = $"\u201c{cat.Name}\u201d is {(on ? "on" : "off")}.";
             }
+            if (key == "ads") RefreshDnsCombo(); // keep the Filtering DNS card in sync
         }
         catch (Exception ex)
         {
@@ -1729,6 +1748,7 @@ public partial class MainWindow : Window
                 DnsStatus.Text = n > 0
                     ? $"{preset.Name} applied to {n} adapter(s)."
                     : "No active adapters were changed (the command may have been blocked).";
+            BuildBlocklistCatUi(); // the Ads toggle mirrors the AdGuard DNS selection
         }
         catch (Exception ex) { ShowError(ex); }
     }

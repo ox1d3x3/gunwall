@@ -54,6 +54,16 @@ public static class HostsFileService
             if (dd.Length > 0) sorted.Add(dd);
         }
 
+        // No-op if the file already matches the desired state. Needless writes to
+        // the hosts file are treated as suspicious by behavioural AV engines, so
+        // we only ever write when the content genuinely changes.
+        try
+        {
+            var current = new SortedSet<string>(GetBlockedDomains(), StringComparer.OrdinalIgnoreCase);
+            if (current.SetEquals(sorted)) return true;
+        }
+        catch { }
+
         // One-time backup of the user's original hosts file.
         try
         {
@@ -63,46 +73,40 @@ public static class HostsFileService
         }
         catch { }
 
-        // The hosts file is a favourite target of security software: Windows
-        // Defender's tamper / hosts-hijack protection can lock the write or
-        // silently revert it. So we retry a few times, and after each write we
-        // read the file back to confirm the change actually stuck - rather than
-        // reporting a false success when something reverted it.
-        for (int attempt = 0; attempt < 3; attempt++)
+        // A single write, then read back to confirm it stuck. We deliberately do
+        // NOT hammer the file with retries: when security software reverts the
+        // hosts file it does so persistently, and repeated rapid writes only make
+        // the process look more like a hosts-hijacker. If the write doesn't stick,
+        // the caller falls back to WFP firewall rules for small lists.
+        try
         {
-            try
+            string existing = File.Exists(HostsPath) ? File.ReadAllText(HostsPath) : "";
+            string userContent = StripBlock(existing);
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append(userContent.TrimEnd('\r', '\n'));
+            if (sorted.Count > 0)
             {
-                string existing = File.Exists(HostsPath) ? File.ReadAllText(HostsPath) : "";
-                string userContent = StripBlock(existing);
-
-                var sb = new System.Text.StringBuilder();
-                sb.Append(userContent.TrimEnd('\r', '\n'));
-                if (sorted.Count > 0)
-                {
-                    sb.AppendLine();
-                    sb.AppendLine();
-                    sb.AppendLine(BeginMarker);
-                    sb.AppendLine($"# {sorted.Count} domains blocked by GunWall. Manage these from the app, not by hand.");
-                    foreach (var d in sorted) sb.Append("0.0.0.0 ").AppendLine(d);
-                    sb.AppendLine(EndMarker);
-                }
                 sb.AppendLine();
-
-                File.WriteAllText(HostsPath, sb.ToString());
-
-                // Confirm it's really on disk (Defender may have reverted it)
-                // BEFORE spending time on a DNS flush.
-                int onDisk = GetBlockedDomains().Count;
-                if (sorted.Count == 0 ? onDisk == 0 : onDisk > 0)
-                {
-                    FlushDns();
-                    return true;
-                }
+                sb.AppendLine();
+                sb.AppendLine(BeginMarker);
+                sb.AppendLine($"# {sorted.Count} domains blocked by GunWall. Manage these from the app, not by hand.");
+                foreach (var d in sorted) sb.Append("0.0.0.0 ").AppendLine(d);
+                sb.AppendLine(EndMarker);
             }
-            catch { /* locked or access-denied — wait and retry */ }
+            sb.AppendLine();
 
-            System.Threading.Thread.Sleep(350);
+            File.WriteAllText(HostsPath, sb.ToString());
+
+            int onDisk = GetBlockedDomains().Count;
+            if (sorted.Count == 0 ? onDisk == 0 : onDisk > 0)
+            {
+                FlushDns();
+                return true;
+            }
         }
+        catch { /* locked or access-denied */ }
+
         return false;
     }
 

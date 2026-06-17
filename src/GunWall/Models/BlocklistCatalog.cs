@@ -102,7 +102,7 @@ public static class BlocklistCatalog
 
     public static readonly BlocklistCategory Ads = new(
         "ads", "Ads & trackers",
-        "Blocks common ad and tracking domains.",
+        "Blocks ads and trackers at the DNS layer via AdGuard.",
         AdsHosts,
         new[]
         {

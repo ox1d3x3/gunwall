@@ -61,10 +61,10 @@ public sealed class CategoryToBrushConverter : IValueConverter
     {
         var color = value is AppCategory c ? c switch
         {
-            AppCategory.Signed => "#3FB868",    // green  - signed publisher
+            AppCategory.Signed => "#3FB868",    // green  - valid, trusted signature
             AppCategory.Unsigned => "#E0A53F",  // amber  - no signature
             AppCategory.System => "#5B8DEF",    // blue   - Windows/system
-            AppCategory.Invalid => "#E25C5C",   // red    - file missing
+            AppCategory.Invalid => "#E25C5C",   // red    - invalid/untrusted signature
             _ => "#7A828C"                       // gray   - unknown
         } : "#7A828C";
         return new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
@@ -80,10 +80,10 @@ public sealed class CategoryToTextConverter : IValueConverter
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         => value is AppCategory c ? c switch
         {
-            AppCategory.Signed => "Signed",
+            AppCategory.Signed => "Valid signature",
             AppCategory.Unsigned => "Unsigned",
-            AppCategory.System => "System",
-            AppCategory.Invalid => "Missing file",
+            AppCategory.System => "Windows / system",
+            AppCategory.Invalid => "Invalid signature",
             _ => "Unknown"
         } : "Unknown";
 

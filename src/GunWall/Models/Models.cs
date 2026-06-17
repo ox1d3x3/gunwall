@@ -46,6 +46,9 @@ public sealed class AppInfo
     /// <summary>Signed / unsigned / system / invalid — drives the colored dot.</summary>
     public AppCategory Category { get; set; } = AppCategory.Unknown;
 
+    /// <summary>Verified signing publisher (or "Unsigned" / "Invalid signature").</summary>
+    public string Publisher { get; set; } = "";
+
     /// <summary>Number of live connections currently attributed to this app.</summary>
     public int ActiveConnections { get; set; }
 

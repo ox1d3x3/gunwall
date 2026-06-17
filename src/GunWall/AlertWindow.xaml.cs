@@ -76,8 +76,21 @@ public partial class AlertWindow : Window
         var path = _info.ExePath;
         var ip = _info.RemoteAddress;
 
-        string publisher = await Task.Run(() => NetInfoService.GetPublisher(path));
-        SignatureText.Text = publisher;
+        var sig = await Task.Run(() => SignatureService.Verify(path));
+        SignatureText.Text = sig.Status switch
+        {
+            SignatureStatus.Valid    => $"\u2713 Verified publisher: {sig.Signer}",
+            SignatureStatus.Unsigned => "\u26A0 Unsigned \u2014 no digital signature",
+            SignatureStatus.Invalid  => $"\u2717 INVALID signature \u2014 {sig.Detail}",
+            _                        => "Signature could not be checked"
+        };
+        SignatureText.Foreground = new SolidColorBrush(sig.Status switch
+        {
+            SignatureStatus.Valid    => Color.FromRgb(0x3F, 0xB8, 0x68), // green
+            SignatureStatus.Unsigned => Color.FromRgb(0xE0, 0xA5, 0x3F), // amber
+            SignatureStatus.Invalid  => Color.FromRgb(0xE2, 0x5C, 0x5C), // red
+            _                        => Color.FromRgb(0x7A, 0x82, 0x8C)  // gray
+        });
 
         if (string.IsNullOrEmpty(ip)) { HostText.Text = "\u2014"; return; }
         string host = await NetInfoService.ResolveHostAsync(ip);

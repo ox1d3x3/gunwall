@@ -6,12 +6,13 @@
 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/release-v0.13.0%20(alpha)-orange?style=flat-square)](#roadmap)
+[![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
+[![Dependencies](https://img.shields.io/badge/NuGet%20dependencies-0-3FB868?style=flat-square)](#-privacy--security)
+[![Status](https://img.shields.io/badge/release-v0.32.0%20(alpha)-E0A53F?style=flat-square)](#-roadmap)
 
-*Take full control of your network. Block apps from the internet, watch your traffic in real time, and get a popup the moment a new app reaches out — in a fast, dark, modern interface.*
+*Take full control of your network. Deny every app by default, watch your traffic in real time, verify who signed the programs reaching out, and block telemetry, ads and trackers — in a fast, dark, modern interface.*
 
-[github.com/ox1d3x3/gunwall](https://github.com/ox1d3x3/gunwall)
+**[github.com/ox1d3x3/gunwall](https://github.com/ox1d3x3/gunwall)**
 
 </div>
 
@@ -19,75 +20,84 @@
 
 ## ⚠️ Project status
 
-GunWall is an **early alpha (v0.13.0)**. The core engine, real-time monitoring, connection alerts and full-control mode are functional and fast, but this is a foundation under active development — not yet a hardened production security product. Test it in a safe environment first.
+GunWall is an **early alpha**. The WFP engine, real-time monitoring, Zero-Trust enforcement, connection alerts, signature verification and the blocking subsystems are functional and fast — but this is a foundation under active development, **not yet a hardened production security product**. It runs as a single elevated process and does not yet implement service isolation or code signing. Test it in a safe environment first, and don't rely on it as your sole defense on a high-risk machine.
 
 ---
 
 ## ✨ Features
 
-- **Enable Firewall (Zero Trust)** — one click takes complete control of network traffic: **every program is denied by default** and must be explicitly approved before it can reach the network. Each undecided app raises an Allow / Block prompt; your decision is remembered permanently (approved apps stay allowed, denied apps stay blocked) until you change it. Loopback and core Windows networking (DNS/DHCP) are auto-allowed so your connection keeps working.
-- **Refined interface** — a deeper, blue-tinted dark theme with elevation, status pills, hover rows, and a cyan/violet accent system for a cleaner, more modern feel.
-- **Alert auto-decision countdown** — the connection popup counts down and auto-allows if you step away, so it never blocks your workflow.
-- **Connection alerts** — a popup the first time any new app reaches the network, showing name, **Authenticode signature**, address, **reverse-DNS host**, port and path, with one-click **Allow / Block**. Detection is fast (sub-second) and robust: apps running as SYSTEM or other users (VPN helpers, security software) are resolved correctly, and outbound-UDP apps (VPN tunnels) are caught too.
-- **Live throughput graph** — smooth gradient area chart of download/upload, plus session data totals.
-- **Connection inspector** — every active TCP connection and UDP socket (IPv4 + IPv6) with owning process, endpoints and state, with instant search.
-- **Activity feed** — new connections logged as they appear. Local only.
-- **Lockdown** — block all traffic instantly from the app or the tray.
-- **System tray** — minimize to tray; filters keep enforcing because they live in the OS, not the app.
-- **Searchable app list** — filter by name or path; optionally show all running apps.
-- **Staged settings with Apply** — choose your options, then commit them with one button.
-- **Allow-by-default until you say otherwise** — monitoring mode never cuts your internet; full control is opt-in.
-- **Custom rules** — block or allow traffic by remote IP, port, protocol and direction, independent of app.
-- **IP blocklist** — paste IPv4 addresses to block outright.
-- **Run at startup** — launch with Windows (elevated, no UAC prompt, via a scheduled task).
-- **Windows Services tab** — list services and block a service's host program.
-- **Network Scanner** — discover devices on your LAN (IP, MAC, host name).
-- **Profiles** — save and switch named rule-set profiles (Home / Work / Travel).
-- **VirusTotal scanning** — right-click an app to check its hash against VirusTotal with your own API key (only the hash is sent).
-- **Refreshed professional theme** with icon tabs and soft status pills.
-- **Light / dark theme** with an animated switch in the header; colors tuned so text stays high-contrast in both.
-- **Top tab navigation** with a compact tab strip.
-- **Close to tray** — closing the window minimizes GunWall to the system tray instead of quitting, so the firewall stays manageable and you're never left with blocked traffic and no UI. A true Exit (tray menu) warns if the firewall is still active and offers to turn it off on the way out.
-- **Packets Log** — a live, searchable log of every connection event (allowed and blocked, system services included), color-coded by action.
-- **Tamper detection** — each rule stores the app's SHA-256 hash, so a swapped binary at the same path is detectable.
-- **Silent apps** — right-click an app to mute it: stays allowed but never raises a popup again.
-- **Profile export / import** — back up all rules and settings to a file and restore them on any machine.
-- **Window preferences** — start minimized to tray, always-on-top, toggle hashing.
-- **Zero telemetry, zero dependencies** — see [Privacy & Security](#-privacy--security).
+### 🛡️ Firewall core
+- **Zero-Trust mode** — one click takes complete control: **every program is denied by default** and must be explicitly approved before it can reach the network. Each undecided app raises an Allow / Block prompt; your decision persists until you change it. Loopback and core Windows networking (DNS / DHCP) stay allowed so your connection keeps working.
+- **Per-app rules** — allow or block any executable, in either direction, with optional **timed** (auto-expiring) and **silent** (muted) variants. Critical system processes are guarded against accidental blocking.
+- **Lockdown** — kill all traffic instantly from the app or the tray.
+- **Stealth mode** — drop unsolicited inbound connections and ICMP error replies so the machine stops answering probes.
+- **Allow-by-default until you say otherwise** — plain monitoring never cuts your internet; full control is opt-in.
+
+### 🔍 Monitoring & visibility
+- **Connection alerts** — a popup the first time any new app reaches the network, showing name, **verified Authenticode signature**, remote address, **reverse-DNS host**, port and path, with one-click **Allow / Block** and an auto-decision countdown. Detection is sub-second and resolves apps running as SYSTEM or other users (VPN helpers, security software) and outbound-UDP tunnels.
+- **Connection inspector** — every live TCP connection and UDP socket (IPv4 + IPv6) with owning process, endpoints and state, with instant search. Right-click to **close a connection**, **block the app**, or **terminate the process**.
+- **Packets Log** — a live, searchable, color-coded log of every connection event (allowed and blocked, system services included), exportable to CSV.
+- **Live throughput graph** — smooth download / upload area chart plus session totals.
+- **Activity feed** — new connections logged as they appear, locally.
+- **Network scanner** — discover devices on your LAN (IP, MAC, host name).
+
+### ✅ App trust & verification
+- **Authenticode signature verification** — GunWall *validates* each program's digital signature with `WinVerifyTrust` (the same check Windows uses), not just reading a name. Apps are marked **Valid signature**, **Unsigned**, or **Invalid signature** — so a file that was tampered with after signing, or carries a forged / untrusted certificate, is flagged in red instead of trusted.
+- **Tamper detection** — each rule stores the executable's SHA-256, so a swapped binary at the same path is detectable.
+- **VirusTotal lookup** — right-click an app to check its hash against VirusTotal with your own API key (only the hash leaves the machine).
+
+### 🚫 Threat & privacy blocking
+- **Telemetry & Windows Update blocklists** — category toggles that block known Windows telemetry and update-delivery domains via the hosts file, with an **automatic WFP firewall-rule fallback** if security software blocks the hosts file, so the lists still take effect.
+- **Ads & trackers** — blocked at the DNS layer via **AdGuard DNS** — fast, no list to maintain, and unaffected by hosts-file protection.
+- **Filtering DNS** — point Windows at a filtering resolver (AdGuard for ads/trackers, Quad9 for malware/phishing) as a second blocking layer that needs no upkeep.
+- **Custom rules** — block or allow by remote IP / CIDR, port, protocol and direction, independent of any app.
+- **Manual IP blocklist** — paste IPv4 addresses to block outright.
+- **System-rule library** — one-tap toggles for common hardening rules and a secure baseline.
+- **Update lists from online** — pull the latest community blocklists on demand (telemetry from WindowsSpyBlocker, ads/trackers from StevenBlack — both MIT).
+
+### ⚙️ Management
+- **Profiles** — save and switch named rule-set profiles (e.g. Home / Work / Travel).
+- **Versioned backups** — automatic and on-demand snapshots of all rules and settings, restorable in a click.
+- **Windows Firewall integration** — read its status, turn it on/off, and import its block rules.
+- **Diagnostics export** — bundle config, logs and network state into a single file for troubleshooting.
+- **Run at startup** — launch with Windows, elevated and without a UAC prompt, via a scheduled task.
+- **Close to tray** — closing the window minimizes to the tray so the firewall stays manageable; a true Exit warns if filtering is still active and offers to turn it off on the way out.
+- **Configurable alerts** — set the popup timeout and default action, mute apps, or snooze prompts.
+
+### 🎨 Interface
+- A deep, blue-tinted **dark theme** and a matching **light theme**, with an animated switch in the header and high-contrast text in both.
+- Icon tab navigation, soft status pills, elevation and hover states for a clean, modern feel.
 
 ---
 
 ## 🚀 Building from source
 
 ### Prerequisites
-
 - **Windows 10 (2004+) or Windows 11**, 64-bit
 - **Visual Studio 2022** (17.8+) with the **.NET desktop development** workload
   *(or the standalone [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0))*
 
 ### Build in Visual Studio (recommended)
-
 1. Open `GunWall.sln`.
 2. Set configuration **Release**, platform **x64**.
 3. **Build → Build Solution** (`Ctrl+Shift+B`).
 4. The EXE appears in `src/GunWall/bin/Release/net8.0-windows/GunWall.exe`.
 
 ### Command line
-
 ```powershell
 dotnet build GunWall.sln -c Release
 ```
 
 Single self-contained EXE:
-
 ```powershell
 dotnet publish src/GunWall/GunWall.csproj -c Release -r win-x64 ^
     --self-contained true -p:PublishSingleFile=true
 ```
 
 ### Running
+GunWall **requires administrator privileges** — WFP cannot add or remove filters otherwise. The manifest requests elevation automatically (UAC prompt). To debug from Visual Studio, start it as administrator.
 
-GunWall **requires administrator privileges** — WFP cannot add or remove filters otherwise. The manifest requests elevation automatically (UAC prompt). To debug from Visual Studio, start Visual Studio as administrator.
+> **Antivirus note:** because a firewall legitimately does the same low-level things malware does — modifying the hosts file, changing DNS, creating packet filters, terminating processes — some behavioral antivirus engines may flag an **unsigned** build with a *heuristic* (generic) detection, especially when run from a `Downloads` folder. This is a false positive. Build in **Release**, run from a stable folder, and if needed add GunWall to your antivirus's trusted-application / exclusion list. Proper code signing is the long-term fix.
 
 ---
 
@@ -95,35 +105,32 @@ GunWall **requires administrator privileges** — WFP cannot add or remove filte
 
 GunWall is designed so that **nothing happens to your data without your say-so**:
 
-- **No network calls of its own.** No phoning home, no silent update checks, no uploads. (The only outbound lookup is reverse-DNS for the alert's "Host" field, which is the same query your OS already makes, to your own DNS server.)
-- **No telemetry, no analytics, no accounts.**
-- **Local-only storage.** Your profile (allow/block choices + settings) is saved in a `GunWallData` folder next to the GunWall executable (portable), falling back to `%ProgramData%\GunWall` if that location is read-only — plain JSON you can read, back up, or delete.
-- **Explicit actions only.** Every filter corresponds to a button you pressed.
-- **Allow-by-default.** A fresh install changes nothing until you enable the firewall or block something.
-- **Clean removal.** Settings → "Remove all GunWall filtering" tears down every persistent filter. Always run it before uninstalling.
+- **No telemetry, no analytics, no accounts, no phoning home.** The only outbound lookups are the ones you ask for: reverse-DNS for an alert's "Host" field (the same query your OS already makes), optional VirusTotal hash checks, and "Update lists from online".
+- **Local-only storage.** Your profile (allow/block choices + settings) lives in a portable `GunWallData` folder next to the executable, falling back to `%ProgramData%\GunWall` if that's read-only — plain JSON you can read, back up, or delete.
+- **Explicit actions only.** Every filter corresponds to a button you pressed. A fresh install changes nothing until you enable the firewall or block something.
+- **Clean removal.** Tear down every persistent filter from Settings before uninstalling.
 - **Zero third-party packages.** The whole supply chain is the .NET base class library plus Win32 — trivially auditable.
-
-> **Security caveat:** this alpha runs as a single elevated process and does not yet implement service isolation, code signing, or tamper protection. Don't rely on it as your sole defense on a high-risk machine yet.
 
 ---
 
 ## 🧭 How it works
 
-GunWall talks directly to the **Windows Filtering Platform**, the OS network-filtering subsystem. It runs as an independent filtering layer and does not modify your existing Windows Firewall rules.
+GunWall talks directly to the **Windows Filtering Platform**, the OS network-filtering subsystem. It runs as an independent filtering layer and does **not** modify your existing Windows Firewall rules.
 
 ```
-┌──────────────────────────────────────────────┐
-│  WPF UI — dashboard • firewall • connections  │
-│           activity • settings • tray • alerts │
-├──────────────────────────────────────────────┤
-│  Fast detection loop + background sampler      │
-│  FirewallManager + RuleStore (JSON)           │
-├──────────────────────────────────────────────┤
-│  WfpEngine  →  fwpuclnt.dll (P/Invoke)        │
-└──────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│  WPF UI — dashboard · apps · connections · packets  │
+│  security · services · network · activity · alerts  │
+├────────────────────────────────────────────────────┤
+│  Sub-second detection loop + background sampler      │
+│  FirewallManager · RuleStore (JSON) · services       │
+├────────────────────────────────────────────────────┤
+│  WfpEngine → fwpuclnt.dll  ·  WinVerifyTrust          │
+│  hosts file · DNS · scheduled task (P/Invoke + Win32)│
+└────────────────────────────────────────────────────┘
 ```
 
-Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv6) keyed to the executable. Enabling full control adds a base block plus per-app permits. Full details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Detection is **event-driven** off the WFP kernel event stream (not polling). Blocking an app adds persistent WFP filters (outbound + inbound, IPv4 + IPv6) keyed to the executable; Zero-Trust adds a base block plus per-app permits. Filter IDs are persisted so every filter can be cleanly removed later, even across restarts. Full details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -131,16 +138,15 @@ Blocking an app adds four persistent WFP filters (outbound + inbound, IPv4 + IPv
 
 | Version | Focus |
 |---------|-------|
-| **v0.6** ✅ | Enable-Firewall takeover, robust detection (SYSTEM/VPN apps), staged settings + Apply |
-| **v0.7** ✅ | Refined blue-tinted theme, status pills, alert countdown, new logo |
-| **v0.8** ✅ | Corrected full-control engine, transaction-based, reliable blocks |
-| **v0.9** ✅ | Zero Trust: default-deny, per-app approval prompts that persist, deny-on-timeout |
-| **v0.10** ✅ | SHA-256 tamper hashing, silent (muted) apps, profile export/import, window preferences |
-| **v0.11** ✅ | Event-driven detection (kernel net events) ON by default with crash-loop self-recovery; sets COLLECT + MATCH_ANY_KEYWORDS so all event classes fire (the fix for missing popups); runs alongside polling; transport-layer ICMP coverage; portable profile |
-| **v0.12** ✅ | Packets Log tab (live allowed/blocked events, searchable, color-coded); alerts show real destination |
-| **v0.13** ✅ | Custom rules editor (block/allow by IP, port, protocol, direction), IP blocklist, run-at-startup |
-| **v0.14** | Custom rules editor (allow/block by address, port, protocol, direction) |
-| **v0.15** | Curated blocklists + system-rules toggles |
+| **v0.9** ✅ | Zero Trust: default-deny, persistent per-app approval prompts, deny-on-timeout |
+| **v0.10** ✅ | SHA-256 tamper hashing, silent apps, profile export/import |
+| **v0.11–0.13** ✅ | Event-driven kernel detection with crash-loop recovery; Packets Log; custom rules; IP blocklist; run-at-startup |
+| **v0.14–0.23** ✅ | Stealth mode, directional/timed rules, system-rule library, profiles, versioned backups, Windows Firewall import, full tabbed UI, light/dark theme, VirusTotal |
+| **v0.24–0.26** ✅ | Curated telemetry / update / ads blocklists; filtering-DNS selection; diagnostics export |
+| **v0.27–0.28** ✅ | Dedicated Security tab; connection-table reliability; terminate process |
+| **v0.29–0.31** ✅ | Honest blocklist state; **WFP fallback** when the hosts file is blocked; **ads via AdGuard DNS** |
+| **v0.32** ✅ | **Authenticode signature verification** (valid / unsigned / invalid) across the app list and alerts |
+| **Next** | Per-app & per-rule comments, notification polish, expanded WFP layer coverage |
 | **v1.0** | Hardened service split, code signing, installer, auto-update |
 
 ---

@@ -837,7 +837,13 @@ public sealed class FirewallManager : IDisposable
         return set.ToList();
     }
 
-    public bool IsBlocklistOn(string key) => _data.EnabledBlocklists.Contains(key);
+    public bool IsBlocklistOn(string key)
+    {
+        // Ads & trackers is enforced at the DNS layer (AdGuard), not the hosts
+        // file - 85k domains is impractical as hosts entries or WFP filters.
+        if (key == "ads") return CurrentDnsProvider == "adguard";
+        return _data.EnabledBlocklists.Contains(key);
+    }
 
     /// <summary>True when a category is being enforced via WFP IP filters rather
     /// than the hosts file (because security software blocked the hosts write).</summary>
@@ -910,6 +916,16 @@ public sealed class FirewallManager : IDisposable
     /// </summary>
     public bool SetBlocklistEnabled(string key, bool on)
     {
+        // Ads & trackers: block at the DNS layer with AdGuard rather than the
+        // hosts file. Fast, Defender-proof, and no list upkeep. (This shares the
+        // single system DNS setting with the Filtering DNS card.)
+        if (key == "ads")
+        {
+            SetDnsProvider(on ? "adguard" : "auto");
+            EventLog($"Ads & trackers {(on ? "enabled via AdGuard DNS" : "disabled (DNS set to automatic)")}");
+            return true;
+        }
+
         bool has = _data.EnabledBlocklists.Contains(key);
 
         if (!on)
