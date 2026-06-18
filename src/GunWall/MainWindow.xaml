@@ -342,6 +342,9 @@
                                  ToolTip="Search applications" />
                         <Button Content="Block an app" Style="{StaticResource ActionButton}"
                                 Click="BrowseBlock_Click" Margin="0,0,8,0" />
+                        <Button Content="Purge unused" Style="{StaticResource ActionButton}"
+                                Click="PurgeUnused_Click" Margin="0,0,8,0"
+                                ToolTip="Forget apps that have no allow/block rule (they'll prompt again)" />
                         <Button Content="Refresh" Style="{StaticResource ActionButton}"
                                 Click="RefreshApps_Click" />
                     </StackPanel>
@@ -363,6 +366,9 @@
                                 <MenuItem Header="Block for 15 minutes" Click="BlockTemp_Click" Tag="15" />
                                 <MenuItem Header="Block for 1 hour" Click="BlockTemp_Click" Tag="60" />
                                 <MenuItem Header="Copy path" Click="CopyPath_Click" />
+                                <MenuItem Header="Open file location" Click="OpenLocation_Click" />
+                                <Separator />
+                                <MenuItem Header="Properties..." Click="Properties_Click" />
                             </ContextMenu>
                         </ListView.ContextMenu>
                         <ListView.View>
@@ -371,6 +377,9 @@
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
+                                                <Image Source="{Binding Icon}" Width="16" Height="16"
+                                                       VerticalAlignment="Center" Margin="0,0,8,0"
+                                                       SnapsToDevicePixels="True" />
                                                 <Ellipse Width="9" Height="9" VerticalAlignment="Center"
                                                          Margin="0,0,8,0"
                                                          Fill="{Binding Category, Converter={StaticResource CategoryToBrush}}"

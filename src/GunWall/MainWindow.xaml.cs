@@ -175,7 +175,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.32.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.33.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -763,6 +763,7 @@ public partial class MainWindow : Window
             a.Publisher = a.Category == AppCategory.System
                 ? "Windows / system"
                 : Services.SignatureService.PublisherLabel(a.ExecutablePath);
+            a.Icon = Services.IconService.GetIcon(a.ExecutablePath);
         }
 
         IEnumerable<AppInfo> view = known.Values;
@@ -1127,6 +1128,43 @@ public partial class MainWindow : Window
     {
         if (AppsList.SelectedItem is not AppInfo app) return;
         try { Clipboard.SetText(app.ExecutablePath); } catch { /* clipboard busy */ }
+    }
+
+    private void OpenLocation_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        try
+        {
+            if (System.IO.File.Exists(app.ExecutablePath))
+                Process.Start(new ProcessStartInfo("explorer.exe",
+                    $"/select,\"{app.ExecutablePath}\"") { UseShellExecute = true });
+        }
+        catch { }
+    }
+
+    private void Properties_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        try
+        {
+            var win = new AppPropertiesWindow(app, _firewall) { Owner = this };
+            bool? changed = win.ShowDialog();
+            if (changed == true) RebuildAppsList(); // a rule was applied from the dialog
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void PurgeUnused_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            int removed = _firewall.PurgeUnusedApps();
+            RebuildAppsList();
+            MessageBox.Show(
+                removed == 0 ? "No unused apps to remove." : $"Removed {removed} unused app(s).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
     }
 
     // ================================================================ dashboard / snooze / updates

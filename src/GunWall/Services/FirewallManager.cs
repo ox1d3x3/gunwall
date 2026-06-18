@@ -218,6 +218,23 @@ public sealed class FirewallManager : IDisposable
     }
 
     /// <summary>
+    /// Removes apps GunWall has merely seen (in the known list) but for which no
+    /// allow/block rule exists - housekeeping for "seen but never decided" apps.
+    /// They'll prompt again the next time they connect. Returns the count removed.
+    /// </summary>
+    public int PurgeUnusedApps()
+    {
+        var ruled = new HashSet<string>(
+            _data.Rules.Select(r => r.ExecutablePath), StringComparer.OrdinalIgnoreCase);
+        int before = _data.KnownApps.Count;
+        _data.KnownApps.RemoveAll(p => !ruled.Contains(p));
+        _knownSet = null; // force a rebuild on next access
+        int removed = before - _data.KnownApps.Count;
+        if (removed > 0) _store.Save(_data);
+        return removed;
+    }
+
+    /// <summary>
     /// Enables or disables strict (whitelist) mode. When enabling, core
     /// Windows networking services are auto-allowed so DNS/DHCP keep working —
     /// without this, strict mode would appear to "break the internet".

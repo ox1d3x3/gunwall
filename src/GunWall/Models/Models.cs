@@ -49,6 +49,9 @@ public sealed class AppInfo
     /// <summary>Verified signing publisher (or "Unsigned" / "Invalid signature").</summary>
     public string Publisher { get; set; } = "";
 
+    /// <summary>Cached executable icon for the list (null if unavailable).</summary>
+    public System.Windows.Media.ImageSource? Icon { get; set; }
+
     /// <summary>Number of live connections currently attributed to this app.</summary>
     public int ActiveConnections { get; set; }
 
