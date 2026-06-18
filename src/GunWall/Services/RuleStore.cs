@@ -152,6 +152,10 @@ public sealed class StoreData
     public bool StrictMode { get; set; }
     public List<ulong> StrictFilterIds { get; set; } = new();
 
+    /// <summary>Filter IDs of the always-on permit for GunWall's own executable,
+    /// so its update/list/VirusTotal traffic isn't blocked by its own block-all.</summary>
+    public List<ulong> SelfFilterIds { get; set; } = new();
+
     /// <summary>UI/behaviour preferences.</summary>
     public bool StartMinimized { get; set; }
     public bool AlwaysOnTop { get; set; }

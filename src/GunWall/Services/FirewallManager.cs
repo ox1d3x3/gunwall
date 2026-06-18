@@ -218,8 +218,33 @@ public sealed class FirewallManager : IDisposable
     }
 
     /// <summary>
-    /// Removes apps GunWall has merely seen (in the known list) but for which no
-    /// allow/block rule exists - housekeeping for "seen but never decided" apps.
+    /// Guarantees GunWall's own executable can reach the network, so its update
+    /// check, blocklist downloads and VirusTotal lookups are never blocked by its
+    /// own Zero-Trust block-all (which otherwise denies GunWall.exe just like any
+    /// other unapproved app). Re-asserted on every launch. A user's *explicit*
+    /// block on GunWall still wins, since that filter has higher weight.
+    /// </summary>
+    public void EnsureSelfConnectivity()
+    {
+        try
+        {
+            string self = Environment.ProcessPath ?? "";
+            if (string.IsNullOrEmpty(self)) return;
+
+            // Drop any stale permit from a previous run, then add a fresh one.
+            if (_data.SelfFilterIds.Count > 0)
+            {
+                try { _engine.RemoveFilters(_data.SelfFilterIds); } catch { }
+                _data.SelfFilterIds.Clear();
+            }
+            _data.SelfFilterIds = _engine.PermitApplication(self);
+            _store.Save(_data);
+            EventLog("Self-permit re-asserted for GunWall's own executable.");
+        }
+        catch { /* never let self-permit setup crash startup */ }
+    }
+
+
     /// They'll prompt again the next time they connect. Returns the count removed.
     /// </summary>
     public int PurgeUnusedApps()

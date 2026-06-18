@@ -132,6 +132,7 @@ public partial class MainWindow : Window
         {
             _firewall.Initialize();
             _engineReady = true;
+            _firewall.EnsureSelfConnectivity(); // GunWall must not block its own update/list/VT traffic
             _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
             _firewall.AutoBackupIfEnabled(); // snapshot the profile on launch (if enabled)
             _firewall.MigrateLegacyBlocklists(); // move v0.24 IP-filter blocklists to the hosts model
@@ -175,7 +176,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.33.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.34.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
