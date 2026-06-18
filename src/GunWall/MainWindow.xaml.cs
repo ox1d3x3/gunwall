@@ -178,7 +178,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.36.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.37.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1130,20 +1130,36 @@ public partial class MainWindow : Window
 
     private void CopyPath_Click(object sender, RoutedEventArgs e)
     {
-        if (AppsList.SelectedItem is not AppInfo app) return;
-        try { Clipboard.SetText(app.ExecutablePath); } catch { /* clipboard busy */ }
+        var app = AppsList.SelectedItem as AppInfo;
+        Services.DiagnosticLog.Log($"CopyPath_Click fired; path='{app?.ExecutablePath ?? "<null>"}'");
+        if (app == null || string.IsNullOrEmpty(app.ExecutablePath)) return;
+        try
+        {
+            Clipboard.SetDataObject(app.ExecutablePath, true); // more robust than SetText
+            MessageBox.Show($"Copied to clipboard:\n{app.ExecutablePath}",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("CopyPath", ex); ShowError(ex); }
     }
 
     private void OpenLocation_Click(object sender, RoutedEventArgs e)
     {
-        if (AppsList.SelectedItem is not AppInfo app) return;
+        var app = AppsList.SelectedItem as AppInfo;
+        Services.DiagnosticLog.Log($"OpenLocation_Click fired; path='{app?.ExecutablePath ?? "<null>"}'");
+        if (app == null || string.IsNullOrEmpty(app.ExecutablePath)) return;
+        if (!System.IO.File.Exists(app.ExecutablePath))
+        {
+            MessageBox.Show($"The file no longer exists at:\n{app.ExecutablePath}",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
         try
         {
-            if (System.IO.File.Exists(app.ExecutablePath))
-                Process.Start(new ProcessStartInfo("explorer.exe",
-                    $"/select,\"{app.ExecutablePath}\"") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo("explorer.exe",
+                $"/select,\"{app.ExecutablePath}\"") { UseShellExecute = true });
+            Services.DiagnosticLog.Log("OpenLocation: explorer.exe launched.");
         }
-        catch { }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("OpenLocation", ex); ShowError(ex); }
     }
 
     /// <summary>Selects the row under the cursor on right-click, so context-menu
@@ -1160,14 +1176,19 @@ public partial class MainWindow : Window
 
     private void Properties_Click(object sender, RoutedEventArgs e)
     {
-        if (AppsList.SelectedItem is not AppInfo app) return;
+        var app = AppsList.SelectedItem as AppInfo;
+        Services.DiagnosticLog.Log($"Properties_Click fired; path='{app?.ExecutablePath ?? "<null>"}'");
+        if (app == null) return;
         try
         {
+            Services.DiagnosticLog.Log("Properties: creating window...");
             var win = new AppPropertiesWindow(app, _firewall) { Owner = this };
+            Services.DiagnosticLog.Log("Properties: showing dialog...");
             bool? changed = win.ShowDialog();
+            Services.DiagnosticLog.Log($"Properties: dialog closed (result={changed}).");
             if (changed == true) RebuildAppsList(); // a rule was applied from the dialog
         }
-        catch (Exception ex) { ShowError(ex); }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("Properties", ex); ShowError(ex); }
     }
 
     private void PurgeUnused_Click(object sender, RoutedEventArgs e)

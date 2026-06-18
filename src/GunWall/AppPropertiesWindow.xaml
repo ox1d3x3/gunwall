@@ -3,11 +3,12 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Application properties - GunWall"
-    Width="520" SizeToContent="Height"
-    WindowStyle="SingleBorderWindow" ResizeMode="NoResize"
-    WindowStartupLocation="CenterOwner"
+    Width="520" Height="600"
+    WindowStyle="SingleBorderWindow" ResizeMode="CanResize"
+    WindowStartupLocation="CenterScreen"
     Background="{DynamicResource BgPrimary}">
 
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
     <Border Background="{DynamicResource BgCard}" CornerRadius="12" Margin="14"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
         <StackPanel Margin="22,20">
@@ -80,4 +81,5 @@
 
         </StackPanel>
     </Border>
+    </ScrollViewer>
 </Window>
