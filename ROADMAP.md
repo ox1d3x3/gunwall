@@ -32,7 +32,8 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 - ☐ **App properties dialog** — a detail window per app (path, publisher, hash, signature, counts, rules) and **Open file location**.
 - ☐ **Purge unused apps** + **keep-unused toggle** + **purge expired timers** — housekeeping for the rule set.
 - ☐ **Protected ("undeletable") rules** — let the user mark a rule non-removable; add per-app *disable-timer* / *disable-notifications* context actions.
-- ☐ **Color-highlight customization** — user-editable colors and the full category set: signed, system, **special**, **pico**, **undeletable**, invalid, and **connection** highlighting.
+- ◐ **Color-highlight customization** — ✅ user-editable colors for signed / unsigned / system / invalid / unknown (Settings → Appearance). Remaining: the **special**, **pico**, **undeletable** and **connection** categories (need the underlying detection).
+- ✅ **Per-app notes** — attach a free-text note to any app (in the Properties dialog).
 
 ### Phase 2 — Notifications, blocklists & logging (safe)
 - ☐ **Fullscreen-silent mode** — suppress popups while a fullscreen app/game is running.

@@ -28,6 +28,7 @@ public partial class AppPropertiesWindow : Window
         ConnText.Text = app.ActiveConnections.ToString();
         StatusText.Text = app.Status.ToString();
         PublisherText.Text = string.IsNullOrWhiteSpace(app.Publisher) ? "\u2014" : app.Publisher;
+        NoteBox.Text = firewall.GetNote(app.ExecutablePath);
 
         var sig = SignatureService.Verify(app.ExecutablePath);
         DetailText.Text = string.IsNullOrEmpty(sig.Detail) ? "\u2014" : sig.Detail;
@@ -47,8 +48,14 @@ public partial class AppPropertiesWindow : Window
         });
     }
 
+    private void SaveNote()
+    {
+        try { _firewall.SetNote(_app.ExecutablePath, NoteBox.Text); } catch { }
+    }
+
     private void Allow_Click(object sender, RoutedEventArgs e)
     {
+        SaveNote();
         try { _firewall.AllowApp(_app.ExecutablePath, _app.Name); } catch { }
         DialogResult = true;
         Close();
@@ -56,6 +63,7 @@ public partial class AppPropertiesWindow : Window
 
     private void Block_Click(object sender, RoutedEventArgs e)
     {
+        SaveNote();
         try { _firewall.BlockApp(_app.ExecutablePath, _app.Name); } catch { }
         DialogResult = true;
         Close();
@@ -77,5 +85,9 @@ public partial class AppPropertiesWindow : Window
         try { Clipboard.SetText(_app.ExecutablePath ?? ""); } catch { }
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    private void Close_Click(object sender, RoutedEventArgs e)
+    {
+        SaveNote();
+        Close();
+    }
 }

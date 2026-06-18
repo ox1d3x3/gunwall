@@ -244,7 +244,32 @@ public sealed class FirewallManager : IDisposable
         catch { /* never let self-permit setup crash startup */ }
     }
 
+    /// <summary>Loads saved category colors into the palette (called at startup).</summary>
+    public void LoadCategoryColors() => CategoryPalette.Load(_data.CategoryColors);
 
+    /// <summary>Persists the current palette to the profile.</summary>
+    public void SaveCategoryColors()
+    {
+        _data.CategoryColors = CategoryPalette.ToDict();
+        _store.Save(_data);
+    }
+
+    /// <summary>The note attached to an executable, or empty.</summary>
+    public string GetNote(string exePath) =>
+        !string.IsNullOrEmpty(exePath) && _data.AppNotes.TryGetValue(exePath, out var n) ? n : "";
+
+    /// <summary>Sets or clears the note for an executable.</summary>
+    public void SetNote(string exePath, string note)
+    {
+        if (string.IsNullOrEmpty(exePath)) return;
+        if (string.IsNullOrWhiteSpace(note)) _data.AppNotes.Remove(exePath);
+        else _data.AppNotes[exePath] = note.Trim();
+        _store.Save(_data);
+    }
+
+    /// <summary>
+    /// Removes apps GunWall has merely seen (in the known list) but for which no
+    /// allow/block rule exists - housekeeping for "seen but never decided" apps.
     /// They'll prompt again the next time they connect. Returns the count removed.
     /// </summary>
     public int PurgeUnusedApps()

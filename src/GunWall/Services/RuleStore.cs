@@ -156,6 +156,12 @@ public sealed class StoreData
     /// so its update/list/VirusTotal traffic isn't blocked by its own block-all.</summary>
     public List<ulong> SelfFilterIds { get; set; } = new();
 
+    /// <summary>User-customised category dot colors (key -> hex). Empty = defaults.</summary>
+    public Dictionary<string, string> CategoryColors { get; set; } = new();
+
+    /// <summary>Free-text notes per executable path (key -> note).</summary>
+    public Dictionary<string, string> AppNotes { get; set; } = new();
+
     /// <summary>UI/behaviour preferences.</summary>
     public bool StartMinimized { get; set; }
     public bool AlwaysOnTop { get; set; }

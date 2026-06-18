@@ -52,6 +52,9 @@ public sealed class AppInfo
     /// <summary>Cached executable icon for the list (null if unavailable).</summary>
     public System.Windows.Media.ImageSource? Icon { get; set; }
 
+    /// <summary>User's free-text note for this app.</summary>
+    public string Note { get; set; } = "";
+
     /// <summary>Number of live connections currently attributed to this app.</summary>
     public int ActiveConnections { get; set; }
 

@@ -60,6 +60,13 @@
                 <TextBlock Grid.Row="5" Grid.Column="1" x:Name="DetailText" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
             </Grid>
 
+            <TextBlock Text="Note" Foreground="{DynamicResource TextSecondary}" Margin="0,16,0,4" />
+            <TextBox x:Name="NoteBox" MinHeight="48" TextWrapping="Wrap" AcceptsReturn="True"
+                     VerticalScrollBarVisibility="Auto"
+                     Background="{DynamicResource BgElevated}" Foreground="{DynamicResource TextPrimary}"
+                     BorderBrush="{DynamicResource BorderBrush}" Padding="6"
+                     ToolTip="A private note for your own reference (saved automatically)." />
+
             <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16" />
 
             <!-- Actions -->

@@ -133,6 +133,7 @@ public partial class MainWindow : Window
             _firewall.Initialize();
             _engineReady = true;
             _firewall.EnsureSelfConnectivity(); // GunWall must not block its own update/list/VT traffic
+            _firewall.LoadCategoryColors();      // apply any customised category dot colors
             _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
             _firewall.AutoBackupIfEnabled(); // snapshot the profile on launch (if enabled)
             _firewall.MigrateLegacyBlocklists(); // move v0.24 IP-filter blocklists to the hosts model
@@ -168,6 +169,7 @@ public partial class MainWindow : Window
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
+            PopulateColorUi();
             _suppressModeEvent = false;
             SyncFirewallToggle();
             if (ApplyButton != null) ApplyButton.IsEnabled = false;
@@ -176,7 +178,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.34.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.35.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -765,6 +767,7 @@ public partial class MainWindow : Window
                 ? "Windows / system"
                 : Services.SignatureService.PublisherLabel(a.ExecutablePath);
             a.Icon = Services.IconService.GetIcon(a.ExecutablePath);
+            a.Note = _firewall.GetNote(a.ExecutablePath);
         }
 
         IEnumerable<AppInfo> view = known.Values;
@@ -1166,6 +1169,72 @@ public partial class MainWindow : Window
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
+    }
+
+    // ---- category color customization ----
+    private void PopulateColorUi()
+    {
+        try
+        {
+            ColorSignedBox.Text = Services.CategoryPalette.Get("Signed");
+            ColorUnsignedBox.Text = Services.CategoryPalette.Get("Unsigned");
+            ColorSystemBox.Text = Services.CategoryPalette.Get("System");
+            ColorInvalidBox.Text = Services.CategoryPalette.Get("Invalid");
+            ColorUnknownBox.Text = Services.CategoryPalette.Get("Unknown");
+            RefreshSwatches();
+        }
+        catch { }
+    }
+
+    private void RefreshSwatches()
+    {
+        SetSwatch(ColorSignedSwatch, ColorSignedBox.Text);
+        SetSwatch(ColorUnsignedSwatch, ColorUnsignedBox.Text);
+        SetSwatch(ColorSystemSwatch, ColorSystemBox.Text);
+        SetSwatch(ColorInvalidSwatch, ColorInvalidBox.Text);
+        SetSwatch(ColorUnknownSwatch, ColorUnknownBox.Text);
+    }
+
+    private static void SetSwatch(System.Windows.Controls.Border swatch, string hex)
+    {
+        try
+        {
+            swatch.Background = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
+        }
+        catch { swatch.Background = System.Windows.Media.Brushes.Gray; }
+    }
+
+    private void ApplyColors_Click(object sender, RoutedEventArgs e)
+    {
+        var entries = new (string key, System.Windows.Controls.TextBox box)[]
+        {
+            ("Signed", ColorSignedBox), ("Unsigned", ColorUnsignedBox),
+            ("System", ColorSystemBox), ("Invalid", ColorInvalidBox), ("Unknown", ColorUnknownBox)
+        };
+        foreach (var (key, box) in entries)
+        {
+            string hex = (box.Text ?? "").Trim();
+            if (!Services.CategoryPalette.IsValidHex(hex))
+            {
+                if (ColorStatus != null) ColorStatus.Text = $"\u201c{hex}\u201d isn't a valid hex color (use #RRGGBB).";
+                return;
+            }
+            Services.CategoryPalette.Set(key, hex);
+        }
+        _firewall.SaveCategoryColors();
+        RefreshSwatches();
+        RebuildAppsList(); // re-evaluate the dot brushes with the new colors
+        if (ColorStatus != null) ColorStatus.Text = "Colors applied.";
+    }
+
+    private void ResetColors_Click(object sender, RoutedEventArgs e)
+    {
+        Services.CategoryPalette.Reset();
+        _firewall.SaveCategoryColors();
+        PopulateColorUi();
+        RebuildAppsList();
+        if (ColorStatus != null) ColorStatus.Text = "Reset to defaults.";
     }
 
     // ================================================================ dashboard / snooze / updates

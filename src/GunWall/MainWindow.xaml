@@ -868,6 +868,71 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
+                            <TextBlock Text="Appearance - category colors" Style="{StaticResource H2}" />
+                            <TextBlock Text="Customise the colored dot next to each app. Enter a hex color like #3FB868, then Apply."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="ColorSignedSwatch" Grid.Column="0" Width="14" Height="14" CornerRadius="3" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="Valid signature" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" />
+                                <TextBox x:Name="ColorSignedBox" Grid.Column="2" Width="110" HorizontalAlignment="Left"
+                                         Background="{DynamicResource BgElevated}" Foreground="{DynamicResource TextPrimary}"
+                                         BorderBrush="{DynamicResource BorderBrush}" Padding="4,2" />
+                            </Grid>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="ColorUnsignedSwatch" Grid.Column="0" Width="14" Height="14" CornerRadius="3" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="Unsigned" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" />
+                                <TextBox x:Name="ColorUnsignedBox" Grid.Column="2" Width="110" HorizontalAlignment="Left"
+                                         Background="{DynamicResource BgElevated}" Foreground="{DynamicResource TextPrimary}"
+                                         BorderBrush="{DynamicResource BorderBrush}" Padding="4,2" />
+                            </Grid>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="ColorSystemSwatch" Grid.Column="0" Width="14" Height="14" CornerRadius="3" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="Windows / system" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" />
+                                <TextBox x:Name="ColorSystemBox" Grid.Column="2" Width="110" HorizontalAlignment="Left"
+                                         Background="{DynamicResource BgElevated}" Foreground="{DynamicResource TextPrimary}"
+                                         BorderBrush="{DynamicResource BorderBrush}" Padding="4,2" />
+                            </Grid>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="ColorInvalidSwatch" Grid.Column="0" Width="14" Height="14" CornerRadius="3" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="Invalid signature" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" />
+                                <TextBox x:Name="ColorInvalidBox" Grid.Column="2" Width="110" HorizontalAlignment="Left"
+                                         Background="{DynamicResource BgElevated}" Foreground="{DynamicResource TextPrimary}"
+                                         BorderBrush="{DynamicResource BorderBrush}" Padding="4,2" />
+                            </Grid>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="ColorUnknownSwatch" Grid.Column="0" Width="14" Height="14" CornerRadius="3" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="Unknown" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" />
+                                <TextBox x:Name="ColorUnknownBox" Grid.Column="2" Width="110" HorizontalAlignment="Left"
+                                         Background="{DynamicResource BgElevated}" Foreground="{DynamicResource TextPrimary}"
+                                         BorderBrush="{DynamicResource BorderBrush}" Padding="4,2" />
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Content="Apply colors" Click="ApplyColors_Click" Style="{StaticResource ActionButton}" Margin="0,0,8,0" />
+                                <Button Content="Reset to defaults" Click="ResetColors_Click" Style="{StaticResource ActionButton}" />
+                                <TextBlock x:Name="ColorStatus" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
                             <TextBlock Text="Preferences" Style="{StaticResource H2}" />
                             <TextBlock Text="General behaviour. Staged - press Apply to save."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" />
