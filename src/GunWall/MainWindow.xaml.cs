@@ -178,7 +178,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.35.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.36.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1144,6 +1144,18 @@ public partial class MainWindow : Window
                     $"/select,\"{app.ExecutablePath}\"") { UseShellExecute = true });
         }
         catch { }
+    }
+
+    /// <summary>Selects the row under the cursor on right-click, so context-menu
+    /// actions (which read SelectedItem) operate on the row you clicked. WPF does
+    /// not select on right-click by default.</summary>
+    private void Row_RightClickSelect(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is System.Windows.Controls.ListViewItem item)
+        {
+            item.IsSelected = true;
+            item.Focus();
+        }
     }
 
     private void Properties_Click(object sender, RoutedEventArgs e)
