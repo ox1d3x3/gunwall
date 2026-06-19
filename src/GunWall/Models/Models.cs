@@ -55,6 +55,15 @@ public sealed class AppInfo
     /// <summary>User's free-text note for this app.</summary>
     public string Note { get; set; } = "";
 
+    /// <summary>True when this is a Microsoft Store / UWP (AppContainer) app.</summary>
+    public bool IsStoreApp { get; set; }
+
+    /// <summary>Friendly Store display name (e.g. "Spotify"); empty for non-Store apps.</summary>
+    public string StoreName { get; set; } = "";
+
+    /// <summary>Package family name (Name_PublisherId); empty for non-Store apps.</summary>
+    public string PackageFamily { get; set; } = "";
+
     /// <summary>Number of live connections currently attributed to this app.</summary>
     public int ActiveConnections { get; set; }
 

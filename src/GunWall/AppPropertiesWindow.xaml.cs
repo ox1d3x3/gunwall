@@ -46,6 +46,22 @@ public partial class AppPropertiesWindow : Window
             SignatureStatus.Invalid  => Color.FromRgb(0xE2, 0x5C, 0x5C),
             _                        => Color.FromRgb(0x7A, 0x82, 0x8C)
         });
+
+        // Microsoft Store / UWP identity
+        if (_app.IsStoreApp)
+        {
+            TypeText.Text = string.IsNullOrWhiteSpace(_app.StoreName)
+                ? "Microsoft Store app"
+                : $"Microsoft Store app \u2014 {_app.StoreName}";
+            PackageText.Text = string.IsNullOrWhiteSpace(_app.PackageFamily)
+                ? "\u2014" : _app.PackageFamily;
+        }
+        else
+        {
+            TypeText.Text = "Desktop application";
+            PackageLabel.Visibility = Visibility.Collapsed;
+            PackageText.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void SaveNote()

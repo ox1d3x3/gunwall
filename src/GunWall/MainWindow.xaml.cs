@@ -178,7 +178,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.37.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.38.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -768,6 +768,16 @@ public partial class MainWindow : Window
                 : Services.SignatureService.PublisherLabel(a.ExecutablePath);
             a.Icon = Services.IconService.GetIcon(a.ExecutablePath);
             a.Note = _firewall.GetNote(a.ExecutablePath);
+
+            var store = Services.StoreAppService.Resolve(a.ExecutablePath);
+            a.IsStoreApp = store.IsStore;
+            a.StoreName = store.DisplayName;
+            a.PackageFamily = store.PackageFamily;
+            // Show the friendly Store name in the Publisher column when we have one
+            // and the signature didn't already give a clear publisher.
+            if (store.IsStore && !string.IsNullOrWhiteSpace(store.DisplayName) &&
+                (string.IsNullOrWhiteSpace(a.Publisher) || a.Publisher is "Unsigned" or "Unknown"))
+                a.Publisher = $"Store: {store.DisplayName}";
         }
 
         IEnumerable<AppInfo> view = known.Values;

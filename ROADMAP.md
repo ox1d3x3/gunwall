@@ -25,7 +25,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 ## ☐ Remaining for parity
 
 ### Phase 1 — App model & visibility (safe, managed C#)
-- ☐ **UWP / Microsoft Store app support** — resolve package SID / AppContainer identity so Store apps can be ruled like regular EXEs.
+- ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
 - ☐ **Service & network-app categorization** — distinguish svchost-hosted network services and show the owning service per rule (beyond the current Services tab).
 - ☐ **Pico / subsystem process support** — identify WSL and other minimal-process traffic.
 - ☐ **App icons in the list** — show each executable's icon; toggle for icons vs. filenames-only.

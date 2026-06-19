@@ -16,6 +16,7 @@
         <conv:StatusToTextConverter x:Key="StatusToText" />
         <conv:CategoryToBrushConverter x:Key="CategoryToBrush" />
         <conv:CategoryToTextConverter x:Key="CategoryToText" />
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
         <Style x:Key="SearchBox" TargetType="TextBox">
             <Setter Property="Background" Value="{DynamicResource BgSecondary}" />
@@ -390,6 +391,14 @@
                                                          Fill="{Binding Category, Converter={StaticResource CategoryToBrush}}"
                                                          ToolTip="{Binding Category, Converter={StaticResource CategoryToText}}" />
                                                 <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                                <Border CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
+                                                        VerticalAlignment="Center"
+                                                        Background="{DynamicResource AccentSoft}"
+                                                        Visibility="{Binding IsStoreApp, Converter={StaticResource BoolToVis}}"
+                                                        ToolTip="{Binding PackageFamily}">
+                                                    <TextBlock Text="Store" FontSize="9.5"
+                                                               Foreground="{DynamicResource TextSecondary}" />
+                                                </Border>
                                             </StackPanel>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>

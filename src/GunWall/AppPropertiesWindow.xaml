@@ -39,6 +39,8 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Publisher" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
@@ -57,8 +59,14 @@
                 <TextBlock Grid.Row="4" Grid.Column="1" x:Name="HashText" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap"
                            FontFamily="Consolas" FontSize="11" Margin="0,0,0,8" />
 
-                <TextBlock Grid.Row="5" Grid.Column="0" Text="Signature" Foreground="{DynamicResource TextSecondary}" />
-                <TextBlock Grid.Row="5" Grid.Column="1" x:Name="DetailText" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Signature" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="5" Grid.Column="1" x:Name="DetailText" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Type" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="6" Grid.Column="1" x:Name="TypeText" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                <TextBlock Grid.Row="7" Grid.Column="0" x:Name="PackageLabel" Text="Package" Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Grid.Row="7" Grid.Column="1" x:Name="PackageText" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" />
             </Grid>
 
             <TextBlock Text="Note" Foreground="{DynamicResource TextSecondary}" Margin="0,16,0,4" />
