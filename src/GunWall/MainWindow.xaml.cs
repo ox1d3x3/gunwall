@@ -47,6 +47,7 @@ public partial class MainWindow : Window
     private string _appFilter = "";
     private string _connFilter = "";
     private bool _showAllApps;
+    private int _lastStoreCount = -1;
 
     // Activity feed bookkeeping
     private readonly HashSet<string> _seenConnections = new();
@@ -178,7 +179,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.38.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.38.1 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -780,6 +781,13 @@ public partial class MainWindow : Window
                 a.Publisher = $"Store: {store.DisplayName}";
         }
 
+        int storeCount = known.Values.Count(a => a.IsStoreApp);
+        if (storeCount != _lastStoreCount)
+        {
+            _lastStoreCount = storeCount;
+            Services.DiagnosticLog.Log($"Apps list: {known.Count} apps, {storeCount} detected as Store/UWP.");
+        }
+
         IEnumerable<AppInfo> view = known.Values;
         if (!string.IsNullOrWhiteSpace(_appFilter))
             view = view.Where(a =>
@@ -1163,13 +1171,9 @@ public partial class MainWindow : Window
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        try
-        {
-            Process.Start(new ProcessStartInfo("explorer.exe",
-                $"/select,\"{app.ExecutablePath}\"") { UseShellExecute = true });
-            Services.DiagnosticLog.Log("OpenLocation: explorer.exe launched.");
-        }
-        catch (Exception ex) { Services.DiagnosticLog.LogException("OpenLocation", ex); ShowError(ex); }
+        if (!Services.ShellHelper.RevealInExplorer(app.ExecutablePath))
+            MessageBox.Show($"Could not open the location in Explorer.\nThe file is at:\n{app.ExecutablePath}",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     /// <summary>Selects the row under the cursor on right-click, so context-menu

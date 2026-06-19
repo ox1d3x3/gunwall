@@ -87,13 +87,9 @@ public partial class AppPropertiesWindow : Window
 
     private void OpenLocation_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            if (File.Exists(_app.ExecutablePath))
-                Process.Start(new ProcessStartInfo("explorer.exe",
-                    $"/select,\"{_app.ExecutablePath}\"") { UseShellExecute = true });
-        }
-        catch { }
+        if (!Services.ShellHelper.RevealInExplorer(_app.ExecutablePath))
+            MessageBox.Show($"Could not open the location in Explorer.\nThe file is at:\n{_app.ExecutablePath}",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void CopyPath_Click(object sender, RoutedEventArgs e)
