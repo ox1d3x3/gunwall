@@ -179,7 +179,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.38.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.38.2 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -794,12 +794,24 @@ public partial class MainWindow : Window
                 a.Name.Contains(_appFilter, StringComparison.OrdinalIgnoreCase) ||
                 a.ExecutablePath.Contains(_appFilter, StringComparison.OrdinalIgnoreCase));
 
+        // Preserve selection across the periodic rebuild: the timer replaces every
+        // AppInfo object, which would otherwise null out SelectedItem mid-interaction
+        // (e.g. while a right-click context menu is open).
+        string? keepPath = (AppsList.SelectedItem as AppInfo)?.ExecutablePath;
+
         _apps.Clear();
         foreach (var a in view
                      .OrderByDescending(a => a.Status == AppStatus.Blocked) // blocked pinned on top
                      .ThenByDescending(a => a.ActiveConnections)
                      .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase))
             _apps.Add(a);
+
+        if (!string.IsNullOrEmpty(keepPath))
+        {
+            var reselect = _apps.FirstOrDefault(a =>
+                string.Equals(a.ExecutablePath, keepPath, StringComparison.OrdinalIgnoreCase));
+            if (reselect != null) AppsList.SelectedItem = reselect;
+        }
     }
 
     /// <summary>Cheap visual category: missing file, system path, signed, or unsigned.</summary>
@@ -838,9 +850,20 @@ public partial class MainWindow : Window
                 c.LocalAddress.Contains(_connFilter, StringComparison.OrdinalIgnoreCase) ||
                 c.State.Contains(_connFilter, StringComparison.OrdinalIgnoreCase));
 
+        string? keepConn = (ConnList.SelectedItem as ConnectionInfo) is { } sc
+            ? $"{sc.ProcessId}|{sc.Protocol}|{sc.LocalAddress}:{sc.LocalPort}|{sc.RemoteAddress}:{sc.RemotePort}"
+            : null;
+
         _connections.Clear();
         foreach (var c in view.OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
             _connections.Add(c);
+
+        if (keepConn != null)
+        {
+            var re = _connections.FirstOrDefault(c =>
+                $"{c.ProcessId}|{c.Protocol}|{c.LocalAddress}:{c.LocalPort}|{c.RemoteAddress}:{c.RemotePort}" == keepConn);
+            if (re != null) ConnList.SelectedItem = re;
+        }
     }
 
     private void AppSearch_TextChanged(object sender, TextChangedEventArgs e)
@@ -1178,14 +1201,35 @@ public partial class MainWindow : Window
 
     /// <summary>Selects the row under the cursor on right-click, so context-menu
     /// actions (which read SelectedItem) operate on the row you clicked. WPF does
-    /// not select on right-click by default.</summary>
+    /// not select on right-click by default. Handled at the ListView level and
+    /// walking up to the row container, which is more reliable than a per-item
+    /// EventSetter.</summary>
     private void Row_RightClickSelect(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (sender is System.Windows.Controls.ListViewItem item)
+        var item = FindAncestor<System.Windows.Controls.ListViewItem>(e.OriginalSource as DependencyObject);
+        if (item != null)
         {
             item.IsSelected = true;
             item.Focus();
         }
+    }
+
+    /// <summary>Walks up the visual (and, for text, logical) tree to the first
+    /// ancestor of type T.</summary>
+    private static T? FindAncestor<T>(DependencyObject? start) where T : DependencyObject
+    {
+        DependencyObject? d = start;
+        while (d != null)
+        {
+            if (d is T match) return match;
+            DependencyObject? parent =
+                d is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                    ? System.Windows.Media.VisualTreeHelper.GetParent(d)
+                    : null;
+            parent ??= System.Windows.LogicalTreeHelper.GetParent(d);
+            d = parent;
+        }
+        return null;
     }
 
     private void Properties_Click(object sender, RoutedEventArgs e)

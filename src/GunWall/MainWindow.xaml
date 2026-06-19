@@ -353,12 +353,8 @@
 
                 <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
                     <ListView x:Name="AppsList" VirtualizingPanel.IsVirtualizing="True"
-                              VirtualizingPanel.VirtualizationMode="Recycling">
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
-                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="Row_RightClickSelect" />
-                            </Style>
-                        </ListView.ItemContainerStyle>
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              PreviewMouseRightButtonDown="Row_RightClickSelect">
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Mute (allow, no popups)" Click="MuteApp_Click" />
@@ -455,12 +451,8 @@
 
                 <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
                     <ListView x:Name="ConnList" VirtualizingPanel.IsVirtualizing="True"
-                              VirtualizingPanel.VirtualizationMode="Recycling">
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
-                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="Row_RightClickSelect" />
-                            </Style>
-                        </ListView.ItemContainerStyle>
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              PreviewMouseRightButtonDown="Row_RightClickSelect">
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Close this connection" Click="CloseConn_Click" />
