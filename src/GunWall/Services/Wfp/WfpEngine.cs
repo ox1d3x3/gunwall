@@ -328,6 +328,14 @@ public sealed class WfpEngine : IDisposable
                     TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, AppBlockWeight, "Block inbound"));
                     TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, AppBlockWeight, "Block inbound"));
                     break;
+                case "block_listen":
+                    // Block apps from opening a listening socket — one step earlier
+                    // than blocking inbound accept. Optional advanced hardening; each
+                    // add is fault-tolerant, so a layer the OS doesn't expose is simply
+                    // skipped rather than aborting the rest.
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_LISTEN_V4, AppBlockWeight, "Block listen"));
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_LISTEN_V6, AppBlockWeight, "Block listen"));
+                    break;
                 case "block_ipv6":
                     TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V6, AppBlockWeight, "Block IPv6"));
                     TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, AppBlockWeight, "Block IPv6"));

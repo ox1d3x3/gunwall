@@ -539,6 +539,18 @@ public sealed class FirewallManager : IDisposable
     public bool KeepUnusedApps => _data.KeepUnusedApps;
     public void SetKeepUnusedApps(bool v) { _data.KeepUnusedApps = v; _store.Save(_data); }
 
+    /// <summary>Total WFP filters GunWall currently has installed across all layers
+    /// (sum of every stored filter id). A live window into the kernel-side footprint.</summary>
+    public int ActiveFilterCount =>
+        _data.Rules.Sum(r => r.FilterIds.Count)
+        + _data.CustomRules.Sum(r => r.FilterIds.Count)
+        + _data.SystemRules.Values.Sum(v => v.Count)
+        + _data.BlocklistFilterIds.Count
+        + _data.BlocklistWfpFilters.Values.Sum(v => v.Count)
+        + _data.StrictFilterIds.Count
+        + _data.LockdownFilterIds.Count
+        + _data.SelfFilterIds.Count;
+
     // ------------------------------------------------ packet file logging
     private PacketLogFile? _packetLog;
     public bool PacketFileLogging => _data.PacketFileLogging;

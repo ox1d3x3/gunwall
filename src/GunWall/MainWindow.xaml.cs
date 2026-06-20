@@ -189,7 +189,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.39.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.40.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1729,6 +1729,12 @@ public partial class MainWindow : Window
     private void BuildSystemRulesUi()
     {
         if (SystemBlockList == null || SystemAllowList == null) return;
+        if (WfpCoverageText != null)
+        {
+            int n = _firewall.ActiveFilterCount;
+            WfpCoverageText.Text = $"Kernel coverage: {n} active WFP filter{(n == 1 ? "" : "s")} installed by GunWall " +
+                                   "across the connect, accept, transport and ICMP-error layers (plus listen, if you apply that rule below).";
+        }
         SystemBlockList.Children.Clear();
         SystemAllowList.Children.Clear();
 

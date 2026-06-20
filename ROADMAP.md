@@ -44,7 +44,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 - ☐ **View & tray niceties** — list view modes (details / icon / tile) and icon sizes, autosize-columns, **tray single-click**, font / zoom options.
 
 ### Phase 3 — Kernel hardening (higher risk, large coverage)
-- ☐ **Expanded WFP layers** — extend from today's 10 to the full ~22: ALE_AUTH_LISTEN, ALE_RESOURCE_ASSIGNMENT, ALE_CONNECT_REDIRECT, INBOUND_ICMP_ERROR, IPFORWARD, and the matching *_DISCARD* layers (v4/v6). Biggest single coverage gain.
+- ◐ **Expanded WFP layers** — extend from today's ~10 toward the full ~22. ✅ **ALE_AUTH_LISTEN** (v4/v6) now ships as an opt-in, removable "Block listening sockets" System Rule, applied through the fault-tolerant filter path, with a live kernel-coverage readout on the System Rules tab. Remaining (each needs careful **on-hardware testing** before shipping — a bad filter on these can break connectivity in ways that can't be validated off-device): ALE_RESOURCE_ASSIGNMENT, ALE_CONNECT_REDIRECT, INBOUND_ICMP_ERROR, IPFORWARD, and the matching *_DISCARD* layers (v4/v6).
 - ☐ **Quick rule toggles** — one-tap *Allow Windows Update* and *Allow 6to4 / IPv6 transition*.
 - ☐ **Secure filters** — protect GunWall's sublayer/filters from tampering via a DACL. *Carries a lockout risk; needs a guaranteed recovery path before shipping.*
 

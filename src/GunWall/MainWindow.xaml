@@ -321,7 +321,11 @@
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0" Margin="0,0,0,16">
-                    <StackPanel Orientation="Horizontal">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" ClipToBounds="True">
                         <TextBlock Text="Firewall" Style="{StaticResource H1}" VerticalAlignment="Center" />
                         <CheckBox x:Name="ShowAllAppsCheck" Content="Show all running apps"
                                   Foreground="{DynamicResource TextSecondary}"
@@ -338,7 +342,7 @@
                             <TextBlock Text="Invalid sig" Style="{StaticResource Muted}" />
                         </StackPanel>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                         <TextBox x:Name="AppSearch" Style="{StaticResource SearchBox}"
                                  TextChanged="AppSearch_TextChanged" Margin="0,0,8,0"
                                  ToolTip="Search applications" />
@@ -747,6 +751,8 @@
                         <TextBlock Text="System Rules" Style="{StaticResource H1}" />
                         <TextBlock Text="A curated library of named firewall rules. Allow common services, or harden against risky traffic. Each applies immediately."
                                    Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
+                        <TextBlock x:Name="WfpCoverageText" Style="{StaticResource Muted}" Margin="0,6,0,0"
+                                   HorizontalAlignment="Left" Text="" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                         <TextBox x:Name="SystemSearch" Width="190" Height="32" VerticalContentAlignment="Center"

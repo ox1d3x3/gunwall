@@ -76,6 +76,14 @@ internal static class WfpNative
         new("e1cd9fe7-f4b5-4273-96c0-592e487b8650");
     internal static readonly Guid FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6 =
         new("a3b42c97-9f04-4672-b87e-cee9c483257f");
+    // Inbound listen authorization — governs an application's ability to OPEN a
+    // listening socket (accept inbound). Blocking here stops a process from
+    // listening at all, one step earlier than ALE_AUTH_RECV_ACCEPT. Used by the
+    // optional "block listening sockets" hardening preset.
+    internal static readonly Guid FWPM_LAYER_ALE_AUTH_LISTEN_V4 =
+        new("88bb5dad-76d7-4227-9c71-df0a3ed7be7e");
+    internal static readonly Guid FWPM_LAYER_ALE_AUTH_LISTEN_V6 =
+        new("7ac9de24-17dd-4814-b4bd-a9fbc95a321b");
     // Transport layers — carry ICMP, raw sockets, and other connectionless
     // traffic that never passes through the ALE_AUTH_CONNECT layer. Filtering
     // here is what makes ping, traceroute, and DNS visible/controllable.
