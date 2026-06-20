@@ -152,6 +152,7 @@ public sealed class CustomRule
     public int RemotePort { get; set; }                // 0 = any
     public int LocalPort { get; set; }                 // 0 = any (port on this PC)
     public bool Enabled { get; set; } = true;
+    public bool Protected { get; set; }                // user-marked non-removable
     public bool Applied { get; set; }                  // did the WFP filter actually install?
     public List<ulong> FilterIds { get; set; } = new();
 
@@ -167,5 +168,6 @@ public sealed class CustomRule
             return $"{Protocol} \u2192 {a}, {p}{lp}";
         }
     }
-    public string StatusText => !Enabled ? "Disabled" : Applied ? "Active" : "Not applied";
+    public string StatusText => (!Enabled ? "Disabled" : Applied ? "Active" : "Not applied")
+        + (Protected ? " \u00B7 protected" : "");
 }

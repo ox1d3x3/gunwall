@@ -16,6 +16,7 @@
         <conv:StatusToTextConverter x:Key="StatusToText" />
         <conv:CategoryToBrushConverter x:Key="CategoryToBrush" />
         <conv:CategoryToTextConverter x:Key="CategoryToText" />
+        <conv:ProtectLabelConverter x:Key="ProtectLabel" />
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
         <Style x:Key="SearchBox" TargetType="TextBox">
@@ -346,6 +347,9 @@
                         <Button Content="Purge unused" Style="{StaticResource ActionButton}"
                                 Click="PurgeUnused_Click" Margin="0,0,8,0"
                                 ToolTip="Forget apps that have no allow/block rule (they'll prompt again)" />
+                        <Button Content="Purge expired timers" Style="{StaticResource ActionButton}"
+                                Click="PurgeExpiredTimers_Click" Margin="0,0,8,0"
+                                ToolTip="Clear any timed blocks whose timer has already elapsed" />
                         <Button Content="Refresh" Style="{StaticResource ActionButton}"
                                 Click="RefreshApps_Click" />
                     </StackPanel>
@@ -614,8 +618,18 @@
                                                 DisplayMemberBinding="{Binding DirectionText}" />
                                 <GridViewColumn Header="Match" Width="280"
                                                 DisplayMemberBinding="{Binding TargetText}" />
-                                <GridViewColumn Header="Status" Width="100"
+                                <GridViewColumn Header="Status" Width="120"
                                                 DisplayMemberBinding="{Binding StatusText}" />
+                                <GridViewColumn Header="" Width="100">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding Protected, Converter={StaticResource ProtectLabel}}"
+                                                    Style="{StaticResource ActionButton}"
+                                                    ToolTip="Protected rules can't be deleted until unprotected."
+                                                    Click="ProtectRule_Click" Tag="{Binding Id}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="" Width="90">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
@@ -986,6 +1000,38 @@
                                           Checked="Pref_Changed" Unchecked="Pref_Changed" />
                                 <Button Content="Open log folder" Style="{StaticResource ActionButton}"
                                         Click="OpenLogFolder_Click" Margin="12,0,0,0" Padding="10,3" />
+                            </StackPanel>
+                            <CheckBox x:Name="FullscreenSilentCheck" Content="Silence popups while a fullscreen app or game is running"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="ConfirmClearCheck" Content="Confirm before clearing the Activity / Packets logs"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="ConfirmExitCheck" Content="Always confirm before exiting GunWall"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="KeepUnusedCheck" Content="Keep apps with no rule and no connections in the list"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
+                                <TextBlock Text="Keep at most" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
+                                <ComboBox x:Name="MaxLogEntriesCombo" Width="130" Height="30"
+                                          SelectionChanged="Pref_Changed">
+                                    <ComboBoxItem Content="500 entries" Tag="500" />
+                                    <ComboBoxItem Content="1000 entries" Tag="1000" />
+                                    <ComboBoxItem Content="5000 entries" Tag="5000" />
+                                    <ComboBoxItem Content="Unlimited" Tag="0" />
+                                </ComboBox>
+                                <TextBlock Text="live rows; rotate CSV at" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimary}" Margin="12,0,8,0" />
+                                <ComboBox x:Name="MaxLogFileCombo" Width="90" Height="30"
+                                          SelectionChanged="Pref_Changed">
+                                    <ComboBoxItem Content="2 MB" Tag="2" />
+                                    <ComboBoxItem Content="5 MB" Tag="5" />
+                                    <ComboBoxItem Content="20 MB" Tag="20" />
+                                    <ComboBoxItem Content="50 MB" Tag="50" />
+                                </ComboBox>
                             </StackPanel>
                             <CheckBox x:Name="AlwaysOnTopCheck" Content="Keep window always on top"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"

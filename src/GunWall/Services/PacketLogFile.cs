@@ -13,7 +13,10 @@ public sealed class PacketLogFile
     private readonly string _path;
     private readonly string _backup;
     private readonly object _lock = new();
-    private const long MaxBytes = 5 * 1024 * 1024; // 5 MB, then rotate
+    private long _maxBytes = 5 * 1024 * 1024; // default 5 MB, then rotate
+
+    /// <summary>Sets the rotation threshold in megabytes (minimum 1 MB).</summary>
+    public void SetMaxMB(int mb) { _maxBytes = (mb < 1 ? 1 : mb) * 1024L * 1024L; }
 
     public PacketLogFile(string profileFolder)
     {
@@ -31,7 +34,7 @@ public sealed class PacketLogFile
             lock (_lock)
             {
                 bool newFile = !File.Exists(_path);
-                if (!newFile && new FileInfo(_path).Length > MaxBytes) Rotate();
+                if (!newFile && new FileInfo(_path).Length > _maxBytes) Rotate();
                 newFile = !File.Exists(_path);
 
                 var sb = new StringBuilder();

@@ -214,6 +214,24 @@ public sealed class StoreData
     /// <summary>On popup timeout: true = allow, false = block.</summary>
     public bool PopupDefaultAllow { get; set; } = true;
 
+    /// <summary>Suppress new-app approval popups while a fullscreen app/game is foreground.</summary>
+    public bool FullscreenSilent { get; set; }
+
+    /// <summary>Ask for confirmation before clearing the Activity / Packets logs.</summary>
+    public bool ConfirmClearLogs { get; set; } = true;
+
+    /// <summary>Always confirm before exiting, even when the firewall is not active.</summary>
+    public bool AlwaysConfirmExit { get; set; }
+
+    /// <summary>Cap on in-memory Activity / Packets rows (0 = unlimited).</summary>
+    public int MaxLogEntries { get; set; } = 1000;
+
+    /// <summary>Packets CSV file rotation threshold, in megabytes.</summary>
+    public int MaxLogFileMB { get; set; } = 5;
+
+    /// <summary>Keep apps with no rule and no active connections in the Apps list.</summary>
+    public bool KeepUnusedApps { get; set; } = true;
+
     /// <summary>Automatically save a timestamped backup of the profile on changes.</summary>
     public bool AutoBackup { get; set; }
 

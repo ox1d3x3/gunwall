@@ -406,13 +406,44 @@ public sealed class FirewallManager : IDisposable
         _store.Save(_data);
     }
 
-    public void RemoveCustomRule(string id)
+    public bool RemoveCustomRule(string id)
     {
         var rule = _data.CustomRules.FirstOrDefault(r => r.Id == id);
-        if (rule is null) return;
+        if (rule is null) return false;
+        if (rule.Protected) return false; // protected rules cannot be deleted
         try { _engine.RemoveFilters(rule.FilterIds); } catch { }
         _data.CustomRules.Remove(rule);
         _store.Save(_data);
+        return true;
+    }
+
+    /// <summary>Marks a custom rule protected (non-removable) or removes that protection.</summary>
+    public void SetCustomRuleProtected(string id, bool prot)
+    {
+        var rule = _data.CustomRules.FirstOrDefault(r => r.Id == id);
+        if (rule is null) return;
+        rule.Protected = prot;
+        _store.Save(_data);
+    }
+
+    /// <summary>Manual sweep: unblocks and clears any timed blocks already past expiry
+    /// (the per-block timer normally does this automatically). Returns the count purged.</summary>
+    public int PurgeExpiredTimers()
+    {
+        if (_data.TempBlocks.Count == 0) return 0;
+        var now = DateTime.UtcNow;
+        int n = 0;
+        foreach (var kv in new Dictionary<string, DateTime>(_data.TempBlocks))
+        {
+            if (kv.Value > now) continue; // still active
+            string key = kv.Key;
+            try { UnblockApp(key); } catch { }
+            _data.TempBlocks.Remove(key);
+            if (_tempTimers.TryGetValue(key, out var t)) { t.Dispose(); _tempTimers.Remove(key); }
+            n++;
+        }
+        if (n > 0) { try { _store.Save(_data); } catch { } }
+        return n;
     }
 
     // ------------------------------------------------ blocklist
@@ -495,6 +526,19 @@ public sealed class FirewallManager : IDisposable
     public bool EventLogEnabled => _data.EventLogEnabled;
     public void SetEventLogEnabled(bool v) { _data.EventLogEnabled = v; _store.Save(_data); }
 
+    public bool FullscreenSilent => _data.FullscreenSilent;
+    public void SetFullscreenSilent(bool v) { _data.FullscreenSilent = v; _store.Save(_data); }
+    public bool ConfirmClearLogs => _data.ConfirmClearLogs;
+    public void SetConfirmClearLogs(bool v) { _data.ConfirmClearLogs = v; _store.Save(_data); }
+    public bool AlwaysConfirmExit => _data.AlwaysConfirmExit;
+    public void SetAlwaysConfirmExit(bool v) { _data.AlwaysConfirmExit = v; _store.Save(_data); }
+    public int MaxLogEntries => _data.MaxLogEntries;
+    public void SetMaxLogEntries(int v) { _data.MaxLogEntries = v < 0 ? 0 : v; _store.Save(_data); }
+    public int MaxLogFileMB => _data.MaxLogFileMB;
+    public void SetMaxLogFileMB(int v) { _data.MaxLogFileMB = v < 1 ? 1 : v; _store.Save(_data); }
+    public bool KeepUnusedApps => _data.KeepUnusedApps;
+    public void SetKeepUnusedApps(bool v) { _data.KeepUnusedApps = v; _store.Save(_data); }
+
     // ------------------------------------------------ packet file logging
     private PacketLogFile? _packetLog;
     public bool PacketFileLogging => _data.PacketFileLogging;
@@ -506,6 +550,7 @@ public sealed class FirewallManager : IDisposable
     {
         if (!_data.PacketFileLogging) return;
         _packetLog ??= new PacketLogFile(_store.ProfileFolder);
+        _packetLog.SetMaxMB(_data.MaxLogFileMB);
         _packetLog.Append(time, blocked ? "Blocked" : "Allowed", app, protocol, direction, remote, exePath);
     }
 

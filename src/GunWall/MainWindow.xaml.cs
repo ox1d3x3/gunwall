@@ -170,6 +170,16 @@ public partial class MainWindow : Window
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
+            if (FullscreenSilentCheck != null) FullscreenSilentCheck.IsChecked = _firewall.FullscreenSilent;
+            if (ConfirmClearCheck != null) ConfirmClearCheck.IsChecked = _firewall.ConfirmClearLogs;
+            if (ConfirmExitCheck != null) ConfirmExitCheck.IsChecked = _firewall.AlwaysConfirmExit;
+            if (KeepUnusedCheck != null) KeepUnusedCheck.IsChecked = _firewall.KeepUnusedApps;
+            if (MaxLogEntriesCombo != null)
+                MaxLogEntriesCombo.SelectedIndex = _firewall.MaxLogEntries switch
+                { 500 => 0, 1000 => 1, 5000 => 2, 0 => 3, _ => 1 };
+            if (MaxLogFileCombo != null)
+                MaxLogFileCombo.SelectedIndex = _firewall.MaxLogFileMB switch
+                { 2 => 0, 5 => 1, 20 => 2, 50 => 3, _ => 1 };
             PopulateColorUi();
             _suppressModeEvent = false;
             SyncFirewallToggle();
@@ -179,7 +189,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.38.2 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.39.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -197,7 +207,7 @@ public partial class MainWindow : Window
 
             if (_eventsRecovered)
             {
-                _activity.Insert(0, new NetActivityEvent
+                LogActivity(new NetActivityEvent
                 {
                     ProcessName = "GunWall",
                     Detail = "Kernel event detection was auto-disabled after an unclean exit; " +
@@ -339,7 +349,7 @@ public partial class MainWindow : Window
             string key = $"{c.ProcessId}|{c.RemoteAddress}:{c.RemotePort}";
             if (!_seenConnections.Add(key)) continue;
 
-            _activity.Insert(0, new NetActivityEvent
+            LogActivity(new NetActivityEvent
             {
                 ProcessName = c.ProcessName,
                 Detail = $"connected to {c.RemoteEndpoint} ({c.Protocol})"
@@ -350,9 +360,37 @@ public partial class MainWindow : Window
         if (_seenConnections.Count > 8000) _seenConnections.Clear();
     }
 
-    private void ClearActivity_Click(object sender, RoutedEventArgs e) => _activity.Clear();
+    /// <summary>Inserts an activity row and trims the in-memory log to the configured cap.</summary>
+    private void LogActivity(NetActivityEvent ev)
+    {
+        _activity.Insert(0, ev);
+        int max = _firewall.MaxLogEntries;
+        if (max > 0) while (_activity.Count > max) _activity.RemoveAt(_activity.Count - 1);
+    }
 
-    private void ClearPackets_Click(object sender, RoutedEventArgs e) => _packets.Clear();
+    /// <summary>Inserts a packet row and trims the in-memory log to the configured cap.</summary>
+    private void LogPacket(PacketLogEntry ev)
+    {
+        _packets.Insert(0, ev);
+        int max = _firewall.MaxLogEntries;
+        if (max > 0) while (_packets.Count > max) _packets.RemoveAt(_packets.Count - 1);
+    }
+
+    private void ClearActivity_Click(object sender, RoutedEventArgs e)
+    {
+        if (_firewall.ConfirmClearLogs && MessageBox.Show(
+                "Clear the activity log?", "GunWall",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        _activity.Clear();
+    }
+
+    private void ClearPackets_Click(object sender, RoutedEventArgs e)
+    {
+        if (_firewall.ConfirmClearLogs && MessageBox.Show(
+                "Clear the packets log?", "GunWall",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        _packets.Clear();
+    }
 
     // ================================================================ custom rules
     private void RefreshRulesList()
@@ -426,8 +464,25 @@ public partial class MainWindow : Window
     {
         if (sender is FrameworkElement fe && fe.Tag is string id)
         {
-            try { _firewall.RemoveCustomRule(id); RefreshRulesList(); }
+            try
+            {
+                if (!_firewall.RemoveCustomRule(id))
+                    MessageBox.Show("This rule is protected. Unprotect it first to delete it.",
+                        "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+                RefreshRulesList();
+            }
             catch (Exception ex) { ShowError(ex); }
+        }
+    }
+
+    private void ProtectRule_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is string id)
+        {
+            var rule = _firewall.CustomRules.FirstOrDefault(r => r.Id == id);
+            if (rule == null) return;
+            _firewall.SetCustomRuleProtected(id, !rule.Protected);
+            RefreshRulesList();
         }
     }
 
@@ -566,7 +621,7 @@ public partial class MainWindow : Window
             string verb = e.Dropped ? "blocked" : "connected to";
             string remote = string.IsNullOrEmpty(e.RemoteAddress)
                 ? "" : $" {e.RemoteAddress}:{e.RemotePort}";
-            _activity.Insert(0, new NetActivityEvent
+            LogActivity(new NetActivityEvent
             {
                 ProcessName = System.IO.Path.GetFileNameWithoutExtension(e.AppPath),
                 Detail = $"{verb}{remote} ({e.Protocol})"
@@ -581,7 +636,7 @@ public partial class MainWindow : Window
                            (_firewall.StrictMode &&
                             !_firewall.IsAllowed(e.AppPath) &&
                             !_firewall.IsSilent(e.AppPath));
-            _packets.Insert(0, new PacketLogEntry
+            LogPacket(new PacketLogEntry
             {
                 AppName = appName,
                 ExePath = e.AppPath,
@@ -686,6 +741,9 @@ public partial class MainWindow : Window
     private void ShowNextAlert()
     {
         if (_alertOpen || _alertQueue.Count == 0) return;
+        // Fullscreen-silent: hold approval popups while a game/fullscreen app is
+        // foreground. The alert stays queued and appears once fullscreen ends.
+        if (_firewall.FullscreenSilent && Services.FullscreenDetector.IsFullscreenAppActive()) return;
         var info = _alertQueue.Dequeue();
         _alertOpen = true;
 
@@ -793,6 +851,13 @@ public partial class MainWindow : Window
             view = view.Where(a =>
                 a.Name.Contains(_appFilter, StringComparison.OrdinalIgnoreCase) ||
                 a.ExecutablePath.Contains(_appFilter, StringComparison.OrdinalIgnoreCase));
+
+        // Keep-unused toggle: when off, hide apps with no rule and no live connections.
+        if (!_firewall.KeepUnusedApps)
+            view = view.Where(a => a.ActiveConnections > 0
+                || _firewall.IsBlocked(a.ExecutablePath)
+                || _firewall.IsAllowed(a.ExecutablePath)
+                || _firewall.IsSilent(a.ExecutablePath));
 
         // Preserve selection across the periodic rebuild: the timer replaces every
         // AppInfo object, which would otherwise null out SelectedItem mid-interaction
@@ -1257,6 +1322,19 @@ public partial class MainWindow : Window
             RebuildAppsList();
             MessageBox.Show(
                 removed == 0 ? "No unused apps to remove." : $"Removed {removed} unused app(s).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void PurgeExpiredTimers_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            int purged = _firewall.PurgeExpiredTimers();
+            RebuildAppsList();
+            MessageBox.Show(
+                purged == 0 ? "No expired timed blocks to clear." : $"Cleared {purged} expired timed block(s).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -2273,6 +2351,14 @@ public partial class MainWindow : Window
         _firewall.SetNotificationSound(NotifSoundCheck?.IsChecked == true);
         _firewall.SetTrayNotifications(TrayNotifCheck?.IsChecked == true);
         _firewall.SetPacketFileLogging(PacketLogFileCheck?.IsChecked == true);
+        _firewall.SetFullscreenSilent(FullscreenSilentCheck?.IsChecked == true);
+        _firewall.SetConfirmClearLogs(ConfirmClearCheck?.IsChecked == true);
+        _firewall.SetAlwaysConfirmExit(ConfirmExitCheck?.IsChecked == true);
+        _firewall.SetKeepUnusedApps(KeepUnusedCheck?.IsChecked == true);
+        if (MaxLogEntriesCombo?.SelectedItem is ComboBoxItem mle &&
+            int.TryParse(mle.Tag?.ToString(), out int mlev)) _firewall.SetMaxLogEntries(mlev);
+        if (MaxLogFileCombo?.SelectedItem is ComboBoxItem mlf &&
+            int.TryParse(mlf.Tag?.ToString(), out int mlfv)) _firewall.SetMaxLogFileMB(mlfv);
         if (PopupTimeoutCombo?.SelectedItem is ComboBoxItem pti &&
             int.TryParse(pti.Tag?.ToString(), out int secs))
             _firewall.SetPopupTimeoutSeconds(secs);
@@ -2461,6 +2547,12 @@ public partial class MainWindow : Window
     /// </summary>
     private void ExitFromTray()
     {
+        // Optional: confirm exit even when the firewall is not active.
+        if (!_firewall.StrictMode && !_firewall.LockdownEngaged && _firewall.AlwaysConfirmExit &&
+            MessageBox.Show("Exit GunWall?", "Exit GunWall",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
         if (_firewall.StrictMode || _firewall.LockdownEngaged)
         {
             var result = MessageBox.Show(
