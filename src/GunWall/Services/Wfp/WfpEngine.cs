@@ -957,6 +957,156 @@ public sealed class WfpEngine : IDisposable
         }
     }
 
+    // ---- Network scopes (per-app) -----------------------------------------
+    // Well-known IPv6 ranges used by the scope blocks.
+    private static readonly byte[] V6Loopback  = new byte[16] { 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1 }; // ::1
+    private static readonly byte[] V6Ula       = new byte[16] { 0xFC,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0 }; // fc00::/7
+    private static readonly byte[] V6LinkLocal = new byte[16] { 0xFE,0x80,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0 }; // fe80::/10
+
+    /// <summary>
+    /// Installs a per-app "network scope" block. scope is "local" (loopback),
+    /// "lan" (private/link-local ranges) or "incoming" (inbound to this app).
+    /// Each filter is added through the fault-tolerant TryAdd path, so a range or
+    /// layer the OS rejects is skipped rather than aborting the rest. Returns the
+    /// installed filter ids (empty if none took).
+    /// </summary>
+    public List<ulong> AddAppScopeBlock(string exePath, string scope)
+    {
+        var ids = new List<ulong>(8);
+        EnsureReady();
+        IntPtr appIdPtr = GetAppId(exePath, out FWP_BYTE_BLOB blob);
+        try
+        {
+            switch (scope)
+            {
+                case "incoming":
+                    TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block incoming"));
+                    TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block incoming"));
+                    break;
+                case "local":
+                    TryAdd(ids, () => AddAppRangeBlockFilterV4(FWPM_LAYER_ALE_AUTH_CONNECT_V4, blob, "127.0.0.0", 8, "Scope: block device-local"));
+                    TryAdd(ids, () => AddAppRangeBlockFilterV6(FWPM_LAYER_ALE_AUTH_CONNECT_V6, blob, V6Loopback, 128, "Scope: block device-local"));
+                    break;
+                case "lan":
+                    foreach (var range in new[] { ("10.0.0.0", (byte)8), ("172.16.0.0", (byte)12),
+                                                  ("192.168.0.0", (byte)16), ("169.254.0.0", (byte)16) })
+                    {
+                        var baseAddr = range.Item1; var prefix = range.Item2;
+                        TryAdd(ids, () => AddAppRangeBlockFilterV4(FWPM_LAYER_ALE_AUTH_CONNECT_V4, blob, baseAddr, prefix, "Scope: block LAN"));
+                    }
+                    TryAdd(ids, () => AddAppRangeBlockFilterV6(FWPM_LAYER_ALE_AUTH_CONNECT_V6, blob, V6Ula, 7, "Scope: block LAN"));
+                    TryAdd(ids, () => AddAppRangeBlockFilterV6(FWPM_LAYER_ALE_AUTH_CONNECT_V6, blob, V6LinkLocal, 10, "Scope: block LAN"));
+                    break;
+            }
+        }
+        finally { FreeAppId(appIdPtr); }
+        return ids;
+    }
+
+    /// <summary>A 2-condition block filter: (app == X) AND (remote IPv4 in base/prefix).</summary>
+    private ulong AddAppRangeBlockFilterV4(Guid layer, FWP_BYTE_BLOB appIdBlob, string baseAddress, byte prefix, string name)
+    {
+        var maskStruct = new FWP_V4_ADDR_AND_MASK
+        {
+            addr = IpToHost(baseAddress),
+            mask = prefix == 0 ? 0 : 0xFFFFFFFF << (32 - prefix)
+        };
+        IntPtr blobPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWP_BYTE_BLOB>());
+        IntPtr maskPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWP_V4_ADDR_AND_MASK>());
+        int condSize = Marshal.SizeOf<FWPM_FILTER_CONDITION0>();
+        IntPtr condArr = Marshal.AllocHGlobal(condSize * 2);
+        try
+        {
+            Marshal.StructureToPtr(appIdBlob, blobPtr, false);
+            Marshal.StructureToPtr(maskStruct, maskPtr, false);
+            var appCond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_ALE_APP_ID,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_BYTE_BLOB_TYPE, value = (ulong)blobPtr.ToInt64() }
+            };
+            var rangeCond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_V4_ADDR_MASK, value = (ulong)maskPtr.ToInt64() }
+            };
+            Marshal.StructureToPtr(appCond, condArr, false);
+            Marshal.StructureToPtr(rangeCond, IntPtr.Add(condArr, condSize), false);
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
+                numFilterConditions = 2,
+                filterCondition = condArr,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_BLOCK },
+                displayData = new FWPM_DISPLAY_DATA0 { name = name, description = name }
+            };
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(condArr);
+            Marshal.FreeHGlobal(maskPtr);
+            Marshal.FreeHGlobal(blobPtr);
+        }
+    }
+
+    /// <summary>A 2-condition block filter: (app == X) AND (remote IPv6 in base/prefix).</summary>
+    private ulong AddAppRangeBlockFilterV6(Guid layer, FWP_BYTE_BLOB appIdBlob, byte[] addr16, byte prefix, string name)
+    {
+        var v6 = new FWP_V6_ADDR_AND_MASK { addr = addr16, prefixLength = prefix };
+        IntPtr blobPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FWP_BYTE_BLOB>());
+        IntPtr v6Ptr = Marshal.AllocHGlobal(Marshal.SizeOf<FWP_V6_ADDR_AND_MASK>());
+        int condSize = Marshal.SizeOf<FWPM_FILTER_CONDITION0>();
+        IntPtr condArr = Marshal.AllocHGlobal(condSize * 2);
+        try
+        {
+            Marshal.StructureToPtr(appIdBlob, blobPtr, false);
+            Marshal.StructureToPtr(v6, v6Ptr, false);
+            var appCond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_ALE_APP_ID,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_BYTE_BLOB_TYPE, value = (ulong)blobPtr.ToInt64() }
+            };
+            var rangeCond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_V6_ADDR_MASK, value = (ulong)v6Ptr.ToInt64() }
+            };
+            Marshal.StructureToPtr(appCond, condArr, false);
+            Marshal.StructureToPtr(rangeCond, IntPtr.Add(condArr, condSize), false);
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
+                numFilterConditions = 2,
+                filterCondition = condArr,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_BLOCK },
+                displayData = new FWPM_DISPLAY_DATA0 { name = name, description = name }
+            };
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(condArr);
+            Marshal.FreeHGlobal(v6Ptr);
+            Marshal.FreeHGlobal(blobPtr);
+        }
+    }
+
     private ulong AddGlobalBlockFilter(Guid layer, byte weight, string name)
     {
         var filter = new FWPM_FILTER0

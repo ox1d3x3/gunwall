@@ -189,7 +189,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.40.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.42.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1454,6 +1454,7 @@ public partial class MainWindow : Window
             SnoozeStatus.Text = "";
             if (ResumeButton != null) ResumeButton.Visibility = Visibility.Collapsed;
         }
+        UpdateStatusBanner(); // keep the shield (protected/paused) in sync
     }
 
     private void Snooze_Click(object sender, RoutedEventArgs e)
@@ -1850,6 +1851,41 @@ public partial class MainWindow : Window
                 "connections only.", "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
+    }
+
+    // Reflect each app's current scope-block state in the context-menu checkmarks.
+    private void AppsContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (AppsList.SelectedItem is AppInfo app)
+        {
+            if (ScopeLocalItem != null) ScopeLocalItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "local");
+            if (ScopeLanItem != null) ScopeLanItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "lan");
+            if (ScopeIncomingItem != null) ScopeIncomingItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "incoming");
+        }
+        else
+        {
+            if (ScopeLocalItem != null) ScopeLocalItem.IsChecked = false;
+            if (ScopeLanItem != null) ScopeLanItem.IsChecked = false;
+            if (ScopeIncomingItem != null) ScopeIncomingItem.IsChecked = false;
+        }
+    }
+
+    private void ScopeBlock_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem mi || mi.Tag is not string scope) return;
+        if (AppsList.SelectedItem is not AppInfo app) { mi.IsChecked = !mi.IsChecked; return; }
+        if (!RequireEngine()) { mi.IsChecked = !mi.IsChecked; return; }
+        try
+        {
+            // The checkable item has already toggled to the desired state.
+            _firewall.SetScopeBlock(app.ExecutablePath, scope, mi.IsChecked);
+            RebuildAppsList();
+        }
+        catch (Exception ex)
+        {
+            mi.IsChecked = !mi.IsChecked; // revert the visual on failure
+            ShowError(ex);
+        }
     }
 
     private void BlockTemp_Click(object sender, RoutedEventArgs e)
@@ -2412,31 +2448,49 @@ public partial class MainWindow : Window
 
     private void UpdateStatusBanner()
     {
-        if (StatusDot == null) return;
+        if (ShieldPath == null) return;
+
+        bool protectedNow;
+        string title, sub;
         if (!_engineReady)
         {
-            StatusDot.Fill = (Brush)FindResource("BlockBrush");
-            StatusTitle.Text = "Engine unavailable";
-            StatusSub.Text = "Run GunWall as administrator to enable filtering";
+            protectedNow = false;
+            title = "Not Protected";
+            sub = "Run GunWall as administrator to enable filtering";
+        }
+        else if (_firewall.IsSnoozed)
+        {
+            protectedNow = false;
+            title = "Paused";
+            sub = "Filtering is snoozed - resume to protect your network";
         }
         else if (_firewall.LockdownEngaged)
         {
-            StatusDot.Fill = (Brush)FindResource("BlockBrush");
-            StatusTitle.Text = "Lockdown engaged";
-            StatusSub.Text = "All network traffic is blocked";
+            protectedNow = true;
+            title = "Locked Down";
+            sub = "All network traffic is blocked";
         }
         else if (_firewall.StrictMode)
         {
-            StatusDot.Fill = (Brush)FindResource("Accent");
-            StatusTitle.Text = "Firewall enabled - full control";
-            StatusSub.Text = "Everything is blocked except apps you allowed";
+            protectedNow = true;
+            title = "Protected - Full Control";
+            sub = "Everything is blocked except the apps you allowed";
         }
         else
         {
-            StatusDot.Fill = (Brush)FindResource("AllowBrush");
-            StatusTitle.Text = "Monitoring";
-            StatusSub.Text = "New apps are allowed and you get notified - enable the firewall for full control";
+            protectedNow = true;
+            title = "Protected - Monitoring";
+            sub = "New apps are allowed and you're notified - enable full control for Zero-Trust";
         }
+
+        var fill = (Brush)FindResource(protectedNow ? "AllowBrush" : "BlockBrush");
+        var glow = (Brush)FindResource(protectedNow ? "AllowFill" : "BlockFill");
+        ShieldPath.Fill = fill;
+        if (ShieldGlow != null) ShieldGlow.Fill = glow;
+        if (ShieldCheck != null) ShieldCheck.Visibility = protectedNow ? Visibility.Visible : Visibility.Collapsed;
+        if (ShieldAlert != null) ShieldAlert.Visibility = protectedNow ? Visibility.Collapsed : Visibility.Visible;
+        StatusTitle.Text = title;
+        StatusSub.Text = sub;
     }
 
     private void Repo_RequestNavigate(object sender, RequestNavigateEventArgs e)

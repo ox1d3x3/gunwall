@@ -549,7 +549,38 @@ public sealed class FirewallManager : IDisposable
         + _data.BlocklistWfpFilters.Values.Sum(v => v.Count)
         + _data.StrictFilterIds.Count
         + _data.LockdownFilterIds.Count
-        + _data.SelfFilterIds.Count;
+        + _data.SelfFilterIds.Count
+        + _data.ScopeFilters.Values.Sum(v => v.Count);
+
+    private static string ScopeKey(string exePath, string scope) => exePath.ToLowerInvariant() + "|" + scope;
+
+    /// <summary>Is the given network scope (local | lan | incoming) currently blocked for this app?</summary>
+    public bool IsScopeBlocked(string exePath, string scope) =>
+        _data.ScopeFilters.TryGetValue(ScopeKey(exePath, scope), out var ids) && ids.Count > 0;
+
+    /// <summary>Turns a per-app network-scope block on or off. Filters install through the
+    /// engine's fault-tolerant path and are fully removed when turned off.</summary>
+    public void SetScopeBlock(string exePath, string scope, bool blocked)
+    {
+        string key = ScopeKey(exePath, scope);
+        if (blocked)
+        {
+            if (IsScopeBlocked(exePath, scope)) return;
+            var ids = _engine.AddAppScopeBlock(exePath, scope);
+            _data.ScopeFilters[key] = ids;
+            EventLog($"Scope block enabled: {scope} for {System.IO.Path.GetFileName(exePath)}");
+        }
+        else
+        {
+            if (_data.ScopeFilters.TryGetValue(key, out var ids))
+            {
+                try { _engine.RemoveFilters(ids); } catch { }
+                _data.ScopeFilters.Remove(key);
+                EventLog($"Scope block disabled: {scope} for {System.IO.Path.GetFileName(exePath)}");
+            }
+        }
+        _store.Save(_data);
+    }
 
     // ------------------------------------------------ packet file logging
     private PacketLogFile? _packetLog;

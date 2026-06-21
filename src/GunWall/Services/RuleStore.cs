@@ -232,6 +232,10 @@ public sealed class StoreData
     /// <summary>Keep apps with no rule and no active connections in the Apps list.</summary>
     public bool KeepUnusedApps { get; set; } = true;
 
+    /// <summary>Per-app network-scope blocks. Key is "{lowercased exe path}|{scope}"
+    /// (scope = local | lan | incoming); value is the installed WFP filter ids.</summary>
+    public Dictionary<string, List<ulong>> ScopeFilters { get; set; } = new();
+
     /// <summary>Automatically save a timestamped backup of the profile on changes.</summary>
     public bool AutoBackup { get; set; }
 
