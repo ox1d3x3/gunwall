@@ -189,7 +189,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.42.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.44.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -658,6 +658,10 @@ public partial class MainWindow : Window
             if (_firewall.IsBlocked(path) || _firewall.IsAllowed(path) || _firewall.IsSilent(path))
                 return;
             if (!_firewall.AlertsEnabled) return;
+            // Only interrupt with approval popups once the firewall is enabled.
+            // In monitoring mode GunWall observes silently - no prompts - so the
+            // user can open and explore the app without being interrupted.
+            if (!_firewall.StrictMode) return;
             if (!_promptedThisSession.Add(path)) return;
 
             string name = System.IO.Path.GetFileNameWithoutExtension(path);
@@ -723,10 +727,13 @@ public partial class MainWindow : Window
             }
             else
             {
-                // Monitoring: notify once ever, only for real outbound contact.
-                if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
-                if (c.RemoteAddress is "0.0.0.0" or "::") continue;
-                if (!_firewall.MarkKnown(proc.Path)) continue;
+                // Monitoring: observe silently. Mark the app as seen so the Apps
+                // list and logs stay populated, but never prompt. Approval popups
+                // only start once the firewall is enabled (Zero-Trust), so the
+                // user can open and check the app without interruption.
+                if (!string.IsNullOrEmpty(c.RemoteAddress) && c.RemoteAddress is not ("0.0.0.0" or "::"))
+                    _firewall.MarkKnown(proc.Path);
+                continue;
             }
 
             string remote = c.RemoteAddress;
@@ -2473,14 +2480,14 @@ public partial class MainWindow : Window
         else if (_firewall.StrictMode)
         {
             protectedNow = true;
-            title = "Protected - Full Control";
-            sub = "Everything is blocked except the apps you allowed";
+            title = "Protected";
+            sub = "Full control - only the apps you allow can connect";
         }
         else
         {
-            protectedNow = true;
-            title = "Protected - Monitoring";
-            sub = "New apps are allowed and you're notified - enable full control for Zero-Trust";
+            protectedNow = false;
+            title = "Monitoring Only";
+            sub = "GunWall is watching quietly - no blocking, no prompts. Click Enable Firewall to actively protect.";
         }
 
         var fill = (Brush)FindResource(protectedNow ? "AllowBrush" : "BlockBrush");

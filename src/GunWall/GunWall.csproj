@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.42.0</Version>
+    <Version>0.44.0</Version>
     <Company>GunWall</Company>
     <Product>GunWall Firewall</Product>
     <Description>A modern, open-source Windows firewall built on the Windows Filtering Platform.</Description>

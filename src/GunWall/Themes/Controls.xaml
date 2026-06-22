@@ -275,6 +275,59 @@
         <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}" />
     </Style>
 
+    <!-- ===================== Sidebar navigation ===================== -->
+    <Style x:Key="SideNavButton" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Margin" Value="10,1" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="8" Padding="10,9">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Rectangle x:Name="bar" Grid.Column="0" Width="3" RadiusX="2" RadiusY="2"
+                                       Fill="Transparent" HorizontalAlignment="Left" Margin="0,1,0,1" />
+                            <ContentPresenter Grid.Column="1" VerticalAlignment="Center"
+                                              HorizontalAlignment="Left" Margin="9,0,0,0" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoft}" />
+                            <Setter TargetName="bar" Property="Fill" Value="{StaticResource Accent}" />
+                            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SideNavIcon" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+        <Setter Property="FontSize" Value="17" />
+        <Setter Property="Width" Value="22" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,0,12,0" />
+        <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}" />
+    </Style>
+
+    <Style x:Key="SideNavLabel" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}" />
+    </Style>
+
     <!-- ======================= Primary button ======================= -->
     <Style x:Key="PrimaryButton" TargetType="Button">
         <Setter Property="Foreground" Value="#FFFFFF" />

@@ -33,134 +33,119 @@
     </Window.Resources>
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="218" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <!-- ===================== Top header bar ===================== -->
-        <Border Grid.Row="0" Background="{DynamicResource BgSecondary}"
-                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
-            <Grid Margin="20,12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <!-- Brand -->
-                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+        <!-- ===================== Sidebar navigation ===================== -->
+        <Border Grid.Column="0" Background="{DynamicResource BgSecondary}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="20,20,16,16">
                     <TextBlock Text="GunWall" Style="{StaticResource H2}" />
                     <TextBlock Text="Guard Your Network" Style="{StaticResource Muted}" Margin="0,1,0,0" />
                 </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,2,0,12">
+                        <RadioButton x:Name="NavDashboard" Style="{StaticResource SideNavButton}" IsChecked="True" Checked="Nav_Checked" Tag="Dashboard">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9D9;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Dashboard" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavFirewall" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Firewall">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE71D;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Apps" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavConnections" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Connections">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE968;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Connections" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavServices" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Services">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9F5;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Services" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavNetwork" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Network">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE839;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Network" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavPackets" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Packets">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9D2;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Packets Log" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavRules" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Rules">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE90F;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Custom Rules" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavSystem" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="System">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE72E;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="System Rules" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavSecurity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Security">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xEA18;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Security" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavActivity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Activity">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9F9;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Activity" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavSettings" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Settings">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE713;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Settings" />
+                            </StackPanel>
+                        </RadioButton>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
 
-                <!-- Primary actions on the right -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+        <!-- ===================== Main column ===================== -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Top bar: engine controls -->
+            <Border Grid.Row="0" Background="{DynamicResource BgSecondary}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                            VerticalAlignment="Center" Margin="20,12">
                     <ToggleButton x:Name="ThemeToggle" Style="{StaticResource ThemeSwitch}"
                                   Click="ThemeToggle_Click" Margin="0,0,16,0"
                                   ToolTip="Switch light / dark theme" />
                     <TextBlock x:Name="EngineStatus" Text="Engine: starting"
-                               Style="{StaticResource Muted}" VerticalAlignment="Center"
-                               Margin="0,0,16,0" />
+                               Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,16,0" />
                     <Button x:Name="LockdownButton" Content="Engage lockdown"
                             Style="{StaticResource ActionButton}" Margin="0,0,10,0"
                             Click="LockdownButton_Click" />
                     <Button x:Name="EnableFirewallButton" Content="Enable Firewall"
-                            Style="{StaticResource PrimaryButton}"
-                            Click="EnableFirewall_Click" />
+                            Style="{StaticResource PrimaryButton}" Click="EnableFirewall_Click" />
                 </StackPanel>
-            </Grid>
-        </Border>
+            </Border>
 
-        <!-- ===================== Top tab strip ===================== -->
-        <Border Grid.Row="1" Background="{DynamicResource BgSecondary}"
-                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                <StackPanel Orientation="Horizontal" Margin="16,4">
-                    <RadioButton x:Name="NavDashboard" Style="{StaticResource TabButton}" IsChecked="True"
-                                 Checked="Nav_Checked" Tag="Dashboard">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE9D9;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Dashboard" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavFirewall" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Firewall">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE71D;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Apps" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavConnections" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Connections">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE968;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Connections" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavServices" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Services">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE9F5;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Services" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavNetwork" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Network">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE839;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Network" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavPackets" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Packets">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE9D2;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Packets Log" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavRules" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Rules">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE90F;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Custom Rules" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavSystem" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="System">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE72E;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="System Rules" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavSecurity" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Security">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xEA18;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Security" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavActivity" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Activity">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE9F9;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Activity" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="NavSettings" Style="{StaticResource TabButton}"
-                                 Checked="Nav_Checked" Tag="Settings">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource TabIcon}" Text="&#xE713;" />
-                            <TextBlock Style="{StaticResource TabLabel}" Text="Settings" />
-                        </StackPanel>
-                    </RadioButton>
-                </StackPanel>
-            </ScrollViewer>
-        </Border>
-
-        <!-- ===================== Content area ===================== -->
-        <Grid Grid.Row="2" Margin="24">
+            <!-- ===================== Content area ===================== -->
+            <Grid Grid.Row="1" Margin="24">
 
             <!-- ========== Dashboard ========== -->
             <Grid x:Name="PanelDashboard">
@@ -336,44 +321,46 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0" Margin="0,0,0,16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" ClipToBounds="True">
-                        <TextBlock Text="Firewall" Style="{StaticResource H1}" VerticalAlignment="Center" />
-                        <CheckBox x:Name="ShowAllAppsCheck" Content="Show all running apps"
-                                  Foreground="{DynamicResource TextSecondary}"
-                                  VerticalAlignment="Center" Margin="24,4,0,0"
-                                  Checked="ShowAllApps_Changed" Unchecked="ShowAllApps_Changed" />
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="24,4,0,0">
-                            <Ellipse Width="9" Height="9" Fill="#3FB868" VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <TextBlock Text="Signed" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                            <Ellipse Width="9" Height="9" Fill="#E0A53F" VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <TextBlock Text="Unsigned" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                            <Ellipse Width="9" Height="9" Fill="#5B8DEF" VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <TextBlock Text="System" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                            <Ellipse Width="9" Height="9" Fill="#E25C5C" VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <TextBlock Text="Invalid sig" Style="{StaticResource Muted}" />
+                <StackPanel Grid.Row="0" Margin="0,0,0,16">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
+                            <TextBlock Text="Firewall" Style="{StaticResource H1}" VerticalAlignment="Center" />
+                            <CheckBox x:Name="ShowAllAppsCheck" Content="Show all running apps"
+                                      Foreground="{DynamicResource TextSecondary}"
+                                      VerticalAlignment="Center" Margin="24,4,0,0"
+                                      Checked="ShowAllApps_Changed" Unchecked="ShowAllApps_Changed" />
                         </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBox x:Name="AppSearch" Style="{StaticResource SearchBox}"
+                                     TextChanged="AppSearch_TextChanged" Margin="0,0,8,0"
+                                     ToolTip="Search applications" />
+                            <Button Content="Block an app" Style="{StaticResource ActionButton}"
+                                    Click="BrowseBlock_Click" Margin="0,0,8,0" />
+                            <Button Content="Purge unused" Style="{StaticResource ActionButton}"
+                                    Click="PurgeUnused_Click" Margin="0,0,8,0"
+                                    ToolTip="Forget apps that have no allow/block rule (they'll prompt again)" />
+                            <Button Content="Purge expired timers" Style="{StaticResource ActionButton}"
+                                    Click="PurgeExpiredTimers_Click" Margin="0,0,8,0"
+                                    ToolTip="Clear any timed blocks whose timer has already elapsed" />
+                            <Button Content="Refresh" Style="{StaticResource ActionButton}"
+                                    Click="RefreshApps_Click" />
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,12,0,0">
+                        <Ellipse Width="9" Height="9" Fill="#3FB868" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <TextBlock Text="Signed" Style="{StaticResource Muted}" Margin="0,0,12,0" />
+                        <Ellipse Width="9" Height="9" Fill="#E0A53F" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <TextBlock Text="Unsigned" Style="{StaticResource Muted}" Margin="0,0,12,0" />
+                        <Ellipse Width="9" Height="9" Fill="#5B8DEF" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <TextBlock Text="System" Style="{StaticResource Muted}" Margin="0,0,12,0" />
+                        <Ellipse Width="9" Height="9" Fill="#E25C5C" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <TextBlock Text="Invalid sig" Style="{StaticResource Muted}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                        <TextBox x:Name="AppSearch" Style="{StaticResource SearchBox}"
-                                 TextChanged="AppSearch_TextChanged" Margin="0,0,8,0"
-                                 ToolTip="Search applications" />
-                        <Button Content="Block an app" Style="{StaticResource ActionButton}"
-                                Click="BrowseBlock_Click" Margin="0,0,8,0" />
-                        <Button Content="Purge unused" Style="{StaticResource ActionButton}"
-                                Click="PurgeUnused_Click" Margin="0,0,8,0"
-                                ToolTip="Forget apps that have no allow/block rule (they'll prompt again)" />
-                        <Button Content="Purge expired timers" Style="{StaticResource ActionButton}"
-                                Click="PurgeExpiredTimers_Click" Margin="0,0,8,0"
-                                ToolTip="Clear any timed blocks whose timer has already elapsed" />
-                        <Button Content="Refresh" Style="{StaticResource ActionButton}"
-                                Click="RefreshApps_Click" />
-                    </StackPanel>
-                </Grid>
+                </StackPanel>
 
                 <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
                     <ListView x:Name="AppsList" VirtualizingPanel.IsVirtualizing="True"
@@ -1230,6 +1217,7 @@
                 </ScrollViewer>
             </Grid>
 
+        </Grid>
         </Grid>
     </Grid>
 </Window>
