@@ -259,17 +259,47 @@ public sealed class NetworkMonitor
     /// non-loopback interfaces. The UI subtracts successive samples to compute
     /// instantaneous throughput.
     /// </summary>
+    private bool _loggedAdapterScan;
+
+    /// <summary>
+    /// Sum of bytes in/out across active (Up, non-loopback) adapters. Each adapter is
+    /// read inside its own try/catch: some virtual/tunnel drivers (WinTUN-based VPNs,
+    /// userspace tunnels, etc.) throw on GetIPStatistics, and a single failure must NOT
+    /// abort the whole sum - otherwise the baseline never establishes and the throughput
+    /// meter silently reads zero even while a real NIC is moving data. On the first call
+    /// we write a one-time per-adapter scan to the diagnostics log so the active path can
+    /// be confirmed from an exported bundle.
+    /// </summary>
     public (long received, long sent) GetCumulativeBytes()
     {
         long rx = 0, tx = 0;
+        bool log = !_loggedAdapterScan;
+        System.Text.StringBuilder? sb = log ? new System.Text.StringBuilder() : null;
+
         foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
         {
             if (nic.OperationalStatus != OperationalStatus.Up) continue;
             if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+            try
+            {
+                var stats = nic.GetIPStatistics();
+                rx += stats.BytesReceived;
+                tx += stats.BytesSent;
+                sb?.Append("  + ").Append(nic.Name).Append(" [").Append(nic.NetworkInterfaceType)
+                  .Append("] rx=").Append(stats.BytesReceived).Append(" tx=").Append(stats.BytesSent).Append('\n');
+            }
+            catch (Exception ex)
+            {
+                // A flaky virtual/tunnel adapter must not zero the whole meter.
+                sb?.Append("  ! ").Append(nic.Name).Append(" [").Append(nic.NetworkInterfaceType)
+                  .Append("] stats unavailable: ").Append(ex.Message).Append('\n');
+            }
+        }
 
-            var stats = nic.GetIPStatistics();
-            rx += stats.BytesReceived;
-            tx += stats.BytesSent;
+        if (log)
+        {
+            _loggedAdapterScan = true;
+            try { DiagnosticLog.Log("Throughput adapter scan (Up, non-loopback):\n" + sb); } catch { }
         }
         return (rx, tx);
     }
