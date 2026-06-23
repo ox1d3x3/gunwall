@@ -1003,6 +1003,26 @@ public sealed class WfpEngine : IDisposable
         return ids;
     }
 
+    /// <summary>§1: reactively block one remote IPv4 for one app (app-ID + that /32).
+    /// Reuses the proven 2-condition scope-block filter path. IPv4 only (the GeoIP
+    /// table is IPv4); a non-IPv4 / unparseable address is a no-op.</summary>
+    public List<ulong> AddAppRemoteIpBlock(string exePath, string ipv4)
+    {
+        var ids = new List<ulong>(1);
+        EnsureReady();
+        if (!System.Net.IPAddress.TryParse(ipv4, out var ip) ||
+            ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return ids; // IPv4 only
+        IntPtr appIdPtr = GetAppId(exePath, out FWP_BYTE_BLOB blob);
+        try
+        {
+            TryAdd(ids, () => AddAppRangeBlockFilterV4(
+                FWPM_LAYER_ALE_AUTH_CONNECT_V4, blob, ipv4, 32, "Entity block: " + ipv4));
+        }
+        finally { FreeAppId(appIdPtr); }
+        return ids;
+    }
+
     /// <summary>A 2-condition block filter: (app == X) AND (remote IPv4 in base/prefix).</summary>
     private ulong AddAppRangeBlockFilterV4(Guid layer, FWP_BYTE_BLOB appIdBlob, string baseAddress, byte prefix, string name)
     {

@@ -2,23 +2,23 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- ===== DARK THEME (soft charcoal) =====
-         Soft charcoal surfaces, clean and flat. High-contrast text. Status
-         colors are soft-tinted: a faint fill with a brighter foreground. -->
-    <SolidColorBrush x:Key="BgPrimary" Color="#1B1D22" />
-    <SolidColorBrush x:Key="BgSecondary" Color="#212429" />
-    <SolidColorBrush x:Key="BgCard" Color="#24272D" />
-    <SolidColorBrush x:Key="BgElevated" Color="#2C3036" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#33373F" />
-    <SolidColorBrush x:Key="TextPrimary" Color="#E9EBEE" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#969CA6" />
+    <!-- ===== DARK THEME (AMOLED black) =====
+         True-black content with near-black lifted surfaces. High-contrast text.
+         Status colors are soft-tinted: a faint fill with a brighter foreground. -->
+    <SolidColorBrush x:Key="BgPrimary" Color="#000000" />
+    <SolidColorBrush x:Key="BgSecondary" Color="#0A0C0F" />
+    <SolidColorBrush x:Key="BgCard" Color="#101216" />
+    <SolidColorBrush x:Key="BgElevated" Color="#191C21" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#24272E" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#ECEEF1" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#8B919B" />
 
     <!-- Soft status fills + foregrounds (pills) -->
-    <SolidColorBrush x:Key="AllowFill" Color="#1E3A2C" />
+    <SolidColorBrush x:Key="AllowFill" Color="#10271C" />
     <SolidColorBrush x:Key="AllowText" Color="#5FD08A" />
-    <SolidColorBrush x:Key="BlockFill" Color="#3D2526" />
+    <SolidColorBrush x:Key="BlockFill" Color="#2C1819" />
     <SolidColorBrush x:Key="BlockText" Color="#F0807F" />
-    <SolidColorBrush x:Key="AccentSoft" Color="#243447" />
+    <SolidColorBrush x:Key="AccentSoft" Color="#10243A" />
 
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">True</sys:Boolean>
 </ResourceDictionary>

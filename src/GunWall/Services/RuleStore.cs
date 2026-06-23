@@ -252,4 +252,15 @@ public sealed class StoreData
 
     /// <summary>Selected filtering-DNS provider key ("auto" = network default).</summary>
     public string DnsProvider { get; set; } = "auto";
+
+    // §5 filter-list engine: a user-pointed local domain list (one domain per line,
+    // or hosts-style "0.0.0.0 domain"); GunWall watches + folds it into the block.
+    public string CustomBlocklistPath { get; set; } = "";
+
+    // §1 entity rule engine: GeoIP-keyed block rules (country / continent / ASN),
+    // matched reactively per connection. EntityReactiveFilters holds the WFP filter
+    // IDs of the per-app remote-IP blocks they spawned this session, so they can be
+    // torn down deterministically (cleared on startup for a clean slate).
+    public List<EntityRule> EntityRules { get; set; } = new();
+    public List<ulong> EntityReactiveFilters { get; set; } = new();
 }

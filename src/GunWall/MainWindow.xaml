@@ -42,10 +42,25 @@
         <Border Grid.Column="0" Background="{DynamicResource BgSecondary}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
             <DockPanel>
-                <StackPanel DockPanel.Dock="Top" Margin="20,20,16,16">
+                <StackPanel DockPanel.Dock="Top" Margin="20,20,16,14">
                     <TextBlock Text="GunWall" Style="{StaticResource H2}" />
                     <TextBlock Text="Guard Your Network" Style="{StaticResource Muted}" Margin="0,1,0,0" />
                 </StackPanel>
+                <Border DockPanel.Dock="Top" Margin="12,0,12,12" Padding="12,11" CornerRadius="10"
+                        Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="SideStatusIcon" Text="&#xEA18;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20"
+                                   VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="SideStatusTitle" Text="Monitoring Only" FontSize="12.5"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock x:Name="SideStatusSub" Text="Watching, not blocking" FontSize="10"
+                                       Foreground="{DynamicResource TextSecondary}" Margin="0,1,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="0,2,0,12">
                         <RadioButton x:Name="NavDashboard" Style="{StaticResource SideNavButton}" IsChecked="True" Checked="Nav_Checked" Tag="Dashboard">
@@ -462,10 +477,16 @@
 
                 <Grid Grid.Row="0" Margin="0,0,0,16">
                     <TextBlock Text="Connections" Style="{StaticResource H1}" VerticalAlignment="Center" />
-                    <TextBox x:Name="ConnSearch" Style="{StaticResource SearchBox}"
-                             HorizontalAlignment="Right"
-                             TextChanged="ConnSearch_TextChanged"
-                             ToolTip="Search connections" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <TextBlock x:Name="GeoStatus" Style="{StaticResource Muted}"
+                                   VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <Button x:Name="GeoDownloadBtn" Content="Download GeoIP data"
+                                Style="{StaticResource ActionButton}" Click="GeoDownload_Click"
+                                Margin="0,0,8,0"
+                                ToolTip="Fetch the free country/ASN database so each connection shows its location" />
+                        <TextBox x:Name="ConnSearch" Style="{StaticResource SearchBox}"
+                                 TextChanged="ConnSearch_TextChanged" ToolTip="Search connections" />
+                    </StackPanel>
                 </Grid>
 
                 <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
@@ -495,6 +516,8 @@
                                                 DisplayMemberBinding="{Binding LocalEndpoint}" />
                                 <GridViewColumn Header="Remote" Width="220"
                                                 DisplayMemberBinding="{Binding RemoteEndpoint}" />
+                                <GridViewColumn Header="Location" Width="210"
+                                                DisplayMemberBinding="{Binding Location}" />
                                 <GridViewColumn Header="State" Width="100"
                                                 DisplayMemberBinding="{Binding State}" />
                             </GridView>
@@ -808,6 +831,76 @@
                                 <TextBlock x:Name="BlocklistCatStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
                                 <ProgressBar x:Name="BlocklistProgress" IsIndeterminate="True" Height="3"
                                              Margin="0,8,0,0" Visibility="Collapsed" Background="Transparent" BorderThickness="0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Custom blocklist file" Style="{StaticResource H2}" />
+                                <TextBlock Text="Point GunWall at your own list of domains to block. One domain per line; hosts-style lines (&quot;0.0.0.0 domain&quot;) and # comments are accepted. Your list is folded into the same hosts-file block as the categories above, and re-read whenever you choose a file."
+                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="CustomListBtn" Content="Choose file&#x2026;"
+                                            Style="{StaticResource PrimaryButton}" Click="ChooseCustomList_Click"
+                                            Padding="16,8" Margin="0,0,8,0" />
+                                    <Button x:Name="CustomListClearBtn" Content="Clear"
+                                            Style="{StaticResource ActionButton}" Click="ClearCustomList_Click" />
+                                </StackPanel>
+                                <TextBlock x:Name="CustomListStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Country &amp; ASN blocking" Style="{StaticResource H2}" />
+                                <TextBlock Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. IPv4 only. Download the GeoIP data on the Connections tab first."
+                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <ComboBox x:Name="EntityTypeCombo" Width="120" Height="30" Margin="0,0,8,0" SelectedIndex="0">
+                                        <ComboBoxItem Content="Country" Tag="country" />
+                                        <ComboBoxItem Content="Continent" Tag="continent" />
+                                        <ComboBoxItem Content="ASN" Tag="asn" />
+                                    </ComboBox>
+                                    <TextBox x:Name="EntityValueBox" Width="150" Height="30" Margin="0,0,8,0"
+                                             VerticalContentAlignment="Center" ToolTip="e.g. RU &#xB7; EU &#xB7; AS13335" />
+                                    <TextBlock Text="e.g. RU, EU, AS13335" Style="{StaticResource Muted}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock x:Name="EntityAppLabel" Text="Applies to: All apps" Style="{StaticResource Muted}"
+                                               VerticalAlignment="Center" Margin="0,0,10,0" />
+                                    <Button Content="Choose app&#x2026;" Style="{StaticResource ActionButton}"
+                                            Click="EntityChooseApp_Click" Margin="0,0,6,0" />
+                                    <Button Content="All apps" Style="{StaticResource ActionButton}"
+                                            Click="EntityAllApps_Click" Margin="0,0,12,0" />
+                                    <Button Content="Add rule" Style="{StaticResource PrimaryButton}"
+                                            Click="EntityAddRule_Click" Padding="16,8" />
+                                </StackPanel>
+                                <ItemsControl x:Name="EntityRuleList" Margin="0,4,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{DynamicResource BgElevated}" CornerRadius="6"
+                                                    Padding="10,6" Margin="0,0,0,4">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Label}"
+                                                               VerticalAlignment="Center" TextWrapping="Wrap" />
+                                                    <Button Grid.Column="1" Content="Remove" Style="{StaticResource ActionButton}"
+                                                            Tag="{Binding Id}" Click="EntityRemove_Click" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock x:Name="EntityStatus" Style="{StaticResource Muted}"
+                                               VerticalAlignment="Center" Margin="0,0,12,0" Text="" TextWrapping="Wrap" />
+                                    <Button Content="Clear active blocks" Style="{StaticResource ActionButton}"
+                                            Click="EntityClearBlocks_Click" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 

@@ -45,11 +45,219 @@ public sealed class FirewallManager : IDisposable
             throw;
         }
         _data = _store.Load();
+        LoadGeoIp();
+        ReloadCustomList();
+        ClearEntityReactiveBlocks(); // §1: drop last session's reactive geo-blocks; they re-form on demand
         // Filters created in previous sessions are PERSISTENT, so they are already
         // active in WFP. We simply trust the saved record as the source of truth.
     }
 
     public IReadOnlyList<FirewallRule> GetRules() => _data.Rules.AsReadOnly();
+
+    // ============================================================= GeoIP (§4)
+    // Read-only enrichment: remote IP -> country / ASN / owner. No enforcement.
+    private readonly GeoIpService _geo = new();
+    public GeoIpService GeoIp => _geo;
+    public bool GeoIpLoaded => _geo.Loaded;
+    public int GeoIpRangeCount => _geo.RangeCount;
+    private string GeoIpCachePath => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v4.tsv");
+
+    public void LoadGeoIp()
+    {
+        try { _geo.LoadFromFile(GeoIpCachePath); } catch { }
+    }
+
+    /// <summary>Download the free CC0 database, then load it. Returns ranges loaded.</summary>
+    public int DownloadAndLoadGeoIp()
+    {
+        GeoIpService.DownloadDatabase(GeoIpCachePath);
+        _geo.LoadFromFile(GeoIpCachePath);
+        return _geo.RangeCount;
+    }
+
+    // ============================================ custom domain blocklist (§5)
+    private readonly HashSet<string> _customDomains = new(StringComparer.OrdinalIgnoreCase);
+    private BloomFilter _customBloom = new(1, 0.01);
+    public int CustomDomainCount => _customDomains.Count;
+    public string CustomListPath => _data.CustomBlocklistPath ?? "";
+
+    public void SetCustomListPath(string path)
+    {
+        _data.CustomBlocklistPath = path ?? "";
+        _store.Save(_data);
+        ReloadCustomList();
+    }
+
+    /// <summary>(Re)load the user's custom domain list and rebuild its bloom index.</summary>
+    public int ReloadCustomList()
+    {
+        _customDomains.Clear();
+        string path = _data.CustomBlocklistPath ?? "";
+        try
+        {
+            if (!string.IsNullOrEmpty(path) && System.IO.File.Exists(path))
+                foreach (var raw in System.IO.File.ReadAllLines(path))
+                {
+                    string d = CleanDomainLine(raw);
+                    if (d.Length > 0) _customDomains.Add(d);
+                }
+        }
+        catch { }
+        _customBloom = new BloomFilter(Math.Max(1, _customDomains.Count), 0.01);
+        foreach (var d in _customDomains) _customBloom.Add(d);
+        return _customDomains.Count;
+    }
+
+    /// <summary>Fast membership test (bloom pre-filter + exact confirm).</summary>
+    public bool IsCustomDomainBlocked(string domain)
+    {
+        if (string.IsNullOrEmpty(domain) || _customDomains.Count == 0) return false;
+        if (!_customBloom.MightContain(domain)) return false;
+        return _customDomains.Contains(domain.TrimEnd('.'));
+    }
+
+    private static string CleanDomainLine(string raw)
+    {
+        string s = raw.Trim();
+        if (s.Length == 0 || s[0] == '#') return "";
+        // Accept hosts-style "0.0.0.0 domain" / "127.0.0.1 domain" lines.
+        int sp = s.IndexOfAny(new[] { ' ', '\t' });
+        if (sp > 0)
+        {
+            string first = s.Substring(0, sp);
+            if (first is "0.0.0.0" or "127.0.0.1" or "::1" or "::")
+                s = s.Substring(sp + 1).Trim();
+        }
+        int hash = s.IndexOf('#');
+        if (hash >= 0) s = s.Substring(0, hash).Trim();
+        return s.TrimEnd('.');
+    }
+
+    // ================================================== entity rule engine (§1)
+    // Block rules keyed on a remote's GeoIP entity (country / continent / ASN),
+    // evaluated reactively in the connect-event handler. On a match GunWall installs
+    // a per-app block for that specific remote IP (reusing the proven scope-block WFP
+    // path). IPv4-only (the GeoIP table is IPv4); blocks are post-hoc (the first
+    // packet to a brand-new remote may complete before the filter lands) - effective
+    // for sustained traffic. Enforcement is independent of monitoring/strict mode: an
+    // explicit entity rule always applies once the engine is up, like a scope block.
+    private readonly HashSet<string> _entityBlocked = new(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyList<EntityRule> EntityRules => _data.EntityRules.AsReadOnly();
+    public int EntityReactiveBlockCount => _data.EntityReactiveFilters.Count;
+
+    public void AddEntityRule(EntityRule rule)
+    {
+        if (rule == null || string.IsNullOrWhiteSpace(rule.Value)) return;
+        rule.Value = rule.Value.Trim();
+        _data.EntityRules.Add(rule);
+        _store.Save(_data);
+        EventLog($"Entity rule added: {rule.TypeLabel} {rule.Value} -> block for {rule.AppLabel}");
+    }
+
+    public void RemoveEntityRule(string id)
+    {
+        int removed = _data.EntityRules.RemoveAll(r => r.Id == id);
+        if (removed > 0)
+        {
+            // A rule changed: tear down the reactive filters it (and others) spawned;
+            // still-active rules re-form their blocks on the next matching connection.
+            ClearEntityReactiveBlocks();
+            _store.Save(_data);
+        }
+    }
+
+    public void SetEntityRuleEnabled(string id, bool enabled)
+    {
+        var r = _data.EntityRules.FirstOrDefault(x => x.Id == id);
+        if (r == null) return;
+        r.Enabled = enabled;
+        ClearEntityReactiveBlocks();   // re-evaluate cleanly under the new rule set
+        _store.Save(_data);
+    }
+
+    /// <summary>Pure-logic match: does any enabled rule block this app from talking to
+    /// a remote with the given GeoInfo? Returns the matched rule, else null.</summary>
+    public EntityRule? MatchEntityBlock(string appPath, GeoIpService.GeoInfo geo)
+    {
+        if (_data.EntityRules.Count == 0 || !geo.HasData) return null;
+        foreach (var r in _data.EntityRules)
+        {
+            if (!r.Enabled) continue;
+            if (r.AppPath.Length > 0 &&
+                !string.Equals(r.AppPath, appPath, StringComparison.OrdinalIgnoreCase)) continue;
+            bool hit = r.Type switch
+            {
+                "country"   => geo.Country.Length > 0 &&
+                               string.Equals(geo.Country, r.Value, StringComparison.OrdinalIgnoreCase),
+                "continent" => geo.Country.Length > 0 &&
+                               string.Equals(GeoData.Continent(geo.Country), r.Value, StringComparison.OrdinalIgnoreCase),
+                "asn"       => geo.Asn != 0 && geo.Asn == ParseAsn(r.Value),
+                _           => false
+            };
+            if (hit) return r;
+        }
+        return null;
+    }
+
+    /// <summary>Reactive enforcement: look up the remote, match entity rules, and on a
+    /// hit install a per-app block for that IP (deduped per session). Returns a short
+    /// reason string for logging (e.g. "country RU"), or null if nothing was blocked.</summary>
+    public string? ApplyEntityBlocks(string appPath, string remoteIp)
+    {
+        if (!_engine.IsInitialized) return null;
+        if (string.IsNullOrEmpty(appPath) || string.IsNullOrEmpty(remoteIp)) return null;
+        if (_data.EntityRules.Count == 0) return null;
+
+        var geo = _geo.Lookup(remoteIp);
+        var rule = MatchEntityBlock(appPath, geo);
+        if (rule == null) return null;
+
+        string key = appPath.ToLowerInvariant() + "|" + remoteIp;
+        if (!_entityBlocked.Add(key)) return null; // already blocked this app+remote this session
+
+        try
+        {
+            var ids = _engine.AddAppRemoteIpBlock(appPath, remoteIp);
+            if (ids.Count > 0)
+            {
+                _data.EntityReactiveFilters.AddRange(ids);
+                _store.Save(_data);
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("ApplyEntityBlocks", ex); return null; }
+
+        string reason = rule.Type switch
+        {
+            "country"   => $"country {rule.Value}",
+            "continent" => $"continent {rule.Value}",
+            "asn"       => $"ASN {rule.Value}",
+            _           => "entity rule"
+        };
+        EventLog($"Entity block: {System.IO.Path.GetFileName(appPath)} -> {remoteIp} ({reason})");
+        return reason;
+    }
+
+    /// <summary>Remove every reactive entity block installed this session and reset the
+    /// dedup set. The entity rules themselves are kept.</summary>
+    public void ClearEntityReactiveBlocks()
+    {
+        if (_data.EntityReactiveFilters.Count > 0)
+        {
+            try { _engine.RemoveFilters(_data.EntityReactiveFilters); } catch { }
+            _data.EntityReactiveFilters.Clear();
+            _store.Save(_data);
+        }
+        _entityBlocked.Clear();
+    }
+
+    private static int ParseAsn(string v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return -1;
+        v = v.Trim();
+        if (v.StartsWith("AS", StringComparison.OrdinalIgnoreCase)) v = v.Substring(2);
+        return int.TryParse(v, out int n) ? n : -1;
+    }
 
     public bool IsBlocked(string exePath) =>
         _data.Rules.Any(r =>
@@ -1022,6 +1230,7 @@ public sealed class FirewallManager : IDisposable
         foreach (var cat in Models.BlocklistCatalog.All)
             if (_data.EnabledBlocklists.Contains(cat.Key) && !_data.BlocklistWfpFilters.ContainsKey(cat.Key))
                 foreach (var d in DomainsFor(cat)) all.Add(d);
+        foreach (var d in _customDomains) all.Add(d); // §5 user custom list
         return HostsFileService.SetBlockedDomains(all, _store.ProfileFolder);
     }
 

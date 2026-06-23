@@ -14,6 +14,22 @@ public sealed class ConnectionInfo
     // Filled in by the UI layer once the PID is resolved to a process.
     public string ProcessName { get; set; } = "";
 
+    // GeoIP enrichment (filled by the UI layer from the remote address; read-only).
+    public string Country { get; set; } = "";
+    public int Asn { get; set; }
+    public string AsnOwner { get; set; } = "";
+    public string Location
+    {
+        get
+        {
+            if (Country.Length == 0 && Asn == 0) return "";
+            var parts = new System.Collections.Generic.List<string>();
+            if (Country.Length > 0) parts.Add(Country);
+            if (Asn != 0) parts.Add("AS" + Asn + (AsnOwner.Length > 0 ? " " + AsnOwner : ""));
+            return string.Join("  \u00B7  ", parts);
+        }
+    }
+
     // Convenience strings for binding in the connections grid.
     public string LocalEndpoint => FormatEndpoint(LocalAddress, LocalPort);
     public string RemoteEndpoint => FormatEndpoint(RemoteAddress, RemotePort);
@@ -170,4 +186,33 @@ public sealed class CustomRule
     }
     public string StatusText => (!Enabled ? "Disabled" : Applied ? "Active" : "Not applied")
         + (Protected ? " \u00B7 protected" : "");
+}
+
+/// <summary>
+/// §1 entity rule: a block keyed on a GeoIP-derived entity (country / continent /
+/// ASN) rather than a literal IP. Matched reactively against each observed remote
+/// in the connect-event handler; on a match GunWall installs a per-app block for
+/// that remote IP. AppPath empty = applies to every app (a global rule).
+/// </summary>
+public sealed class EntityRule
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+    public string AppPath { get; set; } = "";        // "" = all apps (global)
+    public string Type { get; set; } = "country";    // country | continent | asn
+    public string Value { get; set; } = "";          // e.g. "RU", "EU", "AS13335"
+    public bool Enabled { get; set; } = true;
+
+    public string AppLabel => string.IsNullOrEmpty(AppPath)
+        ? "All apps"
+        : System.IO.Path.GetFileName(AppPath);
+
+    public string TypeLabel => Type switch
+    {
+        "country" => "Country",
+        "continent" => "Continent",
+        "asn" => "ASN",
+        _ => Type
+    };
+
+    public string Label => $"{(Enabled ? "" : "(off) ")}{TypeLabel} {Value}  \u2192  block for {AppLabel}";
 }

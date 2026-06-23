@@ -181,6 +181,8 @@ public partial class MainWindow : Window
                 MaxLogFileCombo.SelectedIndex = _firewall.MaxLogFileMB switch
                 { 2 => 0, 5 => 1, 20 => 2, 50 => 3, _ => 1 };
             PopulateColorUi();
+            UpdateCustomListStatus(); // §5 reflect any saved custom blocklist file
+            RefreshEntityRules();     // §1 render saved country/continent/ASN rules + GeoIP status
             _suppressModeEvent = false;
             SyncFirewallToggle();
             if (ApplyButton != null) ApplyButton.IsEnabled = false;
@@ -189,7 +191,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.44.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.47.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -261,12 +263,39 @@ public partial class MainWindow : Window
                     return (c, pr);
                 }, ct);
                 DetectNewApps(conns, procs);
+                ApplyEntityBlocksForConns(conns, procs); // §1 reactive geo-blocking (polling path)
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex) { Debug.WriteLine($"detect error: {ex.Message}"); }
 
             try { await Task.Delay(300, ct); }
             catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>§1 polling-path enforcement: apply entity blocks to every observed
+    /// connection. Runs alongside the event-driven path; the firewall manager dedups
+    /// per app+remote, so double-processing is harmless and does no extra WFP work.</summary>
+    private void ApplyEntityBlocksForConns(List<ConnectionInfo> conns,
+                                           Dictionary<int, (string Name, string Path)> procs)
+    {
+        if (!_engineReady) return;
+        foreach (var c in conns)
+        {
+            if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
+            if (c.RemoteAddress is "127.0.0.1" or "::1" or "0.0.0.0" or "::") continue;
+            if (!procs.TryGetValue(c.ProcessId, out var p) || string.IsNullOrEmpty(p.Path)) continue;
+            if (string.Equals(p.Path, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)) continue;
+            string? reason = _firewall.ApplyEntityBlocks(p.Path, c.RemoteAddress);
+            if (reason != null)
+            {
+                LogActivity(new NetActivityEvent
+                {
+                    ProcessName = System.IO.Path.GetFileNameWithoutExtension(p.Path),
+                    Detail = $"blocked {c.RemoteAddress} ({reason})"
+                });
+                while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
+            }
         }
     }
 
@@ -653,6 +682,20 @@ public partial class MainWindow : Window
                 string.IsNullOrEmpty(e.RemoteAddress) ? "" : $"{e.RemoteAddress}:{e.RemotePort}",
                 e.AppPath);
 
+            // §1 entity rules: reactively block this remote if a country / continent /
+            // ASN rule matches it. Independent of monitoring/strict mode (an explicit
+            // rule always applies). Post-hoc by design - blocks sustained traffic.
+            string? entReason = _firewall.ApplyEntityBlocks(e.AppPath, e.RemoteAddress);
+            if (entReason != null)
+            {
+                LogActivity(new NetActivityEvent
+                {
+                    ProcessName = appName,
+                    Detail = $"blocked {e.RemoteAddress} ({entReason})"
+                });
+                while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
+            }
+
             // Approval pipeline: prompt once for any undecided app.
             string path = e.AppPath;
             if (_firewall.IsBlocked(path) || _firewall.IsAllowed(path) || _firewall.IsSilent(path))
@@ -926,15 +969,55 @@ public partial class MainWindow : Window
             ? $"{sc.ProcessId}|{sc.Protocol}|{sc.LocalAddress}:{sc.LocalPort}|{sc.RemoteAddress}:{sc.RemotePort}"
             : null;
 
+        if (!_geoDownloading && GeoStatus != null)
+            GeoStatus.Text = _firewall.GeoIpLoaded
+                ? $"GeoIP: {_firewall.GeoIpRangeCount:N0} ranges"
+                : "GeoIP: not downloaded";
+
         _connections.Clear();
+        bool geo = _firewall.GeoIpLoaded;
         foreach (var c in view.OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
+        {
+            if (geo && c.Country.Length == 0 && !string.IsNullOrEmpty(c.RemoteAddress))
+            {
+                var g = _firewall.GeoIp.Lookup(c.RemoteAddress);
+                if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; }
+            }
             _connections.Add(c);
+        }
 
         if (keepConn != null)
         {
             var re = _connections.FirstOrDefault(c =>
                 $"{c.ProcessId}|{c.Protocol}|{c.LocalAddress}:{c.LocalPort}|{c.RemoteAddress}:{c.RemotePort}" == keepConn);
             if (re != null) ConnList.SelectedItem = re;
+        }
+    }
+
+    private bool _geoDownloading;
+
+    private async void GeoDownload_Click(object sender, RoutedEventArgs e)
+    {
+        _geoDownloading = true;
+        GeoDownloadBtn.IsEnabled = false;
+        GeoStatus.Text = "Downloading GeoIP data\u2026";
+        try
+        {
+            int n = await System.Threading.Tasks.Task.Run(() => _firewall.DownloadAndLoadGeoIp());
+            GeoStatus.Text = $"GeoIP: {n:N0} ranges loaded";
+        }
+        catch (Exception ex)
+        {
+            GeoStatus.Text = "GeoIP: download failed";
+            MessageBox.Show("Could not download the GeoIP database:\n\n" + ex.Message +
+                "\n\nData source: iptoasn.com (free, public domain).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _geoDownloading = false;
+            GeoDownloadBtn.IsEnabled = true;
+            RebuildConnList();
         }
     }
 
@@ -2055,6 +2138,130 @@ public partial class MainWindow : Window
         if (DnsCombo.SelectedItem == null && DnsCombo.Items.Count > 0) DnsCombo.SelectedIndex = 0;
     }
 
+    // ===== §5 custom blocklist file =====
+    private void ChooseCustomList_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Title = "Select a custom blocklist file",
+            Filter = "Blocklist / hosts files (*.txt;*.hosts)|*.txt;*.hosts|All files (*.*)|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            _firewall.SetCustomListPath(dlg.FileName);
+            _firewall.RebuildHostsBlock(); // fold the new domains into the active hosts block
+            UpdateCustomListStatus();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void ClearCustomList_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _firewall.SetCustomListPath("");
+            _firewall.RebuildHostsBlock(); // drop the custom domains from the hosts block
+            UpdateCustomListStatus();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void UpdateCustomListStatus()
+    {
+        if (CustomListStatus == null) return;
+        string path = _firewall.CustomListPath;
+        if (string.IsNullOrEmpty(path))
+        {
+            CustomListStatus.Text = "No custom list selected.";
+        }
+        else
+        {
+            int n = _firewall.CustomDomainCount;
+            CustomListStatus.Text = $"{n:N0} domain(s) loaded from {System.IO.Path.GetFileName(path)}  -  {path}";
+        }
+    }
+
+    // ===== §1 entity rules (country / continent / ASN blocking) =====
+    private readonly System.Collections.ObjectModel.ObservableCollection<EntityRule> _entityRules = new();
+    private string _entityAppPath = "";
+
+    private void RefreshEntityRules()
+    {
+        if (EntityRuleList == null) return;
+        if (EntityRuleList.ItemsSource != _entityRules) EntityRuleList.ItemsSource = _entityRules;
+        _entityRules.Clear();
+        foreach (var r in _firewall.EntityRules) _entityRules.Add(r);
+        UpdateEntityStatus();
+    }
+
+    private void UpdateEntityStatus()
+    {
+        if (EntityStatus == null) return;
+        string geo = _firewall.GeoIpLoaded
+            ? $"GeoIP ready ({_firewall.GeoIpRangeCount:N0} ranges)."
+            : "GeoIP not loaded - download it on the Connections tab to enable matching.";
+        int active = _firewall.EntityReactiveBlockCount;
+        EntityStatus.Text = active > 0 ? $"{geo}  {active} active block(s)." : geo;
+    }
+
+    private void EntityChooseApp_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Title = "Limit this rule to an application",
+            Filter = "Programs (*.exe)|*.exe|All files (*.*)|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+        _entityAppPath = dlg.FileName;
+        if (EntityAppLabel != null)
+            EntityAppLabel.Text = "Applies to: " + System.IO.Path.GetFileName(_entityAppPath);
+    }
+
+    private void EntityAllApps_Click(object sender, RoutedEventArgs e)
+    {
+        _entityAppPath = "";
+        if (EntityAppLabel != null) EntityAppLabel.Text = "Applies to: All apps";
+    }
+
+    private void EntityAddRule_Click(object sender, RoutedEventArgs e)
+    {
+        string type = (EntityTypeCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "country";
+        string value = (EntityValueBox?.Text ?? "").Trim();
+        if (value.Length == 0)
+        {
+            MessageBox.Show("Enter a value to block (e.g. RU, EU, or AS13335).",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        // Normalise: country / continent codes are upper-case; ASN keeps the user's text.
+        if (type is "country" or "continent") value = value.ToUpperInvariant();
+
+        _firewall.AddEntityRule(new EntityRule
+        {
+            AppPath = _entityAppPath,
+            Type = type,
+            Value = value
+        });
+        if (EntityValueBox != null) EntityValueBox.Text = "";
+        RefreshEntityRules();
+    }
+
+    private void EntityRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is string id && id.Length > 0)
+        {
+            _firewall.RemoveEntityRule(id);
+            RefreshEntityRules();
+        }
+    }
+
+    private void EntityClearBlocks_Click(object sender, RoutedEventArgs e)
+    {
+        _firewall.ClearEntityReactiveBlocks();
+        UpdateEntityStatus();
+    }
+
     private void DnsApply_Click(object sender, RoutedEventArgs e)
     {
         if (DnsCombo?.SelectedItem is not ComboBoxItem it || it.Tag is not string key) return;
@@ -2498,6 +2705,16 @@ public partial class MainWindow : Window
         if (ShieldAlert != null) ShieldAlert.Visibility = protectedNow ? Visibility.Collapsed : Visibility.Visible;
         StatusTitle.Text = title;
         StatusSub.Text = sub;
+
+        // Always-visible status in the sidebar (mirrors the dashboard shield).
+        string sideSub = !_engineReady ? "Run as administrator"
+            : _firewall.IsSnoozed ? "Filtering paused"
+            : _firewall.LockdownEngaged ? "All traffic blocked"
+            : _firewall.StrictMode ? "Zero-Trust active"
+            : "Watching, not blocking";
+        if (SideStatusIcon != null) SideStatusIcon.Foreground = fill;
+        if (SideStatusTitle != null) SideStatusTitle.Text = title;
+        if (SideStatusSub != null) SideStatusSub.Text = sideSub;
     }
 
     private void Repo_RequestNavigate(object sender, RequestNavigateEventArgs e)
