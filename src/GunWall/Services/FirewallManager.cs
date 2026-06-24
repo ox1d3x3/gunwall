@@ -62,10 +62,32 @@ public sealed class FirewallManager : IDisposable
     public int GeoIpRangeCount => _geo.RangeCount;
     private string GeoIpCachePath => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v4.tsv");
 
+    // GeoIP source selection: "local" (downloaded table) or "api" (self-hosted server).
+    public string GeoIpMode => _data.GeoIpMode == "api" ? "api" : "local";
+    public string GeoIpApiUrl => _data.GeoIpApiUrl ?? "";
+    public bool GeoIpApiActive => GeoIpMode == "api" && !string.IsNullOrWhiteSpace(GeoIpApiUrl);
+    /// <summary>True when enrichment/matching can produce data (API active, or a local table loaded).</summary>
+    public bool GeoIpActive => GeoIpApiActive || _geo.Loaded;
+
     public void LoadGeoIp()
     {
+        if (GeoIpApiActive) { _geo.EnableApi(GeoIpApiUrl); return; }
+        _geo.DisableApi();
         try { _geo.LoadFromFile(GeoIpCachePath); } catch { }
     }
+
+    /// <summary>Switch the GeoIP source at runtime and persist the choice.</summary>
+    public void SetGeoIpSource(string mode, string url)
+    {
+        _data.GeoIpMode = mode == "api" ? "api" : "local";
+        _data.GeoIpApiUrl = (url ?? "").Trim();
+        _store.Save(_data);
+        LoadGeoIp(); // (re)configure the service for the new source
+    }
+
+    /// <summary>One-shot test of an API server URL (resolves 8.8.8.8). UI awaits this.</summary>
+    public System.Threading.Tasks.Task<string> TestGeoIpApiAsync(string url) =>
+        GeoIpService.TestApiAsync(url);
 
     /// <summary>Download the free CC0 database, then load it. Returns ranges loaded.</summary>
     public int DownloadAndLoadGeoIp()
@@ -209,23 +231,33 @@ public sealed class FirewallManager : IDisposable
         if (string.IsNullOrEmpty(appPath) || string.IsNullOrEmpty(remoteIp)) return null;
         if (_data.EntityRules.Count == 0) return null;
 
+        // Never reactively block our own process - GunWall must keep reaching its API
+        // server, update check, list mirrors, and VirusTotal regardless of any rule.
+        if (string.Equals(appPath, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        // Enforcement is IPv4-only (the WFP block path is v4). An IPv6 remote can still
+        // be *enriched* in the connection list, but we can't install a block for it yet,
+        // so bail before claiming one.
+        if (!System.Net.IPAddress.TryParse(remoteIp, out var ipAddr) ||
+            ipAddr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return null;
+
         var geo = _geo.Lookup(remoteIp);
         var rule = MatchEntityBlock(appPath, geo);
         if (rule == null) return null;
 
         string key = appPath.ToLowerInvariant() + "|" + remoteIp;
-        if (!_entityBlocked.Add(key)) return null; // already blocked this app+remote this session
+        if (!_entityBlocked.Add(key)) return null; // already handled this app+remote this session
 
-        try
-        {
-            var ids = _engine.AddAppRemoteIpBlock(appPath, remoteIp);
-            if (ids.Count > 0)
-            {
-                _data.EntityReactiveFilters.AddRange(ids);
-                _store.Save(_data);
-            }
-        }
+        List<ulong> ids;
+        try { ids = _engine.AddAppRemoteIpBlock(appPath, remoteIp); }
         catch (Exception ex) { DiagnosticLog.LogException("ApplyEntityBlocks", ex); return null; }
+
+        if (ids.Count == 0) return null; // nothing was installed - don't claim a block
+
+        _data.EntityReactiveFilters.AddRange(ids);
+        _store.Save(_data);
 
         string reason = rule.Type switch
         {

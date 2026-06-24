@@ -852,8 +852,32 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
+                                <TextBlock Text="GeoIP data source" Style="{StaticResource H2}" />
+                                <TextBlock Text="Where country/ASN data comes from. &quot;Local database&quot; downloads the full IPv4 table into GunWall (use the Download button on the Connections tab). &quot;Self-hosted API server&quot; queries your own iptoasn-webservice instead - nothing to download, always fresh, and it resolves IPv6 too. Lookups are cached, so each address is fetched only once."
+                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <ComboBox x:Name="GeoSourceCombo" Width="230" Height="30" SelectedIndex="0">
+                                        <ComboBoxItem Content="Local database (download)" Tag="local" />
+                                        <ComboBoxItem Content="Self-hosted API server" Tag="api" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBox x:Name="GeoApiUrlBox" Width="290" Height="30" Margin="0,0,8,0"
+                                             VerticalContentAlignment="Center"
+                                             ToolTip="e.g. http://192.168.1.50:53662 or https://geoip.example.com" />
+                                    <Button Content="Save" Style="{StaticResource PrimaryButton}"
+                                            Click="GeoSourceApply_Click" Padding="16,8" Margin="0,0,6,0" />
+                                    <Button Content="Test" Style="{StaticResource ActionButton}"
+                                            Click="GeoApiTest_Click" />
+                                </StackPanel>
+                                <TextBlock x:Name="GeoSourceStatus" Style="{StaticResource Muted}" Text="" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <StackPanel>
                                 <TextBlock Text="Country &amp; ASN blocking" Style="{StaticResource H2}" />
-                                <TextBlock Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. IPv4 only. Download the GeoIP data on the Connections tab first."
+                                <TextBlock Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. IPv4 only. Set up a GeoIP data source above first."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                     <ComboBox x:Name="EntityTypeCombo" Width="120" Height="30" Margin="0,0,8,0" SelectedIndex="0">

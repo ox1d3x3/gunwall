@@ -263,4 +263,10 @@ public sealed class StoreData
     // torn down deterministically (cleared on startup for a clean slate).
     public List<EntityRule> EntityRules { get; set; } = new();
     public List<ulong> EntityReactiveFilters { get; set; } = new();
+
+    // GeoIP data source: "local" downloads the IPv4 table into GunWall; "api" queries
+    // a self-hosted iptoasn-webservice (no download, always fresh, resolves IPv6).
+    // Default "local" preserves existing behaviour for upgrades.
+    public string GeoIpMode { get; set; } = "local";
+    public string GeoIpApiUrl { get; set; } = "";
 }

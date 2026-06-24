@@ -183,6 +183,7 @@ public partial class MainWindow : Window
             PopulateColorUi();
             UpdateCustomListStatus(); // §5 reflect any saved custom blocklist file
             RefreshEntityRules();     // §1 render saved country/continent/ASN rules + GeoIP status
+            InitGeoSourceUi();        // reflect saved GeoIP source (local / API)
             _suppressModeEvent = false;
             SyncFirewallToggle();
             if (ApplyButton != null) ApplyButton.IsEnabled = false;
@@ -191,7 +192,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.47.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.48.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -970,12 +971,16 @@ public partial class MainWindow : Window
             : null;
 
         if (!_geoDownloading && GeoStatus != null)
-            GeoStatus.Text = _firewall.GeoIpLoaded
-                ? $"GeoIP: {_firewall.GeoIpRangeCount:N0} ranges"
-                : "GeoIP: not downloaded";
+            GeoStatus.Text = _firewall.GeoIpApiActive
+                ? "GeoIP: API server"
+                : _firewall.GeoIpLoaded
+                    ? $"GeoIP: {_firewall.GeoIpRangeCount:N0} ranges"
+                    : "GeoIP: not downloaded";
+        if (!_geoDownloading && GeoDownloadBtn != null)
+            GeoDownloadBtn.IsEnabled = !_firewall.GeoIpApiActive; // download is for local mode only
 
         _connections.Clear();
-        bool geo = _firewall.GeoIpLoaded;
+        bool geo = _firewall.GeoIpActive;
         foreach (var c in view.OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
         {
             if (geo && c.Country.Length == 0 && !string.IsNullOrEmpty(c.RemoteAddress))
@@ -1019,6 +1024,43 @@ public partial class MainWindow : Window
             GeoDownloadBtn.IsEnabled = true;
             RebuildConnList();
         }
+    }
+
+    // ===== GeoIP data source (local download vs self-hosted API) =====
+    private void GeoSourceApply_Click(object sender, RoutedEventArgs e)
+    {
+        string mode = (GeoSourceCombo?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "local";
+        string url = (GeoApiUrlBox?.Text ?? "").Trim();
+        if (mode == "api" && url.Length == 0)
+        {
+            if (GeoSourceStatus != null) GeoSourceStatus.Text = "Enter the API server URL first.";
+            return;
+        }
+        _firewall.SetGeoIpSource(mode, url);
+        if (GeoSourceStatus != null) GeoSourceStatus.Text = GeoSourceSummary();
+        RebuildConnList();     // re-enrich under the new source
+        UpdateEntityStatus();  // §1 status reflects the new source
+    }
+
+    private async void GeoApiTest_Click(object sender, RoutedEventArgs e)
+    {
+        string url = (GeoApiUrlBox?.Text ?? "").Trim();
+        if (GeoSourceStatus != null) GeoSourceStatus.Text = "Testing\u2026";
+        string result = await _firewall.TestGeoIpApiAsync(url);
+        if (GeoSourceStatus != null) GeoSourceStatus.Text = result;
+    }
+
+    private string GeoSourceSummary() => _firewall.GeoIpApiActive
+        ? $"Using API server: {_firewall.GeoIpApiUrl}"
+        : _firewall.GeoIpLoaded
+            ? $"Using local database ({_firewall.GeoIpRangeCount:N0} ranges)."
+            : "Using local database - not downloaded yet (Connections tab).";
+
+    private void InitGeoSourceUi()
+    {
+        if (GeoSourceCombo != null) GeoSourceCombo.SelectedIndex = _firewall.GeoIpMode == "api" ? 1 : 0;
+        if (GeoApiUrlBox != null) GeoApiUrlBox.Text = _firewall.GeoIpApiUrl;
+        if (GeoSourceStatus != null) GeoSourceStatus.Text = GeoSourceSummary();
     }
 
     private void AppSearch_TextChanged(object sender, TextChangedEventArgs e)
@@ -2198,9 +2240,11 @@ public partial class MainWindow : Window
     private void UpdateEntityStatus()
     {
         if (EntityStatus == null) return;
-        string geo = _firewall.GeoIpLoaded
-            ? $"GeoIP ready ({_firewall.GeoIpRangeCount:N0} ranges)."
-            : "GeoIP not loaded - download it on the Connections tab to enable matching.";
+        string geo = _firewall.GeoIpApiActive
+            ? "GeoIP via API server."
+            : _firewall.GeoIpLoaded
+                ? $"GeoIP ready ({_firewall.GeoIpRangeCount:N0} ranges)."
+                : "GeoIP not loaded - choose a source in Settings to enable matching.";
         int active = _firewall.EntityReactiveBlockCount;
         EntityStatus.Text = active > 0 ? $"{geo}  {active} active block(s)." : geo;
     }

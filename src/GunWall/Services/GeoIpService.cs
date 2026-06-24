@@ -48,6 +48,40 @@ public sealed class GeoIpService
     public bool Loaded => _start.Length > 0;
     public int RangeCount => _start.Length;
 
+    // ---- optional self-hosted API mode (iptoasn-webservice) ----
+    // When _apiBase is set, Lookup() resolves via the user's HTTP API instead of a
+    // local table. Lookups are async + cached so the hot path NEVER blocks: a cache
+    // miss returns "no data" immediately and kicks off a background fetch that fills
+    // the cache for the next refresh cycle. Each unique IP is fetched at most once
+    // (until a failure's short retry window elapses). Resolves IPv6 too, because the
+    // server's combined database includes v6 ranges.
+    private string _apiBase = "";
+    private static readonly HttpClient _apiClient = new() { Timeout = TimeSpan.FromSeconds(5) };
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, GeoInfo> _apiCache = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _apiInflight = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _apiRetryAt = new();
+    private readonly System.Threading.SemaphoreSlim _apiGate = new(6); // cap concurrent requests
+
+    public bool ApiEnabled => _apiBase.Length > 0;
+    public int ApiCacheCount => _apiCache.Count;
+
+    /// <summary>Switch to API-source mode against a base URL (e.g. http://host:53662).</summary>
+    public void EnableApi(string baseUrl)
+    {
+        _apiBase = NormalizeBase(baseUrl);
+        _apiCache.Clear(); _apiInflight.Clear(); _apiRetryAt.Clear();
+    }
+
+    /// <summary>Leave API-source mode (back to the local table, if any).</summary>
+    public void DisableApi() => _apiBase = "";
+
+    private static string NormalizeBase(string url)
+    {
+        url = (url ?? "").Trim();
+        while (url.EndsWith("/")) url = url[..^1];
+        return url;
+    }
+
     /// <summary>Parse the iptoasn TSV text into the sorted lookup arrays.</summary>
     public void LoadFromText(string tsv)
     {
@@ -97,7 +131,9 @@ public sealed class GeoIpService
     /// <summary>Look up a remote address. Unknown / IPv6 / invalid returns empty.</summary>
     public GeoInfo Lookup(string ip)
     {
-        if (!Loaded || string.IsNullOrEmpty(ip)) return new GeoInfo("", 0, "");
+        if (string.IsNullOrEmpty(ip)) return new GeoInfo("", 0, "");
+        if (_apiBase.Length > 0) return LookupApi(ip);  // self-hosted API mode (async + cached)
+        if (!Loaded) return new GeoInfo("", 0, "");
         if (!TryToUInt32(ip, out uint addr)) return new GeoInfo("", 0, ""); // IPv6 / invalid
 
         // Greatest start <= addr, then confirm addr falls within that range's end.
@@ -145,5 +181,74 @@ public sealed class GeoIpService
         gz.CopyTo(outFile);
         outFile.Flush();
         return outFile.Length;
+    }
+
+    // -------- API-source lookup (async + cached; runtime-only network) --------
+
+    private GeoInfo LookupApi(string ip)
+    {
+        if (_apiCache.TryGetValue(ip, out var hit)) return hit;   // cached (positive or known-empty)
+        long now = Environment.TickCount64;
+        if (_apiRetryAt.TryGetValue(ip, out var until) && now < until) return new GeoInfo("", 0, "");
+        if (!_apiInflight.ContainsKey(ip)) _ = FetchApiAsync(ip); // fire-and-forget; fills the cache
+        return new GeoInfo("", 0, "");                            // never block the caller
+    }
+
+    private async System.Threading.Tasks.Task FetchApiAsync(string ip)
+    {
+        if (!_apiInflight.TryAdd(ip, 0)) return;                  // already fetching this IP
+        string baseUrl = _apiBase;
+        if (baseUrl.Length == 0) { _apiInflight.TryRemove(ip, out _); return; }
+        await _apiGate.WaitAsync().ConfigureAwait(false);         // cap concurrency
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, baseUrl + "/v1/as/ip/" + Uri.EscapeDataString(ip));
+            req.Headers.Accept.ParseAdd("application/json");
+            using var resp = await _apiClient.SendAsync(req).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) { _apiRetryAt[ip] = Environment.TickCount64 + 30_000; return; }
+            string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            _apiCache[ip] = ParseApiJson(body);                  // cache the answer (incl. "no data")
+            _apiRetryAt.TryRemove(ip, out _);
+        }
+        catch { _apiRetryAt[ip] = Environment.TickCount64 + 30_000; } // back off this IP for 30s
+        finally { _apiGate.Release(); _apiInflight.TryRemove(ip, out _); }
+    }
+
+    /// <summary>Parse an iptoasn-webservice JSON reply into a GeoInfo. Pure logic - unit-tested.
+    /// Unannounced replies ({"announced":false}) and malformed input return empty.</summary>
+    internal static GeoInfo ParseApiJson(string json)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            if (!(r.TryGetProperty("announced", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.True))
+                return new GeoInfo("", 0, "");
+            string cc = r.TryGetProperty("as_country_code", out var c) ? (c.GetString() ?? "") : "";
+            if (cc is "None" or "Unknown" or "-") cc = "";
+            int asn = r.TryGetProperty("as_number", out var n) && n.TryGetInt32(out int ni) ? ni : 0;
+            string ow = r.TryGetProperty("as_description", out var d) ? (d.GetString() ?? "") : "";
+            return new GeoInfo(cc, asn, ow);
+        }
+        catch { return new GeoInfo("", 0, ""); }
+    }
+
+    /// <summary>One-shot connectivity test: resolve 8.8.8.8 and report a friendly status.</summary>
+    public static async System.Threading.Tasks.Task<string> TestApiAsync(string baseUrl)
+    {
+        baseUrl = NormalizeBase(baseUrl);
+        if (baseUrl.Length == 0) return "Enter the API server URL first.";
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, baseUrl + "/v1/as/ip/8.8.8.8");
+            req.Headers.Accept.ParseAdd("application/json");
+            using var resp = await _apiClient.SendAsync(req).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return $"Server responded HTTP {(int)resp.StatusCode}.";
+            var gi = ParseApiJson(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
+            return gi.HasData
+                ? $"Connected - 8.8.8.8 resolved to {gi.Country} AS{gi.Asn} {gi.Owner}."
+                : "Connected, but the server returned no data for 8.8.8.8.";
+        }
+        catch (Exception ex) { return "Could not reach the server: " + ex.Message; }
     }
 }
