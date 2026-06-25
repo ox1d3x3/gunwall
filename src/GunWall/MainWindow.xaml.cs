@@ -192,7 +192,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.48.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.48.2 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -981,11 +981,20 @@ public partial class MainWindow : Window
 
         _connections.Clear();
         bool geo = _firewall.GeoIpActive;
+        // Dedupe GeoIP lookups within this refresh: many sockets often share one remote
+        // IP (e.g. a browser holding dozens of connections to the same CDN), so resolve
+        // each distinct address once instead of once per row.
+        Dictionary<string, GunWall.Services.GeoIpService.GeoInfo>? geoMemo =
+            geo ? new(StringComparer.OrdinalIgnoreCase) : null;
         foreach (var c in view.OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
         {
             if (geo && c.Country.Length == 0 && !string.IsNullOrEmpty(c.RemoteAddress))
             {
-                var g = _firewall.GeoIp.Lookup(c.RemoteAddress);
+                if (!geoMemo!.TryGetValue(c.RemoteAddress, out var g))
+                {
+                    g = _firewall.GeoIp.Lookup(c.RemoteAddress);
+                    geoMemo[c.RemoteAddress] = g;
+                }
                 if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; }
             }
             _connections.Add(c);

@@ -132,6 +132,7 @@ public sealed class GeoIpService
     public GeoInfo Lookup(string ip)
     {
         if (string.IsNullOrEmpty(ip)) return new GeoInfo("", 0, "");
+        if (IsPrivateOrReserved(ip)) return new GeoInfo("", 0, ""); // LAN/loopback/reserved: no public answer
         if (_apiBase.Length > 0) return LookupApi(ip);  // self-hosted API mode (async + cached)
         if (!Loaded) return new GeoInfo("", 0, "");
         if (!TryToUInt32(ip, out uint addr)) return new GeoInfo("", 0, ""); // IPv6 / invalid
@@ -184,6 +185,35 @@ public sealed class GeoIpService
     }
 
     // -------- API-source lookup (async + cached; runtime-only network) --------
+
+    /// <summary>True for addresses that are never announced (private, loopback, link-local,
+    /// CGNAT, multicast, reserved) - querying the API for these is a guaranteed-empty round
+    /// trip, so we skip it. Unparseable input is treated as non-routable too.</summary>
+    internal static bool IsPrivateOrReserved(string ip)
+    {
+        if (!System.Net.IPAddress.TryParse(ip, out var a)) return true;
+        if (System.Net.IPAddress.IsLoopback(a)) return true;
+        byte[] b = a.GetAddressBytes();
+        if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            if (b[0] == 0) return true;                                   // 0.0.0.0/8
+            if (b[0] == 10) return true;                                  // 10/8 private
+            if (b[0] == 127) return true;                                 // 127/8 loopback
+            if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) return true;    // 100.64/10 CGNAT
+            if (b[0] == 169 && b[1] == 254) return true;                  // 169.254/16 link-local
+            if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;     // 172.16/12 private
+            if (b[0] == 192 && b[1] == 168) return true;                  // 192.168/16 private
+            if (b[0] >= 224) return true;                                 // 224/4 multicast, 240/4 reserved, broadcast
+            return false;
+        }
+        // IPv6
+        bool allZero = true; foreach (var x in b) if (x != 0) { allZero = false; break; }
+        if (allZero) return true;                                         // ::
+        if ((b[0] & 0xfe) == 0xfc) return true;                           // fc00::/7 unique-local
+        if (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) return true;           // fe80::/10 link-local
+        if (b[0] == 0xff) return true;                                    // ff00::/8 multicast
+        return false;
+    }
 
     private GeoInfo LookupApi(string ip)
     {

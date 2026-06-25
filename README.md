@@ -134,6 +134,51 @@ Detection is **event-driven** off the WFP kernel event stream (not polling). Blo
 
 ---
 
+## 🌍 GeoIP data source (optional, self-hosted)
+
+GunWall can label each connection with its **country and network operator (ASN)** and use that for country/ASN blocking. Pick the source under **Settings → Security & Privacy → GeoIP data source**:
+
+- **Local database** *(default)* — GunWall downloads the free, public-domain [iptoasn](https://iptoasn.com) IPv4 table on demand and resolves addresses entirely on your machine. No server, no setup. This is all most people need.
+- **Self-hosted API server** — GunWall instead asks a small HTTP service you run yourself. Nothing to download, always fresh, and it resolves **IPv6** too. Lookups are cached, so each address is fetched only once.
+
+> GunWall ships with **no** API URL and never contacts anyone else's server. If you choose API mode you point it at your own endpoint — nothing is hard-coded and there is no shared or default host to overload.
+
+### Run your own server
+
+The service is [`jedisct1/iptoasn-webservice`](https://github.com/jedisct1/iptoasn-webservice) (BSD-2-Clause). It fetches and refreshes the dataset itself and answers `GET /v1/as/ip/<ip>` with JSON. The project's stock image targets an older Rust toolchain; this two-stage Dockerfile builds cleanly on current Docker:
+
+```dockerfile
+FROM rust:bookworm AS builder
+RUN git clone --depth 1 https://github.com/jedisct1/iptoasn-webservice.git /build
+WORKDIR /build
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/target/release/iptoasn-webservice /usr/local/bin/iptoasn-webservice
+EXPOSE 53661
+ENTRYPOINT ["iptoasn-webservice", "--listen", "0.0.0.0:53661"]
+```
+
+Build and run it (mapping host port `53662` to the container's `53661` — change to taste):
+
+```bash
+docker build -t iptoasn .
+docker run -d --name iptoasn --restart unless-stopped -p 53662:53661 iptoasn
+```
+
+Confirm it's up — this should report Google, `AS15169`, `US`:
+
+```bash
+curl -H "Accept: application/json" http://YOUR_SERVER:53662/v1/as/ip/8.8.8.8
+```
+
+Then in GunWall: **Settings → Security & Privacy → GeoIP data source → Self-hosted API server**, enter `http://YOUR_SERVER:53662`, click **Test**, then **Save**. To reach it from outside your LAN, put it behind a reverse proxy or tunnel (e.g. Cloudflare Tunnel) and use that `https://…` hostname instead.
+
+---
+
 ## 🗺️ Roadmap
 
 | Version | Focus |
@@ -154,6 +199,8 @@ Detection is **event-driven** off the WFP kernel event stream (not polling). Blo
 ## 📄 License
 
 [MIT](LICENSE).
+
+**Credits.** GeoIP data from the public-domain [iptoasn](https://iptoasn.com) dataset, served via [`jedisct1/iptoasn-webservice`](https://github.com/jedisct1/iptoasn-webservice) (BSD-2-Clause). Country flag icons from [FlagKit](https://github.com/madebybowtie/FlagKit) (MIT, public-domain artwork) — see [`Flags/LICENSE-FlagKit.txt`](src/GunWall/Flags/LICENSE-FlagKit.txt).
 
 ---
 

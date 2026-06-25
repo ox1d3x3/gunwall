@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.48.0</Version>
+    <Version>0.48.2</Version>
     <Company>GunWall</Company>
     <Product>GunWall Firewall</Product>
     <Description>A modern, open-source Windows firewall built on the Windows Filtering Platform.</Description>
@@ -38,6 +38,13 @@
     <None Update="Assets\app.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <!-- Country flag icons (FlagKit, MIT-licensed, public-domain artwork) embedded as
+       WPF resources so the app stays a single self-contained EXE. See Flags/LICENSE-FlagKit.txt. -->
+  <ItemGroup>
+    <None Remove="Flags\**\*.png" />
+    <Resource Include="Flags\**\*.png" />
   </ItemGroup>
 
 </Project>

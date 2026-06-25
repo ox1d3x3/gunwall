@@ -17,6 +17,7 @@
         <conv:CategoryToBrushConverter x:Key="CategoryToBrush" />
         <conv:CategoryToTextConverter x:Key="CategoryToText" />
         <conv:ProtectLabelConverter x:Key="ProtectLabel" />
+        <conv:CountryFlagConverter x:Key="CountryFlag" />
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
         <Style x:Key="SearchBox" TargetType="TextBox">
@@ -516,8 +517,20 @@
                                                 DisplayMemberBinding="{Binding LocalEndpoint}" />
                                 <GridViewColumn Header="Remote" Width="220"
                                                 DisplayMemberBinding="{Binding RemoteEndpoint}" />
-                                <GridViewColumn Header="Location" Width="210"
-                                                DisplayMemberBinding="{Binding Location}" />
+                                <GridViewColumn Header="Location" Width="210">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Image Width="20" Height="14" Margin="0,0,7,0"
+                                                       VerticalAlignment="Center" Stretch="Uniform"
+                                                       SnapsToDevicePixels="True"
+                                                       Source="{Binding Country, Converter={StaticResource CountryFlag}}" />
+                                                <TextBlock Text="{Binding Location}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="State" Width="100"
                                                 DisplayMemberBinding="{Binding State}" />
                             </GridView>

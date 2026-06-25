@@ -24,7 +24,7 @@ public sealed class ConnectionInfo
         {
             if (Country.Length == 0 && Asn == 0) return "";
             var parts = new System.Collections.Generic.List<string>();
-            if (Country.Length > 0) parts.Add(Country);
+            if (Country.Length > 0) parts.Add(GunWall.Services.GeoData.CountryName(Country));
             if (Asn != 0) parts.Add("AS" + Asn + (AsnOwner.Length > 0 ? " " + AsnOwner : ""));
             return string.Join("  \u00B7  ", parts);
         }

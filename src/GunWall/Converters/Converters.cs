@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using GunWall.Models;
 
 namespace GunWall.Converters;
@@ -95,4 +96,45 @@ public sealed class ProtectLabelConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => Binding.DoNothing;
+}
+
+/// <summary>
+/// Maps an ISO-3166 alpha-2 country code to its embedded flag image (Flags/xx.png),
+/// or null when the code is empty/unknown so the row simply shows no flag. Results
+/// (including misses) are cached and frozen, so each flag is decoded at most once.
+/// </summary>
+public sealed class CountryFlagConverter : IValueConverter
+{
+    private static readonly Dictionary<string, BitmapImage?> _cache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        string code = (value as string ?? "").Trim().ToLowerInvariant();
+        if (code.Length != 2) return null;
+
+        lock (_cache)
+        {
+            if (_cache.TryGetValue(code, out var cached)) return cached;
+
+            BitmapImage? img = null;
+            try
+            {
+                var bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.UriSource = new Uri($"pack://application:,,,/Flags/{code}.png", UriKind.Absolute);
+                bmp.CacheOption = BitmapCacheOption.OnLoad; // decode now so a miss throws here
+                bmp.EndInit();
+                bmp.Freeze();
+                img = bmp;
+            }
+            catch { img = null; } // no flag bundled for this code
+
+            _cache[code] = img;
+            return img;
+        }
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
 }
