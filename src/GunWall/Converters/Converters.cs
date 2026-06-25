@@ -108,21 +108,22 @@ public sealed class CountryFlagConverter : IValueConverter
     private static readonly Dictionary<string, BitmapImage?> _cache =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    /// <summary>Load the embedded flag for an ISO alpha-2 code (cached, frozen), or null.</summary>
+    public static BitmapImage? Load(string? code)
     {
-        string code = (value as string ?? "").Trim().ToLowerInvariant();
-        if (code.Length != 2) return null;
+        string c = (code ?? "").Trim().ToLowerInvariant();
+        if (c.Length != 2) return null;
 
         lock (_cache)
         {
-            if (_cache.TryGetValue(code, out var cached)) return cached;
+            if (_cache.TryGetValue(c, out var cached)) return cached;
 
             BitmapImage? img = null;
             try
             {
                 var bmp = new BitmapImage();
                 bmp.BeginInit();
-                bmp.UriSource = new Uri($"pack://application:,,,/Flags/{code}.png", UriKind.Absolute);
+                bmp.UriSource = new Uri($"pack://application:,,,/Flags/{c}.png", UriKind.Absolute);
                 bmp.CacheOption = BitmapCacheOption.OnLoad; // decode now so a miss throws here
                 bmp.EndInit();
                 bmp.Freeze();
@@ -130,10 +131,13 @@ public sealed class CountryFlagConverter : IValueConverter
             }
             catch { img = null; } // no flag bundled for this code
 
-            _cache[code] = img;
+            _cache[c] = img;
             return img;
         }
     }
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => Load(value as string);
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();

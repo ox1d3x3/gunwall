@@ -14,6 +14,11 @@ public sealed class ConnectionInfo
     // Filled in by the UI layer once the PID is resolved to a process.
     public string ProcessName { get; set; } = "";
 
+    // Full executable path of the owning process (filled by the UI layer; "" if the
+    // socket has no resolvable owner, e.g. PID 0 TIME_WAIT). Used by the inspector to
+    // surface the app's current policy.
+    public string ExePath { get; set; } = "";
+
     // GeoIP enrichment (filled by the UI layer from the remote address; read-only).
     public string Country { get; set; } = "";
     public int Asn { get; set; }

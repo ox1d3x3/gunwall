@@ -192,7 +192,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.48.2 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.49.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -328,7 +328,14 @@ public partial class MainWindow : Window
         var procs = _processes.SnapshotProcesses();
 
         foreach (var c in conns)
-            c.ProcessName = procs.TryGetValue(c.ProcessId, out var p) ? p.Name : $"PID {c.ProcessId}";
+        {
+            if (procs.TryGetValue(c.ProcessId, out var p))
+            {
+                c.ProcessName = p.Name;
+                c.ExePath = p.Path ?? "";
+            }
+            else c.ProcessName = $"PID {c.ProcessId}";
+        }
 
         var (rx, tx) = _monitor.GetCumulativeBytes();
         var now = DateTime.UtcNow;
@@ -1005,6 +1012,77 @@ public partial class MainWindow : Window
             var re = _connections.FirstOrDefault(c =>
                 $"{c.ProcessId}|{c.Protocol}|{c.LocalAddress}:{c.LocalPort}|{c.RemoteAddress}:{c.RemotePort}" == keepConn);
             if (re != null) ConnList.SelectedItem = re;
+        }
+    }
+
+    // ===== §11 connection inspector (read-only detail pane) =====
+    private void ConnSelected(object sender, SelectionChangedEventArgs e)
+    {
+        // Ignore the transient deselection that happens while the list refreshes
+        // (Clear + re-add); keep the last view until a real row is chosen.
+        if (ConnList.SelectedItem is not ConnectionInfo c) return;
+
+        InspPlaceholder.Visibility = Visibility.Collapsed;
+        InspContent.Visibility = Visibility.Visible;
+
+        InspProcess.Text = string.IsNullOrEmpty(c.ProcessName) ? "(unknown)" : c.ProcessName;
+        InspSub.Text = $"PID {c.ProcessId}  \u00B7  {c.Protocol}";
+
+        bool listening = c.State.IndexOf("listen", StringComparison.OrdinalIgnoreCase) >= 0;
+        InspType.Text = listening ? "Listening (inbound)" : "Active connection";
+        InspLocal.Text = c.LocalEndpoint;
+        InspRemote.Text = c.RemoteEndpoint;
+        InspState.Text = string.IsNullOrEmpty(c.State) ? "\u2014" : c.State;
+
+        // Location
+        if (c.Country.Length > 0 || c.Asn != 0)
+        {
+            var flag = CountryFlagConverter.Load(c.Country);
+            InspFlag.Source = flag;
+            InspFlag.Visibility = flag != null ? Visibility.Visible : Visibility.Collapsed;
+            InspCountry.Text = c.Country.Length > 0
+                ? GunWall.Services.GeoData.CountryName(c.Country)
+                : "Unknown country";
+            InspAsnRow.Visibility = c.Asn != 0 ? Visibility.Visible : Visibility.Collapsed;
+            InspAsn.Text = c.Asn != 0 ? $"AS{c.Asn}" : "\u2014";
+            InspOwnerRow.Visibility = c.AsnOwner.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            InspOwner.Text = c.AsnOwner;
+        }
+        else
+        {
+            InspFlag.Source = null;
+            InspFlag.Visibility = Visibility.Collapsed;
+            InspCountry.Text = "Local / private address";
+            InspAsnRow.Visibility = Visibility.Collapsed;
+            InspOwnerRow.Visibility = Visibility.Collapsed;
+        }
+
+        // Application policy (best-effort, read-only)
+        if (!string.IsNullOrEmpty(c.ExePath))
+        {
+            InspPath.Text = c.ExePath;
+            var status = _firewall.EffectiveStatus(c.ExePath);
+            bool blocked = status == AppStatus.Blocked;
+            InspStatus.Text = blocked ? "Blocked" : "Allowed";
+            InspStatus.Foreground = (Brush)FindResource(blocked ? "BlockText" : "AllowText");
+
+            InspScopeRow.Visibility = Visibility.Visible;
+            if (_firewall.IsKnownApp(c.ExePath))
+            {
+                var blocks = new System.Collections.Generic.List<string>();
+                if (_firewall.IsScopeBlocked(c.ExePath, "local")) blocks.Add("localhost");
+                if (_firewall.IsScopeBlocked(c.ExePath, "lan")) blocks.Add("LAN");
+                if (_firewall.IsScopeBlocked(c.ExePath, "incoming")) blocks.Add("incoming");
+                InspScope.Text = blocks.Count == 0 ? "No scope restrictions" : "Blocked: " + string.Join(", ", blocks);
+            }
+            else InspScope.Text = "Not individually managed";
+        }
+        else
+        {
+            InspPath.Text = "\u2014";
+            InspStatus.Text = "No owning process";
+            InspStatus.Foreground = (Brush)FindResource("TextSecondary");
+            InspScopeRow.Visibility = Visibility.Collapsed;
         }
     }
 

@@ -490,9 +490,16 @@
                     </StackPanel>
                 </Grid>
 
-                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource Card}" Padding="8">
                     <ListView x:Name="ConnList" VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling"
+                              SelectionChanged="ConnSelected"
                               PreviewMouseRightButtonDown="Row_RightClickSelect">
                         <ListView.ContextMenu>
                             <ContextMenu>
@@ -537,6 +544,83 @@
                         </ListView.View>
                     </ListView>
                 </Border>
+
+                <!-- ===== §11 master-detail inspector ===== -->
+                <Border Grid.Column="1" Width="340" Margin="12,0,0,0"
+                        Style="{StaticResource Card}" Padding="0">
+                    <Grid>
+                        <TextBlock x:Name="InspPlaceholder"
+                                   Text="Select a connection to inspect its full details."
+                                   Style="{StaticResource Muted}" TextWrapping="Wrap"
+                                   TextAlignment="Center" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" Margin="28" />
+                        <ScrollViewer x:Name="InspContent" Visibility="Collapsed"
+                                      VerticalScrollBarVisibility="Auto" Padding="18,16">
+                            <StackPanel>
+                                <TextBlock x:Name="InspProcess" Style="{StaticResource H2}" TextWrapping="Wrap" />
+                                <TextBlock x:Name="InspSub" Style="{StaticResource Muted}" FontSize="12" Margin="0,2,0,0" />
+
+                                <TextBlock Text="CONNECTION" Style="{StaticResource Muted}" FontSize="10.5" Margin="0,18,0,4" />
+                                <Grid Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Type" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspType" FontSize="12" TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Local" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspLocal" FontSize="12" TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Remote" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspRemote" FontSize="12" TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="State" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspState" FontSize="12" TextWrapping="Wrap" />
+                                </Grid>
+
+                                <TextBlock Text="LOCATION" Style="{StaticResource Muted}" FontSize="10.5" Margin="0,18,0,4" />
+                                <StackPanel x:Name="InspLocRow" Orientation="Horizontal" Margin="0,3,0,0">
+                                    <Image x:Name="InspFlag" Width="34" Height="24" Margin="0,0,9,0"
+                                           VerticalAlignment="Center" Stretch="Uniform" SnapsToDevicePixels="True" />
+                                    <TextBlock x:Name="InspCountry" VerticalAlignment="Center" TextWrapping="Wrap" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <Grid x:Name="InspAsnRow" Margin="0,5,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="ASN" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspAsn" FontSize="12" TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid x:Name="InspOwnerRow" Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Operator" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspOwner" FontSize="12" TextWrapping="Wrap" />
+                                </Grid>
+
+                                <TextBlock Text="APPLICATION" Style="{StaticResource Muted}" FontSize="10.5" Margin="0,18,0,4" />
+                                <Grid Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Path" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspPath" FontSize="12" TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Policy" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspStatus" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid x:Name="InspScopeRow" Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Scope" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspScope" FontSize="12" TextWrapping="Wrap" />
+                                </Grid>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                </Grid>
             </Grid>
 
             <!-- ========== Packets Log ========== -->
