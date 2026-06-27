@@ -1037,7 +1037,7 @@ public partial class MainWindow : Window
         // Location
         if (c.Country.Length > 0 || c.Asn != 0)
         {
-            var flag = CountryFlagConverter.Load(c.Country);
+            var flag = GunWall.Converters.CountryFlagConverter.Load(c.Country);
             InspFlag.Source = flag;
             InspFlag.Visibility = flag != null ? Visibility.Visible : Visibility.Collapsed;
             InspCountry.Text = c.Country.Length > 0
