@@ -82,6 +82,12 @@
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Connections" />
                             </StackPanel>
                         </RadioButton>
+                        <RadioButton x:Name="NavTraffic" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Traffic">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE774;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Traffic" />
+                            </StackPanel>
+                        </RadioButton>
                         <RadioButton x:Name="NavServices" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Services">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9F5;" />
@@ -620,6 +626,70 @@
                     </Grid>
                 </Border>
 
+                </Grid>
+            </Grid>
+
+            <!-- ========== Traffic ========== -->
+            <Grid x:Name="PanelTraffic" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="Traffic" Style="{StaticResource H1}" />
+                        <TextBlock x:Name="TrafficSubtitle"
+                                   Text="Where your traffic has gone since GunWall started."
+                                   Style="{StaticResource Muted}" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Grid>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}" Padding="14" Margin="0,0,8,0">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="Top countries" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <ListView x:Name="TrafficCountries" BorderThickness="0" Background="Transparent"
+                                      VirtualizingPanel.IsVirtualizing="True">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="Country" Width="240">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Image Width="22" Height="15" Margin="0,0,9,0" VerticalAlignment="Center"
+                                                               Stretch="Uniform" SnapsToDevicePixels="True"
+                                                               Source="{Binding Code, Converter={StaticResource CountryFlag}}" />
+                                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                        <GridViewColumn Header="Destinations" Width="120" DisplayMemberBinding="{Binding Count}" />
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                        </DockPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Padding="14" Margin="8,0,0,0">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="Most active apps" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <ListView x:Name="TrafficApps" BorderThickness="0" Background="Transparent"
+                                      VirtualizingPanel.IsVirtualizing="True">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="Application" Width="210" DisplayMemberBinding="{Binding Name}" />
+                                        <GridViewColumn Header="Destinations" Width="110" DisplayMemberBinding="{Binding Count}" />
+                                        <GridViewColumn Header="Countries" Width="90" DisplayMemberBinding="{Binding Countries}" />
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                        </DockPanel>
+                    </Border>
                 </Grid>
             </Grid>
 

@@ -29,6 +29,9 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<PacketLogEntry> _packets = new();
     private readonly ObservableCollection<ServicesService.ServiceItem> _services = new();
     private readonly ObservableCollection<NetworkScanner.Device> _devices = new();
+    private readonly NetworkStatsService _stats = new();
+    private readonly ObservableCollection<CountryStat> _trafficCountries = new();
+    private readonly ObservableCollection<AppStat> _trafficApps = new();
 
     private const int GraphPoints = 60;
     private readonly double[] _downSeries = new double[GraphPoints];
@@ -81,6 +84,8 @@ public partial class MainWindow : Window
         ConnList.ItemsSource = _connections;
         ActivityList.ItemsSource = _activity;
         PacketsList.ItemsSource = _packets;
+        TrafficCountries.ItemsSource = _trafficCountries;
+        TrafficApps.ItemsSource = _trafficApps;
         ServicesList.ItemsSource = _services;
         DevicesList.ItemsSource = _devices;
         Loaded += OnLoaded;
@@ -192,7 +197,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.49.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.50.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -362,12 +367,52 @@ public partial class MainWindow : Window
         UpSpeed.Text = FormatRate(snap.UpRate);
         ConnCount.Text = snap.Conns.Count.ToString();
 
+        EnrichGeo(snap.Conns);     // resolve country/ASN once per tick so history + inspector have it
         RecordActivity(snap.Conns);
+        foreach (var c in snap.Conns)
+            _stats.RecordOne(c.ProcessName.Length > 0 ? c.ProcessName : "PID " + c.ProcessId,
+                             c.RemoteAddress, c.Country);
         UpdateSessionTotals();
 
+        if (PanelTraffic.Visibility == Visibility.Visible) RefreshTraffic();
         if (PanelConnections.Visibility == Visibility.Visible) RebuildConnList();
         if (PanelFirewall.Visibility == Visibility.Visible) RebuildAppsList();
         if (PanelDashboard.Visibility == Visibility.Visible) RedrawGraph();
+    }
+
+    /// <summary>Resolve country/ASN for the snapshot's connections (deduped per tick), so the
+    /// Traffic history and the connection inspector have location data regardless of which
+    /// panel is open. No-op when no GeoIP source is active.</summary>
+    private void EnrichGeo(List<ConnectionInfo> conns)
+    {
+        if (!_firewall.GeoIpActive) return;
+        Dictionary<string, GunWall.Services.GeoIpService.GeoInfo> memo = new(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in conns)
+        {
+            if (c.Country.Length > 0 || string.IsNullOrEmpty(c.RemoteAddress)) continue;
+            if (!memo.TryGetValue(c.RemoteAddress, out var g))
+            {
+                g = _firewall.GeoIp.Lookup(c.RemoteAddress);
+                memo[c.RemoteAddress] = g;
+            }
+            if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; }
+        }
+    }
+
+    /// <summary>Repopulate the Traffic panel's top-countries / top-apps tables.</summary>
+    private void RefreshTraffic()
+    {
+        if (TrafficCountries == null) return;
+        _trafficCountries.Clear();
+        foreach (var (code, count) in _stats.TopCountries(25))
+            _trafficCountries.Add(new CountryStat(code, GunWall.Services.GeoData.CountryName(code), count));
+        _trafficApps.Clear();
+        foreach (var (app, count, countries) in _stats.TopApps(25))
+            _trafficApps.Add(new AppStat(app, count, countries));
+        if (TrafficSubtitle != null)
+            TrafficSubtitle.Text = _stats.TotalDestinations == 0
+                ? "No external destinations seen yet - traffic will appear here as apps connect out."
+                : $"{_stats.TotalDestinations:N0} distinct destinations since startup, across {_stats.CountryCount} countries and {_stats.AppCount} apps.";
     }
 
     private static void Shift(double[] series, double newest)
@@ -1364,6 +1409,7 @@ public partial class MainWindow : Window
         PanelDashboard.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         PanelFirewall.Visibility = tag == "Firewall" ? Visibility.Visible : Visibility.Collapsed;
         PanelConnections.Visibility = tag == "Connections" ? Visibility.Visible : Visibility.Collapsed;
+        PanelTraffic.Visibility = tag == "Traffic" ? Visibility.Visible : Visibility.Collapsed;
         PanelServices.Visibility = tag == "Services" ? Visibility.Visible : Visibility.Collapsed;
         PanelNetwork.Visibility = tag == "Network" ? Visibility.Visible : Visibility.Collapsed;
         PanelPackets.Visibility = tag == "Packets" ? Visibility.Visible : Visibility.Collapsed;
@@ -1377,6 +1423,7 @@ public partial class MainWindow : Window
         if (tag == "Dashboard") RefreshDashboardStats();
         if (tag == "Firewall") RebuildAppsList();
         if (tag == "Connections") RebuildConnList();
+        if (tag == "Traffic") RefreshTraffic();
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
         if (tag == "System") BuildSystemRulesUi();
