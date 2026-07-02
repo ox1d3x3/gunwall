@@ -33,6 +33,18 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<CountryStat> _trafficCountries = new();
     private readonly ObservableCollection<AppStat> _trafficApps = new();
 
+    // §3 GunWall's own local DNS resolver (loopback only; never touches system DNS).
+    private readonly DnsResolver _dnsResolver = new();
+    private readonly ObservableCollection<DnsLogEntry> _dnsLog = new();
+    private bool _dnsVisible;
+    private const int MaxDnsLog = 500;
+
+    // §VT automatic VirusTotal checks: queue of exe paths awaiting a lookup, a
+    // session cache of computed hashes, and a guard so each path queues once.
+    private readonly Queue<string> _vtQueue = new();
+    private readonly HashSet<string> _vtQueued = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _vtHashByPath = new(StringComparer.OrdinalIgnoreCase);
+
     private const int GraphPoints = 60;
     private readonly double[] _downSeries = new double[GraphPoints];
     private readonly double[] _upSeries = new double[GraphPoints];
@@ -47,6 +59,13 @@ public partial class MainWindow : Window
     private bool _eventDriven; // true when kernel events are active (no polling needed for detection)
     private bool _eventsRecovered; // true if we auto-disabled events after a prior crash
     private volatile int _intervalMs = 1000;
+
+    // Sampling-pipeline health (surfaced in diagnostics so a stalled/erroring loop
+    // is visible instead of silently emptying the Connections/Traffic panels).
+    private long _sampleTicks;
+    private int _sampleErrors, _detectErrors;
+    private string _lastSampleError = "";
+    private readonly Dictionary<string, int> _stepErr = new();
     private string _appFilter = "";
     private string _connFilter = "";
     private bool _showAllApps;
@@ -86,6 +105,8 @@ public partial class MainWindow : Window
         PacketsList.ItemsSource = _packets;
         TrafficCountries.ItemsSource = _trafficCountries;
         TrafficApps.ItemsSource = _trafficApps;
+        DnsLog.ItemsSource = _dnsLog;
+        _dnsResolver.Query += OnDnsQuery;
         ServicesList.ItemsSource = _services;
         DevicesList.ItemsSource = _devices;
         Loaded += OnLoaded;
@@ -100,7 +121,7 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (_reallyExit) return; // genuine exit — let it close
+        if (_reallyExit) { try { _dnsResolver.Stop(); } catch { } return; } // genuine exit — let it close
 
         // The X button hides to tray instead of exiting. This keeps the UI one
         // click away while the firewall stays active, so the user is never left
@@ -189,6 +210,7 @@ public partial class MainWindow : Window
             UpdateCustomListStatus(); // §5 reflect any saved custom blocklist file
             RefreshEntityRules();     // §1 render saved country/continent/ASN rules + GeoIP status
             InitGeoSourceUi();        // reflect saved GeoIP source (local / API)
+            InitDnsPanel();           // §3 reflect saved local-resolver settings
             _suppressModeEvent = false;
             SyncFirewallToggle();
             if (ApplyButton != null) ApplyButton.IsEnabled = false;
@@ -197,7 +219,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.50.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.52.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -236,6 +258,7 @@ public partial class MainWindow : Window
         _cts = new CancellationTokenSource();
         _ = SampleLoopAsync(_cts.Token);
         _ = DetectionLoopAsync(_cts.Token);
+        _ = VtLoopAsync(_cts.Token);
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -272,7 +295,13 @@ public partial class MainWindow : Window
                 ApplyEntityBlocksForConns(conns, procs); // §1 reactive geo-blocking (polling path)
             }
             catch (OperationCanceledException) { return; }
-            catch (Exception ex) { Debug.WriteLine($"detect error: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                _detectErrors++;
+                Debug.WriteLine($"detect error: {ex.Message}");
+                if (_detectErrors == 1 || _detectErrors % 20 == 0)
+                    Services.DiagnosticLog.Log($"Detection loop error #{_detectErrors}: {ex.GetType().Name}: {ex.Message}");
+            }
 
             try { await Task.Delay(300, ct); }
             catch (OperationCanceledException) { return; }
@@ -313,9 +342,19 @@ public partial class MainWindow : Window
             {
                 var snap = await Task.Run(() => CollectSnapshot(), ct);
                 ApplySnapshot(snap); // continuation resumes on the UI thread
+                if (_sampleTicks == 0)
+                    Services.DiagnosticLog.Log($"First snapshot applied: {snap.Conns.Count} connections.");
+                _sampleTicks++;
             }
             catch (OperationCanceledException) { return; }
-            catch (Exception ex) { Debug.WriteLine($"sample error: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                _sampleErrors++;
+                _lastSampleError = $"{ex.GetType().Name}: {ex.Message}";
+                Debug.WriteLine($"sample error: {ex.Message}");
+                if (_sampleErrors == 1 || _sampleErrors % 20 == 0)
+                    Services.DiagnosticLog.Log($"Sample loop error #{_sampleErrors}: {_lastSampleError}");
+            }
 
             try { await Task.Delay(_intervalMs, ct); }
             catch (OperationCanceledException) { return; }
@@ -358,26 +397,52 @@ public partial class MainWindow : Window
 
     private void ApplySnapshot(Snapshot snap)
     {
+        // Set the shared snapshot FIRST so the Connections panel and the inspector
+        // always have data even if a later UI step misbehaves.
         _lastConns = snap.Conns;
         _lastProcs = snap.Procs;
 
-        Shift(_downSeries, snap.DownRate);
-        Shift(_upSeries, snap.UpRate);
-        DownSpeed.Text = FormatRate(snap.DownRate);
-        UpSpeed.Text = FormatRate(snap.UpRate);
-        ConnCount.Text = snap.Conns.Count.ToString();
+        try
+        {
+            Shift(_downSeries, snap.DownRate);
+            Shift(_upSeries, snap.UpRate);
+            DownSpeed.Text = FormatRate(snap.DownRate);
+            UpSpeed.Text = FormatRate(snap.UpRate);
+            ConnCount.Text = snap.Conns.Count.ToString();
+        }
+        catch (Exception ex) { SampleStepError("dashboard-speeds", ex); }
 
-        EnrichGeo(snap.Conns);     // resolve country/ASN once per tick so history + inspector have it
-        RecordActivity(snap.Conns);
-        foreach (var c in snap.Conns)
-            _stats.RecordOne(c.ProcessName.Length > 0 ? c.ProcessName : "PID " + c.ProcessId,
-                             c.RemoteAddress, c.Country);
-        UpdateSessionTotals();
+        try { EnrichGeo(snap.Conns); } catch (Exception ex) { SampleStepError("EnrichGeo", ex); }
+        try { RecordActivity(snap.Conns); } catch (Exception ex) { SampleStepError("RecordActivity", ex); }
+        try
+        {
+            foreach (var c in snap.Conns)
+                _stats.RecordOne(c.ProcessName.Length > 0 ? c.ProcessName : "PID " + c.ProcessId,
+                                 c.RemoteAddress, c.Country);
+        }
+        catch (Exception ex) { SampleStepError("stats", ex); }
+        try { UpdateSessionTotals(); } catch (Exception ex) { SampleStepError("UpdateSessionTotals", ex); }
 
-        if (PanelTraffic.Visibility == Visibility.Visible) RefreshTraffic();
-        if (PanelConnections.Visibility == Visibility.Visible) RebuildConnList();
-        if (PanelFirewall.Visibility == Visibility.Visible) RebuildAppsList();
-        if (PanelDashboard.Visibility == Visibility.Visible) RedrawGraph();
+        try { if (PanelTraffic.Visibility == Visibility.Visible) RefreshTraffic(); }
+        catch (Exception ex) { SampleStepError("RefreshTraffic", ex); }
+        try { if (PanelConnections.Visibility == Visibility.Visible) RebuildConnList(); }
+        catch (Exception ex) { SampleStepError("RebuildConnList", ex); }
+        try { if (PanelFirewall.Visibility == Visibility.Visible) RebuildAppsList(); }
+        catch (Exception ex) { SampleStepError("RebuildAppsList", ex); }
+        try { if (PanelDashboard.Visibility == Visibility.Visible) RedrawGraph(); }
+        catch (Exception ex) { SampleStepError("RedrawGraph", ex); }
+    }
+
+    // Records (and, on first occurrence, logs) a failure in one ApplySnapshot step
+    // so a single bad row or panel can't silently blank the whole UI.
+    private void SampleStepError(string step, Exception ex)
+    {
+        int n = _stepErr.TryGetValue(step, out var v) ? v + 1 : 1;
+        _stepErr[step] = n;
+        _lastSampleError = $"{step}: {ex.GetType().Name}: {ex.Message}";
+        Debug.WriteLine($"ApplySnapshot[{step}] error: {ex.Message}");
+        if (n == 1 || n % 25 == 0)
+            Services.DiagnosticLog.Log($"ApplySnapshot step '{step}' error #{n}: {ex.GetType().Name}: {ex.Message}");
     }
 
     /// <summary>Resolve country/ASN for the snapshot's connections (deduped per tick), so the
@@ -419,6 +484,110 @@ public partial class MainWindow : Window
     {
         Array.Copy(series, 1, series, 0, series.Length - 1);
         series[^1] = newest;
+    }
+
+    // ============================================================ DNS resolver (§3)
+    // GunWall's own local resolver lives here in the UI layer; FirewallManager only
+    // persists its configuration. It binds to 127.0.0.1 and never changes the system
+    // DNS by itself — the user points DNS at it. A guided redirect and "Gaming
+    // Session" toggle are the next phase.
+
+    private void InitDnsPanel()
+    {
+        if (DnsPortBox == null) return;
+        DnsPortBox.Text = _firewall.DnsResolverPort.ToString();
+        DnsUpstreamBox.Text = _firewall.DnsResolverUpstream;
+        DnsBlockBox.Text = string.Join(Environment.NewLine, _firewall.DnsResolverBlocklist);
+        _dnsResolver.SetBlocklist(_firewall.DnsResolverBlocklist);
+        UpdateDnsUi();
+    }
+
+    private static List<string> DnsBlockLines(string text) =>
+        (text ?? "")
+            .Replace("\r\n", "\n").Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+    private void DnsStart_Click(object sender, RoutedEventArgs e)
+    {
+        if (_dnsResolver.Running)
+        {
+            try { _dnsResolver.Stop(); } catch (Exception ex) { ShowError(ex); }
+            UpdateDnsUi();
+            return;
+        }
+
+        if (!int.TryParse(DnsPortBox.Text.Trim(), out int port) || port < 1 || port > 65535)
+        {
+            MessageBox.Show("Enter a valid port (1-65535). The standard DNS port is 53.",
+                            "DNS resolver", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        string upstream = DnsUpstreamBox.Text.Trim();
+
+        // Apply + persist the blocklist before the resolver starts serving.
+        var block = DnsBlockLines(DnsBlockBox.Text);
+        _dnsResolver.SetBlocklist(block);
+        _firewall.SaveDnsResolverConfig(port, upstream, block);
+
+        try
+        {
+            _dnsResolver.Start(port, upstream);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Couldn't start the resolver on 127.0.0.1:{port}.\n\n{ex.Message}\n\n" +
+                "Port 53 may already be in use by another DNS service. Try a different " +
+                "port (e.g. 5335) and point your test there with:\n" +
+                $"    nslookup -port={(port == 53 ? 5335 : port)} example.com 127.0.0.1",
+                "DNS resolver", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        UpdateDnsUi();
+    }
+
+    private void DnsApplyBlock_Click(object sender, RoutedEventArgs e)
+    {
+        var block = DnsBlockLines(DnsBlockBox.Text);
+        _dnsResolver.SetBlocklist(block);
+        int port = int.TryParse(DnsPortBox.Text.Trim(), out int p) && p > 0 ? p : 53;
+        _firewall.SaveDnsResolverConfig(port, DnsUpstreamBox.Text.Trim(), block);
+        UpdateDnsUi();
+    }
+
+    private void OnDnsQuery(DnsLogEntry entry)
+    {
+        if (!_dnsVisible) return; // counters keep ticking on the resolver; UI catches up on open
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_dnsVisible) return;
+            _dnsLog.Insert(0, entry);
+            while (_dnsLog.Count > MaxDnsLog) _dnsLog.RemoveAt(_dnsLog.Count - 1);
+            UpdateDnsStats();
+        }));
+    }
+
+    private void UpdateDnsUi()
+    {
+        if (DnsResStatus == null) return;
+        bool on = _dnsResolver.Running;
+        DnsStartBtn.Content = on ? "Stop resolver" : "Start resolver";
+        DnsResStatus.Text = on
+            ? $"Listening on 127.0.0.1:{_dnsResolver.Port}, forwarding to {_dnsResolver.Upstream}. "
+              + $"{_dnsResolver.BlockedDomainCount} domains blocked. Point this PC's DNS at 127.0.0.1 to use it."
+            : "Stopped. Start the resolver, then point a DNS query (or this PC's DNS) at 127.0.0.1 to use it.";
+        DnsPortBox.IsEnabled = !on;
+        DnsUpstreamBox.IsEnabled = !on;
+        UpdateDnsStats();
+    }
+
+    private void UpdateDnsStats()
+    {
+        if (DnsStatQueries == null) return;
+        DnsStatQueries.Text = _dnsResolver.Total.ToString("N0");
+        DnsStatForwarded.Text = _dnsResolver.Forwarded.ToString("N0");
+        DnsStatCached.Text = _dnsResolver.Cached.ToString("N0");
+        DnsStatBlocked.Text = _dnsResolver.Blocked.ToString("N0");
     }
 
     // ================================================================ activity
@@ -930,6 +1099,7 @@ public partial class MainWindow : Window
                 : Services.SignatureService.PublisherLabel(a.ExecutablePath);
             a.Icon = Services.IconService.GetIcon(a.ExecutablePath);
             a.Note = _firewall.GetNote(a.ExecutablePath);
+            ApplyVtStatus(a);   // §VT cached verdict + auto-queue on first sight
 
             var store = Services.StoreAppService.Resolve(a.ExecutablePath);
             a.IsStoreApp = store.IsStore;
@@ -1410,6 +1580,8 @@ public partial class MainWindow : Window
         PanelFirewall.Visibility = tag == "Firewall" ? Visibility.Visible : Visibility.Collapsed;
         PanelConnections.Visibility = tag == "Connections" ? Visibility.Visible : Visibility.Collapsed;
         PanelTraffic.Visibility = tag == "Traffic" ? Visibility.Visible : Visibility.Collapsed;
+        PanelDns.Visibility = tag == "Dns" ? Visibility.Visible : Visibility.Collapsed;
+        _dnsVisible = tag == "Dns";
         PanelServices.Visibility = tag == "Services" ? Visibility.Visible : Visibility.Collapsed;
         PanelNetwork.Visibility = tag == "Network" ? Visibility.Visible : Visibility.Collapsed;
         PanelPackets.Visibility = tag == "Packets" ? Visibility.Visible : Visibility.Collapsed;
@@ -1424,6 +1596,7 @@ public partial class MainWindow : Window
         if (tag == "Firewall") RebuildAppsList();
         if (tag == "Connections") RebuildConnList();
         if (tag == "Traffic") RefreshTraffic();
+        if (tag == "Dns") UpdateDnsUi();
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
         if (tag == "System") BuildSystemRulesUi();
@@ -1770,6 +1943,13 @@ public partial class MainWindow : Window
         string path = dlg.FileName;
         if (ExportDiagBtn != null) ExportDiagBtn.IsEnabled = false;
         if (DiagStatus != null) DiagStatus.Text = "Collecting diagnostics\u2026 this takes a few seconds.";
+        // Record the UI snapshot pipeline's health so the bundle shows whether the
+        // sampling loop is actually feeding the Connections/Traffic panels.
+        Services.DiagnosticLog.Log(
+            $"UI pipeline: sampleTicks={_sampleTicks}, sampleErrors={_sampleErrors}, " +
+            $"detectErrors={_detectErrors}, lastConns={_lastConns.Count}, " +
+            $"statsDestinations={_stats.TotalDestinations}, dnsRunning={_dnsResolver.Running}, " +
+            $"lastSampleError=[{_lastSampleError}]");
         try
         {
             await System.Threading.Tasks.Task.Run(() => _firewall.ExportDiagnostics(path));
@@ -1822,6 +2002,118 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError(ex); }
     }
 
+    /// <summary>Fill an app row's VirusTotal verdict from the cache, queueing an
+    /// automatic background lookup the first time we see a file. Costs only
+    /// dictionary lookups, so it's safe to run on every list rebuild.</summary>
+    private void ApplyVtStatus(AppInfo a)
+    {
+        a.VtText = ""; a.VtLevel = "";
+        if (string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)) return;
+        if (string.IsNullOrEmpty(a.ExecutablePath) || a.IsStoreApp) return;
+
+        // Hash: prefer the rule's stored hash, else this session's computed one.
+        string hash = a.Hash;
+        if (string.IsNullOrEmpty(hash))
+            _vtHashByPath.TryGetValue(a.ExecutablePath, out hash!);
+
+        if (hash == "")   // we tried to hash this file and couldn't (locked/protected)
+            return;
+
+        var cached = hash != null ? _firewall.GetVtCached(hash) : null;
+        if (cached != null)
+        {
+            if (cached.Found && cached.Flagged > 0)
+            { a.VtText = $"{cached.Flagged}/{cached.Total} flagged"; a.VtLevel = "flagged"; }
+            else if (cached.Found)
+            { a.VtText = $"Clean \u00B7 0/{cached.Total}"; a.VtLevel = "clean"; }
+            else
+            { a.VtText = "Not on VirusTotal"; a.VtLevel = "none"; }
+
+            // Refresh very old verdicts in the background (result keeps showing).
+            if ((DateTime.UtcNow - cached.CheckedUtc).TotalDays > 30 &&
+                _vtQueued.Add(a.ExecutablePath))
+                _vtQueue.Enqueue(a.ExecutablePath);
+            return;
+        }
+
+        // Not cached yet: queue one automatic check for this path.
+        if (_vtQueued.Add(a.ExecutablePath)) _vtQueue.Enqueue(a.ExecutablePath);
+        a.VtText = "Checking\u2026"; a.VtLevel = "pending";
+    }
+
+    /// <summary>Background worker for automatic VirusTotal checks. Processes the
+    /// queue one file at a time with a ~16s gap (safely under the free tier's
+    /// 4 requests/minute), hashing on a worker thread when needed, and caching
+    /// every verdict so a file is never looked up twice.</summary>
+    private async Task VtLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey) || _vtQueue.Count == 0)
+                {
+                    await Task.Delay(3000, ct);
+                    continue;
+                }
+
+                string path = _vtQueue.Dequeue();
+
+                // Resolve the hash (stored rule hash, else compute off-thread once).
+                string hash = _firewall.GetHash(path);
+                if (string.IsNullOrEmpty(hash) && !_vtHashByPath.TryGetValue(path, out hash!))
+                {
+                    hash = await Task.Run(() => HashService.Compute(path), ct) ?? "";
+                    _vtHashByPath[path] = hash; // "" is remembered too: unhashable
+                }
+                if (string.IsNullOrEmpty(hash)) continue;
+
+                if (_firewall.GetVtCached(hash) is { } fresh &&
+                    (DateTime.UtcNow - fresh.CheckedUtc).TotalDays <= 30)
+                    continue; // another path with the same file already resolved it
+
+                var result = await VirusTotalService.LookupAsync(hash, _firewall.VirusTotalApiKey);
+
+                if (result.Ok)
+                {
+                    _firewall.SaveVtResult(hash, true, result.Malicious, result.Total);
+                    if (result.Malicious > 0)
+                    {
+                        string name = System.IO.Path.GetFileNameWithoutExtension(path);
+                        Services.DiagnosticLog.Log(
+                            $"VirusTotal: {name} flagged by {result.Malicious}/{result.Total} engines.");
+                        LogActivity(new NetActivityEvent
+                        {
+                            ProcessName = name,
+                            Detail = $"VirusTotal: {result.Malicious}/{result.Total} engines flagged this file"
+                        });
+                    }
+                }
+                else if (result.Message.Contains("Not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    _firewall.SaveVtResult(hash, false, 0, 0);
+                }
+                else if (result.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Put it back and let the quota window pass.
+                    if (_vtQueued.Contains(path)) _vtQueue.Enqueue(path);
+                    await Task.Delay(65_000, ct);
+                    continue;
+                }
+                // Other failures (network, bad key): leave uncached; it can retry
+                // next session. _vtQueued keeps it from hot-looping this session.
+
+                await Task.Delay(16_000, ct); // ~3.75 requests/min, under the free cap
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"vt loop error: {ex.Message}");
+                try { await Task.Delay(5000, ct); } catch (OperationCanceledException) { return; }
+            }
+        }
+    }
+
     private async void ScanVt_Click(object sender, RoutedEventArgs e)
     {
         if (AppsList.SelectedItem is not AppInfo app) return;
@@ -1843,6 +2135,10 @@ public partial class MainWindow : Window
         }
 
         var result = await VirusTotalService.LookupAsync(hash, _firewall.VirusTotalApiKey);
+        if (result.Ok)
+            _firewall.SaveVtResult(hash, true, result.Malicious, result.Total);
+        else if (result.Message.Contains("Not found", StringComparison.OrdinalIgnoreCase))
+            _firewall.SaveVtResult(hash, false, 0, 0);
         var icon = result.Ok && result.Malicious == 0 ? MessageBoxImage.Information
                  : result.Ok ? MessageBoxImage.Warning
                  : MessageBoxImage.Error;

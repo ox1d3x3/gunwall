@@ -91,6 +91,13 @@ public sealed class AppInfo
     /// <summary>SHA-256 of the executable (for display / tamper awareness).</summary>
     public string Hash { get; set; } = "";
 
+    /// <summary>VirusTotal verdict text for the list ("Clean · 0/72", "3/72 flagged",
+    /// "Checking…", "Not on VirusTotal"); empty when no API key / no hash.</summary>
+    public string VtText { get; set; } = "";
+
+    /// <summary>Coloring level for the verdict: "clean", "flagged", "pending", "none".</summary>
+    public string VtLevel { get; set; } = "";
+
     /// <summary>Allowed but not notified about.</summary>
     public bool Silent { get; set; }
 

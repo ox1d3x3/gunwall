@@ -88,6 +88,12 @@
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Traffic" />
                             </StackPanel>
                         </RadioButton>
+                        <RadioButton x:Name="NavDns" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Dns">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE71C;" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="DNS" />
+                            </StackPanel>
+                        </RadioButton>
                         <RadioButton x:Name="NavServices" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Services">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9F5;" />
@@ -373,13 +379,13 @@
                         </StackPanel>
                     </Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,12,0,0">
-                        <Ellipse Width="9" Height="9" Fill="#3FB868" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse Width="9" Height="9" Fill="#30D158" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Signed" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                        <Ellipse Width="9" Height="9" Fill="#E0A53F" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse Width="9" Height="9" Fill="#FF9F0A" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Unsigned" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                        <Ellipse Width="9" Height="9" Fill="#5B8DEF" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse Width="9" Height="9" Fill="#0A84FF" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="System" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                        <Ellipse Width="9" Height="9" Fill="#E25C5C" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse Width="9" Height="9" Fill="#FF453A" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Invalid sig" Style="{StaticResource Muted}" />
                     </StackPanel>
                 </StackPanel>
@@ -442,6 +448,29 @@
                                 </GridViewColumn>
                                 <GridViewColumn Header="Publisher" Width="190"
                                                 DisplayMemberBinding="{Binding Publisher}" />
+                                <GridViewColumn Header="VirusTotal" Width="130">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding VtText}" FontSize="12"
+                                                       ToolTip="Automatic reputation check: only the file's SHA-256 hash is sent to VirusTotal, never the file.">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding VtLevel}" Value="clean">
+                                                                <Setter Property="Foreground" Value="{DynamicResource AllowText}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding VtLevel}" Value="flagged">
+                                                                <Setter Property="Foreground" Value="{DynamicResource BlockText}" />
+                                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="Path" Width="300"
                                                 DisplayMemberBinding="{Binding ExecutablePath}" />
                                 <GridViewColumn Header="Conns" Width="70"
@@ -688,6 +717,129 @@
                                     </GridView>
                                 </ListView.View>
                             </ListView>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- ========== DNS resolver ========== -->
+            <Grid x:Name="PanelDns" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- header -->
+                <Grid Grid.Row="0" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="DNS resolver" Style="{StaticResource H1}" />
+                        <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   MaxWidth="960" HorizontalAlignment="Left"
+                                   Text="GunWall's own local resolver. It logs every domain your apps look up, blocks the ones you list, and caches answers so repeat lookups are instant. It binds to 127.0.0.1 only and does not change your system DNS - point this PC's DNS (or a test query) at 127.0.0.1 to use it. This is separate from Security -&gt; Filtering DNS, which only picks an upstream provider. A guided system redirect with a Gaming Session toggle is the next step." />
+                    </StackPanel>
+                </Grid>
+
+                <!-- controls + stats -->
+                <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                            <StackPanel Margin="0,0,10,0">
+                                <TextBlock Text="Listen port (loopback)" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <TextBox x:Name="DnsPortBox" Width="96" Height="32" Text="53"
+                                         VerticalContentAlignment="Center"
+                                         ToolTip="Port on 127.0.0.1. Standard DNS is 53; use another (e.g. 5335) if 53 is taken." />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,10,0">
+                                <TextBlock Text="Upstream DNS" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <TextBox x:Name="DnsUpstreamBox" Width="170" Height="32" Text="1.1.1.1"
+                                         VerticalContentAlignment="Center"
+                                         ToolTip="Where allowed queries are forwarded (e.g. 1.1.1.1 or 8.8.8.8). Optional :port." />
+                            </StackPanel>
+                            <Button x:Name="DnsStartBtn" Content="Start resolver" Style="{StaticResource PrimaryButton}"
+                                    Click="DnsStart_Click" Padding="16,9" VerticalAlignment="Bottom" />
+                        </StackPanel>
+                        <TextBlock x:Name="DnsResStatus" Style="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
+                                   Text="Stopped. Start the resolver, then point a DNS query (or this PC's DNS) at 127.0.0.1 to use it." />
+
+                        <UniformGrid Rows="1" Columns="4" Margin="0,14,0,0">
+                            <StackPanel>
+                                <TextBlock x:Name="DnsStatQueries" Text="0" Style="{StaticResource H2}" />
+                                <TextBlock Text="Queries" Style="{StaticResource Muted}" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock x:Name="DnsStatForwarded" Text="0" Style="{StaticResource H2}" />
+                                <TextBlock Text="Forwarded" Style="{StaticResource Muted}" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock x:Name="DnsStatCached" Text="0" Style="{StaticResource H2}" />
+                                <TextBlock Text="Cached" Style="{StaticResource Muted}" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock x:Name="DnsStatBlocked" Text="0" Style="{StaticResource H2}" />
+                                <TextBlock Text="Blocked" Style="{StaticResource Muted}" />
+                            </StackPanel>
+                        </UniformGrid>
+                    </StackPanel>
+                </Border>
+
+                <!-- log + blocklist -->
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}" Padding="8" Margin="0,0,8,0">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="Query log" Style="{StaticResource H2}" Margin="4,2,0,8" />
+                            <ListView x:Name="DnsLog" BorderThickness="0" Background="Transparent"
+                                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="Time" Width="84" DisplayMemberBinding="{Binding TimeText}" />
+                                        <GridViewColumn Header="Domain" Width="320" DisplayMemberBinding="{Binding Domain}" />
+                                        <GridViewColumn Header="Type" Width="64" DisplayMemberBinding="{Binding Type}" />
+                                        <GridViewColumn Header="Action" Width="110">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding ActionText}" FontWeight="SemiBold">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding ActionText}" Value="Blocked">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource BlockText}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding ActionText}" Value="Forwarded">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource AllowText}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding ActionText}" Value="Cached">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource AllowText}" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                        </DockPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0,0,0">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="Blocklist" Style="{StaticResource H2}" Margin="0,0,0,2" />
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                       Text="One domain per line. Subdomains are blocked too (listing example.com also blocks ads.example.com). Hosts-style '0.0.0.0 domain' lines are accepted. Blocked lookups return NXDOMAIN." />
+                            <Button x:Name="DnsApplyBlockBtn" DockPanel.Dock="Bottom" Content="Apply blocklist"
+                                    Style="{StaticResource PrimaryButton}" Click="DnsApplyBlock_Click" Padding="16,8" Margin="0,8,0,0" />
+                            <TextBox x:Name="DnsBlockBox" AcceptsReturn="True" TextWrapping="NoWrap"
+                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                     VerticalContentAlignment="Top" FontFamily="Consolas" />
                         </DockPanel>
                     </Border>
                 </Grid>
@@ -1195,7 +1347,7 @@
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock Text="Appearance - category colors" Style="{StaticResource H2}" />
-                            <TextBlock Text="Customise the colored dot next to each app. Enter a hex color like #3FB868, then Apply."
+                            <TextBlock Text="Customise the colored dot next to each app. Enter a hex color like #30D158, then Apply."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
 
                             <Grid Margin="0,0,0,6">
@@ -1445,7 +1597,7 @@
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock Text="VirusTotal" Style="{StaticResource H2}" />
-                            <TextBlock Text="Add your VirusTotal API key to scan apps by hash (right-click an app in the Apps tab). Only the file hash is sent, never the file."
+                            <TextBlock Text="Add your VirusTotal API key and GunWall automatically checks each app's file hash in the background, showing the verdict in the Apps list (right-click an app for an on-demand scan). Only the file hash is sent, never the file. Results are cached; the free tier is checked at a rate-limit-safe pace."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal">
                                 <PasswordBox x:Name="VtApiKeyBox" Width="280" Padding="8,6"

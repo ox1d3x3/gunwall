@@ -3,21 +3,22 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ===== LIGHT THEME (clean white) =====
-         Clean white surfaces with soft borders and slate text. -->
-    <SolidColorBrush x:Key="BgPrimary" Color="#FBFCFD" />
+         Apple-style light: soft platinum canvas, white cards, hairline borders,
+         near-black text with graphite secondary. -->
+    <SolidColorBrush x:Key="BgPrimary" Color="#F5F5F7" />
     <SolidColorBrush x:Key="BgSecondary" Color="#FFFFFF" />
     <SolidColorBrush x:Key="BgCard" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="BgElevated" Color="#F1F4F8" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#E6EAEF" />
-    <SolidColorBrush x:Key="TextPrimary" Color="#2B3440" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#8A95A3" />
+    <SolidColorBrush x:Key="BgElevated" Color="#EDEDF0" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#E3E3E8" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#1D1D1F" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#6E6E73" />
 
     <!-- Soft status fills + foregrounds (pills) -->
-    <SolidColorBrush x:Key="AllowFill" Color="#E7F6EC" />
-    <SolidColorBrush x:Key="AllowText" Color="#2E9E54" />
-    <SolidColorBrush x:Key="BlockFill" Color="#FCEBEA" />
-    <SolidColorBrush x:Key="BlockText" Color="#D6534F" />
-    <SolidColorBrush x:Key="AccentSoft" Color="#EAF2FB" />
+    <SolidColorBrush x:Key="AllowFill" Color="#E4F8EA" />
+    <SolidColorBrush x:Key="AllowText" Color="#248A3D" />
+    <SolidColorBrush x:Key="BlockFill" Color="#FDEAE8" />
+    <SolidColorBrush x:Key="BlockText" Color="#CE352C" />
+    <SolidColorBrush x:Key="AccentSoft" Color="#E5F0FF" />
 
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">False</sys:Boolean>
 </ResourceDictionary>

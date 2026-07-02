@@ -269,4 +269,26 @@ public sealed class StoreData
     // Default "local" preserves existing behaviour for upgrades.
     public string GeoIpMode { get; set; } = "local";
     public string GeoIpApiUrl { get; set; } = "";
+
+    // §3 local DNS resolver: GunWall's OWN resolver, bound to 127.0.0.1. Logs every
+    // lookup, blocks the listed domains, caches by TTL. It never changes the system
+    // DNS by itself (a guided redirect / "Gaming Session" toggle is the next phase),
+    // so these are just its saved settings — it only runs when the user starts it.
+    // §VT automatic reputation checks: cached VirusTotal verdicts keyed by SHA-256,
+    // so each unique file is looked up once and results survive restarts.
+    public Dictionary<string, VtCacheEntry> VtCache { get; set; } = new();
+
+    public int DnsResolverPort { get; set; } = 53;
+    public string DnsResolverUpstream { get; set; } = "1.1.1.1";
+    public List<string> DnsResolverBlocklist { get; set; } = new();
+}
+
+/// <summary>One cached VirusTotal verdict for a file hash. Found=false means the
+/// hash is unknown to VirusTotal (also cached, so we don't ask again).</summary>
+public sealed class VtCacheEntry
+{
+    public bool Found { get; set; }
+    public int Flagged { get; set; }
+    public int Total { get; set; }
+    public DateTime CheckedUtc { get; set; }
 }

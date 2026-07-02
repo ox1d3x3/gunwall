@@ -14,10 +14,10 @@ public static class CategoryPalette
     public static readonly IReadOnlyDictionary<string, string> Defaults =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Signed"]   = "#3FB868", // valid, trusted signature
-            ["Unsigned"] = "#E0A53F", // no signature
-            ["System"]   = "#5B8DEF", // Windows / system
-            ["Invalid"]  = "#E25C5C", // invalid / untrusted signature
+            ["Signed"]   = "#30D158", // valid, trusted signature
+            ["Unsigned"] = "#FF9F0A", // no signature
+            ["System"]   = "#0A84FF", // Windows / system
+            ["Invalid"]  = "#FF453A", // invalid / untrusted signature
             ["Unknown"]  = "#7A828C", // unknown
         };
 

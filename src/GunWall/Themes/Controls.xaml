@@ -9,21 +9,21 @@
          referenced with DynamicResource so they update live on theme switch.
          The accent, status, and gradient brushes below are theme-INVARIANT —
          the same cyan/violet identity works on both black and white. -->
-    <Color x:Key="AccentColor">#3D8BD4</Color>
-    <Color x:Key="Accent2Color">#3D8BD4</Color>
+    <Color x:Key="AccentColor">#0A84FF</Color>
+    <Color x:Key="Accent2Color">#0A84FF</Color>
 
     <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="Accent2" Color="{StaticResource Accent2Color}" />
-    <SolidColorBrush x:Key="AllowBrush" Color="#3FB868" />
-    <SolidColorBrush x:Key="BlockBrush" Color="#E25C5C" />
-    <SolidColorBrush x:Key="InboundBrush" Color="#3D8BD4" />
-    <SolidColorBrush x:Key="OutboundBrush" Color="#3FB868" />
+    <SolidColorBrush x:Key="AllowBrush" Color="#30D158" />
+    <SolidColorBrush x:Key="BlockBrush" Color="#FF453A" />
+    <SolidColorBrush x:Key="InboundBrush" Color="#0A84FF" />
+    <SolidColorBrush x:Key="OutboundBrush" Color="#30D158" />
 
     <!-- Flat accent (kept as a 'gradient' key name for compatibility, but solid
          for a clean, professional, non-AI look). -->
     <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#3D8BD4" Offset="0" />
-        <GradientStop Color="#3578BD" Offset="1" />
+        <GradientStop Color="#0A84FF" Offset="0" />
+        <GradientStop Color="#0670DE" Offset="1" />
     </LinearGradientBrush>
 
     <!-- ======================= Base TextBlock ======================= -->
@@ -37,7 +37,7 @@
     <Style x:Key="H1" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
-        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontSize" Value="24" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
@@ -58,12 +58,12 @@
         <Setter Property="Background" Value="{DynamicResource BgCard}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="12" />
-        <Setter Property="Padding" Value="18" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="Padding" Value="20" />
         <Setter Property="Effect">
             <Setter.Value>
-                <DropShadowEffect Color="#000000" BlurRadius="16" ShadowDepth="2"
-                                  Direction="270" Opacity="0.28" />
+                <DropShadowEffect Color="#000000" BlurRadius="22" ShadowDepth="1"
+                                  Direction="270" Opacity="0.20" />
             </Setter.Value>
         </Setter>
     </Style>
@@ -279,13 +279,13 @@
     <Style x:Key="SideNavButton" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         <Setter Property="FontSize" Value="13" />
-        <Setter Property="Margin" Value="10,1" />
+        <Setter Property="Margin" Value="10,2" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="8" Padding="10,9">
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="10" Padding="12,10">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="3" />
@@ -330,6 +330,7 @@
 
     <!-- ======================= Primary button ======================= -->
     <Style x:Key="PrimaryButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
         <Setter Property="Foreground" Value="#FFFFFF" />
         <Setter Property="Background" Value="{StaticResource AccentGradient}" />
         <Setter Property="BorderThickness" Value="0" />
@@ -342,7 +343,7 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="bd"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="8"
+                            CornerRadius="10"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -361,6 +362,7 @@
 
     <!-- ======================= Action button ======================= -->
     <Style x:Key="ActionButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="Background" Value="{DynamicResource BgCard}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
@@ -375,7 +377,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="8"
+                            CornerRadius="10"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -428,13 +430,13 @@
     <!-- Premium list rows: rounded, hover highlight, accent selection bar. -->
     <Style TargetType="ListViewItem">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="Padding" Value="6,7" />
+        <Setter Property="Padding" Value="8,8" />
         <Setter Property="Margin" Value="0,1" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ListViewItem">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="7"
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="8"
                             Padding="{TemplateBinding Padding}">
                         <GridViewRowPresenter Content="{TemplateBinding Content}"
                                               Columns="{TemplateBinding GridView.ColumnCollection}" />
@@ -457,7 +459,7 @@
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="Background" Value="{DynamicResource BgElevated}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-        <Setter Property="Height" Value="30" />
+        <Setter Property="Height" Value="32" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
@@ -473,7 +475,7 @@
                                 <ControlTemplate TargetType="ToggleButton">
                                     <Border x:Name="b" Background="{TemplateBinding Background}"
                                             BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
-                                            CornerRadius="7">
+                                            CornerRadius="8">
                                         <TextBlock Text="&#xE70D;" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="9"
                                                    Foreground="{DynamicResource TextSecondary}" Margin="0,0,10,0" />
@@ -494,7 +496,7 @@
                         <Popup x:Name="Popup" Placement="Bottom" Focusable="False" AllowsTransparency="True"
                                IsOpen="{TemplateBinding IsDropDownOpen}">
                             <Border Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
-                                    BorderThickness="1" CornerRadius="7" Margin="0,3,0,6"
+                                    BorderThickness="1" CornerRadius="10" Margin="0,3,0,6"
                                     MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
                                     MaxHeight="{TemplateBinding MaxDropDownHeight}">
                                 <Border.Effect>
@@ -540,7 +542,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
                     <Border x:Name="b" Background="{DynamicResource BgElevated}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="7">
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
                         <ScrollViewer x:Name="PART_ContentHost" Margin="9,6"
                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Border>
@@ -562,7 +564,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="PasswordBox">
                     <Border x:Name="b" Background="{DynamicResource BgElevated}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="7">
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
                         <ScrollViewer x:Name="PART_ContentHost" Margin="9,0" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -586,7 +588,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ContextMenu">
                     <Border Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="9" Padding="4">
+                            BorderThickness="1" CornerRadius="11" Padding="5">
                         <Border.Effect>
                             <DropShadowEffect Color="#000000" BlurRadius="16" ShadowDepth="3" Opacity="0.3" />
                         </Border.Effect>

@@ -89,6 +89,41 @@ public sealed class FirewallManager : IDisposable
     public System.Threading.Tasks.Task<string> TestGeoIpApiAsync(string url) =>
         GeoIpService.TestApiAsync(url);
 
+    // ============================================= VirusTotal verdict cache (§VT)
+    // Auto-checks store their result per SHA-256 so each unique file is looked up
+    // once (VirusTotal's free tier is rate-limited) and verdicts survive restarts.
+    public VtCacheEntry? GetVtCached(string sha256) =>
+        !string.IsNullOrEmpty(sha256) && _data.VtCache.TryGetValue(sha256, out var e) ? e : null;
+
+    public void SaveVtResult(string sha256, bool found, int flagged, int total)
+    {
+        if (string.IsNullOrEmpty(sha256)) return;
+        _data.VtCache[sha256] = new VtCacheEntry
+        {
+            Found = found, Flagged = flagged, Total = total, CheckedUtc = DateTime.UtcNow
+        };
+        _store.Save(_data);
+    }
+
+    // ===================================================== local DNS resolver (§3)
+    // GunWall's OWN loopback resolver. These accessors only persist its config; the
+    // running resolver itself lives in the UI layer. It binds to 127.0.0.1 and never
+    // changes the system DNS on its own — the user points DNS at it (a guided redirect
+    // and "Gaming Session" toggle are the next phase).
+    public int DnsResolverPort => _data.DnsResolverPort is > 0 and <= 65535 ? _data.DnsResolverPort : 53;
+    public string DnsResolverUpstream =>
+        string.IsNullOrWhiteSpace(_data.DnsResolverUpstream) ? "1.1.1.1" : _data.DnsResolverUpstream.Trim();
+    public IReadOnlyList<string> DnsResolverBlocklist => _data.DnsResolverBlocklist.AsReadOnly();
+
+    /// <summary>Persist the local resolver's port, upstream and blocklist.</summary>
+    public void SaveDnsResolverConfig(int port, string upstream, IEnumerable<string> blocklist)
+    {
+        _data.DnsResolverPort = port is > 0 and <= 65535 ? port : 53;
+        _data.DnsResolverUpstream = (upstream ?? "").Trim();
+        _data.DnsResolverBlocklist = blocklist?.ToList() ?? new List<string>();
+        _store.Save(_data);
+    }
+
     /// <summary>Download the free CC0 database, then load it. Returns ranges loaded.</summary>
     public int DownloadAndLoadGeoIp()
     {
