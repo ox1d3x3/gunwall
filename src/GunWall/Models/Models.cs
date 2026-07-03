@@ -156,6 +156,9 @@ public sealed class PacketLogEntry
     public string Action => Blocked ? "Blocked" : "Allowed";
     public string TimeText => Time.ToString("HH:mm:ss");
 
+    /// <summary>§8: which rule produced this verdict (e.g. "App rule — Block").</summary>
+    public string Reason { get; set; } = "";
+
     /// <summary>Green for allowed, red for blocked — bound by the action pill.</summary>
     public System.Windows.Media.Brush ActionBrush => Blocked
         ? new System.Windows.Media.SolidColorBrush(

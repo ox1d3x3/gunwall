@@ -910,6 +910,15 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
+                                <GridViewColumn Header="Reason" Width="250">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Reason}" FontSize="12"
+                                                       Foreground="{DynamicResource TextSecondary}"
+                                                       ToolTip="{Binding Reason}" TextTrimming="CharacterEllipsis" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -1565,6 +1574,19 @@
                                         Click="OpenLogFolder_Click" />
                             </StackPanel>
                             <TextBlock x:Name="DiagStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="App health" Style="{StaticResource H2}" />
+                            <TextBlock Text="Live view of GunWall's own internals - the same counters the diagnostics export records. Updates every second while this page is open."
+                                       Style="{StaticResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap" />
+                            <TextBlock x:Name="HealthPipeline" Text="Monitoring: -" Margin="0,2,0,0" TextWrapping="Wrap" />
+                            <TextBlock x:Name="HealthGeo" Text="GeoIP: -" Margin="0,6,0,0" TextWrapping="Wrap" />
+                            <TextBlock x:Name="HealthDns" Text="DNS resolver: -" Margin="0,6,0,0" TextWrapping="Wrap" />
+                            <TextBlock x:Name="HealthVt" Text="VirusTotal: -" Margin="0,6,0,0" TextWrapping="Wrap" />
+                            <TextBlock x:Name="HealthRules" Text="Rules: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 

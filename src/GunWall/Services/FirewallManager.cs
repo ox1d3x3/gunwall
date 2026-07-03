@@ -89,6 +89,74 @@ public sealed class FirewallManager : IDisposable
     public System.Threading.Tasks.Task<string> TestGeoIpApiAsync(string url) =>
         GeoIpService.TestApiAsync(url);
 
+    // ================================================== verdict reasons (§8)
+    /// <summary>Why a connection was blocked or allowed, evaluated in the same
+    /// precedence order the engine enforces: lockdown, app blocks (timed blocks
+    /// labeled), custom rules, explicit allows, then the mode default. Derived
+    /// from the same rule state the engine acts on, so the reason matches
+    /// GunWall's own decision.</summary>
+    public string ExplainVerdict(string exePath, string remoteAddress, int remotePort,
+                                 string protocol, bool outbound, out bool blocked)
+    {
+        if (_data.LockdownEngaged) { blocked = true; return "Lockdown \u2014 all traffic blocked"; }
+
+        if (IsBlocked(exePath))
+        {
+            blocked = true;
+            if (_data.TempBlocks.TryGetValue(exePath, out var until) && until > DateTime.UtcNow)
+                return $"Timed block \u2014 until {until.ToLocalTime():HH:mm}";
+            return "App rule \u2014 Block";
+        }
+
+        foreach (var r in _data.CustomRules)   // first enabled match, filter order
+        {
+            if (!r.Enabled || !r.Applied) continue;
+            if (r.Outbound != outbound) continue;
+            if (r.Protocol is not ("Any" or "") &&
+                !string.Equals(r.Protocol, protocol, StringComparison.OrdinalIgnoreCase)) continue;
+            if (r.RemotePort != 0 && r.RemotePort != remotePort) continue;
+            if (!string.IsNullOrEmpty(r.RemoteAddress) &&
+                !AddressMatches(r.RemoteAddress, remoteAddress)) continue;
+
+            blocked = r.Block;
+            string label = string.IsNullOrWhiteSpace(r.Name) ? r.TargetText : r.Name;
+            return $"Custom rule \u2014 {(r.Block ? "Block" : "Allow")}: {label}";
+        }
+
+        if (IsSilent(exePath)) { blocked = false; return "Muted \u2014 allowed, no popups"; }
+        if (IsAllowed(exePath)) { blocked = false; return "App rule \u2014 Allow"; }
+
+        if (_data.StrictMode) { blocked = true; return "Zero-Trust \u2014 no allow rule yet"; }
+
+        blocked = false;
+        return "Monitor mode \u2014 allowed by default";
+    }
+
+    /// <summary>Exact match, or IPv4 CIDR containment when the rule uses "a.b.c.d/n".</summary>
+    private static bool AddressMatches(string rule, string address)
+    {
+        if (string.Equals(rule, address, StringComparison.OrdinalIgnoreCase)) return true;
+        int slash = rule.IndexOf('/');
+        if (slash <= 0) return false;
+        if (!System.Net.IPAddress.TryParse(rule[..slash], out var net) ||
+            !int.TryParse(rule[(slash + 1)..], out int bits) || bits is < 0 or > 32 ||
+            !System.Net.IPAddress.TryParse(address, out var ip) ||
+            net.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
+            ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return false;
+        uint n = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(net.GetAddressBytes());
+        uint a = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(ip.GetAddressBytes());
+        uint mask = bits == 0 ? 0u : uint.MaxValue << (32 - bits);
+        return (n & mask) == (a & mask);
+    }
+
+    // ================================================ app-health snapshot (§12)
+    // Cheap counters for the live health card in Settings.
+    public int AppRuleCount => _data.Rules.Count;
+    public int CustomRuleCount => _data.CustomRules.Count;
+    public int SystemRuleCount => _data.SystemRules.Count;
+    public int VtCacheCount => _data.VtCache.Count;
+
     // ============================================= VirusTotal verdict cache (§VT)
     // Auto-checks store their result per SHA-256 so each unique file is looked up
     // once (VirusTotal's free tier is rate-limited) and verdicts survive restarts.

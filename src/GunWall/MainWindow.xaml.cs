@@ -231,7 +231,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.53.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.55.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -443,6 +443,8 @@ public partial class MainWindow : Window
         catch (Exception ex) { SampleStepError("RebuildAppsList", ex); }
         try { if (PanelDashboard.Visibility == Visibility.Visible) RedrawGraph(); }
         catch (Exception ex) { SampleStepError("RedrawGraph", ex); }
+        try { if (PanelSettings.Visibility == Visibility.Visible) UpdateHealthCard(); }
+        catch (Exception ex) { SampleStepError("UpdateHealthCard", ex); }
     }
 
     // Records (and, on first occurrence, logs) a failure in one ApplySnapshot step
@@ -610,6 +612,35 @@ public partial class MainWindow : Window
         DnsStatForwarded.Text = _dnsResolver.Forwarded.ToString("N0");
         DnsStatCached.Text = _dnsResolver.Cached.ToString("N0");
         DnsStatBlocked.Text = _dnsResolver.Blocked.ToString("N0");
+    }
+
+    // ============================================================ app health (§12)
+    /// <summary>Live self-diagnostics card in Settings: the same counters the
+    /// diagnostics export records, refreshed each tick while the page is open.</summary>
+    private void UpdateHealthCard()
+    {
+        if (HealthPipeline == null) return;
+
+        HealthPipeline.Text =
+            $"Monitoring: {_sampleTicks} ticks, {_sampleErrors} sample / {_detectErrors} detection errors"
+            + (string.IsNullOrEmpty(_lastSampleError) ? "" : $"  \u2014  last: {_lastSampleError}");
+
+        var geo = _firewall.GeoIp;
+        HealthGeo.Text = _firewall.GeoIpApiActive
+            ? $"GeoIP: API server \u00B7 {geo.ApiOkCount} ok / {geo.ApiFailCount} failed"
+            : "GeoIP: local database";
+
+        HealthDns.Text = _dnsResolver.Running
+            ? $"DNS resolver: listening on 127.0.0.1:{_dnsResolver.Port} \u00B7 {_dnsResolver.Total} queries, {_dnsResolver.Blocked} blocked"
+            : "DNS resolver: stopped";
+
+        HealthVt.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
+            ? "VirusTotal: no API key set"
+            : $"VirusTotal: {_firewall.VtCacheCount} verdicts cached \u00B7 {_vtQueue.Count} queued";
+
+        HealthRules.Text =
+            $"Rules: {_firewall.AppRuleCount} app \u00B7 {_firewall.CustomRuleCount} custom \u00B7 " +
+            $"{_firewall.SystemRuleCount} system  \u2014  engine {(_engineReady ? "active" : "unavailable")}";
     }
 
     // ---------------------------------------------- §3 Phase 2: system routing
@@ -1039,14 +1070,12 @@ public partial class MainWindow : Window
             });
             while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
 
-            // Packets Log: derive the action from GunWall's own decision, which
-            // we know for certain — no risky extra kernel reads. In strict mode
-            // an app that isn't explicitly allowed is being blocked by default.
+            // Packets Log: verdict + reason from GunWall's own rule state (§8) —
+            // the same precedence the engine enforces, so they always agree.
+            // This also fixes lockdown events previously showing as allowed.
             string appName = System.IO.Path.GetFileNameWithoutExtension(e.AppPath);
-            bool blocked = _firewall.IsBlocked(e.AppPath) ||
-                           (_firewall.StrictMode &&
-                            !_firewall.IsAllowed(e.AppPath) &&
-                            !_firewall.IsSilent(e.AppPath));
+            string reason = _firewall.ExplainVerdict(e.AppPath, e.RemoteAddress ?? "",
+                e.RemotePort, e.Protocol, outbound: true, out bool blocked);
             LogPacket(new PacketLogEntry
             {
                 AppName = appName,
@@ -1055,7 +1084,8 @@ public partial class MainWindow : Window
                 Direction = "Out",
                 RemoteEndpoint = string.IsNullOrEmpty(e.RemoteAddress)
                     ? "\u2014" : $"{e.RemoteAddress}:{e.RemotePort}",
-                Blocked = blocked
+                Blocked = blocked,
+                Reason = reason
             });
             while (_packets.Count > MaxPackets) _packets.RemoveAt(_packets.Count - 1);
 
@@ -1757,6 +1787,7 @@ public partial class MainWindow : Window
         if (tag == "Connections") RebuildConnList();
         if (tag == "Traffic") RefreshTraffic();
         if (tag == "Dns") UpdateDnsUi();
+        if (tag == "Settings") UpdateHealthCard();
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
         if (tag == "System") BuildSystemRulesUi();
@@ -2248,6 +2279,18 @@ public partial class MainWindow : Window
                             ProcessName = name,
                             Detail = $"VirusTotal: {result.Malicious}/{result.Total} engines flagged this file"
                         });
+                        try
+                        {
+                            if (_tray != null)
+                            {
+                                _tray.BalloonTipTitle = "VirusTotal alert";
+                                _tray.BalloonTipText =
+                                    $"{name}: {result.Malicious}/{result.Total} engines flagged this file.";
+                                _tray.BalloonTipIcon = System.Windows.Forms.ToolTipIcon.Warning;
+                                _tray.ShowBalloonTip(4000);
+                            }
+                        }
+                        catch { /* notification is best-effort */ }
                     }
                 }
                 else if (result.Message.Contains("Not found", StringComparison.OrdinalIgnoreCase))
