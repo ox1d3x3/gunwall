@@ -83,4 +83,103 @@ public static class DnsService
         HostsFileService.FlushDns();
         return changed;
     }
+
+    // ================================================= §3 Phase 2: system routing
+    // These only ever touch PHYSICAL adapters (ActiveAdapterNames skips loopback and
+    // tunnels), so a VPN's in-tunnel DNS is never modified - no leak risk.
+
+    /// <summary>True when a VPN/overlay tunnel adapter is up (PIA, WireGuard, TAP,
+    /// ZeroTier, Tailscale, ...) so the UI can explain DNS precedence honestly.</summary>
+    public static bool TunnelAdapterUp()
+    {
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                string d = (ni.Description + " " + ni.Name).ToLowerInvariant();
+                if (ni.NetworkInterfaceType == NetworkInterfaceType.Tunnel ||
+                    d.Contains("vpn") || d.Contains("wintun") || d.Contains("wireguard") ||
+                    d.Contains("openvpn") || d.Contains("tap-") ||
+                    d.Contains("zerotier") || d.Contains("tailscale"))
+                    return true;
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    /// <summary>Reads each active physical adapter's current IPv4 DNS setting from the
+    /// registry (locale-independent, unlike parsing netsh output). An empty NameServer
+    /// value means the adapter takes DNS from DHCP.</summary>
+    public static List<SavedAdapterDns> CaptureAdapterDns()
+    {
+        var list = new List<SavedAdapterDns>();
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback
+                                            or NetworkInterfaceType.Tunnel) continue;
+                string ns = "";
+                try
+                {
+                    using var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                        @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\" + ni.Id);
+                    ns = (k?.GetValue("NameServer") as string ?? "").Trim();
+                }
+                catch { }
+                var servers = ns.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                list.Add(new SavedAdapterDns { Name = ni.Name, WasDhcp = servers.Count == 0, Servers = servers });
+            }
+        }
+        catch { }
+        return list;
+    }
+
+    /// <summary>True when a captured state just reflects GunWall's own redirect
+    /// (every adapter static on 127.0.0.1) - e.g. after a crash before restore.
+    /// Such a capture must never overwrite the genuine saved state.</summary>
+    public static bool LooksLikeOurRedirect(List<SavedAdapterDns> captured) =>
+        captured.Count > 0 && captured.All(s =>
+            !s.WasDhcp && s.Servers.Count == 1 && s.Servers[0] == "127.0.0.1");
+
+    /// <summary>Points every active physical adapter's IPv4 DNS at 127.0.0.1
+    /// (GunWall's resolver). Returns adapters changed.</summary>
+    public static int RedirectToLocal()
+    {
+        int changed = 0;
+        foreach (var name in ActiveAdapterNames())
+            if (RunNetsh($"interface ipv4 set dnsservers name=\"{name}\" static 127.0.0.1 primary validate=no"))
+                changed++;
+        HostsFileService.FlushDns();
+        return changed;
+    }
+
+    /// <summary>Puts adapters back exactly as captured: DHCP, or the original
+    /// static server list. Returns adapters changed.</summary>
+    public static int RestoreAdapters(IEnumerable<SavedAdapterDns> saved)
+    {
+        int changed = 0;
+        foreach (var s in saved)
+        {
+            if (string.IsNullOrWhiteSpace(s.Name)) continue;
+            bool ok;
+            if (s.WasDhcp || s.Servers.Count == 0)
+            {
+                ok = RunNetsh($"interface ipv4 set dnsservers name=\"{s.Name}\" source=dhcp");
+            }
+            else
+            {
+                ok = RunNetsh($"interface ipv4 set dnsservers name=\"{s.Name}\" static {s.Servers[0]} primary validate=no");
+                for (int i = 1; i < s.Servers.Count; i++)
+                    RunNetsh($"interface ipv4 add dnsservers name=\"{s.Name}\" address={s.Servers[i]} index={i + 1}");
+            }
+            if (ok) changed++;
+        }
+        HostsFileService.FlushDns();
+        return changed;
+    }
 }

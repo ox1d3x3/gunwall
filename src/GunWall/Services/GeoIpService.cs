@@ -56,6 +56,11 @@ public sealed class GeoIpService
     // (until a failure's short retry window elapses). Resolves IPv6 too, because the
     // server's combined database includes v6 ranges.
     private string _apiBase = "";
+    private long _apiOkCount, _apiFailCount;
+
+    /// <summary>Successful / failed API fetches this session (diagnostics).</summary>
+    public long ApiOkCount => System.Threading.Interlocked.Read(ref _apiOkCount);
+    public long ApiFailCount => System.Threading.Interlocked.Read(ref _apiFailCount);
     private static readonly HttpClient _apiClient = new() { Timeout = TimeSpan.FromSeconds(5) };
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, GeoInfo> _apiCache = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _apiInflight = new();
@@ -235,12 +240,21 @@ public sealed class GeoIpService
             using var req = new HttpRequestMessage(HttpMethod.Get, baseUrl + "/v1/as/ip/" + Uri.EscapeDataString(ip));
             req.Headers.Accept.ParseAdd("application/json");
             using var resp = await _apiClient.SendAsync(req).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode) { _apiRetryAt[ip] = Environment.TickCount64 + 30_000; return; }
+            if (!resp.IsSuccessStatusCode)
+            {
+                System.Threading.Interlocked.Increment(ref _apiFailCount);
+                _apiRetryAt[ip] = Environment.TickCount64 + 30_000; return;
+            }
             string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
             _apiCache[ip] = ParseApiJson(body);                  // cache the answer (incl. "no data")
+            System.Threading.Interlocked.Increment(ref _apiOkCount);
             _apiRetryAt.TryRemove(ip, out _);
         }
-        catch { _apiRetryAt[ip] = Environment.TickCount64 + 30_000; } // back off this IP for 30s
+        catch
+        {
+            System.Threading.Interlocked.Increment(ref _apiFailCount);
+            _apiRetryAt[ip] = Environment.TickCount64 + 30_000;   // back off this IP for 30s
+        }
         finally { _apiGate.Release(); _apiInflight.TryRemove(ip, out _); }
     }
 

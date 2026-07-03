@@ -121,7 +121,19 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (_reallyExit) { try { _dnsResolver.Stop(); } catch { } return; } // genuine exit — let it close
+        if (_reallyExit)
+        {
+            // Never leave system DNS pointing at a resolver that's about to die.
+            // Intent stays persisted, so routing resumes on next launch.
+            try
+            {
+                if (_firewall.DnsRedirectActive && !_firewall.DnsGamingSession)
+                    DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
+            }
+            catch { }
+            try { _dnsResolver.Stop(); } catch { }
+            return; // genuine exit — let it close
+        }
 
         // The X button hides to tray instead of exiting. This keeps the UI one
         // click away while the firewall stays active, so the user is never left
@@ -219,7 +231,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.52.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.53.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -499,7 +511,9 @@ public partial class MainWindow : Window
         DnsUpstreamBox.Text = _firewall.DnsResolverUpstream;
         DnsBlockBox.Text = string.Join(Environment.NewLine, _firewall.DnsResolverBlocklist);
         _dnsResolver.SetBlocklist(_firewall.DnsResolverBlocklist);
+        ReapplyDnsRedirectOnStartup();   // §3 Phase 2: honor saved routing intent (fail-safe inside)
         UpdateDnsUi();
+        UpdateDnsRedirectUi();
     }
 
     private static List<string> DnsBlockLines(string text) =>
@@ -512,8 +526,16 @@ public partial class MainWindow : Window
     {
         if (_dnsResolver.Running)
         {
+            // Never stop the resolver while system DNS points at it - restore first.
+            if (_firewall.DnsRedirectActive)
+            {
+                DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
+                _firewall.SaveDnsRedirectState(false, false, null);
+                Services.DiagnosticLog.Log("DNS routing OFF (resolver stopped): adapters restored.");
+            }
             try { _dnsResolver.Stop(); } catch (Exception ex) { ShowError(ex); }
             UpdateDnsUi();
+            UpdateDnsRedirectUi();
             return;
         }
 
@@ -588,6 +610,144 @@ public partial class MainWindow : Window
         DnsStatForwarded.Text = _dnsResolver.Forwarded.ToString("N0");
         DnsStatCached.Text = _dnsResolver.Cached.ToString("N0");
         DnsStatBlocked.Text = _dnsResolver.Blocked.ToString("N0");
+    }
+
+    // ---------------------------------------------- §3 Phase 2: system routing
+    private bool _dnsToggleGuard; // suppress handler recursion when we set toggles in code
+
+    /// <summary>Reflect persisted routing state in the toggles + status line.</summary>
+    private void UpdateDnsRedirectUi()
+    {
+        if (DnsRedirectToggle == null) return;
+        _dnsToggleGuard = true;
+        DnsRedirectToggle.IsChecked = _firewall.DnsRedirectActive;
+        DnsGamingToggle.IsChecked = _firewall.DnsGamingSession;
+        DnsGamingToggle.IsEnabled = _firewall.DnsRedirectActive;
+        _dnsToggleGuard = false;
+
+        if (!_firewall.DnsRedirectActive)
+            DnsRedirectStatus.Text =
+                "System DNS untouched. Turn on routing to send every app's lookups through GunWall " +
+                "(needs the resolver on port 53). Your current DNS is captured first and restored on exit.";
+        else if (_firewall.DnsGamingSession)
+            DnsRedirectStatus.Text =
+                "Gaming Session: system DNS is back on your normal servers for zero-overhead play. " +
+                "The resolver stays warm - flip the toggle off to route through GunWall again.";
+        else
+            DnsRedirectStatus.Text =
+                $"System DNS routed to GunWall ({_firewall.DnsSavedAdapters.Count} adapter(s) captured for restore; " +
+                "auto-restored on exit)." +
+                (DnsService.TunnelAdapterUp()
+                    ? " VPN detected: while it's connected its in-tunnel DNS may take priority. GunWall " +
+                      "only changes physical adapters, so nothing is broken or leaked either way."
+                    : "");
+    }
+
+    private void SetToggleSilently(CheckBox box, bool value)
+    {
+        _dnsToggleGuard = true; box.IsChecked = value; _dnsToggleGuard = false;
+    }
+
+    private void DnsRedirect_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_dnsToggleGuard || DnsRedirectToggle == null) return;
+
+        if (DnsRedirectToggle.IsChecked == true)
+        {
+            // Routing needs the resolver live on the standard DNS port.
+            if (!int.TryParse(DnsPortBox.Text.Trim(), out int port)) port = 53;
+            if (port != 53)
+            {
+                MessageBox.Show(
+                    "Windows can only send system DNS to port 53, so routing needs the resolver " +
+                    "on port 53. Set the listen port to 53 (stop whatever is using it) and try again.",
+                    "DNS routing", MessageBoxButton.OK, MessageBoxImage.Warning);
+                SetToggleSilently(DnsRedirectToggle, false);
+                return;
+            }
+            if (!_dnsResolver.Running)
+            {
+                DnsStart_Click(this, new RoutedEventArgs()); // shows its own message on failure
+                if (!_dnsResolver.Running) { SetToggleSilently(DnsRedirectToggle, false); return; }
+            }
+
+            // Capture what to restore - but never let a crash-leftover 127.0.0.1
+            // state overwrite the genuine saved configuration.
+            var captured = DnsService.CaptureAdapterDns();
+            bool poisoned = DnsService.LooksLikeOurRedirect(captured);
+
+            int changed = DnsService.RedirectToLocal();
+            if (changed == 0)
+            {
+                MessageBox.Show("No adapter accepted the DNS change (netsh failed). Nothing was modified.",
+                    "DNS routing", MessageBoxButton.OK, MessageBoxImage.Warning);
+                SetToggleSilently(DnsRedirectToggle, false);
+                return;
+            }
+            _firewall.SaveDnsRedirectState(true, false, poisoned ? null : captured);
+            Services.DiagnosticLog.Log($"DNS routing ON: {changed} adapter(s) -> 127.0.0.1.");
+        }
+        else
+        {
+            int n = DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
+            _firewall.SaveDnsRedirectState(false, false, null);
+            Services.DiagnosticLog.Log($"DNS routing OFF: {n} adapter(s) restored.");
+        }
+        UpdateDnsRedirectUi();
+    }
+
+    private void DnsGaming_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_dnsToggleGuard || DnsGamingToggle == null) return;
+        if (!_firewall.DnsRedirectActive) { SetToggleSilently(DnsGamingToggle, false); return; }
+
+        if (DnsGamingToggle.IsChecked == true)
+        {
+            // Bypass: put the system back on its normal DNS; the resolver stays
+            // warm and routing intent is remembered.
+            int n = DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
+            _firewall.SaveDnsRedirectState(true, true, null);
+            Services.DiagnosticLog.Log($"Gaming Session ON: {n} adapter(s) back to normal DNS.");
+        }
+        else
+        {
+            DnsService.RedirectToLocal();
+            _firewall.SaveDnsRedirectState(true, false, null);
+            Services.DiagnosticLog.Log("Gaming Session OFF: system DNS routed to GunWall again.");
+        }
+        UpdateDnsRedirectUi();
+    }
+
+    /// <summary>On launch, honor last session's routing intent - with a fail-safe:
+    /// if the resolver can't start, adapters are restored, never left pointing at
+    /// a dead 127.0.0.1.</summary>
+    private void ReapplyDnsRedirectOnStartup()
+    {
+        if (!_firewall.DnsRedirectActive) return;
+
+        bool resolverOk = _dnsResolver.Running;
+        if (!resolverOk && _firewall.DnsResolverPort == 53)
+        {
+            try { _dnsResolver.Start(53, _firewall.DnsResolverUpstream); resolverOk = true; }
+            catch { resolverOk = false; }
+        }
+
+        if (!resolverOk)
+        {
+            DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
+            _firewall.SaveDnsRedirectState(false, false, null);
+            Services.DiagnosticLog.Log("DNS routing intent dropped: resolver couldn't start on port 53; adapters restored.");
+            return;
+        }
+
+        if (!_firewall.DnsGamingSession)
+        {
+            var captured = DnsService.CaptureAdapterDns();
+            bool poisoned = DnsService.LooksLikeOurRedirect(captured);
+            DnsService.RedirectToLocal();
+            _firewall.SaveDnsRedirectState(true, false, poisoned ? null : captured);
+            Services.DiagnosticLog.Log("DNS routing re-applied from saved intent.");
+        }
     }
 
     // ================================================================ activity
@@ -1948,8 +2108,9 @@ public partial class MainWindow : Window
         Services.DiagnosticLog.Log(
             $"UI pipeline: sampleTicks={_sampleTicks}, sampleErrors={_sampleErrors}, " +
             $"detectErrors={_detectErrors}, lastConns={_lastConns.Count}, " +
-            $"statsDestinations={_stats.TotalDestinations}, dnsRunning={_dnsResolver.Running}, " +
-            $"lastSampleError=[{_lastSampleError}]");
+            $"statsDestinations={_stats.TotalDestinations}, statsCountries={_stats.CountryCount}, " +
+            $"geoApiOk={_firewall.GeoIp.ApiOkCount}, geoApiFail={_firewall.GeoIp.ApiFailCount}, " +
+            $"dnsRunning={_dnsResolver.Running}, lastSampleError=[{_lastSampleError}]");
         try
         {
             await System.Threading.Tasks.Task.Run(() => _firewall.ExportDiagnostics(path));
@@ -3189,6 +3350,8 @@ public partial class MainWindow : Window
         if (SideStatusIcon != null) SideStatusIcon.Foreground = fill;
         if (SideStatusTitle != null) SideStatusTitle.Text = title;
         if (SideStatusSub != null) SideStatusSub.Text = sideSub;
+
+        UpdateTrayIcon(); // tray dot mirrors protection state (green active / red off)
     }
 
     private void Repo_RequestNavigate(object sender, RequestNavigateEventArgs e)
@@ -3217,6 +3380,70 @@ public partial class MainWindow : Window
     }
 
     // ================================================================ tray
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyIcon(IntPtr hIcon);
+
+    private System.Drawing.Icon? _trayIconOn, _trayIconOff;
+
+    /// <summary>Renders the app icon with a glowing status dot bottom-right:
+    /// green when protection is active, red when the firewall is disabled.
+    /// Fully qualified System.Drawing throughout (WPF types share names).</summary>
+    private System.Drawing.Icon? MakeTrayIcon(bool active)
+    {
+        try
+        {
+            var dot = active
+                ? System.Drawing.Color.FromArgb(48, 209, 88)    // iOS green
+                : System.Drawing.Color.FromArgb(255, 69, 58);   // iOS red
+            using var bmp = new System.Drawing.Bitmap(32, 32);
+            using (var g = System.Drawing.Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                string? exe = Environment.ProcessPath;
+                var baseIcon = exe != null ? System.Drawing.Icon.ExtractAssociatedIcon(exe) : null;
+                if (baseIcon != null)
+                    using (baseIcon) g.DrawIcon(baseIcon, new System.Drawing.Rectangle(0, 0, 32, 32));
+
+                int cx = 23, cy = 23, r = 6;
+                for (int i = 3; i >= 1; i--)   // soft glow rings
+                {
+                    using var glow = new System.Drawing.SolidBrush(
+                        System.Drawing.Color.FromArgb(26 * i, dot));
+                    g.FillEllipse(glow, cx - r - i * 2, cy - r - i * 2, (r + i * 2) * 2, (r + i * 2) * 2);
+                }
+                using (var ring = new System.Drawing.SolidBrush(
+                           System.Drawing.Color.FromArgb(235, 10, 10, 12)))
+                    g.FillEllipse(ring, cx - r - 1, cy - r - 1, (r + 1) * 2, (r + 1) * 2);
+                using (var fill = new System.Drawing.SolidBrush(dot))
+                    g.FillEllipse(fill, cx - r, cy - r, r * 2, r * 2);
+            }
+
+            IntPtr h = bmp.GetHicon();
+            try
+            {
+                using var tmp = System.Drawing.Icon.FromHandle(h);
+                return (System.Drawing.Icon)tmp.Clone(); // owns its own handle
+            }
+            finally { DestroyIcon(h); }                  // release the GDI handle
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Swap the tray icon + tooltip to match the current protection state.</summary>
+    private void UpdateTrayIcon()
+    {
+        if (_tray == null) return;
+        try
+        {
+            bool active = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
+            var icon = active ? (_trayIconOn ??= MakeTrayIcon(true))
+                              : (_trayIconOff ??= MakeTrayIcon(false));
+            if (icon != null) _tray.Icon = icon;
+            _tray.Text = active ? "GunWall - protection active" : "GunWall - firewall disabled";
+        }
+        catch { }
+    }
+
     private void SetupTray()
     {
         try
@@ -3229,6 +3456,7 @@ public partial class MainWindow : Window
             string? exe = Environment.ProcessPath;
             if (exe != null)
                 _tray.Icon = System.Drawing.Icon.ExtractAssociatedIcon(exe);
+            UpdateTrayIcon(); // status-colored icon (green active / red disabled)
 
             _tray.DoubleClick += (_, _) => RestoreFromTray();
 

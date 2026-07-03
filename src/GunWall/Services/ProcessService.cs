@@ -35,6 +35,7 @@ public sealed class ProcessService
         IntPtr hProcess, uint flags, StringBuilder buffer, ref uint size);
 
     private readonly Dictionary<int, (string Name, string Path)> _cache = new();
+    private readonly object _gate = new();
 
     /// <summary>Terminates a process by PID. Returns false if it can't be ended.</summary>
     public static bool KillProcess(int pid)
@@ -53,19 +54,26 @@ public sealed class ProcessService
 
     public Dictionary<int, (string Name, string Path)> SnapshotProcesses()
     {
-        var live = new HashSet<int>();
-        foreach (var p in Process.GetProcesses())
+        // Called concurrently by the sampling loop and the (faster) detection loop.
+        // Dictionary is not thread-safe: unsynchronized concurrent writes corrupt its
+        // internal buckets and throw IndexOutOfRangeException from deep inside - the
+        // exact failure the diagnostics captured. One lock serializes the two loops.
+        lock (_gate)
         {
-            live.Add(p.Id);
-            if (!_cache.ContainsKey(p.Id))
-                _cache[p.Id] = (SafeProcessName(p), ResolvePath(p.Id));
-            p.Dispose();
+            var live = new HashSet<int>();
+            foreach (var p in Process.GetProcesses())
+            {
+                live.Add(p.Id);
+                if (!_cache.ContainsKey(p.Id))
+                    _cache[p.Id] = (SafeProcessName(p), ResolvePath(p.Id));
+                p.Dispose();
+            }
+
+            var dead = _cache.Keys.Where(pid => !live.Contains(pid)).ToList();
+            foreach (var pid in dead) _cache.Remove(pid);
+
+            return new Dictionary<int, (string, string)>(_cache);
         }
-
-        var dead = _cache.Keys.Where(pid => !live.Contains(pid)).ToList();
-        foreach (var pid in dead) _cache.Remove(pid);
-
-        return new Dictionary<int, (string, string)>(_cache);
     }
 
     /// <summary>

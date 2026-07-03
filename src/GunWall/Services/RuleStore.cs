@@ -281,6 +281,22 @@ public sealed class StoreData
     public int DnsResolverPort { get; set; } = 53;
     public string DnsResolverUpstream { get; set; } = "1.1.1.1";
     public List<string> DnsResolverBlocklist { get; set; } = new();
+
+    // §3 Phase 2: system-DNS routing state. DnsRedirectActive is the user's saved
+    // intent (re-applied on launch); DnsGamingSession bypasses the redirect without
+    // losing it; DnsSavedAdapters is what to put back (captured before we touch DNS).
+    public bool DnsRedirectActive { get; set; }
+    public bool DnsGamingSession { get; set; }
+    public List<SavedAdapterDns> DnsSavedAdapters { get; set; } = new();
+}
+
+/// <summary>One adapter's pre-redirect IPv4 DNS setting, so it can be restored
+/// exactly: DHCP-assigned, or its original static server list.</summary>
+public sealed class SavedAdapterDns
+{
+    public string Name { get; set; } = "";
+    public bool WasDhcp { get; set; }
+    public List<string> Servers { get; set; } = new();
 }
 
 /// <summary>One cached VirusTotal verdict for a file hash. Found=false means the

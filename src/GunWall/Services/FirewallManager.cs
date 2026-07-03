@@ -124,6 +124,21 @@ public sealed class FirewallManager : IDisposable
         _store.Save(_data);
     }
 
+    // §3 Phase 2: system-DNS routing state (intent + captured adapter config).
+    public bool DnsRedirectActive => _data.DnsRedirectActive;
+    public bool DnsGamingSession => _data.DnsGamingSession;
+    public List<SavedAdapterDns> DnsSavedAdapters => _data.DnsSavedAdapters;
+
+    /// <summary>Persist routing intent/bypass; pass a non-null capture to replace
+    /// the saved adapter state (null keeps the existing capture).</summary>
+    public void SaveDnsRedirectState(bool active, bool gaming, List<SavedAdapterDns>? saved)
+    {
+        _data.DnsRedirectActive = active;
+        _data.DnsGamingSession = gaming;
+        if (saved != null) _data.DnsSavedAdapters = saved;
+        _store.Save(_data);
+    }
+
     /// <summary>Download the free CC0 database, then load it. Returns ranges loaded.</summary>
     public int DownloadAndLoadGeoIp()
     {

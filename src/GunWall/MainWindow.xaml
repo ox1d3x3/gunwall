@@ -736,7 +736,7 @@
                         <TextBlock Text="DNS resolver" Style="{StaticResource H1}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                    MaxWidth="960" HorizontalAlignment="Left"
-                                   Text="GunWall's own local resolver. It logs every domain your apps look up, blocks the ones you list, and caches answers so repeat lookups are instant. It binds to 127.0.0.1 only and does not change your system DNS - point this PC's DNS (or a test query) at 127.0.0.1 to use it. This is separate from Security -&gt; Filtering DNS, which only picks an upstream provider. A guided system redirect with a Gaming Session toggle is the next step." />
+                                   Text="GunWall's own local resolver. It logs every domain your apps look up, blocks the ones you list, and caches answers so repeat lookups are instant. It binds to 127.0.0.1 only. Flip 'Route this PC's DNS through GunWall' to send every app's lookups through it (captured and auto-restored on exit), and use Gaming Session for a one-tap zero-overhead bypass during matches. This is separate from Security -&gt; Filtering DNS, which only picks an upstream provider." />
                     </StackPanel>
                 </Grid>
 
@@ -761,6 +761,22 @@
                         </StackPanel>
                         <TextBlock x:Name="DnsResStatus" Style="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
                                    Text="Stopped. Start the resolver, then point a DNS query (or this PC's DNS) at 127.0.0.1 to use it." />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <CheckBox x:Name="DnsRedirectToggle" Style="{StaticResource SlideToggle}"
+                                      Checked="DnsRedirect_Toggled" Unchecked="DnsRedirect_Toggled"
+                                      VerticalAlignment="Center" />
+                            <TextBlock Text="Route this PC's DNS through GunWall" VerticalAlignment="Center"
+                                       Margin="10,0,28,0"
+                                       ToolTip="Points every physical adapter's DNS at 127.0.0.1. Your current DNS is captured first and restored automatically on exit. VPN tunnel adapters are never touched." />
+                            <CheckBox x:Name="DnsGamingToggle" Style="{StaticResource SlideToggle}"
+                                      Checked="DnsGaming_Toggled" Unchecked="DnsGaming_Toggled"
+                                      VerticalAlignment="Center" IsEnabled="False" />
+                            <TextBlock Text="Gaming Session (bypass)" VerticalAlignment="Center" Margin="10,0,0,0"
+                                       ToolTip="One tap puts system DNS back on your normal servers for zero-overhead play; tap again after the match to route through GunWall." />
+                        </StackPanel>
+                        <TextBlock x:Name="DnsRedirectStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Text="System DNS untouched." />
 
                         <UniformGrid Rows="1" Columns="4" Margin="0,14,0,0">
                             <StackPanel>
