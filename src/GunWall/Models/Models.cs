@@ -231,3 +231,14 @@ public sealed class EntityRule
 
     public string Label => $"{(Enabled ? "" : "(off) ")}{TypeLabel} {Value}  \u2192  block for {AppLabel}";
 }
+
+/// <summary>§13: one entry in the in-app notification center. Kind drives the
+/// title color: "warn" (red), "good" (green), or "info" (default).</summary>
+public sealed class AppNotification
+{
+    public DateTime Time { get; set; } = DateTime.Now;
+    public string Kind { get; set; } = "info";
+    public string Title { get; set; } = "";
+    public string Detail { get; set; } = "";
+    public string TimeText => Time.ToString("HH:mm:ss");
+}

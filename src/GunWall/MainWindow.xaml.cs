@@ -45,6 +45,14 @@ public partial class MainWindow : Window
     private readonly HashSet<string> _vtQueued = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _vtHashByPath = new(StringComparer.OrdinalIgnoreCase);
 
+    // §13 notification center: session-scoped list + unread badge on the sidebar.
+    private readonly ObservableCollection<AppNotification> _notifications = new();
+    private int _unreadNotifications;
+    private bool _alertsVisible;
+    private const int MaxNotifications = 200;
+    private bool? _lastNotifiedProtection;
+    private bool? _lastNotifiedLockdown;
+
     private const int GraphPoints = 60;
     private readonly double[] _downSeries = new double[GraphPoints];
     private readonly double[] _upSeries = new double[GraphPoints];
@@ -107,6 +115,7 @@ public partial class MainWindow : Window
         TrafficApps.ItemsSource = _trafficApps;
         DnsLog.ItemsSource = _dnsLog;
         _dnsResolver.Query += OnDnsQuery;
+        AlertsList.ItemsSource = _notifications;
         ServicesList.ItemsSource = _services;
         DevicesList.ItemsSource = _devices;
         Loaded += OnLoaded;
@@ -231,7 +240,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.55.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.57.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -612,6 +621,31 @@ public partial class MainWindow : Window
         DnsStatForwarded.Text = _dnsResolver.Forwarded.ToString("N0");
         DnsStatCached.Text = _dnsResolver.Cached.ToString("N0");
         DnsStatBlocked.Text = _dnsResolver.Blocked.ToString("N0");
+    }
+
+    // ===================================================== notification center (§13)
+    /// <summary>Record a notable event in the Alerts page and bump the sidebar
+    /// badge when the page isn't open. Safe to call from any UI-thread path.</summary>
+    private void Notify(string kind, string title, string detail)
+    {
+        try
+        {
+            if (AlertsList == null) return;
+            _notifications.Insert(0, new AppNotification { Kind = kind, Title = title, Detail = detail });
+            while (_notifications.Count > MaxNotifications)
+                _notifications.RemoveAt(_notifications.Count - 1);
+            if (!_alertsVisible) _unreadNotifications++;
+            RefreshAlertsBadge();
+        }
+        catch { /* notifications must never break the caller */ }
+    }
+
+    private void RefreshAlertsBadge()
+    {
+        if (AlertsNavLabel == null) return;
+        AlertsNavLabel.Text = _unreadNotifications > 0 ? $"Alerts ({_unreadNotifications})" : "Alerts";
+        if (AlertsEmpty != null)
+            AlertsEmpty.Visibility = _notifications.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ============================================================ app health (§12)
@@ -1097,7 +1131,7 @@ public partial class MainWindow : Window
             // §1 entity rules: reactively block this remote if a country / continent /
             // ASN rule matches it. Independent of monitoring/strict mode (an explicit
             // rule always applies). Post-hoc by design - blocks sustained traffic.
-            string? entReason = _firewall.ApplyEntityBlocks(e.AppPath, e.RemoteAddress);
+            string? entReason = _firewall.ApplyEntityBlocks(e.AppPath, e.RemoteAddress ?? "");
             if (entReason != null)
             {
                 LogActivity(new NetActivityEvent
@@ -1481,6 +1515,10 @@ public partial class MainWindow : Window
                 InspScope.Text = blocks.Count == 0 ? "No scope restrictions" : "Blocked: " + string.Join(", ", blocks);
             }
             else InspScope.Text = "Not individually managed";
+
+            // §8 part two: the same verdict reason the Packets Log shows.
+            InspVerdict.Text = _firewall.ExplainVerdict(c.ExePath, c.RemoteAddress ?? "",
+                c.RemotePort, c.Protocol ?? "", outbound: true, out _);
         }
         else
         {
@@ -1488,6 +1526,7 @@ public partial class MainWindow : Window
             InspStatus.Text = "No owning process";
             InspStatus.Foreground = (Brush)FindResource("TextSecondary");
             InspScopeRow.Visibility = Visibility.Collapsed;
+            InspVerdict.Text = "\u2014";
         }
     }
 
@@ -1772,6 +1811,9 @@ public partial class MainWindow : Window
         PanelTraffic.Visibility = tag == "Traffic" ? Visibility.Visible : Visibility.Collapsed;
         PanelDns.Visibility = tag == "Dns" ? Visibility.Visible : Visibility.Collapsed;
         _dnsVisible = tag == "Dns";
+        PanelAlerts.Visibility = tag == "Alerts" ? Visibility.Visible : Visibility.Collapsed;
+        _alertsVisible = tag == "Alerts";
+        if (_alertsVisible) { _unreadNotifications = 0; RefreshAlertsBadge(); }
         PanelServices.Visibility = tag == "Services" ? Visibility.Visible : Visibility.Collapsed;
         PanelNetwork.Visibility = tag == "Network" ? Visibility.Visible : Visibility.Collapsed;
         PanelPackets.Visibility = tag == "Packets" ? Visibility.Visible : Visibility.Collapsed;
@@ -2279,6 +2321,8 @@ public partial class MainWindow : Window
                             ProcessName = name,
                             Detail = $"VirusTotal: {result.Malicious}/{result.Total} engines flagged this file"
                         });
+                        Notify("warn", $"VirusTotal flagged {name}",
+                               $"{result.Malicious}/{result.Total} engines flagged this file.");
                         try
                         {
                             if (_tray != null)
@@ -3393,6 +3437,23 @@ public partial class MainWindow : Window
         if (SideStatusIcon != null) SideStatusIcon.Foreground = fill;
         if (SideStatusTitle != null) SideStatusTitle.Text = title;
         if (SideStatusSub != null) SideStatusSub.Text = sideSub;
+
+        // §13: notify on real state transitions (never on the initial paint).
+        bool protNow = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
+        if (_lastNotifiedProtection != null && _lastNotifiedProtection != protNow)
+            Notify(protNow ? "good" : "warn",
+                   protNow ? "Protection active" : "Protection off",
+                   protNow ? "Zero-Trust filtering is enforcing again."
+                           : "Firewall filtering is disabled or snoozed.");
+        _lastNotifiedProtection = protNow;
+
+        bool ldNow = _firewall.LockdownEngaged;
+        if (_lastNotifiedLockdown != null && _lastNotifiedLockdown != ldNow)
+            Notify(ldNow ? "warn" : "good",
+                   ldNow ? "Lockdown engaged" : "Lockdown lifted",
+                   ldNow ? "All network traffic is being blocked."
+                         : "Normal filtering restored.");
+        _lastNotifiedLockdown = ldNow;
 
         UpdateTrayIcon(); // tray dot mirrors protection state (green active / red off)
     }

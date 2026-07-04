@@ -136,6 +136,12 @@
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Activity" />
                             </StackPanel>
                         </RadioButton>
+                        <RadioButton x:Name="NavAlerts" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Alerts">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE7E7;" />
+                                <TextBlock x:Name="AlertsNavLabel" Style="{StaticResource SideNavLabel}" Text="Alerts" />
+                            </StackPanel>
+                        </RadioButton>
                         <RadioButton x:Name="NavSettings" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Settings">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE713;" />
@@ -642,6 +648,12 @@
                                 </Grid>
                                 <Grid Margin="0,3,0,0">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Why" Style="{StaticResource Muted}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" x:Name="InspVerdict" FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondary}" />
+                                </Grid>
+                                <Grid Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="64" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Policy" Style="{StaticResource Muted}" FontSize="12" />
                                     <TextBlock Grid.Column="1" x:Name="InspStatus" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 </Grid>
@@ -859,6 +871,55 @@
                         </DockPanel>
                     </Border>
                 </Grid>
+            </Grid>
+
+            <!-- ========== §13 Notification center ========== -->
+            <Grid x:Name="PanelAlerts" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                    <TextBlock Text="Alerts" Style="{StaticResource H1}" />
+                    <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
+                               Text="Notable events in one place: protection turned on or off, lockdown engaged or lifted, and VirusTotal detections. Opening this page marks everything as read. Kept for this session (up to 200 entries)." />
+                </StackPanel>
+                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
+                    <Grid>
+                        <TextBlock x:Name="AlertsEmpty" Text="Nothing yet - GunWall will note important events here."
+                                   Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ListView x:Name="AlertsList" BorderThickness="0" Background="Transparent"
+                                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Time" Width="84" DisplayMemberBinding="{Binding TimeText}" />
+                                    <GridViewColumn Header="Event" Width="240">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Kind}" Value="warn">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource BlockText}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Kind}" Value="good">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource AllowText}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                    <GridViewColumn Header="Detail" Width="520" DisplayMemberBinding="{Binding Detail}" />
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+                    </Grid>
+                </Border>
             </Grid>
 
             <!-- ========== Packets Log ========== -->
