@@ -1653,6 +1653,39 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
+                            <TextBlock Text="Connectivity check" Style="{StaticResource H2}" />
+                            <TextBlock Text="On hotel / airport Wi-Fi, a captive portal intercepts traffic until you log in - which can look like GunWall blocking everything. Check here, and if a portal is found, Portal mode pauses filtering for 5 minutes so you can reach the login page. Protection resumes automatically."
+                                       Style="{StaticResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="CheckPortalBtn" Content="Check now" Style="{StaticResource ActionButton}"
+                                        Click="CheckPortal_Click" Padding="14,8" Margin="0,0,8,0" />
+                                <Button x:Name="PortalModeBtn" Content="Portal mode (pause 5 min)" Style="{StaticResource PrimaryButton}"
+                                        Click="PortalMode_Click" Padding="14,8" />
+                            </StackPanel>
+                            <TextBlock x:Name="PortalStatus" Style="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Rule profiles" Style="{StaticResource H2}" />
+                            <TextBlock Text="Save your current per-app allow/block rules as a named profile (e.g. Gaming, Work) and switch between them in one click. Apps not captured in a profile are left untouched; muted apps keep their setting."
+                                       Style="{StaticResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal">
+                                <ComboBox x:Name="ProfileCombo" Width="200" Margin="0,0,8,0" />
+                                <Button x:Name="ProfileApplyBtn" Content="Apply profile" Style="{StaticResource PrimaryButton}"
+                                        Click="ProfileApply_Click" Padding="14,8" Margin="0,0,24,0" />
+                                <TextBox x:Name="ProfileNameBox" Width="170" Height="32" VerticalContentAlignment="Center"
+                                         Margin="0,0,8,0" ToolTip="Name for the new profile (e.g. Gaming)" />
+                                <Button x:Name="ProfileSaveBtn" Content="Save current as" Style="{StaticResource ActionButton}"
+                                        Click="ProfileSave_Click" Padding="14,8" />
+                            </StackPanel>
+                            <TextBlock x:Name="RuleProfileStatus" Style="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
                             <TextBlock Text="Profiles" Style="{StaticResource H2}" />
                             <TextBlock Text="Save the current rules and settings as a named profile, then switch between profiles (e.g. Home, Work, Travel)."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />

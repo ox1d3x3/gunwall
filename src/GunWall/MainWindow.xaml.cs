@@ -45,6 +45,9 @@ public partial class MainWindow : Window
     private readonly HashSet<string> _vtQueued = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _vtHashByPath = new(StringComparer.OrdinalIgnoreCase);
 
+    // §6 domain heuristics: notify once per suspicious-looking domain.
+    private readonly HashSet<string> _dgaSeen = new(StringComparer.OrdinalIgnoreCase);
+
     // §13 notification center: session-scoped list + unread badge on the sidebar.
     private readonly ObservableCollection<AppNotification> _notifications = new();
     private int _unreadNotifications;
@@ -232,6 +235,7 @@ public partial class MainWindow : Window
             RefreshEntityRules();     // §1 render saved country/continent/ASN rules + GeoIP status
             InitGeoSourceUi();        // reflect saved GeoIP source (local / API)
             InitDnsPanel();           // §3 reflect saved local-resolver settings
+            RefreshProfileCombo();    // §10 reflect saved rule profiles
             _suppressModeEvent = false;
             SyncFirewallToggle();
             if (ApplyButton != null) ApplyButton.IsEnabled = false;
@@ -240,7 +244,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.57.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.60.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -590,6 +594,24 @@ public partial class MainWindow : Window
 
     private void OnDnsQuery(DnsLogEntry entry)
     {
+        // §6: score every lookup for DGA-style names, even when the panel is
+        // closed. Cheap pure math; notify once per domain via the UI thread.
+        if (entry.Action != DnsAction.Error)
+        {
+            var h = DomainHeuristics.Score(entry.Domain);
+            bool firstSight;
+            lock (_dgaSeen) firstSight = h.Suspicious && _dgaSeen.Add(entry.Domain);
+            if (firstSight)
+            {
+                Services.DiagnosticLog.Log(
+                    $"Domain heuristics: {entry.Domain} looks machine-generated (score {h.Score}: {h.Reason}).");
+                Dispatcher.BeginInvoke(new Action(() =>
+                    Notify("warn", "Suspicious domain pattern",
+                           $"{entry.Domain} looks machine-generated (score {h.Score}: {h.Reason}). " +
+                           "If unfamiliar, consider adding it to the DNS blocklist.")));
+            }
+        }
+
         if (!_dnsVisible) return; // counters keep ticking on the resolver; UI catches up on open
         Dispatcher.BeginInvoke(new Action(() =>
         {
@@ -621,6 +643,68 @@ public partial class MainWindow : Window
         DnsStatForwarded.Text = _dnsResolver.Forwarded.ToString("N0");
         DnsStatCached.Text = _dnsResolver.Cached.ToString("N0");
         DnsStatBlocked.Text = _dnsResolver.Blocked.ToString("N0");
+    }
+
+    // ======================================================== rule profiles (§10)
+    private void RefreshProfileCombo()
+    {
+        if (ProfileCombo == null) return;
+        ProfileCombo.Items.Clear();
+        foreach (var n in _firewall.RuleProfileNames) ProfileCombo.Items.Add(n);
+        string ap = _firewall.ActiveRuleProfile;
+        if (ProfileCombo.Items.Count > 0)
+            ProfileCombo.SelectedItem = ap.Length > 0 && ProfileCombo.Items.Contains(ap)
+                ? ap : ProfileCombo.Items[0];
+        RuleProfileStatus.Text = ap.Length > 0
+            ? $"Active profile: {ap}"
+            : "No profile applied yet. Save your current rules to create one.";
+    }
+
+    private void ProfileSave_Click(object sender, RoutedEventArgs e)
+    {
+        string name = ProfileNameBox.Text.Trim();
+        if (name.Length == 0) { RuleProfileStatus.Text = "Enter a profile name first."; return; }
+        _firewall.SaveRuleProfile(name);
+        ProfileNameBox.Text = "";
+        RefreshProfileCombo();
+        ProfileCombo.SelectedItem = name;
+        RuleProfileStatus.Text = $"Saved current app rules as '{name}'.";
+        Notify("info", $"Profile saved: {name}", "Current app allow/block rules captured.");
+    }
+
+    private void ProfileApply_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProfileCombo.SelectedItem is not string name)
+        { RuleProfileStatus.Text = "Choose a profile to apply."; return; }
+        int changed = _firewall.ApplyRuleProfile(name);
+        if (changed < 0) { RuleProfileStatus.Text = "Profile not found."; return; }
+        RuleProfileStatus.Text = $"Applied '{name}' — {changed} app rule(s) changed.";
+        Notify("info", $"Profile applied: {name}", $"{changed} app rule(s) changed.");
+        RebuildAppsList();
+    }
+
+    // ====================================================== captive portal (§9)
+    private async void CheckPortal_Click(object sender, RoutedEventArgs e)
+    {
+        CheckPortalBtn.IsEnabled = false;
+        PortalStatus.Text = "Checking connectivity\u2026";
+        try
+        {
+            var r = await CaptivePortalService.CheckAsync();
+            PortalStatus.Text = r.Detail;
+            if (r.Captive)
+                Notify("warn", "Captive portal detected",
+                       "A login page is intercepting traffic. Use Portal mode to reach it.");
+        }
+        finally { CheckPortalBtn.IsEnabled = true; }
+    }
+
+    private void PortalMode_Click(object sender, RoutedEventArgs e)
+    {
+        var until = _firewall.SnoozeProtection(TimeSpan.FromMinutes(5));
+        PortalStatus.Text = $"Portal mode: filtering paused until {until.ToLocalTime():HH:mm:ss}. " +
+                            "Open a browser, complete the portal login, and protection resumes on its own.";
+        UpdateStatusBanner();
     }
 
     // ===================================================== notification center (§13)
@@ -1834,7 +1918,7 @@ public partial class MainWindow : Window
         if (tag == "Services" && _services.Count == 0) LoadServices();
         if (tag == "System") BuildSystemRulesUi();
         if (tag == "Security") { BuildBlocklistCatUi(); RefreshDnsCombo(); }
-        if (tag == "Settings") { RefreshProfilesCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
+        if (tag == "Settings") { RefreshProfilesCombo(); RefreshProfileCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
     }
 
     // ================================================================ actions

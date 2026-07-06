@@ -89,6 +89,54 @@ public sealed class FirewallManager : IDisposable
     public System.Threading.Tasks.Task<string> TestGeoIpApiAsync(string url) =>
         GeoIpService.TestApiAsync(url);
 
+    // ===================================================== rule profiles (§10)
+    // Named snapshots of the per-app allow/block rules. Applying a profile goes
+    // through the same AllowApp/BlockApp paths the UI uses, so WFP filters are
+    // torn down and recreated correctly. Apps not in the profile are untouched.
+    public IEnumerable<string> RuleProfileNames => _data.RuleProfiles.Keys.OrderBy(k => k);
+    public string ActiveRuleProfile => _data.ActiveProfile;
+
+    /// <summary>Snapshot the current Allowed/Blocked app rules under a name.</summary>
+    public void SaveRuleProfile(string name)
+    {
+        var snap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in _data.Rules)
+            if (r.Status is AppStatus.Allowed or AppStatus.Blocked)
+                snap[r.ExecutablePath] = $"{r.Status}|{r.DisplayName}";
+        _data.RuleProfiles[name] = snap;
+        _store.Save(_data);
+    }
+
+    /// <summary>Apply a saved profile. Returns rules changed, or -1 if unknown.</summary>
+    public int ApplyRuleProfile(string name)
+    {
+        if (!_data.RuleProfiles.TryGetValue(name, out var snap)) return -1;
+        int changed = 0;
+        foreach (var kv in snap)
+        {
+            int bar = kv.Value.IndexOf('|');
+            if (bar <= 0) continue;
+            string status = kv.Value[..bar], disp = kv.Value[(bar + 1)..];
+            if (EffectiveStatus(kv.Key).ToString() == status) continue;
+            if (status == "Allowed") AllowApp(kv.Key, disp);
+            else if (status == "Blocked") BlockApp(kv.Key, disp);
+            else continue;
+            changed++;
+        }
+        _data.ActiveProfile = name;
+        _store.Save(_data);
+        return changed;
+    }
+
+    public void DeleteRuleProfile(string name)
+    {
+        if (_data.RuleProfiles.Remove(name))
+        {
+            if (_data.ActiveProfile == name) _data.ActiveProfile = "";
+            _store.Save(_data);
+        }
+    }
+
     // ================================================== verdict reasons (§8)
     /// <summary>Why a connection was blocked or allowed, evaluated in the same
     /// precedence order the engine enforces: lockdown, app blocks (timed blocks

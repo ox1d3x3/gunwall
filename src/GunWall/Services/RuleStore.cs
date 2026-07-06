@@ -278,6 +278,11 @@ public sealed class StoreData
     // so each unique file is looked up once and results survive restarts.
     public Dictionary<string, VtCacheEntry> VtCache { get; set; } = new();
 
+    // §10 rule profiles: named snapshots of per-app allow/block rules
+    // (profile name -> exePath -> "Status|DisplayName").
+    public Dictionary<string, Dictionary<string, string>> RuleProfiles { get; set; } = new();
+    public string ActiveProfile { get; set; } = "";
+
     public int DnsResolverPort { get; set; } = 53;
     public string DnsResolverUpstream { get; set; } = "1.1.1.1";
     public List<string> DnsResolverBlocklist { get; set; } = new();
