@@ -244,7 +244,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.60.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.61.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -525,7 +525,8 @@ public partial class MainWindow : Window
         DnsPortBox.Text = _firewall.DnsResolverPort.ToString();
         DnsUpstreamBox.Text = _firewall.DnsResolverUpstream;
         DnsBlockBox.Text = string.Join(Environment.NewLine, _firewall.DnsResolverBlocklist);
-        _dnsResolver.SetBlocklist(_firewall.DnsResolverBlocklist);
+        ApplyDnsBlocklists();            // preset file + manual lines
+        RefreshDnsPresetStatus();
         ReapplyDnsRedirectOnStartup();   // §3 Phase 2: honor saved routing intent (fail-safe inside)
         UpdateDnsUi();
         UpdateDnsRedirectUi();
@@ -564,7 +565,7 @@ public partial class MainWindow : Window
 
         // Apply + persist the blocklist before the resolver starts serving.
         var block = DnsBlockLines(DnsBlockBox.Text);
-        _dnsResolver.SetBlocklist(block);
+        ApplyDnsBlocklists();   // preset file + manual lines
         _firewall.SaveDnsResolverConfig(port, upstream, block);
 
         try
@@ -586,9 +587,10 @@ public partial class MainWindow : Window
     private void DnsApplyBlock_Click(object sender, RoutedEventArgs e)
     {
         var block = DnsBlockLines(DnsBlockBox.Text);
-        _dnsResolver.SetBlocklist(block);
+        ApplyDnsBlocklists();   // preset file + manual lines
         int port = int.TryParse(DnsPortBox.Text.Trim(), out int p) && p > 0 ? p : 53;
         _firewall.SaveDnsResolverConfig(port, DnsUpstreamBox.Text.Trim(), block);
+        RefreshDnsPresetStatus();
         UpdateDnsUi();
     }
 
@@ -681,6 +683,65 @@ public partial class MainWindow : Window
         RuleProfileStatus.Text = $"Applied '{name}' — {changed} app rule(s) changed.";
         Notify("info", $"Profile applied: {name}", $"{changed} app rule(s) changed.");
         RebuildAppsList();
+    }
+
+    // =============================================== DNS blocklist preset (§5+§3)
+    // Curated list for GunWall's own resolver: StevenBlack unified hosts (ads +
+    // malware; credited data source). Kept in a plain file beside the app so the
+    // JSON config stays small; the user's manual lines remain separate.
+    private const string DnsPresetUrl =
+        "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
+    private static string DnsPresetPath =>
+        System.IO.Path.Combine(AppContext.BaseDirectory, "dns-blocklist-preset.txt");
+    private static readonly System.Net.Http.HttpClient _dnsPresetHttp =
+        new() { Timeout = TimeSpan.FromSeconds(90) };
+
+    private static List<string> LoadDnsPresetLines()
+    {
+        try
+        {
+            if (System.IO.File.Exists(DnsPresetPath))
+                return System.IO.File.ReadAllLines(DnsPresetPath).ToList();
+        }
+        catch { }
+        return new List<string>();
+    }
+
+    /// <summary>Feed the resolver the preset file plus the user's manual lines.</summary>
+    private void ApplyDnsBlocklists()
+    {
+        var merged = LoadDnsPresetLines();
+        merged.AddRange(DnsBlockLines(DnsBlockBox.Text));
+        _dnsResolver.SetBlocklist(merged);
+    }
+
+    private void RefreshDnsPresetStatus()
+    {
+        if (DnsPresetStatus == null) return;
+        DnsPresetStatus.Text = System.IO.File.Exists(DnsPresetPath)
+            ? $"Preset active · {_dnsResolver.BlockedDomainCount:N0} domains in the resolver's blocklist. Delete dns-blocklist-preset.txt to remove."
+            : "No preset loaded - the resolver only blocks the lines you add below.";
+    }
+
+    private async void DnsPreset_Click(object sender, RoutedEventArgs e)
+    {
+        DnsPresetBtn.IsEnabled = false;
+        DnsPresetStatus.Text = "Downloading preset… (a few MB)";
+        try
+        {
+            string body = await _dnsPresetHttp.GetStringAsync(DnsPresetUrl);
+            if (body.Length < 10000) throw new Exception("Response too small - unexpected content.");
+            System.IO.File.WriteAllText(DnsPresetPath, body);
+            ApplyDnsBlocklists();
+            RefreshDnsPresetStatus();
+            Notify("good", "DNS preset loaded",
+                   $"{_dnsResolver.BlockedDomainCount:N0} domains now blocked by GunWall's resolver.");
+        }
+        catch (Exception ex)
+        {
+            DnsPresetStatus.Text = $"Download failed: {ex.Message}";
+        }
+        finally { DnsPresetBtn.IsEnabled = true; }
     }
 
     // ====================================================== captive portal (§9)

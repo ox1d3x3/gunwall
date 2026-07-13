@@ -863,6 +863,13 @@
                             <TextBlock DockPanel.Dock="Top" Text="Blocklist" Style="{StaticResource H2}" Margin="0,0,0,2" />
                             <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
                                        Text="One domain per line. Subdomains are blocked too (listing example.com also blocks ads.example.com). Hosts-style '0.0.0.0 domain' lines are accepted. Blocked lookups return NXDOMAIN." />
+                            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <Button x:Name="DnsPresetBtn" Content="Download ads + malware preset"
+                                        Style="{StaticResource ActionButton}" Click="DnsPreset_Click"
+                                        Padding="12,7" HorizontalAlignment="Left"
+                                        ToolTip="Fetches the StevenBlack unified hosts list (~100k ad/malware domains) and blocks them in this resolver. Stored as dns-blocklist-preset.txt beside the app. Your own lines below stay separate." />
+                                <TextBlock x:Name="DnsPresetStatus" Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
                             <Button x:Name="DnsApplyBlockBtn" DockPanel.Dock="Bottom" Content="Apply blocklist"
                                     Style="{StaticResource PrimaryButton}" Click="DnsApplyBlock_Click" Padding="16,8" Margin="0,8,0,0" />
                             <TextBox x:Name="DnsBlockBox" AcceptsReturn="True" TextWrapping="NoWrap"
