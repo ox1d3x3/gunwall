@@ -60,6 +60,14 @@ public sealed class ProcessService
         // exact failure the diagnostics captured. One lock serializes the two loops.
         lock (_gate)
         {
+            // Perf: both loops land here up to ~5x/sec, but a process table can't
+            // meaningfully change in a quarter second. Reuse the last enumeration
+            // within 250ms — cuts Process.GetProcesses() (a handle + allocation
+            // per process, every call) by more than half under normal load.
+            // Callers still get their own copy, so nothing shared can be mutated.
+            if ((DateTime.UtcNow - _lastEnumUtc).TotalMilliseconds < 250)
+                return new Dictionary<int, (string, string)>(_cache);
+
             var live = new HashSet<int>();
             foreach (var p in Process.GetProcesses())
             {
@@ -72,9 +80,12 @@ public sealed class ProcessService
             var dead = _cache.Keys.Where(pid => !live.Contains(pid)).ToList();
             foreach (var pid in dead) _cache.Remove(pid);
 
+            _lastEnumUtc = DateTime.UtcNow;
             return new Dictionary<int, (string, string)>(_cache);
         }
     }
+
+    private DateTime _lastEnumUtc = DateTime.MinValue;
 
     /// <summary>
     /// Robust path resolution. Tries the limited-information query first (works

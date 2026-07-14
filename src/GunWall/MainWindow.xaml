@@ -179,7 +179,8 @@
             </Border>
 
             <!-- ===================== Content area ===================== -->
-            <Grid Grid.Row="1" Margin="24">
+            <Grid Grid.Row="1" Margin="24" x:Name="PanelHost" RenderTransformOrigin="0.5,0">
+                <Grid.RenderTransform><TranslateTransform x:Name="PanelHostShift" /></Grid.RenderTransform>
 
             <!-- ========== Dashboard ========== -->
             <Grid x:Name="PanelDashboard">

@@ -233,6 +233,15 @@ public partial class MainWindow : Window
             PopulateColorUi();
             UpdateCustomListStatus(); // §5 reflect any saved custom blocklist file
             RefreshEntityRules();     // §1 render saved country/continent/ASN rules + GeoIP status
+            try
+            {
+                var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0,
+                    TimeSpan.FromMilliseconds(260))
+                { EasingFunction = new System.Windows.Media.Animation.CubicEase() };
+                BeginAnimation(OpacityProperty, fadeIn);
+            }
+            catch { }
+
             InitGeoSourceUi();        // reflect saved GeoIP source (local / API)
             InitDnsPanel();           // §3 reflect saved local-resolver settings
             RefreshProfileCombo();    // §10 reflect saved rule profiles
@@ -244,7 +253,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.61.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.62.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1980,6 +1989,30 @@ public partial class MainWindow : Window
         if (tag == "System") BuildSystemRulesUi();
         if (tag == "Security") { BuildBlocklistCatUi(); RefreshDnsCombo(); }
         if (tag == "Settings") { RefreshProfilesCombo(); RefreshProfileCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
+
+        AnimatePanelIn(); // choreographed entrance: fade + rise, 200ms ease-out
+    }
+
+    /// <summary>Panel-switch motion: the content host fades in and rises 12px
+    /// with an ease-out curve. Small and fast (~200ms) so it reads as polish,
+    /// never as delay; failures are swallowed so navigation can never break.</summary>
+    private void AnimatePanelIn()
+    {
+        try
+        {
+            if (PanelHost == null || PanelHostShift == null) return;
+            var ease = new System.Windows.Media.Animation.CubicEase
+            { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+
+            var fade = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0,
+                TimeSpan.FromMilliseconds(180)) { EasingFunction = ease };
+            var rise = new System.Windows.Media.Animation.DoubleAnimation(12.0, 0.0,
+                TimeSpan.FromMilliseconds(220)) { EasingFunction = ease };
+
+            PanelHost.BeginAnimation(OpacityProperty, fade);
+            PanelHostShift.BeginAnimation(TranslateTransform.YProperty, rise);
+        }
+        catch { /* motion is cosmetic - never let it break navigation */ }
     }
 
     // ================================================================ actions
