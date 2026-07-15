@@ -59,6 +59,10 @@ public partial class MainWindow : Window
     private const int GraphPoints = 60;
     private readonly double[] _downSeries = new double[GraphPoints];
     private readonly double[] _upSeries = new double[GraphPoints];
+    // Eased copies actually drawn each frame (see OnGraphFrame).
+    private readonly double[] _downDisplay = new double[GraphPoints];
+    private readonly double[] _upDisplay = new double[GraphPoints];
+    private bool _forceGraphRedraw;
 
     private long _lastRx = -1, _lastTx = -1;
     private DateTime _lastSample = DateTime.MinValue;
@@ -242,6 +246,7 @@ public partial class MainWindow : Window
             }
             catch { }
 
+            System.Windows.Media.CompositionTarget.Rendering += OnGraphFrame; // frame-driven graph
             InitGeoSourceUi();        // reflect saved GeoIP source (local / API)
             InitDnsPanel();           // §3 reflect saved local-resolver settings
             RefreshProfileCombo();    // §10 reflect saved rule profiles
@@ -253,7 +258,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.63.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.64.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1920,9 +1925,32 @@ public partial class MainWindow : Window
     }
 
     // ================================================================ graph
+    // Frame-driven smoothing: the sampler updates the target series once a second;
+    // this eases the displayed values toward the target every rendered frame (at
+    // the monitor's refresh rate) and draws smooth Catmull-Rom curves. That's what
+    // turns the old 1-fps snap into a fluid, continuously-eased graph. Runs only while
+    // the dashboard is visible, and stops drawing once values have settled.
+    private void OnGraphFrame(object? sender, EventArgs e)
+    {
+        if (PanelDashboard == null || PanelDashboard.Visibility != Visibility.Visible) return;
+
+        bool moving = _forceGraphRedraw;
+        for (int i = 0; i < GraphPoints; i++)
+        {
+            double nd = _downDisplay[i] + (_downSeries[i] - _downDisplay[i]) * 0.12;
+            double nu = _upDisplay[i] + (_upSeries[i] - _upDisplay[i]) * 0.12;
+            if (Math.Abs(nd - _downDisplay[i]) > 0.5 || Math.Abs(nu - _upDisplay[i]) > 0.5) moving = true;
+            _downDisplay[i] = nd; _upDisplay[i] = nu;
+        }
+        if (!moving) return;
+        _forceGraphRedraw = false;
+        RedrawGraph();
+    }
+
     private void RedrawGraph()
     {
         var canvas = GraphCanvas;
+        if (canvas == null) return;
         canvas.Children.Clear();
         double w = canvas.ActualWidth, h = canvas.ActualHeight;
         if (w <= 1 || h <= 1) return;
@@ -1930,62 +1958,106 @@ public partial class MainWindow : Window
         double max = 64 * 1024;
         for (int i = 0; i < GraphPoints; i++)
         {
-            max = Math.Max(max, _downSeries[i]);
-            max = Math.Max(max, _upSeries[i]);
+            max = Math.Max(max, _downDisplay[i]);
+            max = Math.Max(max, _upDisplay[i]);
         }
 
         DrawBaseline(canvas, w, h);
-        // Palette: cool blue for download, signature orange for upload.
-        AddSeries(canvas, _downSeries, max, w, h, Color.FromRgb(0x3D, 0xA9, 0xFC));
-        AddSeries(canvas, _upSeries, max, w, h, Color.FromRgb(0x7C, 0x5C, 0xFF));
+        // Palette: green gradient area for download (received),
+        // a thin magenta line for upload (sent).
+        AddSmoothSeries(canvas, _downDisplay, max, w, h, Color.FromRgb(0x23, 0xC0, 0x5C), fillArea: true);
+        AddSmoothSeries(canvas, _upDisplay, max, w, h, Color.FromRgb(0xE0, 0x66, 0xA6), fillArea: false);
     }
 
     private static void DrawBaseline(Canvas canvas, double w, double h)
     {
-        var line = new Line
+        canvas.Children.Add(new Line
         {
             X1 = 0, Y1 = h - 1, X2 = w, Y2 = h - 1,
-            Stroke = new SolidColorBrush(Color.FromRgb(0x2A, 0x34, 0x46)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0x26, 0x28, 0x2B)),
             StrokeThickness = 1
-        };
-        canvas.Children.Add(line);
+        });
     }
 
-    private static void AddSeries(Canvas canvas, double[] series, double max,
-                                  double w, double h, Color color)
+    // Points -> screen coordinates for one series.
+    private static Point[] SeriesPoints(double[] series, double max, double w, double h)
     {
-        var poly = new Polyline
-        {
-            Stroke = new SolidColorBrush(color),
-            StrokeThickness = 2,
-            StrokeLineJoin = PenLineJoin.Round
-        };
-        double stepX = w / (GraphPoints - 1);
-        for (int i = 0; i < series.Length; i++)
-        {
-            double x = i * stepX;
-            double y = h - (series[i] / max * (h - 4)) - 2;
-            poly.Points.Add(new Point(x, y));
-        }
-        canvas.Children.Add(poly);
-
-        // Soft vertical gradient fill under the line.
-        var fillBrush = new LinearGradientBrush
-        {
-            StartPoint = new Point(0, 0),
-            EndPoint = new Point(0, 1)
-        };
-        fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(90, color.R, color.G, color.B), 0.0));
-        fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(8, color.R, color.G, color.B), 1.0));
-
-        var fill = new Polygon { Fill = fillBrush };
-        foreach (var p in poly.Points) fill.Points.Add(p);
-        fill.Points.Add(new Point(w, h));
-        fill.Points.Add(new Point(0, h));
-        canvas.Children.Insert(0, fill);
+        int n = series.Length;
+        var pts = new Point[n];
+        double stepX = w / (n - 1);
+        for (int i = 0; i < n; i++)
+            pts[i] = new Point(i * stepX, h - (series[i] / max * (h - 6)) - 3);
+        return pts;
     }
 
-    private void GraphCanvas_SizeChanged(object sender, SizeChangedEventArgs e) => RedrawGraph();
+    // Catmull-Rom spline through pts, expressed as cubic Bezier segments.
+    private static (Point C1, Point C2, Point End)[] SplineBeziers(Point[] pts)
+    {
+        int n = pts.Length;
+        var segs = new (Point, Point, Point)[n - 1];
+        for (int i = 0; i < n - 1; i++)
+        {
+            Point p0 = i > 0 ? pts[i - 1] : pts[i];
+            Point p1 = pts[i];
+            Point p2 = pts[i + 1];
+            Point p3 = i + 2 < n ? pts[i + 2] : pts[i + 1];
+            var c1 = new Point(p1.X + (p2.X - p0.X) / 6.0, p1.Y + (p2.Y - p0.Y) / 6.0);
+            var c2 = new Point(p2.X - (p3.X - p1.X) / 6.0, p2.Y - (p3.Y - p1.Y) / 6.0);
+            segs[i] = (c1, c2, p2);
+        }
+        return segs;
+    }
+
+    private static void AddSmoothSeries(Canvas canvas, double[] series, double max,
+                                        double w, double h, Color color, bool fillArea)
+    {
+        var pts = SeriesPoints(series, max, w, h);
+
+        if (fillArea)
+        {
+            var fillGeo = new StreamGeometry();
+            using (var ctx = fillGeo.Open())
+            {
+                ctx.BeginFigure(new Point(pts[0].X, h), isFilled: true, isClosed: true);
+                ctx.LineTo(pts[0], isStroked: false, isSmoothJoin: false);
+                foreach (var (c1, c2, end) in SplineBeziers(pts))
+                    ctx.BezierTo(c1, c2, end, isStroked: false, isSmoothJoin: true);
+                ctx.LineTo(new Point(pts[^1].X, h), isStroked: false, isSmoothJoin: false);
+            }
+            fillGeo.Freeze();
+
+            var fillBrush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x96, color.R, color.G, color.B), 0.0));
+            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x38, color.R, color.G, color.B), 0.5));
+            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, color.R, color.G, color.B), 1.0));
+            fillBrush.Freeze();
+            canvas.Children.Add(new Path { Data = fillGeo, Fill = fillBrush, IsHitTestVisible = false });
+        }
+
+        var lineGeo = new StreamGeometry();
+        using (var ctx = lineGeo.Open())
+        {
+            ctx.BeginFigure(pts[0], isFilled: false, isClosed: false);
+            foreach (var (c1, c2, end) in SplineBeziers(pts))
+                ctx.BezierTo(c1, c2, end, isStroked: true, isSmoothJoin: true);
+        }
+        lineGeo.Freeze();
+
+        canvas.Children.Add(new Path
+        {
+            Data = lineGeo,
+            Stroke = new SolidColorBrush(color),
+            StrokeThickness = fillArea ? 2.2 : 1.6,
+            StrokeLineJoin = PenLineJoin.Round,
+            IsHitTestVisible = false
+        });
+    }
+
+    private void GraphCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        _forceGraphRedraw = true;
+        RedrawGraph();
+    }
 
     // ================================================================ nav
     private void Nav_Checked(object sender, RoutedEventArgs e)
@@ -2023,6 +2095,7 @@ public partial class MainWindow : Window
         if (tag == "Security") { BuildBlocklistCatUi(); RefreshDnsCombo(); }
         if (tag == "Settings") { RefreshProfilesCombo(); RefreshProfileCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
 
+        if (tag == "Dashboard") _forceGraphRedraw = true;
         AnimatePanelIn(); // choreographed entrance: fade + rise, 200ms ease-out
     }
 
