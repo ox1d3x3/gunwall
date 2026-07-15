@@ -16,7 +16,7 @@
     <SolidColorBrush x:Key="Accent2" Color="{StaticResource Accent2Color}" />
     <SolidColorBrush x:Key="AllowBrush" Color="#30D158" />
     <SolidColorBrush x:Key="BlockBrush" Color="#FF453A" />
-    <SolidColorBrush x:Key="InboundBrush" Color="#23C05C" />
+    <SolidColorBrush x:Key="InboundBrush" Color="#3DA9FC" />
     <SolidColorBrush x:Key="OutboundBrush" Color="#E066A6" />
 
     <!-- Flat accent (kept as a 'gradient' key name for compatibility, but solid

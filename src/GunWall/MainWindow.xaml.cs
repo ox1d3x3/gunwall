@@ -59,10 +59,12 @@ public partial class MainWindow : Window
     private const int GraphPoints = 60;
     private readonly double[] _downSeries = new double[GraphPoints];
     private readonly double[] _upSeries = new double[GraphPoints];
-    // Eased copies actually drawn each frame (see OnGraphFrame).
-    private readonly double[] _downDisplay = new double[GraphPoints];
-    private readonly double[] _upDisplay = new double[GraphPoints];
-    private bool _forceGraphRedraw;
+    // Continuous-scroll graph: geometry is rebuilt once per sample; between samples
+    // a single shared TranslateTransform slides it left each frame (the "train").
+    private readonly TranslateTransform _graphScroll = new();
+    private DateTime _lastGraphSample = DateTime.MinValue;
+    private double _graphInterval = 1000.0;
+    private double _graphStepX;
 
     private long _lastRx = -1, _lastTx = -1;
     private DateTime _lastSample = DateTime.MinValue;
@@ -258,7 +260,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.64.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.64.1 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1347,7 +1349,7 @@ public partial class MainWindow : Window
 
             string name = System.IO.Path.GetFileNameWithoutExtension(path);
             _alertQueue.Enqueue(new AlertWindow.AlertInfo(
-                name, path, e.RemoteAddress, e.RemotePort, e.Protocol, DateTime.Now));
+                name, path, e.RemoteAddress ?? "", e.RemotePort, e.Protocol, DateTime.Now));
             ShowNextAlert();
         });
     }
@@ -1420,7 +1422,7 @@ public partial class MainWindow : Window
             string remote = c.RemoteAddress;
             if (remote is "0.0.0.0" or "::") remote = ""; // unbound -> pending
             _alertQueue.Enqueue(new AlertWindow.AlertInfo(
-                proc.Name, proc.Path, remote, c.RemotePort, c.Protocol, DateTime.Now));
+                proc.Name, proc.Path, remote ?? "", c.RemotePort, c.Protocol, DateTime.Now));
         }
 
         ShowNextAlert();
@@ -1930,43 +1932,50 @@ public partial class MainWindow : Window
     // the monitor's refresh rate) and draws smooth Catmull-Rom curves. That's what
     // turns the old 1-fps snap into a fluid, continuously-eased graph. Runs only while
     // the dashboard is visible, and stops drawing once values have settled.
+    // Per frame (monitor refresh rate): slide the already-built waveform left by
+    // the fraction of the way to the next sample. No geometry work here — just a
+    // transform offset — so it glides continuously instead of snapping/refreshing.
     private void OnGraphFrame(object? sender, EventArgs e)
     {
         if (PanelDashboard == null || PanelDashboard.Visibility != Visibility.Visible) return;
-
-        bool moving = _forceGraphRedraw;
-        for (int i = 0; i < GraphPoints; i++)
-        {
-            double nd = _downDisplay[i] + (_downSeries[i] - _downDisplay[i]) * 0.12;
-            double nu = _upDisplay[i] + (_upSeries[i] - _upDisplay[i]) * 0.12;
-            if (Math.Abs(nd - _downDisplay[i]) > 0.5 || Math.Abs(nu - _upDisplay[i]) > 0.5) moving = true;
-            _downDisplay[i] = nd; _upDisplay[i] = nu;
-        }
-        if (!moving) return;
-        _forceGraphRedraw = false;
-        RedrawGraph();
+        if (_graphStepX <= 0 || _lastGraphSample == DateTime.MinValue) return;
+        double elapsed = (DateTime.UtcNow - _lastGraphSample).TotalMilliseconds;
+        double frac = Math.Clamp(elapsed / _graphInterval, 0.0, 1.0);
+        _graphScroll.X = -frac * _graphStepX;
     }
 
+    // Rebuilt once per sample (~1/sec). Lays out points so the newest sits just off
+    // the right edge and slides in over the next second; the oldest slides off the
+    // clipped left edge. That right-to-left march is the continuous "train" motion.
     private void RedrawGraph()
     {
         var canvas = GraphCanvas;
         if (canvas == null) return;
         canvas.Children.Clear();
         double w = canvas.ActualWidth, h = canvas.ActualHeight;
-        if (w <= 1 || h <= 1) return;
+        if (w <= 1 || h <= 1) { _graphStepX = 0; return; }
 
         double max = 64 * 1024;
         for (int i = 0; i < GraphPoints; i++)
         {
-            max = Math.Max(max, _downDisplay[i]);
-            max = Math.Max(max, _upDisplay[i]);
+            max = Math.Max(max, _downSeries[i]);
+            max = Math.Max(max, _upSeries[i]);
         }
 
-        DrawBaseline(canvas, w, h);
-        // Palette: green gradient area for download (received),
-        // a thin magenta line for upload (sent).
-        AddSmoothSeries(canvas, _downDisplay, max, w, h, Color.FromRgb(0x23, 0xC0, 0x5C), fillArea: true);
-        AddSmoothSeries(canvas, _upDisplay, max, w, h, Color.FromRgb(0xE0, 0x66, 0xA6), fillArea: false);
+        _graphStepX = w / (GraphPoints - 1);
+        DrawBaseline(canvas, w, h); // static, not scrolled
+        // Download: blue gradient area. Upload: thin magenta line.
+        AddSmoothSeries(canvas, _downSeries, max, w, h, Color.FromRgb(0x3D, 0xA9, 0xFC), fillArea: true, _graphScroll);
+        AddSmoothSeries(canvas, _upSeries, max, w, h, Color.FromRgb(0xE0, 0x66, 0xA6), fillArea: false, _graphScroll);
+
+        var now = DateTime.UtcNow;
+        if (_lastGraphSample != DateTime.MinValue)
+        {
+            double dt = (now - _lastGraphSample).TotalMilliseconds;
+            if (dt is > 100 and < 5000) _graphInterval = dt; // adapt to the real cadence
+        }
+        _lastGraphSample = now;
+        _graphScroll.X = 0; // new data appended at the right; restart the slide
     }
 
     private static void DrawBaseline(Canvas canvas, double w, double h)
@@ -1979,14 +1988,19 @@ public partial class MainWindow : Window
         });
     }
 
-    // Points -> screen coordinates for one series.
+    // Screen points for one series, laid out so the newest point (index n-1) sits
+    // one step BEYOND the right edge, ready to slide in.
     private static Point[] SeriesPoints(double[] series, double max, double w, double h)
     {
         int n = series.Length;
         var pts = new Point[n];
         double stepX = w / (n - 1);
         for (int i = 0; i < n; i++)
-            pts[i] = new Point(i * stepX, h - (series[i] / max * (h - 6)) - 3);
+        {
+            double x = (i - n + 2) * stepX + w;
+            double y = h - (series[i] / max * (h - 6)) - 3;
+            pts[i] = new Point(x, y);
+        }
         return pts;
     }
 
@@ -2009,7 +2023,8 @@ public partial class MainWindow : Window
     }
 
     private static void AddSmoothSeries(Canvas canvas, double[] series, double max,
-                                        double w, double h, Color color, bool fillArea)
+                                        double w, double h, Color color, bool fillArea,
+                                        Transform scroll)
     {
         var pts = SeriesPoints(series, max, w, h);
 
@@ -2031,7 +2046,7 @@ public partial class MainWindow : Window
             fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x38, color.R, color.G, color.B), 0.5));
             fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, color.R, color.G, color.B), 1.0));
             fillBrush.Freeze();
-            canvas.Children.Add(new Path { Data = fillGeo, Fill = fillBrush, IsHitTestVisible = false });
+            canvas.Children.Add(new System.Windows.Shapes.Path { Data = fillGeo, Fill = fillBrush, IsHitTestVisible = false, RenderTransform = scroll });
         }
 
         var lineGeo = new StreamGeometry();
@@ -2043,21 +2058,18 @@ public partial class MainWindow : Window
         }
         lineGeo.Freeze();
 
-        canvas.Children.Add(new Path
+        canvas.Children.Add(new System.Windows.Shapes.Path
         {
             Data = lineGeo,
             Stroke = new SolidColorBrush(color),
             StrokeThickness = fillArea ? 2.2 : 1.6,
             StrokeLineJoin = PenLineJoin.Round,
-            IsHitTestVisible = false
+            IsHitTestVisible = false,
+            RenderTransform = scroll
         });
     }
 
-    private void GraphCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        _forceGraphRedraw = true;
-        RedrawGraph();
-    }
+    private void GraphCanvas_SizeChanged(object sender, SizeChangedEventArgs e) => RedrawGraph();
 
     // ================================================================ nav
     private void Nav_Checked(object sender, RoutedEventArgs e)
@@ -2095,7 +2107,7 @@ public partial class MainWindow : Window
         if (tag == "Security") { BuildBlocklistCatUi(); RefreshDnsCombo(); }
         if (tag == "Settings") { RefreshProfilesCombo(); RefreshProfileCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
 
-        if (tag == "Dashboard") _forceGraphRedraw = true;
+        if (tag == "Dashboard") RedrawGraph();
         AnimatePanelIn(); // choreographed entrance: fade + rise, 200ms ease-out
     }
 
