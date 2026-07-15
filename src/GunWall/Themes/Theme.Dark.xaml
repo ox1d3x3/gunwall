@@ -5,20 +5,20 @@
     <!-- ===== DARK THEME (AMOLED black) =====
          True-black window with neutral, Apple-style lifted surfaces: near-black
          cards, hairline separators, warm-white text and soft tinted status pills. -->
-    <SolidColorBrush x:Key="BgPrimary" Color="#000000" />
-    <SolidColorBrush x:Key="BgSecondary" Color="#0B0B0C" />
-    <SolidColorBrush x:Key="BgCard" Color="#131315" />
-    <SolidColorBrush x:Key="BgElevated" Color="#1D1D20" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#2A2A2E" />
-    <SolidColorBrush x:Key="TextPrimary" Color="#F5F5F7" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#98989F" />
+    <SolidColorBrush x:Key="BgPrimary" Color="#0D0E0F" />
+    <SolidColorBrush x:Key="BgSecondary" Color="#141516" />
+    <SolidColorBrush x:Key="BgCard" Color="#1C1D1F" />
+    <SolidColorBrush x:Key="BgElevated" Color="#26282B" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#303336" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#EDEEEF" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#96999E" />
 
     <!-- Soft status fills + foregrounds (pills) -->
     <SolidColorBrush x:Key="AllowFill" Color="#0E2B19" />
     <SolidColorBrush x:Key="AllowText" Color="#30D158" />
     <SolidColorBrush x:Key="BlockFill" Color="#331A18" />
     <SolidColorBrush x:Key="BlockText" Color="#FF6961" />
-    <SolidColorBrush x:Key="AccentSoft" Color="#0E2A4F" />
+    <SolidColorBrush x:Key="AccentSoft" Color="#12351F" />
 
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">True</sys:Boolean>
 </ResourceDictionary>

@@ -253,7 +253,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.62.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.63.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -514,6 +514,39 @@ public partial class MainWindow : Window
             TrafficSubtitle.Text = _stats.TotalDestinations == 0
                 ? "No external destinations seen yet - traffic will appear here as apps connect out."
                 : $"{_stats.TotalDestinations:N0} distinct destinations since startup, across {_stats.CountryCount} countries and {_stats.AppCount} apps.";
+
+        RefreshMapMarkers();
+    }
+
+    /// <summary>Plot a green dot per active country on the world map, sized by
+    /// destination count. Uses the same TopCountries data as the list, so map and
+    /// list always agree. Cheap: a couple dozen ellipses, only on Traffic refresh.</summary>
+    private void RefreshMapMarkers()
+    {
+        if (MapMarkers == null) return;
+        MapMarkers.Children.Clear();
+        var top = _stats.TopCountries(200);
+        int max = 1;
+        foreach (var (_, count) in top) if (count > max) max = count;
+
+        foreach (var (code, count) in top)
+        {
+            if (!WorldMapData.CountryPoints.TryGetValue(code.ToUpperInvariant(), out var pt)) continue;
+
+            // radius 3..9 by share of the busiest country (sqrt keeps small ones visible)
+            double r = 3.0 + 6.0 * Math.Sqrt(count / (double)max);
+            var dot = new System.Windows.Shapes.Ellipse
+            {
+                Width = r * 2, Height = r * 2,
+                Fill = new SolidColorBrush(Color.FromArgb(0xE0, 0x23, 0xC0, 0x5C)),
+                Stroke = new SolidColorBrush(Color.FromArgb(0x66, 0x23, 0xC0, 0x5C)),
+                StrokeThickness = 2,
+                ToolTip = $"{GunWall.Services.GeoData.CountryName(code)} · {count} destinations"
+            };
+            Canvas.SetLeft(dot, pt.X - r);
+            Canvas.SetTop(dot, pt.Y - r);
+            MapMarkers.Children.Add(dot);
+        }
     }
 
     private static void Shift(double[] series, double newest)

@@ -9,21 +9,21 @@
          referenced with DynamicResource so they update live on theme switch.
          The accent, status, and gradient brushes below are theme-INVARIANT —
          the same cyan/violet identity works on both black and white. -->
-    <Color x:Key="AccentColor">#0A84FF</Color>
-    <Color x:Key="Accent2Color">#0A84FF</Color>
+    <Color x:Key="AccentColor">#23C05C</Color>
+    <Color x:Key="Accent2Color">#23C05C</Color>
 
     <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="Accent2" Color="{StaticResource Accent2Color}" />
     <SolidColorBrush x:Key="AllowBrush" Color="#30D158" />
     <SolidColorBrush x:Key="BlockBrush" Color="#FF453A" />
-    <SolidColorBrush x:Key="InboundBrush" Color="#0A84FF" />
+    <SolidColorBrush x:Key="InboundBrush" Color="#23C05C" />
     <SolidColorBrush x:Key="OutboundBrush" Color="#30D158" />
 
     <!-- Flat accent (kept as a 'gradient' key name for compatibility, but solid
          for a clean, professional, non-AI look). -->
     <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#0A84FF" Offset="0" />
-        <GradientStop Color="#0670DE" Offset="1" />
+        <GradientStop Color="#23C05C" Offset="0" />
+        <GradientStop Color="#1B9E4B" Offset="1" />
     </LinearGradientBrush>
 
     <!-- ======================= Base TextBlock ======================= -->
