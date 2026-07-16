@@ -31,6 +31,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<NetworkScanner.Device> _devices = new();
     private readonly NetworkStatsService _stats = new();
     private readonly AppUsageService _usage = new();   // approximate per-app data usage
+    private static string UsageHistoryPath =>
+        System.IO.Path.Combine(AppContext.BaseDirectory, "usage-history.json");
     private readonly ObservableCollection<CountryStat> _trafficCountries = new();
     private readonly ObservableCollection<AppStat> _trafficApps = new();
 
@@ -160,6 +162,7 @@ public partial class MainWindow : Window
             }
             catch { }
             try { _dnsResolver.Stop(); } catch { }
+            try { _usage.SaveTo(UsageHistoryPath); } catch { }
             return; // genuine exit — let it close
         }
 
@@ -265,6 +268,7 @@ public partial class MainWindow : Window
             _graphTimer.Start();
             InitGeoSourceUi();        // reflect saved GeoIP source (local / API)
             InitDnsPanel();           // §3 reflect saved local-resolver settings
+            _usage.LoadFrom(UsageHistoryPath);   // 24h usage survives restarts
             RefreshProfileCombo();    // §10 reflect saved rule profiles
             _suppressModeEvent = false;
             SyncFirewallToggle();
@@ -274,7 +278,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.66.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.67.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it

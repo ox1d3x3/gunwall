@@ -103,6 +103,58 @@ public sealed class AppUsageService
         return $"{b} B";
     }
 
+    // ------------------------------------------------ persistence (24h survives restarts)
+    private sealed class BucketDto
+    {
+        public DateTime Minute { get; set; }
+        public Dictionary<string, long[]> Apps { get; set; } = new();
+    }
+
+    /// <summary>Write all buckets to a JSON file (best-effort).</summary>
+    public void SaveTo(string path)
+    {
+        try
+        {
+            List<BucketDto> dto;
+            lock (_lock)
+            {
+                dto = _buckets.Select(b => new BucketDto
+                {
+                    Minute = b.Minute,
+                    Apps = b.Apps.ToDictionary(kv => kv.Key, kv => new[] { kv.Value.Down, kv.Value.Up })
+                }).ToList();
+            }
+            System.IO.File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(dto));
+        }
+        catch { /* history is a convenience; never block shutdown */ }
+    }
+
+    /// <summary>Load buckets from disk, dropping anything older than 24h.</summary>
+    public void LoadFrom(string path)
+    {
+        try
+        {
+            if (!System.IO.File.Exists(path)) return;
+            var dto = System.Text.Json.JsonSerializer
+                .Deserialize<List<BucketDto>>(System.IO.File.ReadAllText(path));
+            if (dto == null) return;
+            var cutoff = DateTime.UtcNow.AddMinutes(-MaxMinutes);
+            lock (_lock)
+            {
+                _buckets.Clear();
+                foreach (var d in dto.OrderBy(d => d.Minute))
+                {
+                    if (d.Minute < cutoff) continue;
+                    var b = new Bucket { Minute = d.Minute };
+                    foreach (var (app, v) in d.Apps)
+                        if (v is { Length: 2 }) b.Apps[app] = (v[0], v[1]);
+                    _buckets.Enqueue(b);
+                }
+            }
+        }
+        catch { /* corrupt history file: start fresh */ }
+    }
+
     private static DateTime Truncate(DateTime t) =>
         new(t.Year, t.Month, t.Day, t.Hour, t.Minute, 0, DateTimeKind.Utc);
 }

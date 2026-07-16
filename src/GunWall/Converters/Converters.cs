@@ -175,3 +175,12 @@ public sealed class NameInitialConverter : System.Windows.Data.IValueConverter
     public object ConvertBack(object v, Type t, object p, System.Globalization.CultureInfo c) =>
         throw new NotSupportedException();
 }
+
+/// <summary>Null -> Visible, non-null -> Collapsed (monogram only when no icon).</summary>
+public sealed class NullToVisibleConverter : System.Windows.Data.IValueConverter
+{
+    public object Convert(object value, Type t, object p, System.Globalization.CultureInfo c) =>
+        value == null ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+    public object ConvertBack(object v, Type t, object p, System.Globalization.CultureInfo c) =>
+        throw new NotSupportedException();
+}

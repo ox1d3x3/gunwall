@@ -21,6 +21,7 @@
         <conv:CountryFlagConverter x:Key="CountryFlag" />
         <conv:NameToBrushConverter x:Key="NameToBrush" />
         <conv:NameInitialConverter x:Key="NameInitial" />
+        <conv:NullToVisibleConverter x:Key="NullToVisible" />
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
         <Style x:Key="SearchBox" TargetType="TextBox">
@@ -437,10 +438,12 @@
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
                                                 <Grid Width="22" Height="22" VerticalAlignment="Center" Margin="0,0,8,0">
-                                                    <Ellipse Fill="{Binding Name, Converter={StaticResource NameToBrush}}" />
+                                                    <Ellipse Fill="{Binding Name, Converter={StaticResource NameToBrush}}"
+                                                             Visibility="{Binding Icon, Converter={StaticResource NullToVisible}}" />
                                                     <TextBlock Text="{Binding Name, Converter={StaticResource NameInitial}}"
                                                                Foreground="#F2F4F6" FontSize="11" FontWeight="SemiBold"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               Visibility="{Binding Icon, Converter={StaticResource NullToVisible}}" />
                                                     <Image Source="{Binding Icon}" Width="22" Height="22"
                                                            SnapsToDevicePixels="True" />
                                                 </Grid>
