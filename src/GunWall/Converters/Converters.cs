@@ -142,3 +142,36 @@ public sealed class CountryFlagConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+/// <summary>App name -> stable, pleasant avatar color (hash into a curated palette).</summary>
+public sealed class NameToBrushConverter : System.Windows.Data.IValueConverter
+{
+    private static readonly string[] Palette =
+    {
+        "#E05D5D","#E08A3C","#D4B13F","#57A85C","#3BA8A0",
+        "#4A90D9","#6F6FD6","#9B59B6","#C2559C","#5D8AA8"
+    };
+    public object Convert(object value, Type t, object p, System.Globalization.CultureInfo c)
+    {
+        string s = value as string ?? "";
+        int h = 0; foreach (var ch in s) h = (h * 31 + ch) & 0x7FFFFFFF;
+        var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter
+            .ConvertFromString(Palette[h % Palette.Length]);
+        var b = new System.Windows.Media.SolidColorBrush(color); b.Freeze(); return b;
+    }
+    public object ConvertBack(object v, Type t, object p, System.Globalization.CultureInfo c) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>App name -> single uppercase initial for the monogram avatar.</summary>
+public sealed class NameInitialConverter : System.Windows.Data.IValueConverter
+{
+    public object Convert(object value, Type t, object p, System.Globalization.CultureInfo c)
+    {
+        string s = (value as string ?? "").Trim();
+        foreach (var ch in s) if (char.IsLetterOrDigit(ch)) return char.ToUpperInvariant(ch).ToString();
+        return "?";
+    }
+    public object ConvertBack(object v, Type t, object p, System.Globalization.CultureInfo c) =>
+        throw new NotSupportedException();
+}
