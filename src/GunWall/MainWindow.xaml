@@ -678,6 +678,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0" Margin="0,0,0,16">
                     <StackPanel>
@@ -750,6 +751,34 @@
                         </DockPanel>
                     </Border>
                 </Grid>
+            
+                <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,16,0,0">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                            <TextBlock Text="DATA USAGE BY APP" Style="{StaticResource Muted}"
+                                       FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <ComboBox x:Name="UsageWindowCombo" Width="140" HorizontalAlignment="Right"
+                                      SelectionChanged="UsageWindow_Changed" SelectedIndex="1">
+                                <ComboBoxItem Content="Last 5 minutes" />
+                                <ComboBoxItem Content="Last hour" />
+                                <ComboBoxItem Content="Last 24 hours" />
+                            </ComboBox>
+                        </DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="Estimated: totals are attributed to apps by their share of active connections in each interval. Pick a short window right after a spike to see what caused it." />
+                        <ListView x:Name="UsageList" BorderThickness="0" Background="Transparent" MaxHeight="260"
+                                  VirtualizingPanel.IsVirtualizing="True">
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Application" Width="280" DisplayMemberBinding="{Binding App}" />
+                                    <GridViewColumn Header="Down" Width="110" DisplayMemberBinding="{Binding DownText}" />
+                                    <GridViewColumn Header="Up" Width="110" DisplayMemberBinding="{Binding UpText}" />
+                                    <GridViewColumn Header="Total" Width="120" DisplayMemberBinding="{Binding TotalText}" />
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+                    </DockPanel>
+                </Border>
             </Grid>
 
             <!-- ========== DNS resolver ========== -->

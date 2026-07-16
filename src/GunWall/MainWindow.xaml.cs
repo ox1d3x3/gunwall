@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ServicesService.ServiceItem> _services = new();
     private readonly ObservableCollection<NetworkScanner.Device> _devices = new();
     private readonly NetworkStatsService _stats = new();
+    private readonly AppUsageService _usage = new();   // approximate per-app data usage
     private readonly ObservableCollection<CountryStat> _trafficCountries = new();
     private readonly ObservableCollection<AppStat> _trafficApps = new();
 
@@ -273,7 +274,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.64.2 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.65.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -473,6 +474,15 @@ public partial class MainWindow : Window
             foreach (var c in snap.Conns)
                 _stats.RecordOne(c.ProcessName.Length > 0 ? c.ProcessName : "PID " + c.ProcessId,
                                  c.RemoteAddress, c.Country);
+
+            // Approximate per-app usage: this tick's measured bytes, attributed by
+            // each app's share of active external connections (estimate by design).
+            var perApp = snap.Conns
+                .Where(cn => !string.IsNullOrEmpty(cn.RemoteAddress) && !cn.RemoteAddress.StartsWith("127."))
+                .GroupBy(cn => cn.ProcessName.Length > 0 ? cn.ProcessName : "PID " + cn.ProcessId)
+                .Select(g => (g.Key, g.Count()))
+                .ToList();
+            _usage.Record(snap.DownRate, snap.UpRate, perApp);
         }
         catch (Exception ex) { SampleStepError("stats", ex); }
         try { UpdateSessionTotals(); } catch (Exception ex) { SampleStepError("UpdateSessionTotals", ex); }
@@ -535,6 +545,7 @@ public partial class MainWindow : Window
                 : $"{_stats.TotalDestinations:N0} distinct destinations since startup, across {_stats.CountryCount} countries and {_stats.AppCount} apps.";
 
         RefreshMapMarkers();
+        RefreshUsage();
     }
 
     /// <summary>Plot a green dot per active country on the world map, sized by
@@ -853,6 +864,21 @@ public partial class MainWindow : Window
         if (AlertsEmpty != null)
             AlertsEmpty.Visibility = _notifications.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    // ======================================================== data usage (§7b)
+    private void RefreshUsage()
+    {
+        if (UsageList == null || UsageWindowCombo == null) return;
+        var window = UsageWindowCombo.SelectedIndex switch
+        {
+            0 => TimeSpan.FromMinutes(5),
+            1 => TimeSpan.FromHours(1),
+            _ => TimeSpan.FromHours(24)
+        };
+        UsageList.ItemsSource = _usage.Totals(window);
+    }
+
+    private void UsageWindow_Changed(object sender, SelectionChangedEventArgs e) => RefreshUsage();
 
     // ============================================================ app health (§12)
     /// <summary>Live self-diagnostics card in Settings: the same counters the
