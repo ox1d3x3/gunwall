@@ -59,11 +59,20 @@ public partial class MainWindow : Window
     private const int GraphPoints = 60;
     private readonly double[] _downSeries = new double[GraphPoints];
     private readonly double[] _upSeries = new double[GraphPoints];
-    // Continuous-scroll graph: geometry is rebuilt once per sample; between samples
-    // a single shared TranslateTransform slides it left each frame (the "train").
+    // Live graph sampler: reads NIC byte counters every 250ms (cheap — they're just
+    // counters) so the graph's leading edge updates in near-real-time, 4x faster
+    // than the 1s stats loop. 240 points x 250ms = the same 60s window.
+    private const int GraphFinePoints = 240;
+    private readonly double[] _gDown = new double[GraphFinePoints];
+    private readonly double[] _gUp = new double[GraphFinePoints];
+    private System.Windows.Threading.DispatcherTimer? _graphTimer;
+    private long _gLastRx = -1, _gLastTx;
+    private DateTime _gLastAt;
+    // Between samples a single shared TranslateTransform slides the geometry left
+    // (the "train"); the per-sample rebuild keeps the tip alive.
     private readonly TranslateTransform _graphScroll = new();
     private DateTime _lastGraphSample = DateTime.MinValue;
-    private double _graphInterval = 1000.0;
+    private double _graphInterval = 250.0;
     private double _graphStepX;
 
     private long _lastRx = -1, _lastTx = -1;
@@ -249,6 +258,10 @@ public partial class MainWindow : Window
             catch { }
 
             System.Windows.Media.CompositionTarget.Rendering += OnGraphFrame; // frame-driven graph
+            _graphTimer = new System.Windows.Threading.DispatcherTimer
+            { Interval = TimeSpan.FromMilliseconds(250) };
+            _graphTimer.Tick += GraphTimer_Tick;
+            _graphTimer.Start();
             InitGeoSourceUi();        // reflect saved GeoIP source (local / API)
             InitDnsPanel();           // §3 reflect saved local-resolver settings
             RefreshProfileCombo();    // §10 reflect saved rule profiles
@@ -260,7 +273,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.64.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.64.2 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -470,8 +483,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { SampleStepError("RebuildConnList", ex); }
         try { if (PanelFirewall.Visibility == Visibility.Visible) RebuildAppsList(); }
         catch (Exception ex) { SampleStepError("RebuildAppsList", ex); }
-        try { if (PanelDashboard.Visibility == Visibility.Visible) RedrawGraph(); }
-        catch (Exception ex) { SampleStepError("RedrawGraph", ex); }
+        // graph is driven by its own 250ms live sampler (GraphTimer_Tick)
         try { if (PanelSettings.Visibility == Visibility.Visible) UpdateHealthCard(); }
         catch (Exception ex) { SampleStepError("UpdateHealthCard", ex); }
     }
@@ -1932,6 +1944,30 @@ public partial class MainWindow : Window
     // the monitor's refresh rate) and draws smooth Catmull-Rom curves. That's what
     // turns the old 1-fps snap into a fluid, continuously-eased graph. Runs only while
     // the dashboard is visible, and stops drawing once values have settled.
+    // 250ms live sampler: instantaneous rates from NIC counter deltas feed the
+    // fine series, then the geometry rebuilds so the tip reflects traffic that
+    // happened a quarter-second ago — real-time, not a delayed recording.
+    private void GraphTimer_Tick(object? sender, EventArgs e)
+    {
+        if (PanelDashboard == null || PanelDashboard.Visibility != Visibility.Visible) return;
+        try
+        {
+            var (rx, tx) = _monitor.GetCumulativeBytes();
+            var now = DateTime.UtcNow;
+            if (_gLastRx >= 0)
+            {
+                double secs = Math.Max(0.05, (now - _gLastAt).TotalSeconds);
+                double down = Math.Max(0, (rx - _gLastRx) / secs);
+                double up = Math.Max(0, (tx - _gLastTx) / secs);
+                Array.Copy(_gDown, 1, _gDown, 0, GraphFinePoints - 1); _gDown[^1] = down;
+                Array.Copy(_gUp, 1, _gUp, 0, GraphFinePoints - 1); _gUp[^1] = up;
+                RedrawGraph();
+            }
+            _gLastRx = rx; _gLastTx = tx; _gLastAt = now;
+        }
+        catch { /* counters are best-effort; graph must never throw */ }
+    }
+
     // Per frame (monitor refresh rate): slide the already-built waveform left by
     // the fraction of the way to the next sample. No geometry work here — just a
     // transform offset — so it glides continuously instead of snapping/refreshing.
@@ -1956,17 +1992,17 @@ public partial class MainWindow : Window
         if (w <= 1 || h <= 1) { _graphStepX = 0; return; }
 
         double max = 64 * 1024;
-        for (int i = 0; i < GraphPoints; i++)
+        for (int i = 0; i < GraphFinePoints; i++)
         {
-            max = Math.Max(max, _downSeries[i]);
-            max = Math.Max(max, _upSeries[i]);
+            max = Math.Max(max, _gDown[i]);
+            max = Math.Max(max, _gUp[i]);
         }
 
-        _graphStepX = w / (GraphPoints - 1);
+        _graphStepX = w / (GraphFinePoints - 1);
         DrawBaseline(canvas, w, h); // static, not scrolled
         // Download: blue gradient area. Upload: thin magenta line.
-        AddSmoothSeries(canvas, _downSeries, max, w, h, Color.FromRgb(0x3D, 0xA9, 0xFC), fillArea: true, _graphScroll);
-        AddSmoothSeries(canvas, _upSeries, max, w, h, Color.FromRgb(0xE0, 0x66, 0xA6), fillArea: false, _graphScroll);
+        AddSmoothSeries(canvas, _gDown, max, w, h, Color.FromRgb(0x3D, 0xA9, 0xFC), fillArea: true, _graphScroll);
+        AddSmoothSeries(canvas, _gUp, max, w, h, Color.FromRgb(0xE0, 0x66, 0xA6), fillArea: false, _graphScroll);
 
         var now = DateTime.UtcNow;
         if (_lastGraphSample != DateTime.MinValue)
