@@ -202,6 +202,10 @@ public sealed class StoreData
     /// <summary>Write each packet-log entry to a CSV file in the profile folder.</summary>
     public bool PacketFileLogging { get; set; }
 
+    /// <summary>Precise per-app byte metering via an ETW kernel-network
+    /// session (experimental; approximation is the fallback). Off by default.</summary>
+    public bool EtwMeterEnabled { get; set; }
+
     /// <summary>Play a sound when a notification popup appears.</summary>
     public bool NotificationSound { get; set; }
 

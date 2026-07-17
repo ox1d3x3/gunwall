@@ -65,6 +65,31 @@ public sealed class AppUsageService
         }
     }
 
+    /// <summary>Record MEASURED per-app bytes (from the ETW meter) directly
+    /// into the current minute bucket — no apportioning. Shares the same
+    /// buckets as the estimate path, so windows/persistence work unchanged.</summary>
+    public void RecordExact(IReadOnlyList<(string App, long Down, long Up)> apps)
+    {
+        if (apps == null || apps.Count == 0) return;
+        var minute = Truncate(DateTime.UtcNow);
+        lock (_lock)
+        {
+            Bucket? b = _buckets.Count > 0 ? _buckets.Last() : null;
+            if (b == null || b.Minute != minute)
+            {
+                b = new Bucket { Minute = minute };
+                _buckets.Enqueue(b);
+                while (_buckets.Count > MaxMinutes) _buckets.Dequeue();
+            }
+            foreach (var (app, d, u) in apps)
+            {
+                if (string.IsNullOrEmpty(app) || (d <= 0 && u <= 0)) continue;
+                b.Apps.TryGetValue(app, out var cur);
+                b.Apps[app] = (cur.Down + Math.Max(0, d), cur.Up + Math.Max(0, u));
+            }
+        }
+    }
+
     /// <summary>Per-app totals over the trailing window, largest first.</summary>
     public List<UsageRow> Totals(TimeSpan window, int maxRows = 50)
     {

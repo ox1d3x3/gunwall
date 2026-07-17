@@ -125,6 +125,13 @@ public partial class MainWindow : Window
     private List<ConnectionInfo> _lastConns = new();
     private Dictionary<int, (string Name, string Path)> _lastProcs = new();
 
+    // ---- ETW per-app byte meter (experimental; approximation is the fallback)
+    private EtwByteMeterService? _etwMeter;
+    private bool _etwDegraded;      // watchdog tripped: session up but no events
+    private int _etwIdleTicks;      // consecutive ticks with NIC bytes but no events
+    private long _etwLastEvents;    // watchdog comparison point
+    private long _etwHealthPrev;    // for the events/sec readout
+
     public MainWindow()
     {
         InitializeComponent();
@@ -163,6 +170,7 @@ public partial class MainWindow : Window
             catch { }
             try { _dnsResolver.Stop(); } catch { }
             try { _usage.SaveTo(UsageHistoryPath); } catch { }
+            try { _etwMeter?.Stop(); } catch { } // stop the OS-level ETW session
             return; // genuine exit — let it close
         }
 
@@ -239,6 +247,7 @@ public partial class MainWindow : Window
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
+            if (EtwMeterCheck != null) EtwMeterCheck.IsChecked = _firewall.EtwMeterEnabled;
             if (FullscreenSilentCheck != null) FullscreenSilentCheck.IsChecked = _firewall.FullscreenSilent;
             if (ConfirmClearCheck != null) ConfirmClearCheck.IsChecked = _firewall.ConfirmClearLogs;
             if (ConfirmExitCheck != null) ConfirmExitCheck.IsChecked = _firewall.AlwaysConfirmExit;
@@ -269,6 +278,7 @@ public partial class MainWindow : Window
             InitGeoSourceUi();        // reflect saved GeoIP source (local / API)
             InitDnsPanel();           // §3 reflect saved local-resolver settings
             _usage.LoadFrom(UsageHistoryPath);   // 24h usage survives restarts
+            if (_firewall.EtwMeterEnabled) StartEtwMeter(); // precise metering, opt-in
             RefreshProfileCombo();    // §10 reflect saved rule profiles
             _suppressModeEvent = false;
             SyncFirewallToggle();
@@ -278,7 +288,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.67.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.70.1 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -479,14 +489,55 @@ public partial class MainWindow : Window
                 _stats.RecordOne(c.ProcessName.Length > 0 ? c.ProcessName : "PID " + c.ProcessId,
                                  c.RemoteAddress, c.Country);
 
-            // Approximate per-app usage: this tick's measured bytes, attributed by
-            // each app's share of active external connections (estimate by design).
-            var perApp = snap.Conns
-                .Where(cn => !string.IsNullOrEmpty(cn.RemoteAddress) && !cn.RemoteAddress.StartsWith("127."))
-                .GroupBy(cn => cn.ProcessName.Length > 0 ? cn.ProcessName : "PID " + cn.ProcessId)
-                .Select(g => (g.Key, g.Count()))
-                .ToList();
-            _usage.Record(snap.DownRate, snap.UpRate, perApp);
+            // Watchdog: a live ETW session that stops producing events while the
+            // NIC clearly has traffic means the meter is broken (parse drift, a
+            // tool stole the session, ...). Degrade to the estimate rather than
+            // silently showing an empty usage table.
+            bool etwLive = _etwMeter is { SessionActive: true } && !_etwDegraded;
+            if (etwLive)
+            {
+                long ev = _etwMeter!.EventsTotal;
+                bool nicBusy = snap.DownRate > 1024 || snap.UpRate > 1024;
+                _etwIdleTicks = (ev == _etwLastEvents && nicBusy) ? _etwIdleTicks + 1 : 0;
+                _etwLastEvents = ev;
+                if (_etwIdleTicks >= 30)
+                {
+                    _etwDegraded = true;
+                    etwLive = false;
+                    Services.DiagnosticLog.Log(
+                        "ETW meter: 30 ticks with NIC traffic but no kernel events - degraded to estimate");
+                    Notify("warn", "ETW meter degraded",
+                        "No kernel events arrived while traffic flowed; usage fell back to the estimate.");
+                    UpdateUsageModeText();
+                }
+            }
+
+            if (etwLive)
+            {
+                // Measured path: drain the meter's per-PID bytes and record them
+                // exactly, resolving PIDs through this tick's process snapshot.
+                var drained = _etwMeter!.Drain();
+                if (drained.Count > 0)
+                {
+                    var exact = new List<(string App, long Down, long Up)>(drained.Count);
+                    foreach (var (pid, v) in drained)
+                        exact.Add((snap.Procs.TryGetValue((int)pid, out var pi) && pi.Name.Length > 0
+                                       ? pi.Name : "PID " + pid,
+                                   v.Down, v.Up));
+                    _usage.RecordExact(exact);
+                }
+            }
+            else
+            {
+                // Approximate per-app usage: this tick's measured bytes, attributed by
+                // each app's share of active external connections (estimate by design).
+                var perApp = snap.Conns
+                    .Where(cn => !string.IsNullOrEmpty(cn.RemoteAddress) && !cn.RemoteAddress.StartsWith("127."))
+                    .GroupBy(cn => cn.ProcessName.Length > 0 ? cn.ProcessName : "PID " + cn.ProcessId)
+                    .Select(g => (g.Key, g.Count()))
+                    .ToList();
+                _usage.Record(snap.DownRate, snap.UpRate, perApp);
+            }
         }
         catch (Exception ex) { SampleStepError("stats", ex); }
         try { UpdateSessionTotals(); } catch (Exception ex) { SampleStepError("UpdateSessionTotals", ex); }
@@ -658,6 +709,14 @@ public partial class MainWindow : Window
                 "DNS resolver", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         UpdateDnsUi();
+    }
+
+    private void DnsClearCache_Click(object sender, RoutedEventArgs e)
+    {
+        _dnsResolver.ClearCache();
+        DnsResStatus.Text = _dnsResolver.Running
+            ? $"Cache cleared. Listening on 127.0.0.1:{_dnsResolver.Port} - fresh lookups will re-resolve upstream."
+            : "Cache cleared.";
     }
 
     private void DnsApplyBlock_Click(object sender, RoutedEventArgs e)
@@ -911,6 +970,61 @@ public partial class MainWindow : Window
         HealthRules.Text =
             $"Rules: {_firewall.AppRuleCount} app \u00B7 {_firewall.CustomRuleCount} custom \u00B7 " +
             $"{_firewall.SystemRuleCount} system  \u2014  engine {(_engineReady ? "active" : "unavailable")}";
+
+        if (HealthEtw != null)
+        {
+            if (_etwMeter is { SessionActive: true } m)
+            {
+                long tot = m.EventsTotal;
+                long rate = Math.Max(0, tot - _etwHealthPrev);
+                _etwHealthPrev = tot;
+                HealthEtw.Text =
+                    $"ETW meter: active \u00B7 {tot:N0} events ({rate}/s) \u00B7 {m.ParseFailures} parse failures"
+                    + (_etwDegraded ? "  \u2014  DEGRADED, estimate in use" : "");
+            }
+            else
+            {
+                HealthEtw.Text = _firewall.EtwMeterEnabled
+                    ? $"ETW meter: failed \u2014 {(string.IsNullOrEmpty(_etwMeter?.LastError) ? "not started" : _etwMeter!.LastError)} (estimate in use)"
+                    : "ETW meter: off (estimate in use)";
+            }
+        }
+    }
+
+    // ---------------------------------------------- ETW byte meter lifecycle
+    /// <summary>Starts precise metering. On any failure the estimate stays in
+    /// charge and the user is told once - never a blank usage table.</summary>
+    private void StartEtwMeter()
+    {
+        try
+        {
+            _etwMeter ??= new EtwByteMeterService();
+            _etwDegraded = false;
+            _etwIdleTicks = 0;
+            _etwLastEvents = 0;
+            if (!_etwMeter.Start())
+                Notify("warn", "ETW meter unavailable",
+                    (_etwMeter.LastError.Length > 0 ? _etwMeter.LastError + " - " : "") +
+                    "usage stays on the estimate.");
+            UpdateUsageModeText();
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("StartEtwMeter", ex); }
+    }
+
+    private void StopEtwMeter()
+    {
+        try { _etwMeter?.Stop(); _etwDegraded = false; UpdateUsageModeText(); }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("StopEtwMeter", ex); }
+    }
+
+    /// <summary>The usage panel says which engine produced its numbers.</summary>
+    private void UpdateUsageModeText()
+    {
+        if (UsageModeText == null) return;
+        bool live = _etwMeter is { SessionActive: true } && !_etwDegraded;
+        UsageModeText.Text = live
+            ? "Measured: per-app bytes come straight from the Windows kernel network provider (ETW). Pick a short window right after a spike to see what caused it."
+            : "Estimated: totals are attributed to apps by their share of active connections in each interval. Pick a short window right after a spike to see what caused it.";
     }
 
     // ---------------------------------------------- §3 Phase 2: system routing
@@ -1457,7 +1571,10 @@ public partial class MainWindow : Window
                 // only start once the firewall is enabled (Zero-Trust), so the
                 // user can open and check the app without interruption.
                 if (!string.IsNullOrEmpty(c.RemoteAddress) && c.RemoteAddress is not ("0.0.0.0" or "::"))
-                    _firewall.MarkKnown(proc.Path);
+                    if (_firewall.MarkKnown(proc.Path))
+                        Notify("info",
+                               $"First network activity: {System.IO.Path.GetFileNameWithoutExtension(proc.Path)}",
+                               $"{proc.Path} made its first network connection on this system.");
                 continue;
             }
 
@@ -2546,6 +2663,10 @@ public partial class MainWindow : Window
             $"statsDestinations={_stats.TotalDestinations}, statsCountries={_stats.CountryCount}, " +
             $"geoApiOk={_firewall.GeoIp.ApiOkCount}, geoApiFail={_firewall.GeoIp.ApiFailCount}, " +
             $"dnsRunning={_dnsResolver.Running}, lastSampleError=[{_lastSampleError}]");
+        Services.DiagnosticLog.Log(
+            $"ETW meter: enabled={_firewall.EtwMeterEnabled}, active={_etwMeter?.SessionActive == true}, " +
+            $"events={_etwMeter?.EventsTotal ?? 0}, parseFailures={_etwMeter?.ParseFailures ?? 0}, " +
+            $"degraded={_etwDegraded}, lastError=[{_etwMeter?.LastError ?? ""}]");
         try
         {
             await System.Threading.Tasks.Task.Run(() => _firewall.ExportDiagnostics(path));
@@ -3707,6 +3828,12 @@ public partial class MainWindow : Window
         _firewall.SetAutoBackup(AutoBackupCheck?.IsChecked == true);
         _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
         _firewall.SetExperimentalEvents(ExperimentalEventsCheck?.IsChecked == true);
+        bool etwWant = EtwMeterCheck?.IsChecked == true;
+        if (etwWant != _firewall.EtwMeterEnabled)
+        {
+            _firewall.SetEtwMeterEnabled(etwWant);
+            if (etwWant) StartEtwMeter(); else StopEtwMeter();
+        }
         Topmost = _firewall.AlwaysOnTop;
 
         // 3) Firewall mode (the heavy one) - confirm before a takeover.

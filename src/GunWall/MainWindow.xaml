@@ -337,7 +337,7 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-                            <TextBlock Text="Throughput (last 60s)" Style="{StaticResource H2}" />
+                            <TextBlock Text="THROUGHPUT (LAST 60S)" Style="{StaticResource SectionLabel}" />
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
                                 <Ellipse Width="10" Height="10" Fill="{StaticResource InboundBrush}"
                                          VerticalAlignment="Center" />
@@ -736,7 +736,7 @@
 
                     <Border Grid.Column="0" Style="{StaticResource Card}" Padding="14" Margin="0,0,8,0">
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Top" Text="Top countries" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <TextBlock DockPanel.Dock="Top" Text="TOP COUNTRIES" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
                             <ListView x:Name="TrafficCountries" BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True">
                                 <ListView.View>
@@ -762,7 +762,7 @@
 
                     <Border Grid.Column="1" Style="{StaticResource Card}" Padding="14" Margin="8,0,0,0">
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Top" Text="Most active apps" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <TextBlock DockPanel.Dock="Top" Text="MOST ACTIVE APPS" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
                             <ListView x:Name="TrafficApps" BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True">
                                 <ListView.View>
@@ -789,7 +789,7 @@
                                 <ComboBoxItem Content="Last 24 hours" />
                             </ComboBox>
                         </DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap"
+                        <TextBlock x:Name="UsageModeText" DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap"
                                    Text="Estimated: totals are attributed to apps by their share of active connections in each interval. Pick a short window right after a spike to see what caused it." />
                         <ListView x:Name="UsageList" BorderThickness="0" Background="Transparent" MaxHeight="260"
                                   VirtualizingPanel.IsVirtualizing="True">
@@ -892,7 +892,7 @@
 
                     <Border Grid.Column="0" Style="{StaticResource Card}" Padding="8" Margin="0,0,8,0">
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Top" Text="Query log" Style="{StaticResource H2}" Margin="4,2,0,8" />
+                            <TextBlock DockPanel.Dock="Top" Text="QUERY LOG" Style="{StaticResource SectionLabel}" Margin="4,2,0,8" />
                             <ListView x:Name="DnsLog" BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                                 <ListView.View>
@@ -932,7 +932,7 @@
 
                     <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0,0,0">
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Top" Text="Blocklist" Style="{StaticResource H2}" Margin="0,0,0,2" />
+                            <TextBlock DockPanel.Dock="Top" Text="BLOCKLIST" Style="{StaticResource SectionLabel}" Margin="0,0,0,2" />
                             <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
                                        Text="One domain per line. Subdomains are blocked too (listing example.com also blocks ads.example.com). Hosts-style '0.0.0.0 domain' lines are accepted. Blocked lookups return NXDOMAIN." />
                             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
@@ -942,6 +942,9 @@
                                         ToolTip="Fetches the StevenBlack unified hosts list (~100k ad/malware domains) and blocks them in this resolver. Stored as dns-blocklist-preset.txt beside the app. Your own lines below stay separate." />
                                 <TextBlock x:Name="DnsPresetStatus" Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap" />
                             </StackPanel>
+                            <Button x:Name="DnsClearCacheBtn" DockPanel.Dock="Bottom" Content="Clear resolver cache"
+                                    Style="{StaticResource ActionButton}" Click="DnsClearCache_Click" Padding="16,8" Margin="0,6,0,0"
+                                    ToolTip="Drops all cached answers so blocklist changes take effect immediately instead of waiting for TTLs to expire." />
                             <Button x:Name="DnsApplyBlockBtn" DockPanel.Dock="Bottom" Content="Apply blocklist"
                                     Style="{StaticResource PrimaryButton}" Click="DnsApplyBlock_Click" Padding="16,8" Margin="0,8,0,0" />
                             <TextBox x:Name="DnsBlockBox" AcceptsReturn="True" TextWrapping="NoWrap"
@@ -1079,7 +1082,7 @@
                 <!-- Editor form -->
                 <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,12">
                     <StackPanel>
-                        <TextBlock Text="Add a rule" Style="{StaticResource H2}" />
+                        <TextBlock Text="ADD A RULE" Style="{StaticResource SectionLabel}" />
                         <TextBlock Text="Block or allow traffic by remote address, port, protocol and direction."
                                    Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
@@ -1169,7 +1172,7 @@
                 <StackPanel Grid.Row="3" Margin="0,12,0,0">
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="IP Blocklist" Style="{StaticResource H2}" />
+                            <TextBlock Text="IP BLOCKLIST" Style="{StaticResource SectionLabel}" />
                             <TextBlock x:Name="BlocklistCount"
                                        Text="Paste IPv4 addresses or subnets (one per line) to block them outright."
                                        Style="{StaticResource Muted}" Margin="0,2,0,8" TextWrapping="Wrap" />
@@ -1282,9 +1285,9 @@
                 </Grid>
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <TextBlock Text="Harden against risky traffic" Style="{StaticResource H2}" Margin="0,0,0,8" />
+                        <TextBlock Text="HARDEN AGAINST RISKY TRAFFIC" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
                         <StackPanel x:Name="SystemBlockList" Margin="0,0,0,8" />
-                        <TextBlock Text="Allow common services" Style="{StaticResource H2}" Margin="0,8,0,8" />
+                        <TextBlock Text="ALLOW COMMON SERVICES" Style="{StaticResource SectionLabel}" Margin="0,8,0,8" />
                         <TextBlock Text="These permit a service outbound. They matter most when you've blocked traffic by default (strict mode or block-all-inbound)."
                                    Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
                         <StackPanel x:Name="SystemAllowList" />
@@ -1303,7 +1306,7 @@
                     <StackPanel>
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="Threat &amp; telemetry blocklists" Style="{StaticResource H2}" />
+                                <TextBlock Text="THREAT &amp; TELEMETRY BLOCKLISTS" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="Blocks known bad domains by category. Telemetry &amp; Windows Update use the Windows hosts file, falling back automatically to firewall rules if security software (e.g. Windows Defender) blocks the hosts file. Ads &amp; trackers is blocked at the DNS layer via AdGuard - fast and no hosts file needed. Click &quot;Update lists from online&quot; for the latest community lists (telemetry from WindowsSpyBlocker, ads/trackers from StevenBlack - both MIT)."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel x:Name="BlocklistCatList" />
@@ -1320,7 +1323,7 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="Custom blocklist file" Style="{StaticResource H2}" />
+                                <TextBlock Text="CUSTOM BLOCKLIST FILE" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="Point GunWall at your own list of domains to block. One domain per line; hosts-style lines (&quot;0.0.0.0 domain&quot;) and # comments are accepted. Your list is folded into the same hosts-file block as the categories above, and re-read whenever you choose a file."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal">
@@ -1336,7 +1339,7 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="GeoIP data source" Style="{StaticResource H2}" />
+                                <TextBlock Text="GEOIP DATA SOURCE" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="Where country/ASN data comes from. &quot;Local database&quot; downloads the full IPv4 table into GunWall (use the Download button on the Connections tab). &quot;Self-hosted API server&quot; queries your own iptoasn-webservice instead - nothing to download, always fresh, and it resolves IPv6 too. Lookups are cached, so each address is fetched only once."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
@@ -1360,7 +1363,7 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="Country &amp; ASN blocking" Style="{StaticResource H2}" />
+                                <TextBlock Text="COUNTRY &amp; ASN BLOCKING" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. IPv4 only. Set up a GeoIP data source above first."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
@@ -1414,7 +1417,7 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="Filtering DNS" Style="{StaticResource H2}" />
+                                <TextBlock Text="FILTERING DNS" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="Point Windows at a filtering resolver for a second blocking layer that needs no list upkeep. AdGuard blocks ads &amp; trackers; Quad9 blocks malware &amp; phishing. Applies to all active adapters."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal">
@@ -1484,7 +1487,7 @@
                 <StackPanel>
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Firewall mode" Style="{StaticResource H2}" />
+                            <TextBlock Text="FIREWALL MODE" Style="{StaticResource SectionLabel}" />
                             <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap"
                                        Text="Alert mode allows new apps and notifies you. Strict mode takes full control: everything is blocked except apps you explicitly allow. Core Windows networking (svchost, DNS) and loopback are auto-allowed so your connection keeps working." />
                             <RadioButton x:Name="AlertModeRadio" Content="Alert mode (recommended)"
@@ -1500,7 +1503,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Connection alerts" Style="{StaticResource H2}" />
+                            <TextBlock Text="CONNECTION ALERTS" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Show a popup the first time a new app connects to the network, with one-click Allow / Block."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <CheckBox x:Name="AlertsCheck" Content="Alert on new apps"
@@ -1511,7 +1514,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Appearance - category colors" Style="{StaticResource H2}" />
+                            <TextBlock Text="APPEARANCE - CATEGORY COLORS" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Customise the colored dot next to each app. Enter a hex color like #30D158, then Apply."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
 
@@ -1576,7 +1579,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Preferences" Style="{StaticResource H2}" />
+                            <TextBlock Text="PREFERENCES" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="General behaviour. Staged - press Apply to save."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" />
                             <CheckBox x:Name="StartMinimizedCheck" Content="Start minimized to tray"
@@ -1657,6 +1660,10 @@
                             <CheckBox x:Name="HashesCheck" Content="Compute SHA-256 hash of apps (tamper detection)"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="EtwMeterCheck"
+                                      Content="Experimental: precise per-app data metering (ETW kernel session; falls back to the estimate on any failure)"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="ExperimentalEventsCheck"
                                       Content="Experimental: kernel event detection (catches more apps, may be unstable)"
                                       Foreground="{DynamicResource TextPrimary}"
@@ -1668,7 +1675,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Profile (rules backup)" Style="{StaticResource H2}" />
+                            <TextBlock Text="PROFILE (RULES BACKUP)" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Export all your rules and settings to a file, or import them on another machine."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal">
@@ -1682,7 +1689,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Windows Firewall" Style="{StaticResource H2}" />
+                            <TextBlock Text="WINDOWS FIREWALL" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="GunWall and Windows Defender Firewall both use the Windows Filtering Platform. Running both can cause confusing conflicts - you can turn Windows Firewall off here, or import its existing block rules into GunWall."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <TextBlock x:Name="WinFwStatus" Text="Checking Windows Firewall status..."
@@ -1703,7 +1710,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Diagnostics" Style="{StaticResource H2}" />
+                            <TextBlock Text="DIAGNOSTICS" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Hit a problem? Export a diagnostics bundle and send it over. It packages GunWall's real-time log (including any errors as they happened), your settings with secrets removed, the active rules and blocklist/DNS state, the hosts block, and your network/firewall configuration - everything needed to pinpoint the issue. No browsing history or personal data is included."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal">
@@ -1719,20 +1726,21 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="App health" Style="{StaticResource H2}" />
+                            <TextBlock Text="APP HEALTH" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Live view of GunWall's own internals - the same counters the diagnostics export records. Updates every second while this page is open."
                                        Style="{StaticResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthPipeline" Text="Monitoring: -" Margin="0,2,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthGeo" Text="GeoIP: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthDns" Text="DNS resolver: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthVt" Text="VirusTotal: -" Margin="0,6,0,0" TextWrapping="Wrap" />
+                            <TextBlock x:Name="HealthEtw" Text="ETW meter: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthRules" Text="Rules: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Connectivity check" Style="{StaticResource H2}" />
+                            <TextBlock Text="CONNECTIVITY CHECK" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="On hotel / airport Wi-Fi, a captive portal intercepts traffic until you log in - which can look like GunWall blocking everything. Check here, and if a portal is found, Portal mode pauses filtering for 5 minutes so you can reach the login page. Protection resumes automatically."
                                        Style="{StaticResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal">
@@ -1747,7 +1755,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Rule profiles" Style="{StaticResource H2}" />
+                            <TextBlock Text="RULE PROFILES" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Save your current per-app allow/block rules as a named profile (e.g. Gaming, Work) and switch between them in one click. Apps not captured in a profile are left untouched; muted apps keep their setting."
                                        Style="{StaticResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal">
@@ -1765,7 +1773,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Profiles" Style="{StaticResource H2}" />
+                            <TextBlock Text="PROFILES" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Save the current rules and settings as a named profile, then switch between profiles (e.g. Home, Work, Travel)."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -1788,7 +1796,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Backups" Style="{StaticResource H2}" />
+                            <TextBlock Text="BACKUPS" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Versioned snapshots of your rules and settings. Restore points let you roll back if a change goes wrong. The newest 15 are kept."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <CheckBox x:Name="AutoBackupCheck" Content="Automatically back up on each launch"
@@ -1807,7 +1815,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="VirusTotal" Style="{StaticResource H2}" />
+                            <TextBlock Text="VIRUSTOTAL" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Add your VirusTotal API key and GunWall automatically checks each app's file hash in the background, showing the verdict in the Apps list (right-click an app for an on-demand scan). Only the file hash is sent, never the file. Results are cached; the free tier is checked at a rate-limit-safe pace."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal">
@@ -1824,7 +1832,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Refresh interval" Style="{StaticResource H2}" />
+                            <TextBlock Text="REFRESH INTERVAL" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="How often connections and the graph update. Slower = lower CPU."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" />
                             <ComboBox x:Name="IntervalCombo" Width="160" HorizontalAlignment="Left"
@@ -1838,7 +1846,7 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Reset firewall" Style="{StaticResource H2}" />
+                            <TextBlock Text="RESET FIREWALL" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="Removes every filter GunWall has created (including persistent ones) and clears saved rules. Run this before uninstalling."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <Button Content="Remove all GunWall filtering"
@@ -1849,7 +1857,7 @@
 
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="About" Style="{StaticResource H2}" />
+                            <TextBlock Text="ABOUT" Style="{StaticResource SectionLabel}" />
                             <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap"
                                        x:Name="AboutText"
                                        Text="GunWall - free, open-source, no telemetry. Built on the Windows Filtering Platform." />

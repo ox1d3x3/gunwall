@@ -797,6 +797,9 @@ public sealed class FirewallManager : IDisposable
     public void SetHashesEnabled(bool v) { _data.HashesEnabled = v; _store.Save(_data); }
     public void SetExperimentalEvents(bool v) { _data.ExperimentalEvents = v; _store.Save(_data); }
 
+    public bool EtwMeterEnabled => _data.EtwMeterEnabled;
+    public void SetEtwMeterEnabled(bool v) { _data.EtwMeterEnabled = v; _store.Save(_data); }
+
     // ------------------------------------------------ custom rules
     public IReadOnlyList<CustomRule> CustomRules => _data.CustomRules;
 
