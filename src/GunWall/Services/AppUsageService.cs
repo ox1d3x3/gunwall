@@ -120,6 +120,61 @@ public sealed class AppUsageService
             .ToList();
     }
 
+    /// <summary>Per-app totals between two instants (minute granularity,
+    /// inclusive), largest first — the scrubbable-timeline query.</summary>
+    public List<UsageRow> TotalsRange(DateTime fromUtc, DateTime toUtc, int maxRows = 50)
+    {
+        var lo = Truncate(fromUtc <= toUtc ? fromUtc : toUtc);
+        var hi = Truncate(fromUtc <= toUtc ? toUtc : fromUtc);
+        var sum = new Dictionary<string, (long Down, long Up)>(StringComparer.OrdinalIgnoreCase);
+        lock (_lock)
+        {
+            foreach (var b in _buckets)
+            {
+                if (b.Minute < lo || b.Minute > hi) continue;
+                foreach (var (app, v) in b.Apps)
+                {
+                    sum.TryGetValue(app, out var cur);
+                    sum[app] = (cur.Down + v.Down, cur.Up + v.Up);
+                }
+            }
+        }
+        return sum
+            .Select(kv => new UsageRow(
+                kv.Key,
+                FormatBytes(kv.Value.Down),
+                FormatBytes(kv.Value.Up),
+                FormatBytes(kv.Value.Down + kv.Value.Up),
+                kv.Value.Down + kv.Value.Up))
+            .OrderByDescending(r => r.TotalBytes)
+            .Take(maxRows)
+            .ToList();
+    }
+
+    /// <summary>Total bytes per minute over the trailing window, oldest first,
+    /// with zero-filled gaps so the timeline strip's x-axis is uniform.</summary>
+    public List<(DateTime MinuteUtc, long Bytes)> MinuteSeries(TimeSpan window)
+    {
+        var end = Truncate(DateTime.UtcNow);
+        int minutes = Math.Max(1, (int)window.TotalMinutes);
+        var start = end.AddMinutes(-(minutes - 1));
+        var byMinute = new Dictionary<DateTime, long>();
+        lock (_lock)
+        {
+            foreach (var b in _buckets)
+            {
+                if (b.Minute < start || b.Minute > end) continue;
+                long tot = 0;
+                foreach (var (_, v) in b.Apps) tot += v.Down + v.Up;
+                byMinute[b.Minute] = tot;
+            }
+        }
+        var series = new List<(DateTime, long)>(minutes);
+        for (var m = start; m <= end; m = m.AddMinutes(1))
+            series.Add((m, byMinute.TryGetValue(m, out long v) ? v : 0));
+        return series;
+    }
+
     public static string FormatBytes(long b)
     {
         if (b >= 1_073_741_824) return $"{b / 1_073_741_824.0:0.##} GB";

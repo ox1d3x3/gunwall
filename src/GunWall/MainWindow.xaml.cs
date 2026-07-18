@@ -288,7 +288,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.70.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.71.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -929,19 +929,192 @@ public partial class MainWindow : Window
     }
 
     // ======================================================== data usage (§7b)
+    // ------------------------------------ Phase 3: scrubbable usage timeline
+    private DateTime? _usageSelFromUtc, _usageSelToUtc; // active slice, minute-aligned
+    private bool _usageDragging;
+    private double _usageDragStartX, _usageDragCurX;
+    private List<(DateTime MinuteUtc, long Bytes)> _usageSeries = new();
+    private int _usageRedrawTick;
+
+    private TimeSpan CurrentUsageWindow() => UsageWindowCombo?.SelectedIndex switch
+    {
+        0 => TimeSpan.FromMinutes(5),
+        1 => TimeSpan.FromHours(1),
+        _ => TimeSpan.FromHours(24)
+    };
+
     private void RefreshUsage()
     {
         if (UsageList == null || UsageWindowCombo == null) return;
-        var window = UsageWindowCombo.SelectedIndex switch
+        if (_usageSelFromUtc is DateTime f && _usageSelToUtc is DateTime t)
+            UsageList.ItemsSource = _usage.TotalsRange(f, t);
+        else
+            UsageList.ItemsSource = _usage.Totals(CurrentUsageWindow());
+
+        // The strip only redraws every few ticks unless the user is interacting -
+        // repainting up to 1440 points every second would be wasted work.
+        if (_usageDragging || ++_usageRedrawTick >= 5)
         {
-            0 => TimeSpan.FromMinutes(5),
-            1 => TimeSpan.FromHours(1),
-            _ => TimeSpan.FromHours(24)
-        };
-        UsageList.ItemsSource = _usage.Totals(window);
+            _usageRedrawTick = 0;
+            RedrawUsageTimeline();
+        }
     }
 
-    private void UsageWindow_Changed(object sender, SelectionChangedEventArgs e) => RefreshUsage();
+    private void UsageWindow_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        ClearUsageSelection(refresh: false); // a slice belongs to one zoom level
+        _usageRedrawTick = 99;
+        RefreshUsage();
+    }
+
+    /// <summary>Repaints the mini-map: a per-minute area chart of total bytes,
+    /// plus the selection overlay when a slice is active or being dragged.</summary>
+    private void RedrawUsageTimeline()
+    {
+        var canvas = UsageTimelineCanvas;
+        if (canvas == null) return;
+        try
+        {
+            double w = canvas.ActualWidth, h = canvas.ActualHeight;
+            canvas.Children.Clear();
+            if (w < 10 || h < 10) return;
+
+            _usageSeries = _usage.MinuteSeries(CurrentUsageWindow());
+            int n = _usageSeries.Count;
+            if (n == 0) return;
+
+            long max = 0;
+            foreach (var pt in _usageSeries) if (pt.Bytes > max) max = pt.Bytes;
+
+            var accent = Color.FromRgb(0x0A, 0x84, 0xFF);
+            var poly = new PointCollection { new Point(0, h) };
+            for (int i = 0; i < n; i++)
+            {
+                double x = n == 1 ? w : i * w / (n - 1);
+                double y = max == 0 ? h - 1.5 : h - 2 - (h - 6) * ((double)_usageSeries[i].Bytes / max);
+                poly.Add(new Point(x, y));
+            }
+            poly.Add(new Point(w, h));
+            canvas.Children.Add(new Polygon
+            {
+                Points = poly,
+                Fill = new SolidColorBrush(Color.FromArgb(0x38, accent.R, accent.G, accent.B)),
+                Stroke = new SolidColorBrush(accent),
+                StrokeThickness = 1.25
+            });
+
+            bool haveSel = _usageSelFromUtc is not null && _usageSelToUtc is not null;
+            if (_usageDragging || haveSel)
+            {
+                DateTime start = _usageSeries[0].MinuteUtc;
+                DateTime end = _usageSeries[n - 1].MinuteUtc;
+                double span = Math.Max(1, (end - start).TotalMinutes);
+                double x1, x2;
+                if (_usageDragging)
+                {
+                    x1 = Math.Min(_usageDragStartX, _usageDragCurX);
+                    x2 = Math.Max(_usageDragStartX, _usageDragCurX);
+                }
+                else
+                {
+                    x1 = (_usageSelFromUtc!.Value - start).TotalMinutes / span * w;
+                    x2 = (_usageSelToUtc!.Value - start).TotalMinutes / span * w;
+                }
+                x1 = Math.Clamp(x1, 0, w);
+                x2 = Math.Clamp(x2, 0, w);
+                var sel = new System.Windows.Shapes.Rectangle
+                {
+                    Width = Math.Max(2, x2 - x1),
+                    Height = h,
+                    Fill = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF))
+                };
+                Canvas.SetLeft(sel, x1);
+                canvas.Children.Add(sel);
+                foreach (double hx in new[] { x1, x2 })
+                {
+                    var handle = new System.Windows.Shapes.Rectangle
+                    {
+                        Width = 2, Height = h, Fill = new SolidColorBrush(accent)
+                    };
+                    Canvas.SetLeft(handle, Math.Clamp(hx - 1, 0, Math.Max(0, w - 2)));
+                    canvas.Children.Add(handle);
+                }
+            }
+        }
+        catch (Exception ex) { SampleStepError("UsageTimeline", ex); }
+    }
+
+    private DateTime UsageXToMinuteUtc(double x)
+    {
+        int n = _usageSeries.Count;
+        if (n == 0) return DateTime.UtcNow;
+        double w = Math.Max(1, UsageTimelineCanvas?.ActualWidth ?? 1);
+        int idx = (int)Math.Round(Math.Clamp(x, 0, w) / w * (n - 1));
+        return _usageSeries[Math.Clamp(idx, 0, n - 1)].MinuteUtc;
+    }
+
+    private void UsageTimeline_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (UsageTimelineCanvas == null) return;
+        if (_usageSeries.Count == 0) RedrawUsageTimeline();
+        _usageDragging = true;
+        _usageDragStartX = _usageDragCurX = e.GetPosition(UsageTimelineCanvas).X;
+        UsageTimelineCanvas.CaptureMouse();
+        RedrawUsageTimeline();
+    }
+
+    private void UsageTimeline_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_usageDragging || UsageTimelineCanvas == null) return;
+        _usageDragCurX = e.GetPosition(UsageTimelineCanvas).X;
+        RedrawUsageTimeline();
+        UpdateUsageRangeText(provisional: true);
+    }
+
+    private void UsageTimeline_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_usageDragging || UsageTimelineCanvas == null) return;
+        _usageDragging = false;
+        UsageTimelineCanvas.ReleaseMouseCapture();
+        double a = Math.Min(_usageDragStartX, _usageDragCurX);
+        double b = Math.Max(_usageDragStartX, _usageDragCurX);
+        if (b - a < 3) { ClearUsageSelection(refresh: true); return; } // a plain click clears
+        _usageSelFromUtc = UsageXToMinuteUtc(a);
+        _usageSelToUtc = UsageXToMinuteUtc(b);
+        UpdateUsageRangeText(provisional: false);
+        if (UsageRangeClearBtn != null) UsageRangeClearBtn.Visibility = Visibility.Visible;
+        _usageRedrawTick = 99;
+        RefreshUsage();
+    }
+
+    private void UsageTimeline_SizeChanged(object sender, SizeChangedEventArgs e) => RedrawUsageTimeline();
+
+    private void UsageRangeClear_Click(object sender, RoutedEventArgs e) => ClearUsageSelection(refresh: true);
+
+    private void ClearUsageSelection(bool refresh)
+    {
+        _usageSelFromUtc = _usageSelToUtc = null;
+        _usageDragging = false;
+        if (UsageRangeClearBtn != null) UsageRangeClearBtn.Visibility = Visibility.Collapsed;
+        if (UsageRangeText != null) UsageRangeText.Text = "Drag across the strip to inspect a time slice.";
+        if (refresh) { _usageRedrawTick = 99; RefreshUsage(); }
+    }
+
+    private void UpdateUsageRangeText(bool provisional)
+    {
+        if (UsageRangeText == null) return;
+        DateTime f, t;
+        if (provisional)
+        {
+            f = UsageXToMinuteUtc(Math.Min(_usageDragStartX, _usageDragCurX));
+            t = UsageXToMinuteUtc(Math.Max(_usageDragStartX, _usageDragCurX));
+        }
+        else if (_usageSelFromUtc is DateTime sf && _usageSelToUtc is DateTime st) { f = sf; t = st; }
+        else return;
+        int mins = (int)(t - f).TotalMinutes + 1;
+        UsageRangeText.Text =
+            $"Slice: {f.ToLocalTime():HH:mm} - {t.ToLocalTime().AddMinutes(1):HH:mm} ({mins} min) - the app list below shows this slice only.";
+    }
 
     // ============================================================ app health (§12)
     /// <summary>Live self-diagnostics card in Settings: the same counters the
