@@ -71,6 +71,8 @@ public partial class MainWindow : Window
     // Phase 4: footer session counters + graph hover state
     private double _sessionDownBytes, _sessionUpBytes;
     private DateTime _lastFooterSample;
+    private double _lastTickDt = 1.0; // real spacing of the last sample tick
+    private readonly Dictionary<string, string> _hostDisplayNames = new(StringComparer.OrdinalIgnoreCase);
     private double? _graphHoverX;
     private readonly double[] _gUp = new double[GraphFinePoints];
     private System.Windows.Threading.DispatcherTimer? _graphTimer;
@@ -293,7 +295,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.72.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.74.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -490,6 +492,7 @@ public partial class MainWindow : Window
             double dt = _lastFooterSample == default
                 ? 1.0 : Math.Clamp((nowUtc - _lastFooterSample).TotalSeconds, 0.2, 5.0);
             _lastFooterSample = nowUtc;
+            _lastTickDt = dt;
             _sessionDownBytes += snap.DownRate * dt;
             _sessionUpBytes += snap.UpRate * dt;
             UpdateFooter(snap.DownRate, snap.UpRate);
@@ -541,6 +544,7 @@ public partial class MainWindow : Window
                                    v.Down, v.Up));
                     _usage.RecordExact(exact);
                 }
+                AttributeTrafficBytes(snap.Conns, drained, snap.Procs, 0, 0);
             }
             else
             {
@@ -552,6 +556,7 @@ public partial class MainWindow : Window
                     .Select(g => (g.Key, g.Count()))
                     .ToList();
                 _usage.Record(snap.DownRate, snap.UpRate, perApp);
+                AttributeTrafficBytes(snap.Conns, null, snap.Procs, snap.DownRate, snap.UpRate);
             }
         }
         catch (Exception ex) { SampleStepError("stats", ex); }
@@ -616,6 +621,7 @@ public partial class MainWindow : Window
 
         RefreshMapMarkers();
         RefreshUsage();
+        RefreshBreakdown();
     }
 
     /// <summary>Plot a green dot per active country on the world map, sized by
@@ -948,19 +954,383 @@ public partial class MainWindow : Window
     }
 
     // ======================================================== data usage (§7b)
+    // ------------------------------ Phase 5: traffic breakdown attribution
+    /// <summary>
+    /// Attributes this tick's bytes to individual connections and feeds the
+    /// breakdown accumulators. With measured ETW bytes each app's real bytes
+    /// are split evenly across that app's external connections; otherwise the
+    /// NIC total for the tick is split evenly across all external connections
+    /// (the same philosophy as the usage estimate).
+    /// </summary>
+    private void AttributeTrafficBytes(List<ConnectionInfo> conns,
+                                       Dictionary<uint, (long Down, long Up)>? measuredByPid,
+                                       Dictionary<int, (string Name, string Path)> procs,
+                                       double downRate, double upRate)
+    {
+        try
+        {
+            var ext = new List<ConnectionInfo>();
+            foreach (var c in conns)
+            {
+                if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
+                if (c.RemoteAddress is "127.0.0.1" or "::1" or "0.0.0.0" or "::") continue;
+                ext.Add(c); // NetworkStatsService re-guards private/LAN ranges
+            }
+            if (ext.Count == 0) return;
+
+            if (measuredByPid != null)
+            {
+                var byPid = new Dictionary<int, List<ConnectionInfo>>();
+                foreach (var c in ext)
+                {
+                    if (!byPid.TryGetValue(c.ProcessId, out var list))
+                        byPid[c.ProcessId] = list = new List<ConnectionInfo>();
+                    list.Add(c);
+                }
+                foreach (var (pid, v) in measuredByPid)
+                {
+                    long bytes = v.Down + v.Up;
+                    if (bytes <= 0 || !byPid.TryGetValue((int)pid, out var list)) continue;
+                    long share = bytes / list.Count;
+                    if (share <= 0) continue;
+                    foreach (var c in list)
+                        _stats.RecordTraffic(
+                            c.ProcessName.Length > 0 ? c.ProcessName : "PID " + c.ProcessId,
+                            c.RemoteAddress, c.Country, c.RemotePort,
+                            c.Protocol == "UDP", share);
+                }
+            }
+            else
+            {
+                long total = (long)((downRate + upRate) * _lastTickDt);
+                long share = total / ext.Count;
+                if (share <= 0) return;
+                foreach (var c in ext)
+                    _stats.RecordTraffic(
+                        c.ProcessName.Length > 0 ? c.ProcessName : "PID " + c.ProcessId,
+                        c.RemoteAddress, c.Country, c.RemotePort,
+                        c.Protocol == "UDP", share);
+            }
+        }
+        catch (Exception ex) { SampleStepError("AttributeTraffic", ex); }
+    }
+
+    /// <summary>Rebuilds the four Traffic Breakdown columns (top 8 each, bars
+    /// scaled to each column's max). Host names arrive via cached reverse DNS
+    /// and fill in on the next refresh.</summary>
+    private void RefreshBreakdown()
+    {
+        try
+        {
+            if (BreakApps == null) return;
+            const double maxBar = 110;
+
+            static List<GunWall.Models.BreakRow> ToRows(List<(string Name, long Bytes, string Tip)> src)
+            {
+                long max = 1;
+                foreach (var r in src) if (r.Bytes > max) max = r.Bytes;
+                var rows = new List<GunWall.Models.BreakRow>(src.Count);
+                foreach (var r in src)
+                    rows.Add(new GunWall.Models.BreakRow(
+                        r.Name, AppUsageService.FormatBytes(r.Bytes),
+                        Math.Max(2, maxBar * r.Bytes / max), r.Tip));
+                return rows;
+            }
+
+            var apps = new List<(string, long, string)>();
+            foreach (var a in _stats.TopAppBytes(8)) apps.Add((a.App, a.Bytes, a.App));
+            BreakApps.ItemsSource = ToRows(apps);
+
+            var hosts = new List<(string, long, string)>();
+            foreach (var hstat in _stats.TopHosts(8))
+            {
+                if (!_hostDisplayNames.ContainsKey(hstat.Ip))
+                {
+                    _hostDisplayNames[hstat.Ip] = ""; // pending; resolves in background
+                    _ = ResolveHostForBreakdown(hstat.Ip);
+                }
+                string disp = _hostDisplayNames.TryGetValue(hstat.Ip, out var hn) && hn.Length > 0
+                    ? hn : hstat.Ip;
+                hosts.Add((disp, hstat.Bytes,
+                    $"{hstat.Ip}  \u00B7  {hstat.Apps} app{(hstat.Apps == 1 ? "" : "s")}"));
+            }
+            BreakHosts.ItemsSource = ToRows(hosts);
+
+            var types = new List<(string, long, string)>();
+            foreach (var t in _stats.TopTypes(8)) types.Add((t.Type, t.Bytes, t.Type));
+            BreakTypes.ItemsSource = ToRows(types);
+
+            var countries = new List<(string, long, string)>();
+            foreach (var cb in _stats.TopCountryBytes(8))
+                countries.Add((Services.GeoData.CountryName(cb.Code), cb.Bytes, cb.Code));
+            BreakCountries.ItemsSource = ToRows(countries);
+
+            bool measured = _etwMeter is { SessionActive: true } && !_etwDegraded;
+            BreakSubtitle.Text = measured
+                ? "Session totals - measured bytes (ETW), split across each app's connections"
+                : "Session totals - estimated per-connection attribution";
+        }
+        catch (Exception ex) { SampleStepError("RefreshBreakdown", ex); }
+    }
+
+    private async Task ResolveHostForBreakdown(string ip)
+    {
+        try
+        {
+            string name = await Services.NetInfoService.ResolveHostAsync(ip);
+            await Dispatcher.InvokeAsync(() => _hostDisplayNames[ip] = name);
+        }
+        catch { }
+    }
+
+    // ------------------------------ Apps Usage Timeline (Phase 3, rebuilt)
+    private DateTime? _usageSelFromUtc, _usageSelToUtc; // active slice, minute-aligned
+    private bool _usageDragging;
+    private double _usageDragStartX, _usageDragCurX;
+    private List<(DateTime MinuteUtc, long Bytes)> _usageSeries = new();
+    private int _usageRedrawTick;
+    private DateTime _usageDragListRefresh; // throttles live list updates mid-drag
+
+    private TimeSpan CurrentUsageWindow() => UsageWindowCombo?.SelectedIndex switch
+    {
+        0 => TimeSpan.FromMinutes(5),
+        1 => TimeSpan.FromHours(1),
+        _ => TimeSpan.FromHours(24)
+    };
+
     private void RefreshUsage()
     {
         if (UsageList == null || UsageWindowCombo == null) return;
-        var window = UsageWindowCombo.SelectedIndex switch
+        if (!_usageDragging) // mid-drag the list follows the drag handler instead
         {
-            0 => TimeSpan.FromMinutes(5),
-            1 => TimeSpan.FromHours(1),
-            _ => TimeSpan.FromHours(24)
-        };
-        UsageList.ItemsSource = _usage.Totals(window);
+            if (_usageSelFromUtc is DateTime f && _usageSelToUtc is DateTime t)
+                UsageList.ItemsSource = _usage.TotalsRange(f, t); // busiest app first
+            else
+                UsageList.ItemsSource = _usage.Totals(CurrentUsageWindow());
+        }
+
+        // The 5-min and 1-hour strips repaint every tick so the newest minute
+        // visibly grows in real time; the 1440-point 24h strip every 5th.
+        bool is24h = UsageWindowCombo.SelectedIndex >= 2;
+        if (!is24h || ++_usageRedrawTick >= 5)
+        {
+            _usageRedrawTick = 0;
+            RedrawUsageStrip();
+        }
     }
 
-    private void UsageWindow_Changed(object sender, SelectionChangedEventArgs e) => RefreshUsage();
+    private void UsageWindow_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        ClearUsageSelection(refresh: false); // a slice belongs to one zoom level
+        _usageRedrawTick = 99;
+        RefreshUsage();
+    }
+
+    /// <summary>Repaints the timeline series: a Catmull-Rom-smoothed area chart
+    /// of per-minute totals, same visual language as the main graph. The
+    /// selection lives on a separate overlay canvas and is only repositioned,
+    /// never rebuilt - that's what keeps dragging smooth.</summary>
+    private void RedrawUsageStrip()
+    {
+        var canvas = UsageStripCanvas;
+        if (canvas == null) return;
+        try
+        {
+            double w = canvas.ActualWidth, h = canvas.ActualHeight;
+            canvas.Children.Clear();
+            if (w < 10 || h < 10) return;
+
+            _usageSeries = _usage.MinuteSeries(CurrentUsageWindow());
+            int n = _usageSeries.Count;
+            if (n == 0) { UpdateStripSelectionOverlay(); return; }
+
+            long max = 1;
+            foreach (var pt in _usageSeries) if (pt.Bytes > max) max = pt.Bytes;
+
+            var pts = new Point[Math.Max(2, n)];
+            for (int i = 0; i < pts.Length; i++)
+            {
+                long bytes = i < n ? _usageSeries[i].Bytes : 0;
+                double x = pts.Length == 1 ? w : i * w / (pts.Length - 1);
+                double y = h - 3 - (h - 8) * ((double)bytes / max);
+                pts[i] = new Point(x, y);
+            }
+            if (n == 1) pts[1] = new Point(w, pts[0].Y); // degenerate first minute
+
+            var accent = Color.FromRgb(0x0A, 0x84, 0xFF);
+            var segs = SplineBeziers(pts);
+
+            var fillGeo = new StreamGeometry();
+            using (var ctx = fillGeo.Open())
+            {
+                ctx.BeginFigure(new Point(pts[0].X, h), isFilled: true, isClosed: true);
+                ctx.LineTo(pts[0], isStroked: false, isSmoothJoin: false);
+                foreach (var (c1, c2, end) in segs)
+                    ctx.BezierTo(c1, c2, end, isStroked: false, isSmoothJoin: true);
+                ctx.LineTo(new Point(pts[^1].X, h), isStroked: false, isSmoothJoin: false);
+            }
+            fillGeo.Freeze();
+            var fillBrush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x66, accent.R, accent.G, accent.B), 0.0));
+            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, accent.R, accent.G, accent.B), 1.0));
+            fillBrush.Freeze();
+            canvas.Children.Add(new System.Windows.Shapes.Path
+            {
+                Data = fillGeo, Fill = fillBrush, IsHitTestVisible = false
+            });
+
+            var lineGeo = new StreamGeometry();
+            using (var ctx = lineGeo.Open())
+            {
+                ctx.BeginFigure(pts[0], isFilled: false, isClosed: false);
+                foreach (var (c1, c2, end) in segs)
+                    ctx.BezierTo(c1, c2, end, isStroked: true, isSmoothJoin: true);
+            }
+            lineGeo.Freeze();
+            canvas.Children.Add(new System.Windows.Shapes.Path
+            {
+                Data = lineGeo, Stroke = new SolidColorBrush(accent), StrokeThickness = 1.6,
+                StrokeLineJoin = PenLineJoin.Round, IsHitTestVisible = false
+            });
+
+            UpdateStripSelectionOverlay(); // axis may have slid; re-anchor the slice
+        }
+        catch (Exception ex) { SampleStepError("UsageStrip", ex); }
+    }
+
+    /// <summary>Positions the persistent selection rectangle + handles from the
+    /// current drag coordinates or the stored slice times. No allocation.</summary>
+    private void UpdateStripSelectionOverlay()
+    {
+        if (UsageSelRect == null || UsageStripCanvas == null) return;
+        double w = UsageStripCanvas.ActualWidth, h = UsageStripCanvas.ActualHeight;
+        bool haveSel = _usageSelFromUtc is not null && _usageSelToUtc is not null;
+        int n = _usageSeries.Count;
+        if (w < 10 || h < 10 || (!_usageDragging && !haveSel) || n == 0)
+        {
+            UsageSelRect.Visibility = Visibility.Collapsed;
+            UsageSelHandleL.Visibility = Visibility.Collapsed;
+            UsageSelHandleR.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        double x1, x2;
+        if (_usageDragging)
+        {
+            x1 = Math.Min(_usageDragStartX, _usageDragCurX);
+            x2 = Math.Max(_usageDragStartX, _usageDragCurX);
+        }
+        else
+        {
+            DateTime start = _usageSeries[0].MinuteUtc, end = _usageSeries[n - 1].MinuteUtc;
+            double span = Math.Max(1, (end - start).TotalMinutes);
+            x1 = (_usageSelFromUtc!.Value - start).TotalMinutes / span * w;
+            x2 = (_usageSelToUtc!.Value - start).TotalMinutes / span * w;
+        }
+        x1 = Math.Clamp(x1, 0, w);
+        x2 = Math.Clamp(x2, 0, w);
+
+        UsageSelRect.Height = h;
+        UsageSelRect.Width = Math.Max(2, x2 - x1);
+        Canvas.SetLeft(UsageSelRect, x1);
+        Canvas.SetTop(UsageSelRect, 0);
+        UsageSelRect.Visibility = Visibility.Visible;
+
+        UsageSelHandleL.Height = h;
+        UsageSelHandleR.Height = h;
+        Canvas.SetLeft(UsageSelHandleL, Math.Clamp(x1 - 1, 0, Math.Max(0, w - 3)));
+        Canvas.SetLeft(UsageSelHandleR, Math.Clamp(x2 - 1, 0, Math.Max(0, w - 3)));
+        Canvas.SetTop(UsageSelHandleL, 0);
+        Canvas.SetTop(UsageSelHandleR, 0);
+        UsageSelHandleL.Visibility = Visibility.Visible;
+        UsageSelHandleR.Visibility = Visibility.Visible;
+    }
+
+    private DateTime UsageXToMinuteUtc(double x)
+    {
+        int n = _usageSeries.Count;
+        if (n == 0) return DateTime.UtcNow;
+        double w = Math.Max(1, UsageStripCanvas?.ActualWidth ?? 1);
+        int idx = (int)Math.Round(Math.Clamp(x, 0, w) / w * (n - 1));
+        return _usageSeries[Math.Clamp(idx, 0, n - 1)].MinuteUtc;
+    }
+
+    private void UsageStrip_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (UsageStripCanvas == null) return;
+        if (_usageSeries.Count == 0) RedrawUsageStrip();
+        _usageDragging = true;
+        _usageDragStartX = _usageDragCurX = e.GetPosition(UsageStripCanvas).X;
+        _usageDragListRefresh = default;
+        UsageStripCanvas.CaptureMouse();
+        UpdateStripSelectionOverlay();
+    }
+
+    private void UsageStrip_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_usageDragging || UsageStripCanvas == null) return;
+        _usageDragCurX = e.GetPosition(UsageStripCanvas).X;
+        UpdateStripSelectionOverlay();      // cheap: just moves rectangles
+        UpdateUsageRangeText(provisional: true);
+
+        // Live A->B feedback: refresh the app list at most ~6x/sec while dragging.
+        var now = DateTime.UtcNow;
+        if ((now - _usageDragListRefresh).TotalMilliseconds >= 150)
+        {
+            _usageDragListRefresh = now;
+            var f = UsageXToMinuteUtc(Math.Min(_usageDragStartX, _usageDragCurX));
+            var t = UsageXToMinuteUtc(Math.Max(_usageDragStartX, _usageDragCurX));
+            UsageList.ItemsSource = _usage.TotalsRange(f, t);
+        }
+    }
+
+    private void UsageStrip_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_usageDragging || UsageStripCanvas == null) return;
+        _usageDragging = false;
+        UsageStripCanvas.ReleaseMouseCapture();
+        double a = Math.Min(_usageDragStartX, _usageDragCurX);
+        double b = Math.Max(_usageDragStartX, _usageDragCurX);
+        if (b - a < 3) { ClearUsageSelection(refresh: true); return; } // plain click clears
+        _usageSelFromUtc = UsageXToMinuteUtc(a);
+        _usageSelToUtc = UsageXToMinuteUtc(b);
+        UpdateUsageRangeText(provisional: false);
+        if (UsageRangeClearBtn != null) UsageRangeClearBtn.Visibility = Visibility.Visible;
+        UpdateStripSelectionOverlay();
+        _usageRedrawTick = 99;
+        RefreshUsage();
+    }
+
+    private void UsageStrip_SizeChanged(object sender, SizeChangedEventArgs e) => RedrawUsageStrip();
+
+    private void UsageRangeClear_Click(object sender, RoutedEventArgs e) => ClearUsageSelection(refresh: true);
+
+    private void ClearUsageSelection(bool refresh)
+    {
+        _usageSelFromUtc = _usageSelToUtc = null;
+        _usageDragging = false;
+        if (UsageRangeClearBtn != null) UsageRangeClearBtn.Visibility = Visibility.Collapsed;
+        if (UsageRangeText != null)
+            UsageRangeText.Text = "Drag from point A to point B on the timeline to see which apps were active then, busiest first.";
+        UpdateStripSelectionOverlay();
+        if (refresh) { _usageRedrawTick = 99; RefreshUsage(); }
+    }
+
+    private void UpdateUsageRangeText(bool provisional)
+    {
+        if (UsageRangeText == null) return;
+        DateTime f, t;
+        if (provisional)
+        {
+            f = UsageXToMinuteUtc(Math.Min(_usageDragStartX, _usageDragCurX));
+            t = UsageXToMinuteUtc(Math.Max(_usageDragStartX, _usageDragCurX));
+        }
+        else if (_usageSelFromUtc is DateTime sf && _usageSelToUtc is DateTime st) { f = sf; t = st; }
+        else return;
+        int mins = (int)(t - f).TotalMinutes + 1;
+        UsageRangeText.Text =
+            $"Slice: {f.ToLocalTime():HH:mm} - {t.ToLocalTime().AddMinutes(1):HH:mm} ({mins} min) - busiest apps in this slice below.";
+    }
 
     // ============================================================ app health (§12)
     /// <summary>Live self-diagnostics card in Settings: the same counters the

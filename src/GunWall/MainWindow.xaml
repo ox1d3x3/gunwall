@@ -728,6 +728,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0" Margin="0,0,0,16">
                     <StackPanel>
@@ -815,6 +816,33 @@
                         </DockPanel>
                         <TextBlock x:Name="UsageModeText" DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap"
                                    Text="Estimated: totals are attributed to apps by their share of active connections in each interval. Pick a short window right after a spike to see what caused it." />
+                        <TextBlock DockPanel.Dock="Top" Text="APPS USAGE TIMELINE"
+                                   Style="{StaticResource SectionLabel}" Margin="0,2,0,6" />
+                        <Border DockPanel.Dock="Top" Height="64" CornerRadius="6" Margin="0,0,0,6"
+                                Background="{DynamicResource BgElevated}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                ClipToBounds="True">
+                            <Grid>
+                                <Canvas x:Name="UsageStripCanvas" Background="Transparent" Cursor="Cross"
+                                        SizeChanged="UsageStrip_SizeChanged"
+                                        MouseLeftButtonDown="UsageStrip_MouseDown"
+                                        MouseMove="UsageStrip_MouseMove"
+                                        MouseLeftButtonUp="UsageStrip_MouseUp" />
+                                <Canvas x:Name="UsageStripOverlay" IsHitTestVisible="False" ClipToBounds="True">
+                                    <Rectangle x:Name="UsageSelRect" Fill="#2EFFFFFF" Visibility="Collapsed" />
+                                    <Rectangle x:Name="UsageSelHandleL" Width="2.5" Fill="#0A84FF" Visibility="Collapsed" />
+                                    <Rectangle x:Name="UsageSelHandleR" Width="2.5" Fill="#0A84FF" Visibility="Collapsed" />
+                                </Canvas>
+                            </Grid>
+                        </Border>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="True">
+                            <Button x:Name="UsageRangeClearBtn" DockPanel.Dock="Right" Content="Show whole window"
+                                    Style="{StaticResource ActionButton}" Padding="10,3"
+                                    Visibility="Collapsed" Click="UsageRangeClear_Click" />
+                            <TextBlock x:Name="UsageRangeText" Style="{StaticResource Muted}"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Text="Drag from point A to point B on the timeline to see which apps were active then, busiest first." />
+                        </DockPanel>
                         <ListView x:Name="UsageList" BorderThickness="0" Background="Transparent" MaxHeight="260"
                                   VirtualizingPanel.IsVirtualizing="True">
                             <ListView.View>
@@ -826,6 +854,62 @@
                                 </GridView>
                             </ListView.View>
                         </ListView>
+                    </DockPanel>
+                </Border>
+
+                <Border Grid.Row="4" Style="{StaticResource Card}" Margin="0,16,0,0">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                            <TextBlock Text="TRAFFIC BREAKDOWN" Style="{StaticResource SectionLabel}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock x:Name="BreakSubtitle" Style="{StaticResource Muted}" FontSize="11"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       Text="Session totals - estimated per-connection attribution" />
+                        </DockPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.Resources>
+                                <DataTemplate x:Key="BreakRowTemplate">
+                                    <StackPanel Margin="0,0,16,9" ToolTip="{Binding Tip}">
+                                        <DockPanel LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Value}" FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondary}" Margin="8,0,0,0" />
+                                            <TextBlock Text="{Binding Name}" FontSize="11.5"
+                                                       Foreground="{DynamicResource TextPrimary}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </DockPanel>
+                                        <Border Height="3" CornerRadius="1.5" Background="#0A84FF"
+                                                Width="{Binding BarWidth}" HorizontalAlignment="Left"
+                                                Margin="0,3,0,0" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </Grid.Resources>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Apps" Style="{StaticResource Muted}" FontSize="11"
+                                           FontWeight="SemiBold" Margin="0,0,0,8" />
+                                <ItemsControl x:Name="BreakApps" ItemTemplate="{StaticResource BreakRowTemplate}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Hosts" Style="{StaticResource Muted}" FontSize="11"
+                                           FontWeight="SemiBold" Margin="0,0,0,8" />
+                                <ItemsControl x:Name="BreakHosts" ItemTemplate="{StaticResource BreakRowTemplate}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Traffic type" Style="{StaticResource Muted}" FontSize="11"
+                                           FontWeight="SemiBold" Margin="0,0,0,8" />
+                                <ItemsControl x:Name="BreakTypes" ItemTemplate="{StaticResource BreakRowTemplate}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3">
+                                <TextBlock Text="Countries" Style="{StaticResource Muted}" FontSize="11"
+                                           FontWeight="SemiBold" Margin="0,0,0,8" />
+                                <ItemsControl x:Name="BreakCountries" ItemTemplate="{StaticResource BreakRowTemplate}" />
+                            </StackPanel>
+                        </Grid>
                     </DockPanel>
                 </Border>
             </Grid>

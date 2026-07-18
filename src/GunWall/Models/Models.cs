@@ -1,5 +1,9 @@
 namespace GunWall.Models;
 
+/// <summary>One row of the Traffic Breakdown card (Phase 5). BarWidth is the
+/// pre-computed pixel width of the mini bar, relative to the column's max.</summary>
+public sealed record BreakRow(string Name, string Value, double BarWidth, string Tip);
+
 /// <summary>A single live network connection observed on the machine.</summary>
 public sealed class ConnectionInfo
 {

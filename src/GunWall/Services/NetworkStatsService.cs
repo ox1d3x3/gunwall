@@ -30,6 +30,13 @@ public sealed class NetworkStatsService
     private readonly Dictionary<string, HashSet<string>> _appCountries = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HashSet<string>> _countryIps = new(StringComparer.OrdinalIgnoreCase);
 
+    // §Phase 5: byte-attributed breakdown (estimated or ETW-split, caller's choice)
+    private readonly Dictionary<string, long> _appBytes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> _ipBytes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> _typeBytes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> _countryBytes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _ipApps = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Record one observed connection. Safe to call every refresh: each distinct remote
     /// IP is only ever counted once per app/country (sets dedupe). <paramref name="country"/>
@@ -80,6 +87,109 @@ public sealed class NetworkStatsService
                 .Select(kv => (kv.Key, kv.Value.Count,
                                _appCountries.TryGetValue(kv.Key, out var cs) ? cs.Count : 0))
                 .ToList();
+        }
+    }
+
+    /// <summary>
+    /// Attribute <paramref name="bytes"/> of this tick's traffic to one observed
+    /// connection: its app, remote host, traffic type (from port/protocol) and
+    /// country all accumulate the same bytes. Local/private destinations and
+    /// non-positive byte counts are ignored.
+    /// </summary>
+    public void RecordTraffic(string app, string remoteIp, string country, int port, bool udp, long bytes)
+    {
+        if (bytes <= 0) return;
+        if (string.IsNullOrEmpty(remoteIp) || remoteIp is "0.0.0.0" or "::") return;
+        if (IsLocalOrPrivate(remoteIp)) return;
+        if (string.IsNullOrWhiteSpace(app)) app = "(unknown)";
+        string type = ClassifyPort(port, udp);
+
+        lock (_lock)
+        {
+            Bump(_appBytes, app, bytes);
+            Bump(_ipBytes, remoteIp, bytes);
+            Bump(_typeBytes, type, bytes);
+            if (!string.IsNullOrEmpty(country)) Bump(_countryBytes, country, bytes);
+            AddTo(_ipApps, remoteIp, app);
+        }
+    }
+
+    public long TotalAttributedBytes
+    {
+        get { lock (_lock) { long t = 0; foreach (var v in _appBytes.Values) t += v; return t; } }
+    }
+
+    /// <summary>Apps by attributed bytes, largest first.</summary>
+    public List<(string App, long Bytes)> TopAppBytes(int n) => TopOf(_appBytes, n);
+
+    /// <summary>Traffic types by attributed bytes, largest first.</summary>
+    public List<(string Type, long Bytes)> TopTypes(int n) => TopOf(_typeBytes, n);
+
+    /// <summary>Country codes by attributed bytes, largest first.</summary>
+    public List<(string Code, long Bytes)> TopCountryBytes(int n) => TopOf(_countryBytes, n);
+
+    /// <summary>Remote hosts by attributed bytes, largest first, with how many
+    /// distinct apps talked to each.</summary>
+    public List<(string Ip, long Bytes, int Apps)> TopHosts(int n)
+    {
+        lock (_lock)
+        {
+            return _ipBytes
+                .OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Take(n)
+                .Select(kv => (kv.Key, kv.Value,
+                               _ipApps.TryGetValue(kv.Key, out var apps) ? apps.Count : 0))
+                .ToList();
+        }
+    }
+
+    /// <summary>
+    /// Human name for a remote port + protocol, GlassWire-style. Unknown ports
+    /// collapse into "Other" so the type list stays readable.
+    /// </summary>
+    public static string ClassifyPort(int port, bool udp)
+    {
+        return port switch
+        {
+            443 => udp ? "QUIC (HTTP/3)" : "HTTPS",
+            80 => "HTTP",
+            8080 or 8443 => "HTTP alt",
+            53 => "DNS",
+            853 => "DNS over TLS",
+            123 => "NTP time sync",
+            22 => "SSH",
+            21 or 20 => "FTP",
+            25 or 465 or 587 => "Mail (SMTP)",
+            993 or 143 => "Mail (IMAP)",
+            995 or 110 => "Mail (POP3)",
+            3478 or 3479 or 3480 or 3481 or 19302 => "Voice/Video (STUN)",
+            1194 => "VPN (OpenVPN)",
+            51820 => "VPN (WireGuard)",
+            500 or 4500 => "VPN (IPsec)",
+            1723 => "VPN (PPTP)",
+            3389 => "Remote Desktop",
+            445 or 139 => "File sharing (SMB)",
+            1900 => "Device discovery (SSDP)",
+            5353 => "Device discovery (mDNS)",
+            >= 6881 and <= 6889 => "BitTorrent",
+            9993 => "ZeroTier",
+            _ => "Other"
+        };
+    }
+
+    private static void Bump(Dictionary<string, long> map, string key, long by)
+    {
+        map.TryGetValue(key, out long cur);
+        map[key] = cur + by;
+    }
+
+    private List<(string, long)> TopOf(Dictionary<string, long> map, int n)
+    {
+        lock (_lock)
+        {
+            return map
+                .OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Take(n).Select(kv => (kv.Key, kv.Value)).ToList();
         }
     }
 
