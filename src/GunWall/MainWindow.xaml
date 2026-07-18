@@ -38,6 +38,10 @@
     </Window.Resources>
 
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="218" />
             <ColumnDefinition Width="*" />
@@ -347,8 +351,28 @@
                                 <TextBlock Text="Up" Style="{StaticResource Muted}" Margin="6,0,0,0" />
                             </StackPanel>
                         </StackPanel>
-                        <Canvas Grid.Row="1" x:Name="GraphCanvas" ClipToBounds="True"
-                                SizeChanged="GraphCanvas_SizeChanged" />
+                        <Grid Grid.Row="1">
+                            <Canvas x:Name="GraphCanvas" ClipToBounds="True" Background="Transparent"
+                                    SizeChanged="GraphCanvas_SizeChanged"
+                                    MouseMove="GraphCanvas_MouseMove" MouseLeave="GraphCanvas_MouseLeave" />
+                            <Canvas x:Name="GraphOverlay" IsHitTestVisible="False" ClipToBounds="True">
+                                <Rectangle x:Name="GraphCursorLine" Width="1" Fill="#55FFFFFF"
+                                           Visibility="Collapsed" />
+                                <Border x:Name="GraphTooltip" Visibility="Collapsed" CornerRadius="6"
+                                        Background="{DynamicResource BgElevated}"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        Padding="9,6">
+                                    <StackPanel>
+                                        <TextBlock x:Name="GraphTooltipTime" FontSize="10"
+                                                   Foreground="{DynamicResource TextSecondary}" />
+                                        <TextBlock x:Name="GraphTooltipDown" FontSize="11.5" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource InboundBrush}" />
+                                        <TextBlock x:Name="GraphTooltipUp" FontSize="11.5"
+                                                   Foreground="{StaticResource OutboundBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </Canvas>
+                        </Grid>
                     </Grid>
                 </Border>
             </Grid>
@@ -791,24 +815,6 @@
                         </DockPanel>
                         <TextBlock x:Name="UsageModeText" DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap"
                                    Text="Estimated: totals are attributed to apps by their share of active connections in each interval. Pick a short window right after a spike to see what caused it." />
-                        <Border DockPanel.Dock="Top" Height="56" CornerRadius="6" Margin="0,0,0,6"
-                                Background="{DynamicResource BgElevated}"
-                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                ClipToBounds="True">
-                            <Canvas x:Name="UsageTimelineCanvas" Background="Transparent" Cursor="Cross"
-                                    MouseLeftButtonDown="UsageTimeline_MouseDown"
-                                    MouseMove="UsageTimeline_MouseMove"
-                                    MouseLeftButtonUp="UsageTimeline_MouseUp"
-                                    SizeChanged="UsageTimeline_SizeChanged" />
-                        </Border>
-                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="True">
-                            <Button x:Name="UsageRangeClearBtn" DockPanel.Dock="Right" Content="Show whole window"
-                                    Style="{StaticResource ActionButton}" Padding="10,3"
-                                    Visibility="Collapsed" Click="UsageRangeClear_Click" />
-                            <TextBlock x:Name="UsageRangeText" Style="{StaticResource Muted}"
-                                       VerticalAlignment="Center" TextWrapping="Wrap"
-                                       Text="Drag across the strip to inspect a time slice." />
-                        </DockPanel>
                         <ListView x:Name="UsageList" BorderThickness="0" Background="Transparent" MaxHeight="260"
                                   VirtualizingPanel.IsVirtualizing="True">
                             <ListView.View>
@@ -1892,5 +1898,35 @@
 
         </Grid>
         </Grid>
+
+        <!-- ===================== Persistent footer status bar ===================== -->
+        <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{DynamicResource BgSecondary}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,7">
+            <DockPanel LastChildFill="False">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Ellipse x:Name="FooterProtDot" Width="8" Height="8" Fill="#FF9F0A"
+                             VerticalAlignment="Center" Margin="0,0,7,0" />
+                    <TextBlock x:Name="FooterProtText" Text="Starting..." FontSize="11.5"
+                               Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                               Margin="0,0,22,0" />
+                    <Ellipse Width="8" Height="8" Fill="{StaticResource InboundBrush}"
+                             VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock x:Name="FooterDown" Text="0 B/s" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"
+                               Margin="0,0,18,0" />
+                    <Ellipse Width="8" Height="8" Fill="{StaticResource OutboundBrush}"
+                             VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock x:Name="FooterUp" Text="0 B/s" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                    <TextBlock x:Name="FooterMeter" Text="Estimated metering" FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"
+                               Margin="0,0,18,0" />
+                    <TextBlock x:Name="FooterAlerts" Text="No new alerts" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
     </Grid>
 </Window>
