@@ -545,6 +545,17 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
+                                <GridViewColumn Header="Activity" Width="106">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Polyline Points="{Binding Spark}" Stroke="#0A84FF"
+                                                      StrokeThickness="1.3" StrokeLineJoin="Round"
+                                                      Width="90" Height="20" Stretch="None"
+                                                      VerticalAlignment="Center"
+                                                      ToolTip="{Binding SparkTip}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="Action" Width="100">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>

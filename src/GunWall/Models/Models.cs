@@ -99,6 +99,13 @@ public sealed class AppInfo
     /// "Checking…", "Not on VirusTotal"); empty when no API key / no hash.</summary>
     public string VtText { get; set; } = "";
 
+    /// <summary>Pre-scaled sparkline of this app's last-30-minutes traffic
+    /// (points in a 90x20 box); recomputed on every list rebuild.</summary>
+    public System.Windows.Media.PointCollection? Spark { get; set; }
+
+    /// <summary>Tooltip for the sparkline ("2.4 MB in the last 30 min").</summary>
+    public string SparkTip { get; set; } = "";
+
     /// <summary>Coloring level for the verdict: "clean", "flagged", "pending", "none".</summary>
     public string VtLevel { get; set; } = "";
 

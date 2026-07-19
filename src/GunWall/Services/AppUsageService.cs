@@ -175,6 +175,32 @@ public sealed class AppUsageService
         return series;
     }
 
+    /// <summary>Per-minute total bytes for one app over the trailing window,
+    /// oldest first, zero-filled, matched case-insensitively (usage keys are
+    /// process names). Feeds the Apps-list sparklines.</summary>
+    public long[] AppMinuteSeries(string app, TimeSpan window)
+    {
+        int minutes = Math.Max(1, (int)window.TotalMinutes);
+        var end = Truncate(DateTime.UtcNow);
+        var start = end.AddMinutes(-(minutes - 1));
+        var series = new long[minutes];
+        if (string.IsNullOrEmpty(app)) return series;
+        lock (_lock)
+        {
+            foreach (var b in _buckets)
+            {
+                if (b.Minute < start || b.Minute > end) continue;
+                foreach (var (name, v) in b.Apps)
+                {
+                    if (!string.Equals(name, app, StringComparison.OrdinalIgnoreCase)) continue;
+                    int i = (int)(b.Minute - start).TotalMinutes;
+                    if (i >= 0 && i < minutes) series[i] += v.Down + v.Up;
+                }
+            }
+        }
+        return series;
+    }
+
     public static string FormatBytes(long b)
     {
         if (b >= 1_073_741_824) return $"{b / 1_073_741_824.0:0.##} GB";

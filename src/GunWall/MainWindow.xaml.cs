@@ -295,7 +295,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.74.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.75.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -627,13 +627,87 @@ public partial class MainWindow : Window
     /// <summary>Plot a green dot per active country on the world map, sized by
     /// destination count. Uses the same TopCountries data as the list, so map and
     /// list always agree. Cheap: a couple dozen ellipses, only on Traffic refresh.</summary>
+    private string _lastMapSig = "";
+
     private void RefreshMapMarkers()
     {
         if (MapMarkers == null) return;
-        MapMarkers.Children.Clear();
         var top = _stats.TopCountries(200);
+
+        // Rebuilding identical markers every second would also restart the arc
+        // animations; skip entirely unless the data actually changed.
+        var sigB = new System.Text.StringBuilder();
+        foreach (var (code, count) in top) sigB.Append(code).Append(':').Append(count).Append(';');
+        string sig = sigB.ToString();
+        if (sig == _lastMapSig) return;
+        _lastMapSig = sig;
+
+        MapMarkers.Children.Clear();
         int max = 1;
         foreach (var (_, count) in top) if (count > max) max = count;
+
+        // ---- GlassWire-style connection arcs: home country -> busiest ten ----
+        // Home is the OS region setting (offline, no lookup, VPN-independent);
+        // unknown regions fall back to a neutral south-center origin.
+        string homeCode = "";
+        try { homeCode = System.Globalization.RegionInfo.CurrentRegion.TwoLetterISORegionName; } catch { }
+        (double X, double Y) home = WorldMapData.CountryPoints.TryGetValue(homeCode.ToUpperInvariant(), out var hp)
+            ? hp : (500, 470);
+
+        var arcColor = Color.FromRgb(0xE0, 0x52, 0x4D);
+        int arcs = 0;
+        foreach (var (code, count) in top)
+        {
+            if (arcs >= 10) break;
+            string cc = code.ToUpperInvariant();
+            if (cc == homeCode.ToUpperInvariant()) continue;
+            if (!WorldMapData.CountryPoints.TryGetValue(cc, out var dst)) continue;
+            arcs++;
+
+            var p1 = new Point(home.X, home.Y);
+            var p2 = new Point(dst.X, dst.Y);
+            double dx = p2.X - p1.X, dy = p2.Y - p1.Y;
+            double dist = Math.Sqrt(dx * dx + dy * dy);
+            // Control point: lifted above the midpoint so long hops bow higher.
+            var ctrl = new Point((p1.X + p2.X) / 2, Math.Max(8, (p1.Y + p2.Y) / 2 - dist * 0.28));
+
+            var geo = new PathGeometry();
+            var fig = new PathFigure { StartPoint = p1 };
+            fig.Segments.Add(new QuadraticBezierSegment(ctrl, p2, isStroked: true));
+            geo.Figures.Add(fig);
+            geo.Freeze();
+
+            double share = count / (double)max;
+            var arc = new System.Windows.Shapes.Path
+            {
+                Data = geo,
+                Stroke = new SolidColorBrush(Color.FromArgb((byte)(0x46 + 0x50 * share), arcColor.R, arcColor.G, arcColor.B)),
+                StrokeThickness = 0.9 + 1.4 * share,
+                StrokeDashArray = new DoubleCollection { 2.2, 4.4 },
+                StrokeDashCap = PenLineCap.Round,
+                IsHitTestVisible = false
+            };
+            // Flowing-dash animation: offset slides one full dash period per beat.
+            arc.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(6.6, 0,
+                    new Duration(TimeSpan.FromSeconds(1.1)))
+                { RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever });
+            MapMarkers.Children.Add(arc);
+        }
+
+        // Home marker: accent ring so the origin reads at a glance.
+        var homeDot = new System.Windows.Shapes.Ellipse
+        {
+            Width = 9, Height = 9,
+            Fill = new SolidColorBrush(Color.FromArgb(0xE6, 0x0A, 0x84, 0xFF)),
+            Stroke = new SolidColorBrush(Color.FromArgb(0x59, 0x0A, 0x84, 0xFF)),
+            StrokeThickness = 3,
+            ToolTip = homeCode.Length > 0
+                ? $"This device \u00b7 {GunWall.Services.GeoData.CountryName(homeCode)}" : "This device"
+        };
+        Canvas.SetLeft(homeDot, home.X - 4.5);
+        Canvas.SetTop(homeDot, home.Y - 4.5);
+        MapMarkers.Children.Add(homeDot);
 
         foreach (var (code, count) in top)
         {
@@ -653,6 +727,37 @@ public partial class MainWindow : Window
             Canvas.SetTop(dot, pt.Y - r);
             MapMarkers.Children.Add(dot);
         }
+    }
+
+    /// <summary>Builds the 90x20 sparkline for one app row from its last 30
+    /// minutes of usage. Self-scaled to the app's own peak (standard sparkline
+    /// practice); a silent app gets a flat baseline rather than an empty cell.</summary>
+    private void ComputeSpark(AppInfo a)
+    {
+        try
+        {
+            string key = System.IO.Path.GetFileNameWithoutExtension(a.ExecutablePath);
+            if (string.IsNullOrEmpty(key)) key = a.Name;
+            long[] series = _usage.AppMinuteSeries(key, TimeSpan.FromMinutes(30));
+
+            const double w = 90, h = 20;
+            long max = 0, total = 0;
+            foreach (long v in series) { if (v > max) max = v; total += v; }
+
+            var pts = new PointCollection();
+            for (int i = 0; i < series.Length; i++)
+            {
+                double px = series.Length == 1 ? w : i * w / (series.Length - 1);
+                double py = max == 0 ? h - 1.5 : h - 1.5 - (h - 3) * ((double)series[i] / max);
+                pts.Add(new Point(px, py));
+            }
+            pts.Freeze();
+            a.Spark = pts;
+            a.SparkTip = total > 0
+                ? $"{AppUsageService.FormatBytes(total)} in the last 30 min"
+                : "No traffic in the last 30 min";
+        }
+        catch { a.Spark = null; a.SparkTip = ""; }
     }
 
     private static void Shift(double[] series, double newest)
@@ -2108,7 +2213,10 @@ public partial class MainWindow : Window
                      .OrderByDescending(a => a.Status == AppStatus.Blocked) // blocked pinned on top
                      .ThenByDescending(a => a.ActiveConnections)
                      .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            ComputeSpark(a);
             _apps.Add(a);
+        }
 
         if (!string.IsNullOrEmpty(keepPath))
         {
