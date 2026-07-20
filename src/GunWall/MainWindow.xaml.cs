@@ -295,7 +295,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.75.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.76.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -488,6 +488,8 @@ public partial class MainWindow : Window
 
             // Session totals: integrate rate over the real tick spacing so the
             // footer's byte counts stay honest even if the timer drifts.
+            EnforceP2pBlocks(snap.Conns, snap.Procs);
+
             var nowUtc = DateTime.UtcNow;
             double dt = _lastFooterSample == default
                 ? 1.0 : Math.Clamp((nowUtc - _lastFooterSample).TotalSeconds, 0.2, 5.0);
@@ -1059,6 +1061,57 @@ public partial class MainWindow : Window
     }
 
     // ======================================================== data usage (§7b)
+    // ------------------------------ §2 completion: reactive P2P/direct blocking
+    private readonly HashSet<string> _p2pHandled = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Watches connections of P2P-flagged apps. A connection to a public IPv4
+    /// that was never answered by GunWall's resolver is a direct/P2P dial: it
+    /// gets a persistent per-IP block filter, the TCP session is torn down,
+    /// and the user is told once per (app, ip). Runs only while the resolver
+    /// is up - without it "never resolved" would accuse everything.
+    /// </summary>
+    private void EnforceP2pBlocks(List<ConnectionInfo> conns,
+                                  Dictionary<int, (string Name, string Path)> procs)
+    {
+        try
+        {
+            if (_dnsResolver is not { Running: true }) return;
+            var flagged = _firewall.P2pAppPaths;
+            if (flagged.Count == 0) return;
+
+            foreach (var c in conns)
+            {
+                if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
+                if (!procs.TryGetValue(c.ProcessId, out var pi) || pi.Path.Length == 0) continue;
+                if (!flagged.Contains(pi.Path.ToLowerInvariant())) continue;
+
+                // Public IPv4 only; everything local/LAN is out of scope here.
+                if (!System.Net.IPAddress.TryParse(c.RemoteAddress, out var ip) ||
+                    ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                var b = ip.GetAddressBytes();
+                bool isPrivate = b[0] == 10 || b[0] == 127 || b[0] == 0 ||
+                                 (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
+                                 (b[0] == 192 && b[1] == 168) ||
+                                 (b[0] == 169 && b[1] == 254) || b[0] >= 224;
+                if (isPrivate) continue;
+                if (_dnsResolver.WasResolved(c.RemoteAddress)) continue;
+
+                string dedupe = pi.Path + "|" + c.RemoteAddress;
+                if (!_p2pHandled.Add(dedupe)) continue;
+
+                bool added = _firewall.AddP2pReactiveBlock(pi.Path, c.RemoteAddress);
+                if (c.Protocol == "TCP")
+                    Services.ConnectionService.CloseTcpConnection(
+                        c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
+                if (added)
+                    Notify("warn", $"Direct connection blocked: {pi.Name}",
+                        $"{c.RemoteAddress}:{c.RemotePort} was never resolved via DNS - blocked as P2P/direct.");
+            }
+        }
+        catch (Exception ex) { SampleStepError("EnforceP2p", ex); }
+    }
+
     // ------------------------------ Phase 5: traffic breakdown attribution
     /// <summary>
     /// Attributes this tick's bytes to individual connections and feeds the
@@ -3741,12 +3794,16 @@ public partial class MainWindow : Window
             if (ScopeLocalItem != null) ScopeLocalItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "local");
             if (ScopeLanItem != null) ScopeLanItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "lan");
             if (ScopeIncomingItem != null) ScopeIncomingItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "incoming");
+            if (ScopeInternetItem != null) ScopeInternetItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "internet");
+            if (ScopeP2pItem != null) ScopeP2pItem.IsChecked = _firewall.IsP2pBlocked(app.ExecutablePath);
         }
         else
         {
             if (ScopeLocalItem != null) ScopeLocalItem.IsChecked = false;
             if (ScopeLanItem != null) ScopeLanItem.IsChecked = false;
             if (ScopeIncomingItem != null) ScopeIncomingItem.IsChecked = false;
+            if (ScopeInternetItem != null) ScopeInternetItem.IsChecked = false;
+            if (ScopeP2pItem != null) ScopeP2pItem.IsChecked = false;
         }
     }
 
@@ -3758,7 +3815,19 @@ public partial class MainWindow : Window
         try
         {
             // The checkable item has already toggled to the desired state.
-            _firewall.SetScopeBlock(app.ExecutablePath, scope, mi.IsChecked);
+            if (scope == "p2p")
+            {
+                if (mi.IsChecked && !(_dnsResolver?.Running ?? false))
+                    MessageBox.Show(
+                        "P2P/direct blocking watches which IPs were resolved through GunWall's DNS resolver. " +
+                        "The resolver isn't running, so enforcement begins once you enable it (DNS panel).",
+                        "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+                _firewall.SetP2pBlock(app.ExecutablePath, mi.IsChecked);
+            }
+            else
+            {
+                _firewall.SetScopeBlock(app.ExecutablePath, scope, mi.IsChecked);
+            }
             RebuildAppsList();
         }
         catch (Exception ex)

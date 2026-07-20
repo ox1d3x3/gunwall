@@ -206,6 +206,10 @@ public sealed class StoreData
     /// session (experimental; approximation is the fallback). Off by default.</summary>
     public bool EtwMeterEnabled { get; set; }
 
+    /// <summary>Apps with the reactive "Block P2P / direct connections" scope
+    /// enabled (lower-cased executable paths).</summary>
+    public List<string> P2pApps { get; set; } = new();
+
     /// <summary>Play a sound when a notification popup appears.</summary>
     public bool NotificationSound { get; set; }
 

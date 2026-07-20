@@ -969,6 +969,52 @@ public sealed class FirewallManager : IDisposable
 
     /// <summary>Turns a per-app network-scope block on or off. Filters install through the
     /// engine's fault-tolerant path and are fully removed when turned off.</summary>
+    public bool IsP2pBlocked(string exePath) =>
+        _data.P2pApps.Contains(exePath.ToLowerInvariant());
+
+    public IReadOnlyList<string> P2pAppPaths => _data.P2pApps.AsReadOnly();
+
+    /// <summary>Toggle the reactive P2P/direct scope. Enabling only flags the
+    /// app; blocking happens reactively as direct connections are observed.
+    /// Disabling also removes every reactive filter accumulated for it.</summary>
+    public void SetP2pBlock(string exePath, bool blocked)
+    {
+        string lower = exePath.ToLowerInvariant();
+        string key = ScopeKey(exePath, "p2p");
+        if (blocked)
+        {
+            if (_data.P2pApps.Contains(lower)) return;
+            _data.P2pApps.Add(lower);
+            EventLog($"P2P/direct blocking enabled for {System.IO.Path.GetFileName(exePath)}");
+        }
+        else
+        {
+            _data.P2pApps.Remove(lower);
+            if (_data.ScopeFilters.TryGetValue(key, out var ids))
+            {
+                try { _engine.RemoveFilters(ids); } catch { }
+                _data.ScopeFilters.Remove(key);
+            }
+            EventLog($"P2P/direct blocking disabled for {System.IO.Path.GetFileName(exePath)}");
+        }
+        _store.Save(_data);
+    }
+
+    /// <summary>Reactively block one direct destination for a P2P-flagged app.
+    /// The filter IDs are stored under the app's p2p scope key so disabling
+    /// the toggle cleans everything up. Returns false if nothing was added.</summary>
+    public bool AddP2pReactiveBlock(string exePath, string remoteIp)
+    {
+        var ids = _engine.AddAppRemoteIpBlock(exePath, remoteIp);
+        if (ids.Count == 0) return false;
+        string key = ScopeKey(exePath, "p2p");
+        if (_data.ScopeFilters.TryGetValue(key, out var existing)) existing.AddRange(ids);
+        else _data.ScopeFilters[key] = ids;
+        _store.Save(_data);
+        EventLog($"P2P direct connection blocked: {System.IO.Path.GetFileName(exePath)} -> {remoteIp}");
+        return true;
+    }
+
     public void SetScopeBlock(string exePath, string scope, bool blocked)
     {
         string key = ScopeKey(exePath, scope);

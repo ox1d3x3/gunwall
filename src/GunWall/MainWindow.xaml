@@ -445,6 +445,11 @@
                                               IsCheckable="True" Click="ScopeBlock_Click" Tag="lan" />
                                     <MenuItem x:Name="ScopeIncomingItem" Header="Block incoming connections"
                                               IsCheckable="True" Click="ScopeBlock_Click" Tag="incoming" />
+                                    <MenuItem x:Name="ScopeInternetItem" Header="Block Internet (allow LAN only)"
+                                              IsCheckable="True" Click="ScopeBlock_Click" Tag="internet" />
+                                    <MenuItem x:Name="ScopeP2pItem" Header="Block P2P / direct connections"
+                                              IsCheckable="True" Click="ScopeBlock_Click" Tag="p2p"
+                                              ToolTip="Reactively blocks connections to public IPs the app never looked up via DNS. Needs GunWall's DNS resolver running." />
                                 </MenuItem>
                                 <Separator />
                                 <MenuItem Header="Block for 15 minutes" Click="BlockTemp_Click" Tag="15" />

@@ -34,6 +34,13 @@ public sealed class DnsResolver : IDisposable
     // key "name|qtype" -> (response bytes, expiry UTC)
     private readonly ConcurrentDictionary<string, (byte[] Resp, DateTime Exp)> _cache = new();
 
+    // Resolved-IPv4 memory for P2P/direct detection: every A record this
+    // resolver has handed out. Bounded; on overflow the whole set resets
+    // (a brief blind spot beats unbounded growth).
+    private readonly HashSet<uint> _resolvedV4 = new();
+    private readonly object _resolvedLock = new();
+    private const int MaxResolvedIps = 30000;
+
     private long _total, _blocked, _cached, _forwarded, _errors;
 
     public bool Running { get; private set; }
@@ -204,6 +211,7 @@ public sealed class DnsResolver : IDisposable
 
             int ttl = DnsMessage.GetMinTtl(answer);
             _cache[key] = ((byte[])answer.Clone(), DateTime.UtcNow.AddSeconds(ttl));
+            TrackResolvedIps(answer);
             Interlocked.Increment(ref _forwarded);
             Emit(name, qtype, DnsAction.Forwarded);
         }
@@ -244,4 +252,30 @@ public sealed class DnsResolver : IDisposable
     }
 
     public void Dispose() => Stop();
+
+    private void TrackResolvedIps(byte[] answer)
+    {
+        var ips = DnsMessage.ExtractARecords(answer);
+        if (ips.Count == 0) return;
+        lock (_resolvedLock)
+        {
+            if (_resolvedV4.Count + ips.Count > MaxResolvedIps) _resolvedV4.Clear();
+            foreach (uint ip in ips) _resolvedV4.Add(ip);
+        }
+    }
+
+    /// <summary>True if this resolver has ever answered with the given IPv4 -
+    /// i.e. some app looked it up by name. A public IP an app dials WITHOUT
+    /// this being true is a direct/P2P connection.</summary>
+    public bool WasResolved(string ipv4)
+    {
+        if (!System.Net.IPAddress.TryParse(ipv4, out var ip) ||
+            ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return true; // non-v4: don't accuse what we can't check
+        var b = ip.GetAddressBytes();
+        uint v = (uint)((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]);
+        lock (_resolvedLock) return _resolvedV4.Contains(v);
+    }
+
+    public int ResolvedIpCount { get { lock (_resolvedLock) return _resolvedV4.Count; } }
 }

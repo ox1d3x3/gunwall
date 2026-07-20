@@ -970,6 +970,26 @@ public sealed class WfpEngine : IDisposable
     /// layer the OS rejects is skipped rather than aborting the rest. Returns the
     /// installed filter ids (empty if none took).
     /// </summary>
+    /// <summary>The public IPv4 space as mask CIDRs - the exact complement of
+    /// the local/LAN/reserved blocks (0/8, 10/8, 127/8, 169.254/16, 172.16/12,
+    /// 192.168/16, 224/3), programmatically derived and coverage-verified.
+    /// 46 entries; each becomes one 2-condition block filter for the app.</summary>
+    private static readonly (string Base, byte Prefix)[] PublicV4Cidrs =
+    {
+        ("1.0.0.0", 8), ("2.0.0.0", 7), ("4.0.0.0", 6), ("8.0.0.0", 7),
+        ("11.0.0.0", 8), ("12.0.0.0", 6), ("16.0.0.0", 4), ("32.0.0.0", 3),
+        ("64.0.0.0", 3), ("96.0.0.0", 4), ("112.0.0.0", 5), ("120.0.0.0", 6),
+        ("124.0.0.0", 7), ("126.0.0.0", 8), ("128.0.0.0", 3), ("160.0.0.0", 5),
+        ("168.0.0.0", 8), ("169.0.0.0", 9), ("169.128.0.0", 10), ("169.192.0.0", 11),
+        ("169.224.0.0", 12), ("169.240.0.0", 13), ("169.248.0.0", 14), ("169.252.0.0", 15),
+        ("169.255.0.0", 16), ("170.0.0.0", 7), ("172.0.0.0", 12), ("172.32.0.0", 11),
+        ("172.64.0.0", 10), ("172.128.0.0", 9), ("173.0.0.0", 8), ("174.0.0.0", 7),
+        ("176.0.0.0", 4), ("192.0.0.0", 9), ("192.128.0.0", 11), ("192.160.0.0", 13),
+        ("192.169.0.0", 16), ("192.170.0.0", 15), ("192.172.0.0", 14), ("192.176.0.0", 12),
+        ("192.192.0.0", 10), ("193.0.0.0", 8), ("194.0.0.0", 7), ("196.0.0.0", 6),
+        ("200.0.0.0", 5), ("208.0.0.0", 4),
+    };
+
     public List<ulong> AddAppScopeBlock(string exePath, string scope)
     {
         var ids = new List<ulong>(8);
@@ -996,6 +1016,12 @@ public sealed class WfpEngine : IDisposable
                     }
                     TryAdd(ids, () => AddAppRangeBlockFilterV6(FWPM_LAYER_ALE_AUTH_CONNECT_V6, blob, V6Ula, 7, "Scope: block LAN"));
                     TryAdd(ids, () => AddAppRangeBlockFilterV6(FWPM_LAYER_ALE_AUTH_CONNECT_V6, blob, V6LinkLocal, 10, "Scope: block LAN"));
+                    break;
+                case "internet":
+                    foreach (var (baseAddr, prefix) in PublicV4Cidrs)
+                        TryAdd(ids, () => AddAppRangeBlockFilterV4(FWPM_LAYER_ALE_AUTH_CONNECT_V4, blob, baseAddr, prefix, "Scope: block Internet"));
+                    // All globally-routable IPv6 lives in 2000::/3 - one filter covers it.
+                    TryAdd(ids, () => AddAppRangeBlockFilterV6(FWPM_LAYER_ALE_AUTH_CONNECT_V6, blob, "2000::", 3, "Scope: block Internet"));
                     break;
             }
         }

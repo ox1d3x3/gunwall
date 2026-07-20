@@ -208,4 +208,58 @@ public static class DnsMessage
         }
         catch { return fallback; }
     }
+
+    /// <summary>
+    /// Extracts every IPv4 A-record address from a DNS response, walking the
+    /// question section and answer records with full bounds checking and
+    /// pointer-compression support. Never throws; malformed input yields an
+    /// empty list. Feeds the resolver's resolved-IP memory (P2P detection).
+    /// </summary>
+    public static List<uint> ExtractARecords(byte[] msg)
+    {
+        var result = new List<uint>();
+        try
+        {
+            if (msg == null || msg.Length < 12) return result;
+            int qd = (msg[4] << 8) | msg[5];
+            int an = (msg[6] << 8) | msg[7];
+            if (an == 0) return result;
+            int pos = 12;
+
+            static bool SkipName(byte[] m, ref int p)
+            {
+                int hops = 0;
+                while (true)
+                {
+                    if (p >= m.Length || ++hops > 64) return false;
+                    byte len = m[p];
+                    if (len == 0) { p += 1; return true; }
+                    if ((len & 0xC0) == 0xC0) { p += 2; return true; } // compression pointer
+                    p += 1 + len;
+                }
+            }
+
+            for (int i = 0; i < qd; i++)
+            {
+                if (!SkipName(msg, ref pos)) return result;
+                pos += 4; // qtype + qclass
+                if (pos > msg.Length) return result;
+            }
+            for (int i = 0; i < an && result.Count < 64; i++)
+            {
+                if (!SkipName(msg, ref pos)) return result;
+                if (pos + 10 > msg.Length) return result;
+                int type = (msg[pos] << 8) | msg[pos + 1];
+                int cls = (msg[pos + 2] << 8) | msg[pos + 3];
+                int rdlen = (msg[pos + 8] << 8) | msg[pos + 9];
+                pos += 10;
+                if (pos + rdlen > msg.Length) return result;
+                if (type == 1 && cls == 1 && rdlen == 4)
+                    result.Add((uint)((msg[pos] << 24) | (msg[pos + 1] << 16) | (msg[pos + 2] << 8) | msg[pos + 3]));
+                pos += rdlen;
+            }
+        }
+        catch { }
+        return result;
+    }
 }
