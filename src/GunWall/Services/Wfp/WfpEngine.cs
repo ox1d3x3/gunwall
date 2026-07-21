@@ -962,6 +962,7 @@ public sealed class WfpEngine : IDisposable
     private static readonly byte[] V6Loopback  = new byte[16] { 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1 }; // ::1
     private static readonly byte[] V6Ula       = new byte[16] { 0xFC,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0 }; // fc00::/7
     private static readonly byte[] V6LinkLocal = new byte[16] { 0xFE,0x80,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0 }; // fe80::/10
+    private static readonly byte[] V6Global    = new byte[16] { 0x20,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0 }; // 2000::/3 (all routable IPv6)
 
     /// <summary>
     /// Installs a per-app "network scope" block. scope is "local" (loopback),
@@ -1021,7 +1022,7 @@ public sealed class WfpEngine : IDisposable
                     foreach (var (baseAddr, prefix) in PublicV4Cidrs)
                         TryAdd(ids, () => AddAppRangeBlockFilterV4(FWPM_LAYER_ALE_AUTH_CONNECT_V4, blob, baseAddr, prefix, "Scope: block Internet"));
                     // All globally-routable IPv6 lives in 2000::/3 - one filter covers it.
-                    TryAdd(ids, () => AddAppRangeBlockFilterV6(FWPM_LAYER_ALE_AUTH_CONNECT_V6, blob, "2000::", 3, "Scope: block Internet"));
+                    TryAdd(ids, () => AddAppRangeBlockFilterV6(FWPM_LAYER_ALE_AUTH_CONNECT_V6, blob, V6Global, 3, "Scope: block Internet"));
                     break;
             }
         }
