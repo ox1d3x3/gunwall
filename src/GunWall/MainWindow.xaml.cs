@@ -295,7 +295,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.77.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.78.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -780,6 +780,7 @@ public partial class MainWindow : Window
         if (DnsPortBox == null) return;
         DnsPortBox.Text = _firewall.DnsResolverPort.ToString();
         DnsUpstreamBox.Text = _firewall.DnsResolverUpstream;
+        InitDnsDohCombo();
         DnsBlockBox.Text = string.Join(Environment.NewLine, _firewall.DnsResolverBlocklist);
         ApplyDnsBlocklists();            // preset file + manual lines
         RefreshDnsPresetStatus();
@@ -819,6 +820,18 @@ public partial class MainWindow : Window
         }
         string upstream = DnsUpstreamBox.Text.Trim();
 
+        // Secure DNS: resolve the choice before anything is persisted or started.
+        string? doh = SelectedDohUrl();
+        if (doh == null) return;   // invalid custom URL; the user was told why
+        _firewall.SaveDnsDohConfig(doh, DnsDohFallbackCheck?.IsChecked == true);
+        // With an IP-addressed DoH endpoint, keep the plaintext peer aligned to the
+        // same provider so a permitted fallback doesn't change who sees the query.
+        if (doh.Length > 0)
+        {
+            string peer = Services.DnsResolver.PlainPeerFor(doh);
+            if (peer.Length > 0) upstream = peer;
+        }
+
         // Apply + persist the blocklist before the resolver starts serving.
         var block = DnsBlockLines(DnsBlockBox.Text);
         ApplyDnsBlocklists();   // preset file + manual lines
@@ -826,7 +839,7 @@ public partial class MainWindow : Window
 
         try
         {
-            _dnsResolver.Start(port, upstream);
+            _dnsResolver.Start(port, upstream, doh, DnsDohFallbackCheck?.IsChecked == true);
         }
         catch (Exception ex)
         {
@@ -888,17 +901,77 @@ public partial class MainWindow : Window
         }));
     }
 
+    /// <summary>Fills the Secure-DNS picker and restores the saved choice.</summary>
+    private void InitDnsDohCombo()
+    {
+        if (DnsDohCombo == null) return;
+        DnsDohCombo.Items.Clear();
+        DnsDohCombo.Items.Add(new ComboBoxItem { Content = "Off - plaintext DNS", Tag = "" });
+        foreach (var p in Services.DnsResolver.DohPresets)
+            DnsDohCombo.Items.Add(new ComboBoxItem { Content = p.Name, Tag = p.Url });
+        DnsDohCombo.Items.Add(new ComboBoxItem { Content = "Custom...", Tag = "custom" });
+
+        string saved = _firewall.DnsDohUrl;
+        int idx = 0;
+        if (saved.Length > 0)
+        {
+            idx = DnsDohCombo.Items.Count - 1; // assume custom until a preset matches
+            for (int i = 1; i < DnsDohCombo.Items.Count - 1; i++)
+                if (string.Equals((string)((ComboBoxItem)DnsDohCombo.Items[i]).Tag, saved,
+                                  StringComparison.OrdinalIgnoreCase)) { idx = i; break; }
+            if (idx == DnsDohCombo.Items.Count - 1 && DnsDohUrlBox != null)
+                DnsDohUrlBox.Text = saved;
+        }
+        DnsDohCombo.SelectedIndex = idx;
+        if (DnsDohFallbackCheck != null) DnsDohFallbackCheck.IsChecked = _firewall.DnsDohFallback;
+        UpdateDohCustomVisibility();
+    }
+
+    private void UpdateDohCustomVisibility()
+    {
+        if (DnsDohCustomPanel == null || DnsDohCombo == null) return;
+        bool custom = (DnsDohCombo.SelectedItem as ComboBoxItem)?.Tag as string == "custom";
+        DnsDohCustomPanel.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void DnsDoh_Changed(object sender, SelectionChangedEventArgs e) => UpdateDohCustomVisibility();
+
+    /// <summary>The DoH URL the user has chosen, or "" for plaintext. Shows a
+    /// message and returns null if a custom URL is present but invalid.</summary>
+    private string? SelectedDohUrl()
+    {
+        if (DnsDohCombo?.SelectedItem is not ComboBoxItem item) return "";
+        string tag = item.Tag as string ?? "";
+        if (tag.Length == 0) return "";
+        if (tag != "custom") return tag;
+
+        string? url = Services.DnsResolver.ValidateDohUrl(DnsDohUrlBox?.Text, out string err);
+        if (url == null)
+        {
+            MessageBox.Show(err, "Secure DNS", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+        return url;
+    }
+
     private void UpdateDnsUi()
     {
         if (DnsResStatus == null) return;
         bool on = _dnsResolver.Running;
         DnsStartBtn.Content = on ? "Stop resolver" : "Start resolver";
         DnsResStatus.Text = on
-            ? $"Listening on 127.0.0.1:{_dnsResolver.Port}, forwarding to {_dnsResolver.Upstream}. "
-              + $"{_dnsResolver.BlockedDomainCount} domains blocked. Point this PC's DNS at 127.0.0.1 to use it."
+            ? $"Listening on 127.0.0.1:{_dnsResolver.Port}, forwarding to {_dnsResolver.UpstreamLabel}. "
+              + $"{_dnsResolver.BlockedDomainCount} domains blocked."
+              + (_dnsResolver.SecureDns
+                    ? $" Queries are encrypted; {(_dnsResolver.DohFallbackAllowed ? "plaintext fallback allowed" : "no plaintext fallback")}."
+                    : "")
+              + " Point this PC's DNS at 127.0.0.1 to use it."
             : "Stopped. Start the resolver, then point a DNS query (or this PC's DNS) at 127.0.0.1 to use it.";
         DnsPortBox.IsEnabled = !on;
         DnsUpstreamBox.IsEnabled = !on;
+        if (DnsDohCombo != null) DnsDohCombo.IsEnabled = !on;
+        if (DnsDohUrlBox != null) DnsDohUrlBox.IsEnabled = !on;
+        if (DnsDohFallbackCheck != null) DnsDohFallbackCheck.IsEnabled = !on;
         UpdateDnsStats();
     }
 
@@ -1946,7 +2019,12 @@ public partial class MainWindow : Window
         bool resolverOk = _dnsResolver.Running;
         if (!resolverOk && _firewall.DnsResolverPort == 53)
         {
-            try { _dnsResolver.Start(53, _firewall.DnsResolverUpstream); resolverOk = true; }
+            try
+            {
+                _dnsResolver.Start(53, _firewall.DnsResolverUpstream,
+                                   _firewall.DnsDohUrl, _firewall.DnsDohFallback);
+                resolverOk = true;
+            }
             catch { resolverOk = false; }
         }
 
@@ -3559,6 +3637,10 @@ public partial class MainWindow : Window
             $"statsDestinations={_stats.TotalDestinations}, statsCountries={_stats.CountryCount}, " +
             $"geoApiOk={_firewall.GeoIp.ApiOkCount}, geoApiFail={_firewall.GeoIp.ApiFailCount}, " +
             $"dnsRunning={_dnsResolver.Running}, lastSampleError=[{_lastSampleError}]");
+        Services.DiagnosticLog.Log(
+            $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
+            $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
+            $"plaintextFallback={_dnsResolver.DohFallbackAllowed}");
         Services.DiagnosticLog.Log(
             $"ETW meter: enabled={_firewall.EtwMeterEnabled}, active={_etwMeter?.SessionActive == true}, " +
             $"events={_etwMeter?.EventsTotal ?? 0}, parseFailures={_etwMeter?.ParseFailures ?? 0}, " +

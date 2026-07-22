@@ -297,6 +297,12 @@ public sealed class StoreData
 
     public int DnsResolverPort { get; set; } = 53;
     public string DnsResolverUpstream { get; set; } = "1.1.1.1";
+
+    /// <summary>§3a: DoH endpoint for the resolver ("" = plaintext UDP).</summary>
+    public string DnsDohUrl { get; set; } = "";
+
+    /// <summary>§3a: permit plaintext fallback when DoH fails (default: fail closed).</summary>
+    public bool DnsDohFallback { get; set; }
     public List<string> DnsResolverBlocklist { get; set; } = new();
 
     // §3 Phase 2: system-DNS routing state. DnsRedirectActive is the user's saved

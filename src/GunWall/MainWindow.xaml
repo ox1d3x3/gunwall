@@ -968,6 +968,25 @@
                             <Button x:Name="DnsStartBtn" Content="Start resolver" Style="{StaticResource PrimaryButton}"
                                     Click="DnsStart_Click" Padding="16,9" VerticalAlignment="Bottom" />
                         </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0" VerticalAlignment="Bottom">
+                            <StackPanel Margin="0,0,10,0">
+                                <TextBlock Text="Secure DNS (encrypted)" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <ComboBox x:Name="DnsDohCombo" Width="238" Height="32"
+                                          SelectionChanged="DnsDoh_Changed"
+                                          ToolTip="Forward queries over HTTPS (DNS-over-HTTPS) so nobody on the network can read or tamper with them." />
+                            </StackPanel>
+                            <StackPanel x:Name="DnsDohCustomPanel" Margin="0,0,10,0" Visibility="Collapsed">
+                                <TextBlock Text="Custom DoH URL" Style="{StaticResource Muted}" Margin="2,0,0,3" />
+                                <TextBox x:Name="DnsDohUrlBox" Width="250" Height="32"
+                                         VerticalContentAlignment="Center"
+                                         ToolTip="Must be https://  e.g. https://dns.example/dns-query" />
+                            </StackPanel>
+                            <CheckBox x:Name="DnsDohFallbackCheck" Content="Fall back to plaintext if encryption fails"
+                                      Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                      Margin="0,14,0,0"
+                                      ToolTip="Off (recommended): if the encrypted resolver can't be reached, lookups fail instead of silently downgrading to unencrypted DNS." />
+                        </StackPanel>
                         <TextBlock x:Name="DnsResStatus" Style="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
                                    Text="Stopped. Start the resolver, then point a DNS query (or this PC's DNS) at 127.0.0.1 to use it." />
 

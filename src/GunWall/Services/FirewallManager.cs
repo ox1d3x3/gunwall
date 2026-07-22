@@ -240,6 +240,19 @@ public sealed class FirewallManager : IDisposable
         _store.Save(_data);
     }
 
+    // §3a: secure DNS (DoH) configuration.
+    public string DnsDohUrl => _data.DnsDohUrl ?? "";
+    public bool DnsDohFallback => _data.DnsDohFallback;
+    public void SaveDnsDohConfig(string url, bool fallback)
+    {
+        _data.DnsDohUrl = (url ?? "").Trim();
+        _data.DnsDohFallback = fallback;
+        _store.Save(_data);
+        EventLog(_data.DnsDohUrl.Length > 0
+            ? $"Secure DNS (DoH) set to {_data.DnsDohUrl}" + (fallback ? " with plaintext fallback" : " (fail closed)")
+            : "Secure DNS (DoH) disabled - queries forward in plaintext");
+    }
+
     // §3 Phase 2: system-DNS routing state (intent + captured adapter config).
     public bool DnsRedirectActive => _data.DnsRedirectActive;
     public bool DnsGamingSession => _data.DnsGamingSession;

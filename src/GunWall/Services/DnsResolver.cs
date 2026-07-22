@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,6 +42,14 @@ public sealed class DnsResolver : IDisposable
     private readonly object _resolvedLock = new();
     private const int MaxResolvedIps = 30000;
 
+    // ---- §3a Secure DNS (DNS-over-HTTPS, RFC 8484) ----
+    // The endpoint is addressed by IP wherever possible, so enabling DoH never
+    // needs a plaintext lookup to bootstrap itself (no chicken-and-egg).
+    private string _dohUrl = "";
+    private bool _dohFallback;          // allow plaintext if DoH fails (off = fail closed)
+    private HttpClient? _http;
+    private long _dohOk, _dohFail;
+
     private long _total, _blocked, _cached, _forwarded, _errors;
 
     public bool Running { get; private set; }
@@ -50,6 +59,21 @@ public sealed class DnsResolver : IDisposable
     public string Upstream => _upstream.Port == 53
         ? _upstream.Address.ToString()
         : $"{_upstream.Address}:{_upstream.Port}";
+
+    /// <summary>True when queries leave the machine encrypted over HTTPS.</summary>
+    public bool SecureDns => _dohUrl.Length > 0;
+
+    /// <summary>The active DoH endpoint, or "" when forwarding in plaintext.</summary>
+    public string DohUrl => _dohUrl;
+
+    /// <summary>Whether a DoH failure may silently fall back to plain UDP.</summary>
+    public bool DohFallbackAllowed => _dohFallback;
+
+    public long DohSuccess => Interlocked.Read(ref _dohOk);
+    public long DohFailures => Interlocked.Read(ref _dohFail);
+
+    /// <summary>What the UI shows as the effective upstream.</summary>
+    public string UpstreamLabel => SecureDns ? $"{_dohUrl} (encrypted)" : $"{Upstream} (plaintext)";
 
     public long Total => Interlocked.Read(ref _total);
     public long Blocked => Interlocked.Read(ref _blocked);
@@ -98,6 +122,54 @@ public sealed class DnsResolver : IDisposable
         return false;
     }
 
+    /// <summary>
+    /// Built-in DoH endpoints. Each is addressed by IP and each provider's
+    /// certificate covers that IP, so no plaintext lookup is needed to reach
+    /// them. Item 1 is the display name, item 2 the URL, item 3 the matching
+    /// plaintext address used when fallback is permitted.
+    /// </summary>
+    public static readonly (string Name, string Url, string PlainIp)[] DohPresets =
+    {
+        ("Cloudflare",                  "https://1.1.1.1/dns-query",       "1.1.1.1"),
+        ("Cloudflare (block malware)",  "https://1.1.1.2/dns-query",       "1.1.1.2"),
+        ("Google",                      "https://8.8.8.8/dns-query",       "8.8.8.8"),
+        ("Quad9 (block malware)",       "https://9.9.9.9/dns-query",       "9.9.9.9"),
+        ("AdGuard (block ads)",         "https://94.140.14.14/dns-query",  "94.140.14.14"),
+    };
+
+    /// <summary>
+    /// Validates a DoH endpoint. HTTPS is mandatory - the whole point is that
+    /// the query is encrypted - and the URL must be well formed. Returns the
+    /// normalised URL, or null with a reason.
+    /// </summary>
+    public static string? ValidateDohUrl(string? url, out string error)
+    {
+        error = "";
+        string u = (url ?? "").Trim();
+        if (u.Length == 0) { error = "Enter a DoH URL, e.g. https://1.1.1.1/dns-query"; return null; }
+        if (!Uri.TryCreate(u, UriKind.Absolute, out var uri))
+        { error = "That isn't a valid URL."; return null; }
+        if (!string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase))
+        { error = "Secure DNS requires an https:// endpoint."; return null; }
+        if (uri.Host.Length == 0) { error = "The URL has no host."; return null; }
+        return uri.ToString();
+    }
+
+    /// <summary>
+    /// The plaintext address matching a DoH URL, when one is known. Used so
+    /// that a hostname-free bootstrap is possible and so permitted fallback
+    /// stays with the same provider instead of silently changing operators.
+    /// </summary>
+    public static string PlainPeerFor(string dohUrl)
+    {
+        foreach (var p in DohPresets)
+            if (string.Equals(p.Url, dohUrl, StringComparison.OrdinalIgnoreCase)) return p.PlainIp;
+        // A custom endpoint given as https://<ip>/... can serve as its own peer.
+        if (Uri.TryCreate(dohUrl ?? "", UriKind.Absolute, out var uri) &&
+            IPAddress.TryParse(uri.Host, out _)) return uri.Host;
+        return "";
+    }
+
     /// <summary>Parse "ip" or "ip:port" into an endpoint (defaults to port 53).</summary>
     public static IPEndPoint ParseUpstream(string? text, int defaultPort = 53)
     {
@@ -115,13 +187,36 @@ public sealed class DnsResolver : IDisposable
         return new IPEndPoint(IPAddress.Parse("1.1.1.1"), defaultPort);
     }
 
-    /// <summary>Start listening on 127.0.0.1:port. Throws if the port can't be bound.</summary>
-    public void Start(int port, string upstream)
+    /// <summary>
+    /// Start listening on 127.0.0.1:port. Throws if the port can't be bound.
+    /// When <paramref name="dohUrl"/> is a valid https endpoint, queries are
+    /// forwarded encrypted over HTTPS; <paramref name="dohFallback"/> decides
+    /// whether a DoH failure may fall back to plaintext (off = fail closed).
+    /// </summary>
+    public void Start(int port, string upstream, string? dohUrl = null, bool dohFallback = false)
     {
         lock (_gate)
         {
             if (Running) return;
             _upstream = ParseUpstream(upstream);
+
+            _dohUrl = ValidateDohUrl(dohUrl, out _) ?? "";
+            _dohFallback = dohFallback;
+            Interlocked.Exchange(ref _dohOk, 0);
+            Interlocked.Exchange(ref _dohFail, 0);
+            if (_dohUrl.Length > 0)
+            {
+                _http?.Dispose();
+                _http = new HttpClient
+                {
+                    Timeout = TimeSpan.FromSeconds(5),
+                    DefaultRequestVersion = new Version(2, 0)
+                };
+                _http.DefaultRequestHeaders.Accept.Clear();
+                _http.DefaultRequestHeaders.Accept.Add(
+                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-message"));
+                _http.DefaultRequestHeaders.UserAgent.ParseAdd("GunWall/1.0");
+            }
 
             var listener = new UdpClient(AddressFamily.InterNetwork);
             listener.Client.Bind(new IPEndPoint(IPAddress.Loopback, port)); // loopback only
@@ -224,6 +319,46 @@ public sealed class DnsResolver : IDisposable
 
     private async Task<byte[]?> ForwardAsync(byte[] query, CancellationToken ct)
     {
+        if (_dohUrl.Length > 0)
+        {
+            byte[]? secure = await ForwardDohAsync(query, ct);
+            if (secure != null) { Interlocked.Increment(ref _dohOk); return secure; }
+
+            Interlocked.Increment(ref _dohFail);
+            // Fail closed unless the user explicitly permitted plaintext fallback:
+            // silently downgrading would defeat the point of encrypting queries.
+            if (!_dohFallback) return null;
+        }
+        return await ForwardPlainAsync(query, ct);
+    }
+
+    /// <summary>
+    /// RFC 8484 DoH: POST the raw DNS wire query as application/dns-message and
+    /// read the wire response back. Never throws; null means "failed", which
+    /// the caller turns into either fallback or an error per policy.
+    /// </summary>
+    private async Task<byte[]?> ForwardDohAsync(byte[] query, CancellationToken ct)
+    {
+        var http = _http;
+        if (http == null) return null;
+        try
+        {
+            using var content = new ByteArrayContent(query);
+            content.Headers.ContentType =
+                new System.Net.Http.Headers.MediaTypeHeaderValue("application/dns-message");
+            using var resp = await http.PostAsync(_dohUrl, content, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+
+            byte[] body = await resp.Content.ReadAsByteArrayAsync(ct);
+            // A DNS response is at least a 12-byte header; anything shorter is
+            // a captive portal or error page, not an answer.
+            return body.Length >= 12 ? body : null;
+        }
+        catch { return null; }
+    }
+
+    private async Task<byte[]?> ForwardPlainAsync(byte[] query, CancellationToken ct)
+    {
         using var up = new UdpClient(AddressFamily.InterNetwork);
         try
         {
@@ -251,7 +386,12 @@ public sealed class DnsResolver : IDisposable
         catch { /* a logging sink must never break resolution */ }
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        try { _http?.Dispose(); } catch { }
+        _http = null;
+    }
 
     private void TrackResolvedIps(byte[] answer)
     {
