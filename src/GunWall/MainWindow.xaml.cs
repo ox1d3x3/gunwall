@@ -295,7 +295,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.76.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.77.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -489,6 +489,7 @@ public partial class MainWindow : Window
             // Session totals: integrate rate over the real tick spacing so the
             // footer's byte counts stay honest even if the timer drifts.
             EnforceP2pBlocks(snap.Conns, snap.Procs);
+            EnforceAccessPolicies(snap.Conns, snap.Procs);
 
             var nowUtc = DateTime.UtcNow;
             double dt = _lastFooterSample == default
@@ -1110,6 +1111,261 @@ public partial class MainWindow : Window
             }
         }
         catch (Exception ex) { SampleStepError("EnforceP2p", ex); }
+    }
+
+    // ------------------------------ §1: per-app access policy editor dialog
+    private void AccessRules_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        try { ShowAccessRulesDialog(app); }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("AccessRules", ex); ShowError(ex); }
+    }
+
+    /// <summary>A self-contained editor for one app's ordered access policy:
+    /// add/remove/reorder/toggle rules, pick the default action, apply presets.
+    /// Edits a working copy; only writes back on Save.</summary>
+    private void ShowAccessRulesDialog(AppInfo app)
+    {
+        // Work on a deep copy so Cancel is lossless.
+        var live = _firewall.GetAccessPolicy(app.ExecutablePath);
+        var work = new GunWall.Models.AppAccessPolicy { AppPath = app.ExecutablePath };
+        work.DefaultBlock = live?.DefaultBlock ?? false;
+        if (live != null)
+            foreach (var r in live.Rules)
+                work.Rules.Add(new GunWall.Models.AppAccessRule
+                { Action = r.Action, EntityType = r.EntityType, Value = r.Value, Enabled = r.Enabled });
+
+        var list = new ItemsControl { Margin = new Thickness(0, 4, 0, 8) };
+        var defaultCombo = new ComboBox { Width = 150, Height = 28 };
+        defaultCombo.Items.Add(new ComboBoxItem { Content = "Allow (default)", Tag = "allow" });
+        defaultCombo.Items.Add(new ComboBoxItem { Content = "Block everything else", Tag = "block" });
+        defaultCombo.SelectedIndex = work.DefaultBlock ? 1 : 0;
+
+        void Rebuild()
+        {
+            var panels = new List<UIElement>();
+            for (int i = 0; i < work.Rules.Count; i++)
+            {
+                int idx = i; // capture
+                var r = work.Rules[idx];
+                var row = new Border
+                {
+                    Background = (Brush)FindResource("BgElevated"),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(8, 5, 8, 5),
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+                var g = new Grid();
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var order = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                var up = new Button { Content = "\u25B2", Width = 22, Height = 20, Margin = new Thickness(0, 0, 2, 0), FontSize = 8, IsEnabled = idx > 0 };
+                var dn = new Button { Content = "\u25BC", Width = 22, Height = 20, Margin = new Thickness(0, 0, 6, 0), FontSize = 8, IsEnabled = idx < work.Rules.Count - 1 };
+                up.Click += (_, _) => { (work.Rules[idx - 1], work.Rules[idx]) = (work.Rules[idx], work.Rules[idx - 1]); Rebuild(); };
+                dn.Click += (_, _) => { (work.Rules[idx + 1], work.Rules[idx]) = (work.Rules[idx], work.Rules[idx + 1]); Rebuild(); };
+                order.Children.Add(up); order.Children.Add(dn);
+                Grid.SetColumn(order, 0); g.Children.Add(order);
+
+                var txt = new TextBlock
+                {
+                    Text = r.Summary,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Brush)FindResource(r.Action == "block" ? "BlockText" : "AllowText")
+                };
+                Grid.SetColumn(txt, 1); g.Children.Add(txt);
+
+                var actions = new StackPanel { Orientation = Orientation.Horizontal };
+                var toggle = new Button { Content = r.Enabled ? "Disable" : "Enable", Height = 24, Margin = new Thickness(0, 0, 4, 0) };
+                if (TryFindResource("ActionButton") is Style ab) toggle.Style = ab;
+                toggle.Click += (_, _) => { r.Enabled = !r.Enabled; Rebuild(); };
+                var del = new Button { Content = "Remove", Height = 24 };
+                if (TryFindResource("ActionButton") is Style ab2) del.Style = ab2;
+                del.Click += (_, _) => { work.Rules.RemoveAt(idx); Rebuild(); };
+                actions.Children.Add(toggle); actions.Children.Add(del);
+                Grid.SetColumn(actions, 2); g.Children.Add(actions);
+
+                row.Child = g;
+                panels.Add(row);
+            }
+            if (work.Rules.Count == 0)
+                panels.Add(new TextBlock
+                {
+                    Text = "No rules yet. Connections are allowed unless you add block rules or set the default to block.",
+                    Foreground = (Brush)FindResource("TextSecondary"),
+                    TextWrapping = TextWrapping.Wrap, Margin = new Thickness(2, 2, 2, 2)
+                });
+            list.ItemsSource = panels;
+        }
+        Rebuild();
+
+        // ---- add-rule row ----
+        var actionCombo = new ComboBox { Width = 84, Height = 28, Margin = new Thickness(0, 0, 6, 0) };
+        actionCombo.Items.Add(new ComboBoxItem { Content = "Block", Tag = "block" });
+        actionCombo.Items.Add(new ComboBoxItem { Content = "Allow", Tag = "allow" });
+        actionCombo.SelectedIndex = 0;
+        var typeCombo = new ComboBox { Width = 110, Height = 28, Margin = new Thickness(0, 0, 6, 0) };
+        foreach (var (label, tag) in new[] { ("Country", "country"), ("Continent", "continent"),
+                 ("ASN", "asn"), ("IP", "ip"), ("IP range", "cidr"), ("Scope", "scope"), ("Any", "any") })
+            typeCombo.Items.Add(new ComboBoxItem { Content = label, Tag = tag });
+        typeCombo.SelectedIndex = 0;
+        var valueBox = new TextBox { Width = 140, Height = 28, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        var addBtn = new Button { Content = "Add rule", Height = 28, Padding = new Thickness(12, 0, 12, 0) };
+        if (TryFindResource("PrimaryButton") is Style pb) addBtn.Style = pb;
+        addBtn.Click += (_, _) =>
+        {
+            string act = ((ComboBoxItem)actionCombo.SelectedItem).Tag.ToString()!;
+            string type = ((ComboBoxItem)typeCombo.SelectedItem).Tag.ToString()!;
+            string val = valueBox.Text.Trim();
+            if (type != "any" && val.Length == 0) { valueBox.Focus(); return; }
+            work.Rules.Add(new GunWall.Models.AppAccessRule { Action = act, EntityType = type, Value = val });
+            valueBox.Clear(); Rebuild();
+        };
+        var addRow = new WrapPanel { Margin = new Thickness(0, 4, 0, 4) };
+        addRow.Children.Add(actionCombo); addRow.Children.Add(typeCombo);
+        addRow.Children.Add(valueBox); addRow.Children.Add(addBtn);
+
+        // ---- presets ----
+        var presetRow = new WrapPanel { Margin = new Thickness(0, 2, 0, 8) };
+        void AddPreset(string label, Action apply)
+        {
+            var b = new Button { Content = label, Height = 26, Margin = new Thickness(0, 0, 6, 6) };
+            if (TryFindResource("ActionButton") is Style s2) b.Style = s2;
+            b.Click += (_, _) => { apply(); Rebuild(); };
+            presetRow.Children.Add(b);
+        }
+        AddPreset("Allow LAN only", () =>
+        {
+            work.Rules.Clear();
+            work.Rules.Add(new() { Action = "allow", EntityType = "scope", Value = "lan" });
+            work.Rules.Add(new() { Action = "allow", EntityType = "scope", Value = "local" });
+            work.Rules.Add(new() { Action = "block", EntityType = "scope", Value = "internet" });
+            work.DefaultBlock = false; defaultCombo.SelectedIndex = 0;
+        });
+        AddPreset("Block a country", () =>
+            work.Rules.Add(new() { Action = "block", EntityType = "country", Value = "RU" }));
+        AddPreset("Block an ASN", () =>
+            work.Rules.Add(new() { Action = "block", EntityType = "asn", Value = "AS13335" }));
+        AddPreset("Allow only one country", () =>
+        {
+            work.Rules.Add(new() { Action = "allow", EntityType = "country", Value = "AU" });
+            work.DefaultBlock = true; defaultCombo.SelectedIndex = 1;
+        });
+
+        // ---- assemble ----
+        var content = new StackPanel { Margin = new Thickness(16) };
+        content.Children.Add(new TextBlock
+        {
+            Text = $"Access rules for {app.Name}",
+            FontSize = 15, FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("TextPrimary"), Margin = new Thickness(0, 0, 0, 2)
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = "Rules are checked top to bottom; the first match decides. Enforcement is reactive (GunWall blocks a remote when it sees traffic to it) and IPv4-only for geo rules.",
+            Foreground = (Brush)FindResource("TextSecondary"),
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10)
+        });
+        content.Children.Add(new TextBlock { Text = "PRESETS", FontSize = 11, Foreground = (Brush)FindResource("TextSecondary"), Margin = new Thickness(0, 0, 0, 4) });
+        content.Children.Add(presetRow);
+        content.Children.Add(new TextBlock { Text = "RULES", FontSize = 11, Foreground = (Brush)FindResource("TextSecondary"), Margin = new Thickness(0, 4, 0, 2) });
+        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 240, Content = list };
+        content.Children.Add(scroll);
+        content.Children.Add(new TextBlock { Text = "ADD RULE", FontSize = 11, Foreground = (Brush)FindResource("TextSecondary"), Margin = new Thickness(0, 6, 0, 2) });
+        content.Children.Add(new TextBlock
+        {
+            Text = "Value examples:  country RU / AU  \u00B7  continent EU / AS  \u00B7  ASN AS13335  \u00B7  IP 1.2.3.4  \u00B7  range 10.0.0.0/8  \u00B7  scope internet / lan / local",
+            FontSize = 10.5, Foreground = (Brush)FindResource("TextSecondary"),
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4)
+        });
+        content.Children.Add(addRow);
+
+        var defRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 4) };
+        defRow.Children.Add(new TextBlock { Text = "If nothing matches: ", VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextPrimary"), Margin = new Thickness(0, 0, 8, 0) });
+        defRow.Children.Add(defaultCombo);
+        content.Children.Add(defRow);
+
+        var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
+        var cancel = new Button { Content = "Cancel", Height = 30, Padding = new Thickness(16, 0, 16, 0), Margin = new Thickness(0, 0, 8, 0) };
+        if (TryFindResource("ActionButton") is Style cb) cancel.Style = cb;
+        var save = new Button { Content = "Save", Height = 30, Padding = new Thickness(20, 0, 20, 0) };
+        if (TryFindResource("PrimaryButton") is Style sb) save.Style = sb;
+        btnRow.Children.Add(cancel); btnRow.Children.Add(save);
+        content.Children.Add(btnRow);
+
+        var win = new Window
+        {
+            Title = "Access rules - GunWall",
+            Width = 680, SizeToContent = SizeToContent.Height, MaxHeight = 760,
+            Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = content }
+        };
+        win.SetResourceReference(BackgroundProperty, "BgPrimary");
+        cancel.Click += (_, _) => win.Close();
+        save.Click += (_, _) =>
+        {
+            if (!RequireEngine()) return;
+            work.DefaultBlock = ((ComboBoxItem)defaultCombo.SelectedItem).Tag.ToString() == "block";
+            var target = _firewall.GetOrCreateAccessPolicy(app.ExecutablePath);
+            target.Rules.Clear();
+            foreach (var r in work.Rules) target.Rules.Add(r);
+            target.DefaultBlock = work.DefaultBlock;
+            _firewall.SaveAccessPolicy(app.ExecutablePath);
+            _accessHandled.Clear(); // let enforcement re-evaluate against the new rules
+            RebuildAppsList();
+            win.Close();
+        };
+        win.ShowDialog();
+    }
+
+    // ------------------------------ §1: per-app access policy enforcement
+    private readonly HashSet<string> _accessHandled = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Evaluates each connection of policy-bearing apps against its ordered
+    /// access policy (first-match-wins). Connections that evaluate to Block get
+    /// a persistent per-IP reactive filter + a TCP RST, deduped per (app, ip).
+    /// Facts (scope/country/continent/asn) come from the already-enriched
+    /// connection; a wrong rule can only mis-block, never crash (roadmap risk).
+    /// </summary>
+    private void EnforceAccessPolicies(List<ConnectionInfo> conns,
+                                       Dictionary<int, (string Name, string Path)> procs)
+    {
+        try
+        {
+            if (_firewall.ActiveAccessPolicies.Count == 0) return;
+
+            foreach (var c in conns)
+            {
+                if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
+                if (!procs.TryGetValue(c.ProcessId, out var pi) || pi.Path.Length == 0) continue;
+
+                var policy = _firewall.GetAccessPolicy(pi.Path);
+                if (policy is not { IsActive: true }) continue;
+
+                string scope = IpScopeClassifier.Classify(c.RemoteAddress);
+                string continent = c.Country.Length > 0 ? Services.GeoData.Continent(c.Country) : "";
+                var facts = new ConnFacts(c.RemoteAddress, scope, c.Country, continent, c.Asn);
+
+                if (AppRuleEngine.Evaluate(policy, facts) != RuleVerdict.Block) continue;
+
+                string dedupe = pi.Path + "|" + c.RemoteAddress;
+                if (!_accessHandled.Add(dedupe)) continue;
+
+                bool added = _firewall.AddAccessReactiveBlock(pi.Path, c.RemoteAddress);
+                if (c.Protocol == "TCP")
+                    Services.ConnectionService.CloseTcpConnection(
+                        c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
+                if (added)
+                    Notify("warn", $"Access rule blocked: {pi.Name}",
+                        $"{c.RemoteAddress}:{c.RemotePort}" +
+                        (c.Country.Length > 0 ? $" ({Services.GeoData.CountryName(c.Country)})" : "") +
+                        " matched a block rule.");
+            }
+        }
+        catch (Exception ex) { SampleStepError("EnforceAccess", ex); }
     }
 
     // ------------------------------ Phase 5: traffic breakdown attribution

@@ -210,6 +210,10 @@ public sealed class StoreData
     /// enabled (lower-cased executable paths).</summary>
     public List<string> P2pApps { get; set; } = new();
 
+    /// <summary>§1: per-app ordered access policies, keyed by lower-cased
+    /// executable path. An app with no entry has no policy (allow-all).</summary>
+    public Dictionary<string, AppAccessPolicy> AccessPolicies { get; set; } = new();
+
     /// <summary>Play a sound when a notification popup appears.</summary>
     public bool NotificationSound { get; set; }
 

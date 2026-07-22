@@ -969,6 +969,68 @@ public sealed class FirewallManager : IDisposable
 
     /// <summary>Turns a per-app network-scope block on or off. Filters install through the
     /// engine's fault-tolerant path and are fully removed when turned off.</summary>
+    // ===================== §1: per-app ordered access policies =====================
+
+    /// <summary>The app's policy, or null if it has none (allow-all).</summary>
+    public AppAccessPolicy? GetAccessPolicy(string exePath) =>
+        _data.AccessPolicies.TryGetValue(exePath.ToLowerInvariant(), out var p) ? p : null;
+
+    /// <summary>All apps that currently have a policy (for the sampling loop).</summary>
+    public IReadOnlyCollection<AppAccessPolicy> ActiveAccessPolicies =>
+        _data.AccessPolicies.Values.Where(p => p.IsActive).ToList();
+
+    /// <summary>Fetch-or-create the app's policy (created empty = allow-all).</summary>
+    public AppAccessPolicy GetOrCreateAccessPolicy(string exePath)
+    {
+        string key = exePath.ToLowerInvariant();
+        if (!_data.AccessPolicies.TryGetValue(key, out var p))
+        {
+            p = new AppAccessPolicy { AppPath = exePath };
+            _data.AccessPolicies[key] = p;
+        }
+        return p;
+    }
+
+    /// <summary>Persist edits to an app's policy. If the policy became inert and
+    /// empty, it is dropped and its reactive filters cleared.</summary>
+    public void SaveAccessPolicy(string exePath)
+    {
+        string key = exePath.ToLowerInvariant();
+        if (_data.AccessPolicies.TryGetValue(key, out var p) &&
+            p.Rules.Count == 0 && !p.DefaultBlock)
+        {
+            _data.AccessPolicies.Remove(key);
+        }
+        ClearAccessReactiveBlocks(exePath); // re-evaluate cleanly under the new rules
+        _store.Save(_data);
+        EventLog($"Access policy updated for {System.IO.Path.GetFileName(exePath)}");
+    }
+
+    /// <summary>Reactively block one destination for an app under its policy,
+    /// stored under the app's "access" scope key so a policy change clears it.
+    /// Returns true if a filter was actually added.</summary>
+    public bool AddAccessReactiveBlock(string exePath, string remoteIp)
+    {
+        var ids = _engine.AddAppRemoteIpBlock(exePath, remoteIp);
+        if (ids.Count == 0) return false;
+        string key = ScopeKey(exePath, "access");
+        if (_data.ScopeFilters.TryGetValue(key, out var existing)) existing.AddRange(ids);
+        else _data.ScopeFilters[key] = ids;
+        _store.Save(_data);
+        return true;
+    }
+
+    /// <summary>Remove every reactive access-block filter for one app.</summary>
+    public void ClearAccessReactiveBlocks(string exePath)
+    {
+        string key = ScopeKey(exePath, "access");
+        if (_data.ScopeFilters.TryGetValue(key, out var ids))
+        {
+            try { _engine.RemoveFilters(ids); } catch { }
+            _data.ScopeFilters.Remove(key);
+        }
+    }
+
     public bool IsP2pBlocked(string exePath) =>
         _data.P2pApps.Contains(exePath.ToLowerInvariant());
 

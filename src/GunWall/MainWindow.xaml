@@ -457,6 +457,7 @@
                                 <MenuItem Header="Copy path" Click="CopyPath_Click" />
                                 <MenuItem Header="Open file location" Click="OpenLocation_Click" />
                                 <Separator />
+                                <MenuItem Header="Access rules..." Click="AccessRules_Click" />
                                 <MenuItem Header="Properties..." Click="Properties_Click" />
                             </ContextMenu>
                         </ListView.ContextMenu>

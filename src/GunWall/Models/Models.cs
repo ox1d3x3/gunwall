@@ -243,6 +243,53 @@ public sealed class EntityRule
     public string Label => $"{(Enabled ? "" : "(off) ")}{TypeLabel} {Value}  \u2192  block for {AppLabel}";
 }
 
+/// <summary>§1: one rule in an app's ordered access policy. Action is "allow"
+/// or "block"; EntityType is any | ip | cidr | scope | country | continent |
+/// asn; Value is the entity value (e.g. "RU", "10.0.0.0/8", "internet").</summary>
+public sealed class AppAccessRule
+{
+    public string Action { get; set; } = "block";      // allow | block
+    public string EntityType { get; set; } = "any";    // any|ip|cidr|scope|country|continent|asn
+    public string Value { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+
+    public string EntityLabel => EntityType switch
+    {
+        "any" => "any destination",
+        "ip" => "IP " + Value,
+        "cidr" => "range " + Value,
+        "scope" => Value switch { "internet" => "the Internet", "lan" => "the LAN",
+                                  "local" => "device-local", _ => "scope " + Value },
+        "country" => "country " + Value.ToUpperInvariant(),
+        "continent" => "continent " + Value.ToUpperInvariant(),
+        "asn" => "AS" + AppRuleEngineValue,
+        _ => EntityType + " " + Value
+    };
+
+    // AS-number without a duplicated "AS" prefix, for the label.
+    private string AppRuleEngineValue =>
+        Value.StartsWith("AS", StringComparison.OrdinalIgnoreCase) ? Value[2..] : Value;
+
+    public string Summary => $"{(Enabled ? "" : "(off) ")}" +
+        $"{(Action == "block" ? "Block" : "Allow")} {EntityLabel}";
+}
+
+/// <summary>§1: an app's ordered access policy — rules evaluated first-match-
+/// wins, with a default action when nothing matches. DefaultBlock=false keeps
+/// GunWall's existing "allowed app may reach anything" behaviour.</summary>
+public sealed class AppAccessPolicy
+{
+    public string AppPath { get; set; } = "";
+    public List<AppAccessRule> Rules { get; set; } = new();
+    public bool DefaultBlock { get; set; }
+
+    /// <summary>True if this policy could ever block something — i.e. it has at
+    /// least one enabled block rule, or a default-block with any allow rule.
+    /// Used to skip evaluation entirely for inert policies.</summary>
+    public bool IsActive =>
+        DefaultBlock || Rules.Any(r => r.Enabled && r.Action == "block");
+}
+
 /// <summary>§13: one entry in the in-app notification center. Kind drives the
 /// title color: "warn" (red), "good" (green), or "info" (default).</summary>
 public sealed class AppNotification
