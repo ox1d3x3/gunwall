@@ -1,3 +1,4 @@
+using System.Linq;
 using System.IO;
 using System.Runtime.InteropServices;
 using static GunWall.Services.Wfp.WfpNative;
@@ -282,13 +283,30 @@ public sealed class WfpEngine : IDisposable
     /// Adds an optional filter, swallowing failures so one unsupported permit
     /// doesn't abort the whole takeover.
     /// </summary>
+    // Distinct optional-filter failures already reported, so a layer this build
+    // doesn't expose is logged once rather than on every rule application.
+    private static readonly HashSet<string> _reportedSkips = new();
+
     private static void TryAdd(List<ulong> ids, Func<ulong> add)
     {
         try { ids.Add(add()); }
         catch (WfpException ex)
         {
             System.Diagnostics.Debug.WriteLine($"optional filter skipped: {ex.Message}");
+            // Route to diagnostics too: a silently skipped filter used to be
+            // invisible in Release builds, which hides both unsupported layers
+            // and genuinely wrong layer GUIDs.
+            bool first;
+            lock (_reportedSkips) first = _reportedSkips.Add(ex.Message);
+            if (first)
+                GunWall.Services.DiagnosticLog.Log($"WFP optional filter skipped: {ex.Message}");
         }
+    }
+
+    /// <summary>Distinct optional-filter failures seen this session (diagnostics).</summary>
+    public static string[] SkippedFilterReasons()
+    {
+        lock (_reportedSkips) return _reportedSkips.ToArray();
     }
 
     /// <summary>
@@ -302,6 +320,12 @@ public sealed class WfpEngine : IDisposable
         var ids = new List<ulong>(8);
         foreach (var layer in AllAppLayers())
             TryAdd(ids, () => AddGlobalBlockFilter(layer, LockdownWeight, "GunWall Lockdown"));
+        // Traffic merely ROUTED through this machine never reaches the ALE
+        // layers, so without these a VM bridge or mesh-VPN peer could still
+        // transit the PC during lockdown. Fault-tolerant: skipped where the
+        // forwarding layers aren't exposed.
+        TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_IPFORWARD_V4, LockdownWeight, "GunWall Lockdown: forwarding"));
+        TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_IPFORWARD_V6, LockdownWeight, "GunWall Lockdown: forwarding"));
         return ids;
     }
 
@@ -311,6 +335,7 @@ public sealed class WfpEngine : IDisposable
     /// fault-tolerant. Supported keys:
     ///   block_inbound  - block all inbound connections (RECV_ACCEPT v4+v6)
     ///   block_ipv6     - block all IPv6 (connect + accept v6)
+    ///   block_forwarding - block routed/transit traffic (IPFORWARD v4+v6)
     ///   block_smb      - block TCP 445 (file sharing) both directions
     ///   block_netbios  - block TCP/UDP 137-139 both directions
     ///   block_rdp_in   - block inbound TCP 3389 (remote desktop)
@@ -335,6 +360,12 @@ public sealed class WfpEngine : IDisposable
                     // skipped rather than aborting the rest.
                     TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_LISTEN_V4, AppBlockWeight, "Block listen"));
                     TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_LISTEN_V6, AppBlockWeight, "Block listen"));
+                    break;
+                case "block_forwarding":
+                    // The IPFORWARD layers only exist where routing is possible;
+                    // TryAdd keeps a missing layer from aborting the rest.
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_IPFORWARD_V4, AppBlockWeight, "Block forwarding"));
+                    TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_IPFORWARD_V6, AppBlockWeight, "Block forwarding"));
                     break;
                 case "block_ipv6":
                     TryAdd(ids, () => AddGlobalBlockFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V6, AppBlockWeight, "Block IPv6"));
@@ -1003,6 +1034,19 @@ public sealed class WfpEngine : IDisposable
                 case "incoming":
                     TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block incoming"));
                     TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block incoming"));
+                    break;
+                case "server":
+                    // Deny this app the server role outright. RESOURCE_ASSIGNMENT
+                    // stops bind() (TCP and UDP); AUTH_LISTEN stops listen() for
+                    // TCP; RECV_ACCEPT is the belt-and-braces backstop. Each add
+                    // is fault-tolerant, so a layer this Windows build doesn't
+                    // expose is skipped rather than aborting the rest.
+                    TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_RESOURCE_ASSIGNMENT_V4, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block server"));
+                    TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_RESOURCE_ASSIGNMENT_V6, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block server"));
+                    TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_AUTH_LISTEN_V4, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block server"));
+                    TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_AUTH_LISTEN_V6, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block server"));
+                    TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block server"));
+                    TryAdd(ids, () => AddAppFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, blob, AppBlockWeight, FWP_ACTION_BLOCK, "Scope: block server"));
                     break;
                 case "local":
                     TryAdd(ids, () => AddAppRangeBlockFilterV4(FWPM_LAYER_ALE_AUTH_CONNECT_V4, blob, "127.0.0.0", 8, "Scope: block device-local"));

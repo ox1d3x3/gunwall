@@ -295,7 +295,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.79.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.80.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3647,6 +3647,10 @@ public partial class MainWindow : Window
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
             $"plaintextFallback={_dnsResolver.DohFallbackAllowed}");
+        var skips = Services.Wfp.WfpEngine.SkippedFilterReasons();
+        Services.DiagnosticLog.Log(skips.Length == 0
+            ? "WFP optional filters: none skipped (all requested layers accepted)"
+            : $"WFP optional filters skipped ({skips.Length} distinct): {string.Join(" | ", skips)}");
         Services.DiagnosticLog.Log(
             $"CNAME cloaking: enabled={_dnsResolver.BlockCloakedCnames}, " +
             $"caught={_dnsResolver.CloakedBlocked}, last=[{_dnsResolver.LastCloak}]");
@@ -4142,6 +4146,7 @@ public partial class MainWindow : Window
             if (ScopeLanItem != null) ScopeLanItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "lan");
             if (ScopeIncomingItem != null) ScopeIncomingItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "incoming");
             if (ScopeInternetItem != null) ScopeInternetItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "internet");
+            if (ScopeServerItem != null) ScopeServerItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "server");
             if (ScopeP2pItem != null) ScopeP2pItem.IsChecked = _firewall.IsP2pBlocked(app.ExecutablePath);
         }
         else
@@ -4150,6 +4155,7 @@ public partial class MainWindow : Window
             if (ScopeLanItem != null) ScopeLanItem.IsChecked = false;
             if (ScopeIncomingItem != null) ScopeIncomingItem.IsChecked = false;
             if (ScopeInternetItem != null) ScopeInternetItem.IsChecked = false;
+            if (ScopeServerItem != null) ScopeServerItem.IsChecked = false;
             if (ScopeP2pItem != null) ScopeP2pItem.IsChecked = false;
         }
     }

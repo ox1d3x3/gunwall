@@ -95,6 +95,20 @@ internal static class WfpNative
         new("5926dfc8-e3cf-4426-a283-dc393f5d0f9d");
     internal static readonly Guid FWPM_LAYER_INBOUND_TRANSPORT_V6 =
         new("634a869f-fc23-4b90-b0c1-bf620a36ae6f");
+    // IP forwarding layers — traffic ROUTED THROUGH this machine rather than
+    // sent to or from it. Relevant whenever a VM bridge, ICS, or a mesh VPN
+    // could turn the PC into a transit hop for someone else's traffic.
+    internal static readonly Guid FWPM_LAYER_IPFORWARD_V4 =
+        new("a82acc24-4ee1-4ee1-b465-fd1d25cb10a4");
+    internal static readonly Guid FWPM_LAYER_IPFORWARD_V6 =
+        new("7b964818-19c7-493a-b71f-832c3684d28c");
+    // Resource assignment — governs bind(), i.e. an application claiming a local
+    // port at all. Blocking here stops a process becoming a server one step
+    // earlier than ALE_AUTH_LISTEN, and unlike LISTEN it also covers UDP.
+    internal static readonly Guid FWPM_LAYER_ALE_RESOURCE_ASSIGNMENT_V4 =
+        new("1247d66d-0b60-4a15-8d44-7155d0f53a0c");
+    internal static readonly Guid FWPM_LAYER_ALE_RESOURCE_ASSIGNMENT_V6 =
+        new("55a650e1-5f0a-4eca-a653-88f53b26aa8c");
     // Outbound ICMP error layers — used by stealth mode to suppress the
     // "destination unreachable" replies that reveal closed ports to scanners.
     internal static readonly Guid FWPM_LAYER_OUTBOUND_ICMP_ERROR_V4 =

@@ -445,6 +445,9 @@
                                               IsCheckable="True" Click="ScopeBlock_Click" Tag="lan" />
                                     <MenuItem x:Name="ScopeIncomingItem" Header="Block incoming connections"
                                               IsCheckable="True" Click="ScopeBlock_Click" Tag="incoming" />
+                                    <MenuItem x:Name="ScopeServerItem" Header="Block server / listening sockets"
+                                              IsCheckable="True" Click="ScopeBlock_Click" Tag="server"
+                                              ToolTip="Stops this app opening any listening port (TCP or UDP), so it can never accept incoming connections. Remove it if the app hosts a server, game lobby, or peer-to-peer transfer." />
                                     <MenuItem x:Name="ScopeInternetItem" Header="Block Internet (allow LAN only)"
                                               IsCheckable="True" Click="ScopeBlock_Click" Tag="internet" />
                                     <MenuItem x:Name="ScopeP2pItem" Header="Block P2P / direct connections"
