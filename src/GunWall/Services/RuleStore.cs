@@ -303,6 +303,9 @@ public sealed class StoreData
 
     /// <summary>§3a: permit plaintext fallback when DoH fails (default: fail closed).</summary>
     public bool DnsDohFallback { get; set; }
+
+    /// <summary>§3b: check CNAME chains against the blocklist (default: on).</summary>
+    public bool DnsBlockCloakedCnames { get; set; } = true;
     public List<string> DnsResolverBlocklist { get; set; } = new();
 
     // §3 Phase 2: system-DNS routing state. DnsRedirectActive is the user's saved

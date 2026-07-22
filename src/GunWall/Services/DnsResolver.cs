@@ -50,6 +50,10 @@ public sealed class DnsResolver : IDisposable
     private HttpClient? _http;
     private long _dohOk, _dohFail;
 
+    // ---- §3b CNAME-cloaking defense ----
+    private bool _blockCloaked = true;
+    private long _cloaked;
+
     private long _total, _blocked, _cached, _forwarded, _errors;
 
     public bool Running { get; private set; }
@@ -68,6 +72,15 @@ public sealed class DnsResolver : IDisposable
 
     /// <summary>Whether a DoH failure may silently fall back to plain UDP.</summary>
     public bool DohFallbackAllowed => _dohFallback;
+
+    /// <summary>Whether CNAME chains are checked against the blocklist.</summary>
+    public bool BlockCloakedCnames => _blockCloaked;
+
+    /// <summary>Lookups denied because a name in their CNAME chain was blocked.</summary>
+    public long CloakedBlocked => Interlocked.Read(ref _cloaked);
+
+    /// <summary>Most recent cloak caught, as "queried -> hidden target" (for logs).</summary>
+    public string LastCloak { get; private set; } = "";
 
     public long DohSuccess => Interlocked.Read(ref _dohOk);
     public long DohFailures => Interlocked.Read(ref _dohFail);
@@ -193,12 +206,15 @@ public sealed class DnsResolver : IDisposable
     /// forwarded encrypted over HTTPS; <paramref name="dohFallback"/> decides
     /// whether a DoH failure may fall back to plaintext (off = fail closed).
     /// </summary>
-    public void Start(int port, string upstream, string? dohUrl = null, bool dohFallback = false)
+    public void Start(int port, string upstream, string? dohUrl = null, bool dohFallback = false,
+                      bool blockCloakedCnames = true)
     {
         lock (_gate)
         {
             if (Running) return;
             _upstream = ParseUpstream(upstream);
+            _blockCloaked = blockCloakedCnames;
+            Interlocked.Exchange(ref _cloaked, 0);
 
             _dohUrl = ValidateDohUrl(dohUrl, out _) ?? "";
             _dohFallback = dohFallback;
@@ -302,6 +318,26 @@ public sealed class DnsResolver : IDisposable
                 Emit(name, qtype, DnsAction.Error);
                 return;
             }
+            // 3b) CNAME-cloaking defense. A tracker can dodge a domain blocklist
+            // by having a clean first-party name alias to it, so check every hop
+            // of the returned chain too. The lookup had to complete to reveal the
+            // chain, but the answer is withheld - the app never learns the
+            // tracker's address and never connects to it.
+            if (_blockCloaked)
+            {
+                foreach (string hop in DnsMessage.ExtractCnames(answer))
+                {
+                    if (!IsBlocked(hop)) continue;
+                    byte[] nxc = DnsMessage.BuildNxDomain(query);
+                    await listener.SendAsync(nxc, nxc.Length, req.RemoteEndPoint);
+                    Interlocked.Increment(ref _blocked);
+                    Interlocked.Increment(ref _cloaked);
+                    LastCloak = $"{name} -> {hop}";
+                    Emit(name, qtype, DnsAction.Cloaked);
+                    return;   // deliberately not cached: never serve a cloaked answer
+                }
+            }
+
             await listener.SendAsync(answer, answer.Length, req.RemoteEndPoint);
 
             int ttl = DnsMessage.GetMinTtl(answer);

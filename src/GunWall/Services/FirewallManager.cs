@@ -243,6 +243,16 @@ public sealed class FirewallManager : IDisposable
     // §3a: secure DNS (DoH) configuration.
     public string DnsDohUrl => _data.DnsDohUrl ?? "";
     public bool DnsDohFallback => _data.DnsDohFallback;
+    public bool DnsBlockCloakedCnames => _data.DnsBlockCloakedCnames;
+    public void SaveDnsCloakConfig(bool enabled)
+    {
+        if (_data.DnsBlockCloakedCnames == enabled) return;
+        _data.DnsBlockCloakedCnames = enabled;
+        _store.Save(_data);
+        EventLog(enabled
+            ? "CNAME-cloaking defense enabled"
+            : "CNAME-cloaking defense disabled");
+    }
     public void SaveDnsDohConfig(string url, bool fallback)
     {
         _data.DnsDohUrl = (url ?? "").Trim();

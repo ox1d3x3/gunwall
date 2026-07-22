@@ -295,7 +295,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.78.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.79.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -781,6 +781,7 @@ public partial class MainWindow : Window
         DnsPortBox.Text = _firewall.DnsResolverPort.ToString();
         DnsUpstreamBox.Text = _firewall.DnsResolverUpstream;
         InitDnsDohCombo();
+        if (DnsCloakCheck != null) DnsCloakCheck.IsChecked = _firewall.DnsBlockCloakedCnames;
         DnsBlockBox.Text = string.Join(Environment.NewLine, _firewall.DnsResolverBlocklist);
         ApplyDnsBlocklists();            // preset file + manual lines
         RefreshDnsPresetStatus();
@@ -824,6 +825,7 @@ public partial class MainWindow : Window
         string? doh = SelectedDohUrl();
         if (doh == null) return;   // invalid custom URL; the user was told why
         _firewall.SaveDnsDohConfig(doh, DnsDohFallbackCheck?.IsChecked == true);
+        _firewall.SaveDnsCloakConfig(DnsCloakCheck?.IsChecked != false);
         // With an IP-addressed DoH endpoint, keep the plaintext peer aligned to the
         // same provider so a permitted fallback doesn't change who sees the query.
         if (doh.Length > 0)
@@ -839,7 +841,8 @@ public partial class MainWindow : Window
 
         try
         {
-            _dnsResolver.Start(port, upstream, doh, DnsDohFallbackCheck?.IsChecked == true);
+            _dnsResolver.Start(port, upstream, doh, DnsDohFallbackCheck?.IsChecked == true,
+                               DnsCloakCheck?.IsChecked != false);
         }
         catch (Exception ex)
         {
@@ -972,6 +975,7 @@ public partial class MainWindow : Window
         if (DnsDohCombo != null) DnsDohCombo.IsEnabled = !on;
         if (DnsDohUrlBox != null) DnsDohUrlBox.IsEnabled = !on;
         if (DnsDohFallbackCheck != null) DnsDohFallbackCheck.IsEnabled = !on;
+        if (DnsCloakCheck != null) DnsCloakCheck.IsEnabled = !on;
         UpdateDnsStats();
     }
 
@@ -982,6 +986,7 @@ public partial class MainWindow : Window
         DnsStatForwarded.Text = _dnsResolver.Forwarded.ToString("N0");
         DnsStatCached.Text = _dnsResolver.Cached.ToString("N0");
         DnsStatBlocked.Text = _dnsResolver.Blocked.ToString("N0");
+        if (DnsStatCloaked != null) DnsStatCloaked.Text = _dnsResolver.CloakedBlocked.ToString("N0");
     }
 
     // ======================================================== rule profiles (§10)
@@ -2022,7 +2027,8 @@ public partial class MainWindow : Window
             try
             {
                 _dnsResolver.Start(53, _firewall.DnsResolverUpstream,
-                                   _firewall.DnsDohUrl, _firewall.DnsDohFallback);
+                                   _firewall.DnsDohUrl, _firewall.DnsDohFallback,
+                                   _firewall.DnsBlockCloakedCnames);
                 resolverOk = true;
             }
             catch { resolverOk = false; }
@@ -3641,6 +3647,9 @@ public partial class MainWindow : Window
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
             $"plaintextFallback={_dnsResolver.DohFallbackAllowed}");
+        Services.DiagnosticLog.Log(
+            $"CNAME cloaking: enabled={_dnsResolver.BlockCloakedCnames}, " +
+            $"caught={_dnsResolver.CloakedBlocked}, last=[{_dnsResolver.LastCloak}]");
         Services.DiagnosticLog.Log(
             $"ETW meter: enabled={_firewall.EtwMeterEnabled}, active={_etwMeter?.SessionActive == true}, " +
             $"events={_etwMeter?.EventsTotal ?? 0}, parseFailures={_etwMeter?.ParseFailures ?? 0}, " +

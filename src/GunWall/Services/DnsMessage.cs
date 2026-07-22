@@ -4,7 +4,7 @@ using System.Text;
 namespace GunWall.Services;
 
 /// <summary>What GunWall's resolver did with a single DNS query.</summary>
-public enum DnsAction { Forwarded, Cached, Blocked, Error }
+public enum DnsAction { Forwarded, Cached, Blocked, Cloaked, Error }
 
 /// <summary>One line in the resolver's query log. Plain data — no WPF types — so
 /// the engine that produces it can be unit-tested in isolation.</summary>
@@ -256,6 +256,99 @@ public static class DnsMessage
                 if (pos + rdlen > msg.Length) return result;
                 if (type == 1 && cls == 1 && rdlen == 4)
                     result.Add((uint)((msg[pos] << 24) | (msg[pos + 1] << 16) | (msg[pos + 2] << 8) | msg[pos + 3]));
+                pos += rdlen;
+            }
+        }
+        catch { }
+        return result;
+    }
+
+    /// <summary>
+    /// Reads a DNS name at <paramref name="pos"/>, following compression
+    /// pointers. <paramref name="nextPos"/> is where the name ends in the
+    /// original stream (immediately after the first pointer, per the wire
+    /// format). Guards against pointer loops, out-of-range offsets and
+    /// over-long names; returns false rather than throwing on any of them.
+    /// </summary>
+    public static bool TryReadName(byte[] m, int pos, out string name, out int nextPos)
+    {
+        name = "";
+        nextPos = pos;
+        if (m == null || pos < 0 || pos >= m.Length) return false;
+
+        var sb = new System.Text.StringBuilder();
+        int p = pos, jumps = 0;
+        bool jumped = false;
+
+        while (true)
+        {
+            if (p < 0 || p >= m.Length) return false;
+            byte len = m[p];
+
+            if (len == 0)                       // root label: the name ends
+            {
+                if (!jumped) nextPos = p + 1;
+                break;
+            }
+            if ((len & 0xC0) == 0xC0)           // compression pointer
+            {
+                if (p + 1 >= m.Length) return false;
+                int target = ((len & 0x3F) << 8) | m[p + 1];
+                if (!jumped) { nextPos = p + 2; jumped = true; }
+                if (++jumps > 32) return false; // loop guard
+                if (target >= p && jumps > 1) { /* forward/self pointers still bounded by jumps */ }
+                p = target;
+                continue;
+            }
+            if ((len & 0xC0) != 0) return false; // reserved label type
+            if (p + 1 + len > m.Length) return false;
+
+            if (sb.Length > 0) sb.Append('.');
+            for (int i = 0; i < len; i++) sb.Append((char)m[p + 1 + i]);
+            if (sb.Length > 255) return false;  // max DNS name length
+            p += 1 + len;
+        }
+
+        name = sb.ToString();
+        return true;
+    }
+
+    /// <summary>
+    /// Every CNAME target in a response's answer section, in order. This is the
+    /// chain a "cloaked" tracker hides behind: the queried first-party name is
+    /// clean, but it aliases to a third-party tracker further down the chain.
+    /// Never throws; malformed input yields an empty list.
+    /// </summary>
+    public static List<string> ExtractCnames(byte[] msg)
+    {
+        var result = new List<string>();
+        try
+        {
+            if (msg == null || msg.Length < 12) return result;
+            int qd = (msg[4] << 8) | msg[5];
+            int an = (msg[6] << 8) | msg[7];
+            if (an == 0) return result;
+
+            int pos = 12;
+            for (int i = 0; i < qd; i++)
+            {
+                if (!TryReadName(msg, pos, out _, out pos)) return result;
+                pos += 4;                                   // qtype + qclass
+                if (pos > msg.Length) return result;
+            }
+            for (int i = 0; i < an && result.Count < 32; i++)
+            {
+                if (!TryReadName(msg, pos, out _, out pos)) return result;
+                if (pos + 10 > msg.Length) return result;
+                int type = (msg[pos] << 8) | msg[pos + 1];
+                int rdlen = (msg[pos + 8] << 8) | msg[pos + 9];
+                pos += 10;
+                if (rdlen < 0 || pos + rdlen > msg.Length) return result;
+
+                if (type == 5 &&                            // CNAME
+                    TryReadName(msg, pos, out string target, out _) && target.Length > 0)
+                    result.Add(target);
+
                 pos += rdlen;
             }
         }

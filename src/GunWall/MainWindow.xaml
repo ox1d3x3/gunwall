@@ -982,6 +982,10 @@
                                          VerticalContentAlignment="Center"
                                          ToolTip="Must be https://  e.g. https://dns.example/dns-query" />
                             </StackPanel>
+                            <CheckBox x:Name="DnsCloakCheck" Content="Block CNAME-cloaked trackers"
+                                      Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                      Margin="0,14,18,0" IsChecked="True"
+                                      ToolTip="Follows each answer's CNAME chain and blocks it if any hop is on the blocklist - catching trackers that hide behind a clean first-party subdomain." />
                             <CheckBox x:Name="DnsDohFallbackCheck" Content="Fall back to plaintext if encryption fails"
                                       Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
                                       Margin="0,14,0,0"
@@ -1006,7 +1010,7 @@
                         <TextBlock x:Name="DnsRedirectStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" TextWrapping="Wrap"
                                    Text="System DNS untouched." />
 
-                        <UniformGrid Rows="1" Columns="4" Margin="0,14,0,0">
+                        <UniformGrid Rows="1" Columns="5" Margin="0,14,0,0">
                             <StackPanel>
                                 <TextBlock x:Name="DnsStatQueries" Text="0" Style="{StaticResource H2}" />
                                 <TextBlock Text="Queries" Style="{StaticResource Muted}" />
@@ -1022,6 +1026,11 @@
                             <StackPanel>
                                 <TextBlock x:Name="DnsStatBlocked" Text="0" Style="{StaticResource H2}" />
                                 <TextBlock Text="Blocked" Style="{StaticResource Muted}" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock x:Name="DnsStatCloaked" Text="0" Style="{StaticResource H2}" />
+                                <TextBlock Text="Cloaked" Style="{StaticResource Muted}"
+                                           ToolTip="Trackers caught hiding behind a clean-looking first-party name via CNAME aliasing." />
                             </StackPanel>
                         </UniformGrid>
                     </StackPanel>
@@ -1053,6 +1062,9 @@
                                                                 <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
                                                                 <Style.Triggers>
                                                                     <DataTrigger Binding="{Binding ActionText}" Value="Blocked">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource BlockText}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding ActionText}" Value="Cloaked">
                                                                         <Setter Property="Foreground" Value="{DynamicResource BlockText}" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding ActionText}" Value="Forwarded">
