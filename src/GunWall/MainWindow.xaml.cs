@@ -239,6 +239,16 @@ public partial class MainWindow : Window
             if (EventLogCheck != null) EventLogCheck.IsChecked = _firewall.EventLogEnabled;
             if (NotifSoundCheck != null) NotifSoundCheck.IsChecked = _firewall.NotificationSound;
             if (TrayNotifCheck != null) TrayNotifCheck.IsChecked = _firewall.TrayNotifications;
+            var muted = _firewall.MutedAlertCategories;
+            if (AlertCatSecurityCheck != null) AlertCatSecurityCheck.IsChecked = !muted.Contains("security");
+            if (AlertCatProtectionCheck != null) AlertCatProtectionCheck.IsChecked = !muted.Contains("protection");
+            if (AlertCatNetworkCheck != null) AlertCatNetworkCheck.IsChecked = !muted.Contains("network");
+            if (AlertCatRulesCheck != null) AlertCatRulesCheck.IsChecked = !muted.Contains("rules");
+            if (TraySingleClickCheck != null) TraySingleClickCheck.IsChecked = _firewall.TraySingleClick;
+            if (UiZoomCombo != null)
+                UiZoomCombo.SelectedIndex = _firewall.UiZoomPercent switch
+                { 90 => 0, 100 => 1, 110 => 2, 125 => 3, _ => 1 };
+            ApplyUiZoom();
             if (PacketLogFileCheck != null) PacketLogFileCheck.IsChecked = _firewall.PacketFileLogging;
             if (PopupTimeoutCombo != null)
                 PopupTimeoutCombo.SelectedIndex = _firewall.PopupTimeoutSeconds switch
@@ -295,7 +305,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.80.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.81.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -528,7 +538,7 @@ public partial class MainWindow : Window
                     Services.DiagnosticLog.Log(
                         "ETW meter: 30 ticks with NIC traffic but no kernel events - degraded to estimate");
                     Notify("warn", "ETW meter degraded",
-                        "No kernel events arrived while traffic flowed; usage fell back to the estimate.");
+                        "No kernel events arrived while traffic flowed; usage fell back to the estimate.", "network");
                     UpdateUsageModeText();
                 }
             }
@@ -890,7 +900,7 @@ public partial class MainWindow : Window
                 Dispatcher.BeginInvoke(new Action(() =>
                     Notify("warn", "Suspicious domain pattern",
                            $"{entry.Domain} looks machine-generated (score {h.Score}: {h.Reason}). " +
-                           "If unfamiliar, consider adding it to the DNS blocklist.")));
+                           "If unfamiliar, consider adding it to the DNS blocklist.", "security")));
             }
         }
 
@@ -1013,7 +1023,7 @@ public partial class MainWindow : Window
         RefreshProfileCombo();
         ProfileCombo.SelectedItem = name;
         RuleProfileStatus.Text = $"Saved current app rules as '{name}'.";
-        Notify("info", $"Profile saved: {name}", "Current app allow/block rules captured.");
+        Notify("info", $"Profile saved: {name}", "Current app allow/block rules captured.", "rules");
     }
 
     private void ProfileApply_Click(object sender, RoutedEventArgs e)
@@ -1023,7 +1033,7 @@ public partial class MainWindow : Window
         int changed = _firewall.ApplyRuleProfile(name);
         if (changed < 0) { RuleProfileStatus.Text = "Profile not found."; return; }
         RuleProfileStatus.Text = $"Applied '{name}' — {changed} app rule(s) changed.";
-        Notify("info", $"Profile applied: {name}", $"{changed} app rule(s) changed.");
+        Notify("info", $"Profile applied: {name}", $"{changed} app rule(s) changed.", "rules");
         RebuildAppsList();
     }
 
@@ -1077,7 +1087,7 @@ public partial class MainWindow : Window
             ApplyDnsBlocklists();
             RefreshDnsPresetStatus();
             Notify("good", "DNS preset loaded",
-                   $"{_dnsResolver.BlockedDomainCount:N0} domains now blocked by GunWall's resolver.");
+                   $"{_dnsResolver.BlockedDomainCount:N0} domains now blocked by GunWall's resolver.", "network");
         }
         catch (Exception ex)
         {
@@ -1097,7 +1107,7 @@ public partial class MainWindow : Window
             PortalStatus.Text = r.Detail;
             if (r.Captive)
                 Notify("warn", "Captive portal detected",
-                       "A login page is intercepting traffic. Use Portal mode to reach it.");
+                       "A login page is intercepting traffic. Use Portal mode to reach it.", "network");
         }
         finally { CheckPortalBtn.IsEnabled = true; }
     }
@@ -1113,8 +1123,11 @@ public partial class MainWindow : Window
     // ===================================================== notification center (§13)
     /// <summary>Record a notable event in the Alerts page and bump the sidebar
     /// badge when the page isn't open. Safe to call from any UI-thread path.</summary>
-    private void Notify(string kind, string title, string detail)
+    private void Notify(string kind, string title, string detail, string cat = "general")
     {
+        // Categories the user silenced in Settings never reach the Alerts page.
+        if (_firewall.MutedAlertCategories.Contains(cat)) return;
+
         try
         {
             if (AlertsList == null) return;
@@ -1185,7 +1198,7 @@ public partial class MainWindow : Window
                         c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
                 if (added)
                     Notify("warn", $"Direct connection blocked: {pi.Name}",
-                        $"{c.RemoteAddress}:{c.RemotePort} was never resolved via DNS - blocked as P2P/direct.");
+                        $"{c.RemoteAddress}:{c.RemotePort} was never resolved via DNS - blocked as P2P/direct.", "security");
             }
         }
         catch (Exception ex) { SampleStepError("EnforceP2p", ex); }
@@ -1440,7 +1453,7 @@ public partial class MainWindow : Window
                     Notify("warn", $"Access rule blocked: {pi.Name}",
                         $"{c.RemoteAddress}:{c.RemotePort}" +
                         (c.Country.Length > 0 ? $" ({Services.GeoData.CountryName(c.Country)})" : "") +
-                        " matched a block rule.");
+                        " matched a block rule.", "security");
             }
         }
         catch (Exception ex) { SampleStepError("EnforceAccess", ex); }
@@ -1886,7 +1899,7 @@ public partial class MainWindow : Window
             if (!_etwMeter.Start())
                 Notify("warn", "ETW meter unavailable",
                     (_etwMeter.LastError.Length > 0 ? _etwMeter.LastError + " - " : "") +
-                    "usage stays on the estimate.");
+                    "usage stays on the estimate.", "network");
             UpdateUsageModeText();
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("StartEtwMeter", ex); }
@@ -2461,7 +2474,7 @@ public partial class MainWindow : Window
                     if (_firewall.MarkKnown(proc.Path))
                         Notify("info",
                                $"First network activity: {System.IO.Path.GetFileNameWithoutExtension(proc.Path)}",
-                               $"{proc.Path} made its first network connection on this system.");
+                               $"{proc.Path} made its first network connection on this system.", "rules");
                 continue;
             }
 
@@ -3159,6 +3172,109 @@ public partial class MainWindow : Window
 
     private void GraphCanvas_SizeChanged(object sender, SizeChangedEventArgs e) => RedrawGraph();
 
+    // ------------------------------------------ view & diagnostics niceties
+    /// <summary>Applies the saved UI zoom. 100% clears the transform entirely
+    /// so the default rendering path is untouched.</summary>
+    private void ApplyUiZoom()
+    {
+        try
+        {
+            if (RootGrid == null) return;
+            int z = _firewall.UiZoomPercent;
+            RootGrid.LayoutTransform = z == 100
+                ? Transform.Identity
+                : new ScaleTransform(z / 100.0, z / 100.0);
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("ApplyUiZoom", ex); }
+    }
+
+    /// <summary>Auto-sizes every column of the list the context menu was opened
+    /// on. Writing ActualWidth first forces a re-measure even when the width is
+    /// already NaN; setting NaN then re-fits it to the content.</summary>
+    private void FitColumns_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (sender is not MenuItem mi) return;
+            if ((mi.Parent as ContextMenu)?.PlacementTarget is not ListView lv) return;
+            if (lv.View is not GridView gv) return;
+            foreach (var col in gv.Columns)
+            {
+                col.Width = col.ActualWidth;
+                col.Width = double.NaN;
+            }
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("FitColumns", ex); }
+    }
+
+    /// <summary>Error-log viewer: this session's captured exceptions, newest
+    /// first, separate from the full mixed diagnostics.log on disk.</summary>
+    private void ErrorLog_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var box = new TextBox
+            {
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.NoWrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 12,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(12)
+            };
+            box.SetResourceReference(BackgroundProperty, "BgCard");
+            box.SetResourceReference(ForegroundProperty, "TextPrimary");
+
+            void Fill()
+            {
+                var errors = Services.DiagnosticLog.RecentErrors();
+                box.Text = errors.Length == 0
+                    ? "No errors recorded this session."
+                    : string.Join(Environment.NewLine, errors);
+            }
+            Fill();
+
+            var copyBtn = new Button { Content = "Copy all", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0) };
+            var clearBtn = new Button { Content = "Clear", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0) };
+            var refreshBtn = new Button { Content = "Refresh", Padding = new Thickness(14, 6, 14, 6) };
+            foreach (var b in new[] { copyBtn, clearBtn, refreshBtn })
+                if (TryFindResource("ActionButton") is Style st) b.Style = st;
+            copyBtn.Click += (_, _) => { try { Clipboard.SetText(box.Text); } catch { } };
+            clearBtn.Click += (_, _) => { Services.DiagnosticLog.ClearRecentErrors(); Fill(); };
+            refreshBtn.Click += (_, _) => Fill();
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(12)
+            };
+            buttons.Children.Add(copyBtn);
+            buttons.Children.Add(clearBtn);
+            buttons.Children.Add(refreshBtn);
+
+            var root = new DockPanel();
+            DockPanel.SetDock(buttons, Dock.Bottom);
+            root.Children.Add(buttons);
+            root.Children.Add(box);
+
+            var win = new Window
+            {
+                Title = "Error log - GunWall",
+                Width = 780,
+                Height = 500,
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Content = root
+            };
+            win.SetResourceReference(BackgroundProperty, "BgPrimary");
+            win.ShowDialog();
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("ErrorLog", ex); ShowError(ex); }
+    }
+
     // ------------------------------------------ Phase 4: footer status bar
     private void UpdateFooter(double downRate, double upRate)
     {
@@ -3796,7 +3912,7 @@ public partial class MainWindow : Window
                             Detail = $"VirusTotal: {result.Malicious}/{result.Total} engines flagged this file"
                         });
                         Notify("warn", $"VirusTotal flagged {name}",
-                               $"{result.Malicious}/{result.Total} engines flagged this file.");
+                               $"{result.Malicious}/{result.Total} engines flagged this file.", "security");
                         try
                         {
                             if (_tray != null)
@@ -4820,6 +4936,17 @@ public partial class MainWindow : Window
         _firewall.SetEventLogEnabled(EventLogCheck?.IsChecked == true);
         _firewall.SetNotificationSound(NotifSoundCheck?.IsChecked == true);
         _firewall.SetTrayNotifications(TrayNotifCheck?.IsChecked == true);
+        _firewall.SetAlertCategoryMuted("security", AlertCatSecurityCheck?.IsChecked != true);
+        _firewall.SetAlertCategoryMuted("protection", AlertCatProtectionCheck?.IsChecked != true);
+        _firewall.SetAlertCategoryMuted("network", AlertCatNetworkCheck?.IsChecked != true);
+        _firewall.SetAlertCategoryMuted("rules", AlertCatRulesCheck?.IsChecked != true);
+        _firewall.SetTraySingleClick(TraySingleClickCheck?.IsChecked == true);
+        if (UiZoomCombo?.SelectedItem is ComboBoxItem uzi &&
+            int.TryParse(uzi.Tag?.ToString(), out int uzv))
+        {
+            _firewall.SetUiZoomPercent(uzv);
+            ApplyUiZoom();
+        }
         _firewall.SetPacketFileLogging(PacketLogFileCheck?.IsChecked == true);
         _firewall.SetFullscreenSilent(FullscreenSilentCheck?.IsChecked == true);
         _firewall.SetConfirmClearLogs(ConfirmClearCheck?.IsChecked == true);
@@ -4942,7 +5069,7 @@ public partial class MainWindow : Window
             Notify(protNow ? "good" : "warn",
                    protNow ? "Protection active" : "Protection off",
                    protNow ? "Zero-Trust filtering is enforcing again."
-                           : "Firewall filtering is disabled or snoozed.");
+                           : "Firewall filtering is disabled or snoozed.", "protection");
         _lastNotifiedProtection = protNow;
 
         bool ldNow = _firewall.LockdownEngaged;
@@ -4950,7 +5077,7 @@ public partial class MainWindow : Window
             Notify(ldNow ? "warn" : "good",
                    ldNow ? "Lockdown engaged" : "Lockdown lifted",
                    ldNow ? "All network traffic is being blocked."
-                         : "Normal filtering restored.");
+                         : "Normal filtering restored.", "protection");
         _lastNotifiedLockdown = ldNow;
 
         UpdateTrayIcon(); // tray dot mirrors protection state (green active / red off)
@@ -5061,6 +5188,12 @@ public partial class MainWindow : Window
             UpdateTrayIcon(); // status-colored icon (green active / red disabled)
 
             _tray.DoubleClick += (_, _) => RestoreFromTray();
+            _tray.MouseClick += (_, me) =>
+            {
+                // Optional single-click restore; double-click always works.
+                if (me.Button == System.Windows.Forms.MouseButtons.Left && _firewall.TraySingleClick)
+                    RestoreFromTray();
+            };
 
             var menu = new System.Windows.Forms.ContextMenuStrip();
             menu.Items.Add("Open GunWall", null, (_, _) => RestoreFromTray());

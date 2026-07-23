@@ -48,8 +48,26 @@ public static class DiagnosticLog
         }
     }
 
+    // This session's captured errors, newest first, for the Settings viewer.
+    // Capped so a failure loop can't grow it without bound.
+    private static readonly List<string> _recentErrors = new();
+    private const int MaxRecentErrors = 300;
+
+    /// <summary>Snapshot of this session's captured errors, newest first.</summary>
+    public static string[] RecentErrors() { lock (_lock) return _recentErrors.ToArray(); }
+
+    public static void ClearRecentErrors() { lock (_lock) _recentErrors.Clear(); }
+
     public static void LogException(string context, Exception ex)
     {
+        lock (_lock)
+        {
+            _recentErrors.Insert(0,
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  {context}: {ex.GetType().Name}: {ex.Message}" +
+                (ex.InnerException != null ? $" (inner: {ex.InnerException.Message})" : ""));
+            if (_recentErrors.Count > MaxRecentErrors)
+                _recentErrors.RemoveAt(_recentErrors.Count - 1);
+        }
         Log($"[EXCEPTION] {context}: {ex.GetType().Name}: {ex.Message}{Environment.NewLine}{ex.StackTrace}");
         if (ex.InnerException != null)
             Log($"  inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");

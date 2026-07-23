@@ -37,7 +37,7 @@
         </Style>
     </Window.Resources>
 
-    <Grid>
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -460,6 +460,7 @@
                                 <MenuItem Header="Copy path" Click="CopyPath_Click" />
                                 <MenuItem Header="Open file location" Click="OpenLocation_Click" />
                                 <Separator />
+                                <MenuItem Header="Fit columns to content" Click="FitColumns_Click" />
                                 <MenuItem Header="Access rules..." Click="AccessRules_Click" />
                                 <MenuItem Header="Properties..." Click="Properties_Click" />
                             </ContextMenu>
@@ -622,6 +623,8 @@
                                 <MenuItem Header="End process (terminate)" Click="KillProcess_Click" />
                                 <Separator />
                                 <MenuItem Header="Copy remote address" Click="CopyConnRemote_Click" />
+                                <Separator />
+                                <MenuItem Header="Fit columns to content" Click="FitColumns_Click" />
                             </ContextMenu>
                         </ListView.ContextMenu>
                         <ListView.View>
@@ -1744,6 +1747,20 @@
                             <CheckBox x:Name="StartMinimizedCheck" Content="Start minimized to tray"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="TraySingleClickCheck" Content="Open GunWall with a single tray click (double-click always works)"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
+                                <TextBlock Text="UI size" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
+                                <ComboBox x:Name="UiZoomCombo" Width="150" Height="30"
+                                          SelectionChanged="Pref_Changed">
+                                    <ComboBoxItem Content="Compact (90%)" Tag="90" />
+                                    <ComboBoxItem Content="Normal (100%)" Tag="100" />
+                                    <ComboBoxItem Content="Large (110%)" Tag="110" />
+                                    <ComboBoxItem Content="Extra large (125%)" Tag="125" />
+                                </ComboBox>
+                            </StackPanel>
                             <CheckBox x:Name="RunAtStartupCheck" Content="Run GunWall when Windows starts"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
@@ -1755,6 +1772,20 @@
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <CheckBox x:Name="TrayNotifCheck" Content="Show a tray notification when a new app is detected"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <TextBlock Text="Show entries in the Alerts page for:"
+                                       Foreground="{DynamicResource TextPrimary}" Margin="0,8,0,4" />
+                            <CheckBox x:Name="AlertCatSecurityCheck" Content="Security - blocked connections, flagged files, suspicious domains"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="14,0,0,4"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="AlertCatProtectionCheck" Content="Protection changes - protection on/off, lockdown"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="14,0,0,4"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="AlertCatNetworkCheck" Content="Network - DNS presets, captive portal, metering"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="14,0,0,4"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="AlertCatRulesCheck" Content="Rules and profiles - saved, applied, first-seen apps"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="14,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
                                 <TextBlock Text="Popup stays open for" VerticalAlignment="Center"
@@ -1780,6 +1811,8 @@
                                           Checked="Pref_Changed" Unchecked="Pref_Changed" />
                                 <Button Content="Open log folder" Style="{StaticResource ActionButton}"
                                         Click="OpenLogFolder_Click" Margin="12,0,0,0" Padding="10,3" />
+                                <Button Content="View error log" Style="{StaticResource ActionButton}"
+                                        Click="ErrorLog_Click" Margin="8,0,0,0" Padding="10,3" />
                             </StackPanel>
                             <CheckBox x:Name="FullscreenSilentCheck" Content="Silence popups while a fullscreen app or game is running"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"

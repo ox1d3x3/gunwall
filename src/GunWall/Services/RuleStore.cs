@@ -306,6 +306,17 @@ public sealed class StoreData
 
     /// <summary>§3b: check CNAME chains against the blocklist (default: on).</summary>
     public bool DnsBlockCloakedCnames { get; set; } = true;
+
+    /// <summary>Alerts-page categories the user has silenced
+    /// (security / protection / network / rules).</summary>
+    public List<string> MutedAlertCategories { get; set; } = new();
+
+    /// <summary>Restore GunWall on a single left-click of the tray icon
+    /// (double-click always works).</summary>
+    public bool TraySingleClick { get; set; }
+
+    /// <summary>UI zoom percentage (100 = normal size).</summary>
+    public int UiZoomPercent { get; set; } = 100;
     public List<string> DnsResolverBlocklist { get; set; } = new();
 
     // §3 Phase 2: system-DNS routing state. DnsRedirectActive is the user's saved

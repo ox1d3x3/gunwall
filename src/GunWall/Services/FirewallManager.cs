@@ -1142,6 +1142,23 @@ public sealed class FirewallManager : IDisposable
     // ------------------------------------------------ notification options
     public bool NotificationSound => _data.NotificationSound;
     public void SetNotificationSound(bool v) { _data.NotificationSound = v; _store.Save(_data); }
+    /// <summary>Alerts-page categories the user silenced (see MainWindow.Notify).</summary>
+    public IReadOnlyList<string> MutedAlertCategories => _data.MutedAlertCategories;
+    public void SetAlertCategoryMuted(string cat, bool muted)
+    {
+        bool has = _data.MutedAlertCategories.Contains(cat);
+        if (muted == has) return;               // no change - skip the disk write
+        if (muted) _data.MutedAlertCategories.Add(cat);
+        else _data.MutedAlertCategories.Remove(cat);
+        _store.Save(_data);
+    }
+
+    public bool TraySingleClick => _data.TraySingleClick;
+    public void SetTraySingleClick(bool v) { _data.TraySingleClick = v; _store.Save(_data); }
+
+    public int UiZoomPercent => _data.UiZoomPercent;
+    public void SetUiZoomPercent(int v) { _data.UiZoomPercent = Math.Clamp(v, 75, 150); _store.Save(_data); }
+
     public bool TrayNotifications => _data.TrayNotifications;
     public void SetTrayNotifications(bool v) { _data.TrayNotifications = v; _store.Save(_data); }
 
