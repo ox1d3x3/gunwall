@@ -1813,6 +1813,9 @@
                                         Click="OpenLogFolder_Click" Margin="12,0,0,0" Padding="10,3" />
                                 <Button Content="View error log" Style="{StaticResource ActionButton}"
                                         Click="ErrorLog_Click" Margin="8,0,0,0" Padding="10,3" />
+                                <Button Content="Verify kernel layers" Style="{StaticResource ActionButton}"
+                                        Click="VerifyLayers_Click" Margin="8,0,0,0" Padding="10,3"
+                                        ToolTip="Checks which Windows Filtering Platform layers this build of Windows accepts. Adds and immediately removes a harmless test filter on each - nothing is changed or left behind." />
                             </StackPanel>
                             <CheckBox x:Name="FullscreenSilentCheck" Content="Silence popups while a fullscreen app or game is running"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"

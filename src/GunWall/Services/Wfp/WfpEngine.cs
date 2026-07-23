@@ -303,6 +303,109 @@ public sealed class WfpEngine : IDisposable
         }
     }
 
+    // ==================== §12: kernel layer self-test ====================
+
+    /// <summary>Result of probing one WFP layer.</summary>
+    public readonly record struct LayerProbe(string Name, bool Supported, uint ErrorCode)
+    {
+        public string Detail => Supported
+            ? "accepted"
+            : $"rejected (0x{ErrorCode:X8}{(ErrorCode == 0x80320003 ? ", filter not found" : "")})";
+    }
+
+    /// <summary>Every layer GunWall can install filters on, with the feature
+    /// each one backs — so a probe failure names something meaningful.</summary>
+    private static (string Name, Guid Layer)[] ProbeLayers() => new[]
+    {
+        ("Outbound connections (IPv4)",        FWPM_LAYER_ALE_AUTH_CONNECT_V4),
+        ("Outbound connections (IPv6)",        FWPM_LAYER_ALE_AUTH_CONNECT_V6),
+        ("Inbound connections (IPv4)",         FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4),
+        ("Inbound connections (IPv6)",         FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6),
+        ("Listening sockets (IPv4)",           FWPM_LAYER_ALE_AUTH_LISTEN_V4),
+        ("Listening sockets (IPv6)",           FWPM_LAYER_ALE_AUTH_LISTEN_V6),
+        ("Outbound transport (IPv4)",          FWPM_LAYER_OUTBOUND_TRANSPORT_V4),
+        ("Outbound transport (IPv6)",          FWPM_LAYER_OUTBOUND_TRANSPORT_V6),
+        ("Inbound transport (IPv4)",           FWPM_LAYER_INBOUND_TRANSPORT_V4),
+        ("Inbound transport (IPv6)",           FWPM_LAYER_INBOUND_TRANSPORT_V6),
+        ("ICMP errors (IPv4)",                 FWPM_LAYER_OUTBOUND_ICMP_ERROR_V4),
+        ("ICMP errors (IPv6)",                 FWPM_LAYER_OUTBOUND_ICMP_ERROR_V6),
+        ("Routed/transit traffic (IPv4)",      FWPM_LAYER_IPFORWARD_V4),
+        ("Routed/transit traffic (IPv6)",      FWPM_LAYER_IPFORWARD_V6),
+        ("Local port binding (IPv4)",          FWPM_LAYER_ALE_RESOURCE_ASSIGNMENT_V4),
+        ("Local port binding (IPv6)",          FWPM_LAYER_ALE_RESOURCE_ASSIGNMENT_V6),
+    };
+
+    /// <summary>
+    /// Probes every layer to confirm this Windows build accepts it, by adding a
+    /// filter and immediately deleting it.
+    ///
+    /// The probe is deliberately incapable of affecting traffic:
+    ///   - action PERMIT, so it can never block anything;
+    ///   - weight 0, below GunWall's lowest real weight (FW_WEIGHT_LOWEST), so
+    ///     it loses to every existing filter and can never weaken a block;
+    ///   - NOT persistent, so a crash mid-probe cannot leave it behind;
+    ///   - deleted immediately, so it exists for well under a millisecond.
+    ///
+    /// Conditions are deliberately omitted: every layer accepts a
+    /// condition-less filter, so a failure means the LAYER was rejected rather
+    /// than an unsupported condition — which is exactly what we're testing.
+    /// </summary>
+    public List<LayerProbe> VerifyLayers()
+    {
+        var results = new List<LayerProbe>(16);
+        EnsureReady();
+
+        foreach (var (name, layer) in ProbeLayers())
+        {
+            ulong id = 0;
+            uint addResult;
+            try
+            {
+                var probe = new FWPM_FILTER0
+                {
+                    layerKey = layer,
+                    subLayerKey = SublayerKey,
+                    flags = 0,                        // never persistent
+                    weight = new FWP_VALUE0 { type = FWP_UINT8, value = 0 },
+                    numFilterConditions = 0,
+                    filterCondition = IntPtr.Zero,
+                    action = new FWPM_ACTION0 { type = FWP_ACTION_PERMIT },
+                    displayData = new FWPM_DISPLAY_DATA0
+                    { name = "GunWall layer probe", description = "Temporary self-test filter" }
+                };
+                addResult = FwpmFilterAdd0(_engine, ref probe, IntPtr.Zero, out id);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLogSafe($"Layer probe threw for {name}: {ex.Message}");
+                results.Add(new LayerProbe(name, false, 0));
+                continue;
+            }
+
+            if (addResult == ERROR_SUCCESS)
+            {
+                try { FwpmFilterDeleteById0(_engine, id); } catch { }
+                results.Add(new LayerProbe(name, true, 0));
+            }
+            else
+            {
+                results.Add(new LayerProbe(name, false, addResult));
+            }
+        }
+
+        int ok = results.Count(r => r.Supported);
+        DiagnosticLogSafe($"Kernel layer self-test: {ok}/{results.Count} layers accepted.");
+        foreach (var r in results.Where(r => !r.Supported))
+            DiagnosticLogSafe($"  layer NOT supported: {r.Name} - {r.Detail}");
+
+        return results;
+    }
+
+    private static void DiagnosticLogSafe(string msg)
+    {
+        try { GunWall.Services.DiagnosticLog.Log(msg); } catch { }
+    }
+
     /// <summary>Distinct optional-filter failures seen this session (diagnostics).</summary>
     public static string[] SkippedFilterReasons()
     {

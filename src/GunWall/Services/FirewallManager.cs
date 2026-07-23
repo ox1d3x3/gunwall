@@ -591,6 +591,11 @@ public sealed class FirewallManager : IDisposable
         _store.Save(_data);
     }
 
+    /// <summary>§12: probe every WFP layer to confirm this Windows build
+    /// accepts it. Adds and immediately removes a harmless permit filter on
+    /// each; nothing is persisted or left behind.</summary>
+    public List<Wfp.WfpEngine.LayerProbe> VerifyKernelLayers() => _engine.VerifyLayers();
+
     /// <summary>Engages or releases global lockdown (block-all). Persisted.</summary>
     public void SetLockdown(bool engaged)
     {
@@ -600,12 +605,18 @@ public sealed class FirewallManager : IDisposable
         {
             _data.LockdownFilterIds = _engine.EngageLockdown();
             _data.LockdownEngaged = true;
+            // Logged because releasing lockdown erases every other trace of it:
+            // the filters go and the ID list is cleared, so without this line a
+            // diagnostics export can't tell lockdown was ever engaged.
+            DiagnosticLog.Log($"Lockdown ENGAGED: {_data.LockdownFilterIds.Count} block filters installed.");
         }
         else
         {
+            int had = _data.LockdownFilterIds.Count;
             _engine.RemoveFilters(_data.LockdownFilterIds);
             _data.LockdownFilterIds.Clear();
             _data.LockdownEngaged = false;
+            DiagnosticLog.Log($"Lockdown RELEASED: {had} block filters removed.");
         }
         _store.Save(_data);
     }
@@ -941,6 +952,10 @@ public sealed class FirewallManager : IDisposable
                 ids = _engine.AddServiceRule(preset.Block, preset.Direction, preset.Protocol, preset.Ports, preset.Name);
             _data.SystemRules[key] = ids;
             EventLog($"System rule enabled: {key}");
+            // Filter count matters: 0 means every layer this rule needs was
+            // rejected, which otherwise looks identical to success.
+            DiagnosticLog.Log($"System rule ON: {key} -> {ids.Count} filter(s) installed."
+                              + (ids.Count == 0 ? "  WARNING: no filters were accepted." : ""));
         }
         else
         {
@@ -949,6 +964,7 @@ public sealed class FirewallManager : IDisposable
                 try { _engine.RemoveFilters(ids); } catch { }
                 _data.SystemRules.Remove(key);
                 EventLog($"System rule disabled: {key}");
+                DiagnosticLog.Log($"System rule OFF: {key} -> {ids.Count} filter(s) removed.");
             }
         }
         _store.Save(_data);

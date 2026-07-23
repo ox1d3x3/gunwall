@@ -305,7 +305,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.81.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.82.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3205,6 +3205,113 @@ public partial class MainWindow : Window
             }
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("FitColumns", ex); }
+    }
+
+    /// <summary>Runs the WFP layer self-test and shows the results. Confirms
+    /// which kernel layers this Windows build accepts, so an unsupported (or
+    /// mis-specified) layer is visible rather than silently doing nothing.</summary>
+    private void VerifyLayers_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!RequireEngine()) return;
+            var results = _firewall.VerifyKernelLayers();
+
+            var panel = new StackPanel { Margin = new Thickness(18) };
+            int ok = results.Count(r => r.Supported);
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"{ok} of {results.Count} kernel layers accepted",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)FindResource("TextPrimary"),
+                Margin = new Thickness(0, 0, 0, 2)
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = ok == results.Count
+                    ? "Every filtering layer GunWall uses is available on this system. A test filter was added and immediately removed on each; nothing was changed."
+                    : "Some layers were rejected by this build of Windows. Features relying on them will silently do nothing - the details are in the diagnostics log.",
+                Foreground = (Brush)FindResource("TextSecondary"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 12)
+            });
+
+            foreach (var r in results)
+            {
+                var row = new DockPanel { Margin = new Thickness(0, 0, 0, 5) };
+                var dot = new System.Windows.Shapes.Ellipse
+                {
+                    Width = 8, Height = 8,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 9, 0),
+                    Fill = new SolidColorBrush(r.Supported
+                        ? Color.FromRgb(0x30, 0xD1, 0x58)
+                        : Color.FromRgb(0xFF, 0x45, 0x3A))
+                };
+                DockPanel.SetDock(dot, Dock.Left);
+                row.Children.Add(dot);
+                var detail = new TextBlock
+                {
+                    Text = r.Detail,
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("TextSecondary"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(10, 0, 0, 0)
+                };
+                DockPanel.SetDock(detail, Dock.Right);
+                row.Children.Add(detail);
+                row.Children.Add(new TextBlock
+                {
+                    Text = r.Name,
+                    Foreground = (Brush)FindResource("TextPrimary"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+                panel.Children.Add(row);
+            }
+
+            var copyBtn = new Button { Content = "Copy results", Height = 30, Padding = new Thickness(16, 0, 16, 0), Margin = new Thickness(0, 0, 8, 0) };
+            var closeBtn = new Button { Content = "Close", Height = 30, Padding = new Thickness(20, 0, 20, 0) };
+            if (TryFindResource("ActionButton") is Style ab) copyBtn.Style = ab;
+            if (TryFindResource("PrimaryButton") is Style pb) closeBtn.Style = pb;
+            var btnRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 14, 0, 0)
+            };
+            btnRow.Children.Add(copyBtn);
+            btnRow.Children.Add(closeBtn);
+            panel.Children.Add(btnRow);
+
+            var win = new Window
+            {
+                Title = "Kernel layer check - GunWall",
+                Width = 560,
+                SizeToContent = SizeToContent.Height,
+                MaxHeight = 720,
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Content = new ScrollViewer
+                { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = panel }
+            };
+            win.SetResourceReference(BackgroundProperty, "BgPrimary");
+            copyBtn.Click += (_, _) =>
+            {
+                try
+                {
+                    Clipboard.SetText($"GunWall kernel layer check: {ok}/{results.Count} accepted" +
+                        Environment.NewLine +
+                        string.Join(Environment.NewLine,
+                            results.Select(r => $"{(r.Supported ? "OK  " : "FAIL")}  {r.Name}  -  {r.Detail}")));
+                }
+                catch { }
+            };
+            closeBtn.Click += (_, _) => win.Close();
+            win.ShowDialog();
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("VerifyLayers", ex); ShowError(ex); }
     }
 
     /// <summary>Error-log viewer: this session's captured exceptions, newest
