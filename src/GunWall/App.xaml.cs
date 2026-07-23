@@ -22,9 +22,56 @@ public partial class App : Application
         };
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, args) =>
         {
-            DiagnosticLog.LogException("UnobservedTaskException", args.Exception);
+            // Always mark observed: an unobserved task fault must never take
+            // the process down.
             args.SetObserved();
+
+            // Cutting the network (lockdown, a rule, the resolver stopping,
+            // an adapter dropping) aborts in-flight sockets and any pooled
+            // HTTPS connections behind them. Those faults are expected
+            // consequences of GunWall doing its job, not defects - recording
+            // them as errors buried real ones under dozens of duplicates.
+            if (IsExpectedTeardownFault(args.Exception))
+                DiagnosticLog.NoteBenignFault("network teardown (aborted socket)");
+            else
+                DiagnosticLog.LogException("UnobservedTaskException", args.Exception);
         };
+    }
+
+    /// <summary>
+    /// True when every exception in the aggregate is a normal consequence of a
+    /// socket or task being shut down: cancellation, a disposed socket, or a
+    /// Winsock abort/reset. Anything else - even mixed in - is treated as a
+    /// real error so genuine faults are never silently swallowed.
+    /// </summary>
+    private static bool IsExpectedTeardownFault(AggregateException? aggregate)
+    {
+        if (aggregate == null) return false;
+        var inner = aggregate.Flatten().InnerExceptions;
+        if (inner.Count == 0) return false;
+
+        foreach (var ex in inner)
+        {
+            switch (ex)
+            {
+                case OperationCanceledException:
+                case ObjectDisposedException:
+                    continue;
+                case System.Net.Sockets.SocketException se
+                    when se.SocketErrorCode is System.Net.Sockets.SocketError.OperationAborted
+                                            or System.Net.Sockets.SocketError.ConnectionAborted
+                                            or System.Net.Sockets.SocketError.ConnectionReset
+                                            or System.Net.Sockets.SocketError.Interrupted
+                                            or System.Net.Sockets.SocketError.Shutdown:
+                    continue;
+                case System.IO.IOException io
+                    when io.InnerException is System.Net.Sockets.SocketException:
+                    continue;
+                default:
+                    return false;   // something genuinely unexpected
+            }
+        }
+        return true;
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

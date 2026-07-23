@@ -305,7 +305,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.83.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.84.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3337,9 +3337,15 @@ public partial class MainWindow : Window
             void Fill()
             {
                 var errors = Services.DiagnosticLog.RecentErrors();
+                string header =
+                    $"{Services.DiagnosticLog.DistinctErrorCount} distinct error(s), " +
+                    $"{Services.DiagnosticLog.TotalErrorCount} total occurrence(s)." +
+                    Environment.NewLine +
+                    "Expected network-teardown faults: " + Services.DiagnosticLog.BenignFaultSummary() +
+                    Environment.NewLine + new string('-', 78) + Environment.NewLine;
                 box.Text = errors.Length == 0
-                    ? "No errors recorded this session."
-                    : string.Join(Environment.NewLine, errors);
+                    ? header + "No errors recorded this session."
+                    : header + string.Join(Environment.NewLine, errors);
             }
             Fill();
 
@@ -3870,6 +3876,10 @@ public partial class MainWindow : Window
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
             $"plaintextFallback={_dnsResolver.DohFallbackAllowed}");
+        Services.DiagnosticLog.Log(
+            $"Errors this session: {Services.DiagnosticLog.DistinctErrorCount} distinct, " +
+            $"{Services.DiagnosticLog.TotalErrorCount} total  |  benign faults: " +
+            Services.DiagnosticLog.BenignFaultSummary());
         var skips = Services.Wfp.WfpEngine.SkippedFilterReasons();
         Services.DiagnosticLog.Log(skips.Length == 0
             ? "WFP optional filters: none skipped (all requested layers accepted)"
