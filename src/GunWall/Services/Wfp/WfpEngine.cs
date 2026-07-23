@@ -393,12 +393,73 @@ public sealed class WfpEngine : IDisposable
             }
         }
 
+        foreach (var (name, layer, field, match, vtype, val) in ProbeConditions())
+            results.Add(ProbeCondition(name, layer, field, match, vtype, val));
+
         int ok = results.Count(r => r.Supported);
-        DiagnosticLogSafe($"Kernel layer self-test: {ok}/{results.Count} layers accepted.");
+        DiagnosticLogSafe($"Kernel self-test: {ok}/{results.Count} layers and conditions accepted.");
         foreach (var r in results.Where(r => !r.Supported))
             DiagnosticLogSafe($"  layer NOT supported: {r.Name} - {r.Detail}");
 
         return results;
+    }
+
+    /// <summary>
+    /// Condition fields to probe, each paired with a layer it is valid on.
+    /// A layer probe cannot catch a wrong CONDITION GUID - the filter simply
+    /// fails (or worse, silently matches the wrong field) - so these are
+    /// probed separately with a real condition attached.
+    /// </summary>
+    private static (string Name, Guid Layer, Guid Field, uint MatchType, uint ValueType, ulong Value)[] ProbeConditions() => new[]
+    {
+        ("Condition: remote address", FWPM_LAYER_ALE_AUTH_CONNECT_V4,      FWPM_CONDITION_IP_REMOTE_ADDRESS, FWP_MATCH_EQUAL, FWP_UINT32, 0x08080808UL),
+        ("Condition: remote port",    FWPM_LAYER_ALE_AUTH_CONNECT_V4,      FWPM_CONDITION_IP_REMOTE_PORT,    FWP_MATCH_EQUAL, FWP_UINT16, 443UL),
+        ("Condition: local port",     FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,  FWPM_CONDITION_IP_LOCAL_PORT,     FWP_MATCH_EQUAL, FWP_UINT16, 443UL),
+        ("Condition: protocol",       FWPM_LAYER_ALE_AUTH_CONNECT_V4,      FWPM_CONDITION_IP_PROTOCOL,       FWP_MATCH_EQUAL, FWP_UINT8,  6UL),
+        ("Condition: packet flags",   FWPM_LAYER_ALE_AUTH_CONNECT_V4,      FWPM_CONDITION_FLAGS,             FWP_MATCH_FLAGS_NONE_SET, FWP_UINT32, 0UL),
+        ("Condition: ICMP type",      FWPM_LAYER_OUTBOUND_ICMP_ERROR_V4,   FWPM_CONDITION_ICMP_TYPE,         FWP_MATCH_EQUAL, FWP_UINT16, 3UL),
+    };
+
+    /// <summary>Probes one condition field by installing a filter that uses it
+    /// (same safety model as the layer probe: permit, weight 0, non-persistent,
+    /// deleted immediately).</summary>
+    private LayerProbe ProbeCondition(string name, Guid layer, Guid field, uint matchType, uint valueType, ulong value)
+    {
+        int condSize = Marshal.SizeOf<FWPM_FILTER_CONDITION0>();
+        IntPtr condPtr = Marshal.AllocHGlobal(condSize);
+        try
+        {
+            var cond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = field,
+                matchType = matchType,
+                conditionValue = new FWP_CONDITION_VALUE0 { type = valueType, value = value }
+            };
+            Marshal.StructureToPtr(cond, condPtr, false);
+
+            var probe = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = 0,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = 0 },
+                numFilterConditions = 1,
+                filterCondition = condPtr,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_PERMIT },
+                displayData = new FWPM_DISPLAY_DATA0
+                { name = "GunWall condition probe", description = "Temporary self-test filter" }
+            };
+            uint r = FwpmFilterAdd0(_engine, ref probe, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) return new LayerProbe(name, false, r);
+            try { FwpmFilterDeleteById0(_engine, id); } catch { }
+            return new LayerProbe(name, true, 0);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogSafe($"Condition probe threw for {name}: {ex.Message}");
+            return new LayerProbe(name, false, 0);
+        }
+        finally { Marshal.FreeHGlobal(condPtr); }
     }
 
     private static void DiagnosticLogSafe(string msg)

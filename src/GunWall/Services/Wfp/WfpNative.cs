@@ -112,7 +112,7 @@ internal static class WfpNative
     // Outbound ICMP error layers — used by stealth mode to suppress the
     // "destination unreachable" replies that reveal closed ports to scanners.
     internal static readonly Guid FWPM_LAYER_OUTBOUND_ICMP_ERROR_V4 =
-        new("41390100-564c-4b32-8ec8-bd9af1752f47");
+        new("41390100-564c-4b32-bc1d-718048354d7c");
     internal static readonly Guid FWPM_LAYER_OUTBOUND_ICMP_ERROR_V6 =
         new("7fb03b60-7b8d-4dfa-badd-980176fc4e12");
 
@@ -125,10 +125,12 @@ internal static class WfpNative
         new("b235ae9a-1d64-49b8-a44c-5ff3d9095045");
     internal static readonly Guid FWPM_CONDITION_IP_PROTOCOL =
         new("3971ef2b-623e-4f9a-8cb1-6e79b806b9a7");
+    // The SDK defines ICMP_TYPE as an alias of IP_LOCAL_PORT (and ICMP_CODE as
+    // an alias of IP_REMOTE_PORT) - the ICMP layers reuse the port fields.
     internal static readonly Guid FWPM_CONDITION_ICMP_TYPE =
-        new("b9f4e088-cb98-4efb-a2c7-ad07332643db");
+        new("0c1ba1af-5765-453f-af22-a8f791ac775b");
     internal static readonly Guid FWPM_CONDITION_IP_REMOTE_PORT =
-        new("c35a604d-d22b-48b1-a8dc-1377b9824a35");
+        new("c35a604d-d22b-4e1a-91b4-68f674ee674b");
     internal static readonly Guid FWPM_CONDITION_IP_LOCAL_PORT =
         new("0c1ba1af-5765-453f-af22-a8f791ac775b");
 
