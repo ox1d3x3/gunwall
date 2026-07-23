@@ -40,13 +40,15 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 - ✅ **Confirmation prompts** — confirm-before-clearing the Activity / Packets logs, and an always-confirm-on-exit option (on top of the existing active-firewall exit warning).
 - ☐ **Notification exclusions** — independently silence notifications for classify-allow, custom-rule, stealth, and blocklist hits. *(GunWall currently raises a single new-app approval prompt, so this waits on having multiple notification categories to exclude.)*
 - ☐ **3-level blocklist control** — allow / block / disable per category (adds an explicit allow/whitelist level over today's on/off), plus an **"extra" curated list** and **exclude-apps-from-blocklist**.
-- ◐ **Logging upgrades** — ✅ blocked/allowed events to the **Windows Event Log** (toggle) and ✅ a configurable **log-size limit** (live-row cap + CSV rotation size). Remaining: a separate **error log** view.
-- ☐ **View & tray niceties** — list view modes (details / icon / tile) and icon sizes, autosize-columns, **tray single-click**, font / zoom options.
+- ✅ **Logging upgrades** *(complete)* — blocked/allowed events to the **Windows Event Log** (toggle), a configurable **log-size limit** (live-row cap + CSV rotation size), and a separate **error log viewer** with deduplicated entries (v0.81, v0.84).
+- ◐ **View & tray niceties** — ✅ autosize columns, **tray single-click**, and **UI size / zoom** (v0.81). Remaining: list view modes (details / icon / tile) and icon sizes.
 
 ### Phase 3 — Kernel hardening (higher risk, large coverage)
-- ◐ **Expanded WFP layers** — extend from today's ~10 toward the full ~22. ✅ **ALE_AUTH_LISTEN** (v4/v6) now ships as an opt-in, removable "Block listening sockets" System Rule, applied through the fault-tolerant filter path, with a live kernel-coverage readout on the System Rules tab. Remaining (each needs careful **on-hardware testing** before shipping — a bad filter on these can break connectivity in ways that can't be validated off-device): ALE_RESOURCE_ASSIGNMENT, ALE_CONNECT_REDIRECT, INBOUND_ICMP_ERROR, IPFORWARD, and the matching *_DISCARD* layers (v4/v6).
+- ◐ **Expanded WFP layers** — **16 layers wired and verified on hardware** (v0.80–v0.83): outbound connect, inbound accept, listen, **resource assignment** (bind, TCP *and* UDP), inbound/outbound transport, outbound ICMP error, and **IP forwarding** — each v4 and v6. Shipped as opt-in, removable rules through the fault-tolerant filter path.
+  - ✅ **Kernel layer self-test** (v0.82–v0.83) — probes every layer *and condition* the kernel accepts, using a permit filter at weight 0 that is non-persistent and deleted immediately. This surfaced three incorrect WFP identifiers that had been failing silently, including one that had disabled IPv4 stealth-mode ICMP suppression entirely.
+  - Remaining: ALE_CONNECT_REDIRECT and the matching *_DISCARD* layers (v4/v6).
 - ☐ **Quick rule toggles** — one-tap *Allow Windows Update* and *Allow 6to4 / IPv6 transition*.
-- ☐ **Secure filters** — protect GunWall's sublayer/filters from tampering via a DACL. *Carries a lockout risk; needs a guaranteed recovery path before shipping.*
+- ☐ **Secure filters** — protect GunWall's sublayer/filters from tampering via a DACL. *Carries a lockout risk; needs a guaranteed recovery path before shipping.* The sublayer-delete-by-key removal path is now proven, which is a prerequisite.
 
 ### Phase 4 — Advanced / dangerous (opt-in, heavily warned, last)
 - ☐ **Boot-time filters** — enforce blocking during boot before GunWall starts. *Can break boot networking; must be reversible from Safe Mode.*

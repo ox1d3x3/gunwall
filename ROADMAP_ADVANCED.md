@@ -91,13 +91,21 @@ feature, and it maps cleanly onto WFP with just an IP classifier (no GeoIP, no D
 endpoint; the per-app scope toggles become block filters / connect-time verdicts. **Effort:** small–
 medium. **Risk:** low. **Payoff:** high.
 
-> **Status — shipped in v0.41.0 (partial):** ✅ per-app **Block device-local**, **Block LAN**, and
-> **Block incoming** are live (right-click an app → *Block by network scope*), enforced with
-> app-ID + remote-range WFP filters (IPv4 ranges + IPv6 loopback/ULA/link-local) through the
-> fault-tolerant path, fully removable, and counted in the kernel-coverage readout. ◐ **Block
-> Internet** is deferred — it's the *complement* of local/LAN and needs careful permit-override
-> weight work that must be validated on real hardware. ◐ **Block P2P** is deferred until the §3 DNS
-> resolver exists (it needs the "was this IP resolved via DNS?" signal).
+> **Status — complete (v0.41.0 → v0.80.0):** all per-app scopes ship (right-click an app →
+> *Block by network scope*), enforced with app-ID + remote-range WFP filters through the
+> fault-tolerant path, fully removable:
+> - ✅ **Block device-local**, **Block LAN**, **Block incoming** *(v0.41.0)*
+> - ✅ **Block Internet (LAN only)** *(v0.76.0)* — 46 IPv4 CIDRs covering exactly the public
+>   address space, derived programmatically and verified disjoint from the local/LAN ranges,
+>   plus `2000::/3` for all routable IPv6.
+> - ✅ **Block P2P / direct** *(v0.76.0)* — reactive, using the §3 resolver's resolved-address
+>   memory: a public address the app never looked up by name is a direct connection. Blocked
+>   per-address with the session torn down; requires the resolver to be running.
+> - ✅ **Block server / listening sockets** *(v0.80.0)* — denies the app any listening port via
+>   `ALE_RESOURCE_ASSIGNMENT` (bind, TCP *and* UDP), `ALE_AUTH_LISTEN`, and `ALE_AUTH_RECV_ACCEPT`.
+>
+> The pure `IpScopeClassifier` described above ships in `Services/AppRuleEngine.cs` and is
+> unit-tested offline; it also backs the `scope:` entity in the §1 rule engine.
 
 ---
 

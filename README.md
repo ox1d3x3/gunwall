@@ -8,7 +8,7 @@
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/NuGet%20dependencies-0-3FB868?style=flat-square)](#-privacy--security)
-[![Status](https://img.shields.io/badge/release-v0.77.0%20(beta)-E0A53F?style=flat-square)](#-roadmap)
+[![Status](https://img.shields.io/badge/release-v0.84.0%20(beta)-E0A53F?style=flat-square)](#roadmap)
 
 *Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and no third-party dependencies.*
 
@@ -45,10 +45,11 @@ Test it in a safe environment first, and don't rely on it as your only defense o
 - **Zero-Trust mode** — every program is denied by default and must be explicitly approved. Each new app raises an Allow / Block prompt with an auto-decision countdown; your choice persists. Loopback and core Windows networking stay allowed so the machine keeps working.
 - **Per-app rules** — allow or block any executable, in either direction, with optional **timed** (auto-expiring) and **silent** (muted) variants. Critical system processes are guarded against accidental blocking.
 - **Per-app access rules** — an **ordered, first-match-wins** policy per application. Rules target *entities*: country, continent, ASN, IP, address range (CIDR), or network scope, each set to allow or block, with a default action when nothing matches. Presets included (*Allow LAN only*, *Allow one country only*, and more).
-- **Network scopes** — per-app force-blocks by destination: **device-local**, **LAN**, **Internet** (LAN-only mode), **incoming**, and **P2P / direct** (connections to addresses the app never resolved through DNS).
+- **Network scopes** — per-app force-blocks by destination: **device-local**, **LAN**, **Internet** (LAN-only mode), **incoming**, **server / listening sockets** (denies the app any listening port, TCP or UDP), and **P2P / direct** (connections to addresses the app never resolved through DNS).
 - **Country & ASN blocking** — block an app, or every app, from reaching a whole country, continent, or network operator.
 - **Custom rules** — block or allow by remote IP / CIDR, port, protocol and direction, independent of any app.
-- **Lockdown** — cut all traffic instantly from the app or the tray.
+- **Block routed traffic** — stop the machine acting as a router for a bridged VM, mesh-VPN peer, or shared connection. Traffic merely *passing through* never reaches the usual filtering layers, so this closes a gap most desktop firewalls leave open.
+- **Lockdown** — cut all traffic instantly from the app or the tray, including routed traffic.
 - **Stealth mode** — drop unsolicited inbound connections and ICMP error replies so the machine stops answering probes.
 
 ### Monitoring & visibility
@@ -65,6 +66,8 @@ Test it in a safe environment first, and don't rely on it as your only defense o
 
 ### DNS
 
+- **Secure DNS (DoH)** — forward every lookup encrypted over HTTPS, so nobody on the network can read or tamper with what you resolve. Built-in providers are IP-addressed, so enabling encryption needs no plaintext lookup to bootstrap itself, and the default is to **fail closed** rather than silently downgrade.
+- **CNAME-cloaking defence** — trackers dodge blocklists by aliasing a clean first-party name to a blocked one. GunWall follows each answer's alias chain and refuses the lookup if any hop is blocked.
 - **Built-in resolver** — a from-scratch DNS resolver with caching, blocklist filtering and optional system-wide redirection, VPN-aware so it cooperates with an active tunnel.
 - **Domain blocklists** — load a curated list (StevenBlack unified hosts, ~100k domains) or your own, applied at resolution time.
 - **Suspicious-domain heuristics** — algorithmically generated domain names (a common malware signal) are scored and flagged using entropy, character-distribution and structural analysis.
@@ -82,7 +85,8 @@ Test it in a safe environment first, and don't rely on it as your only defense o
 - **Rule profiles** — save and switch named rule sets (e.g. Home / Work / Travel).
 - **Versioned backups** — automatic and on-demand snapshots of all rules and settings, restorable in one click.
 - **Windows Firewall integration** — read its status, toggle it, and import its block rules.
-- **Health & diagnostics** — an app-health panel plus a one-click diagnostics export bundling config, logs and network state for troubleshooting.
+- **Kernel self-test** — verify which Windows Filtering Platform layers and conditions this build of Windows accepts. A test filter is added and immediately removed on each; nothing is changed or left behind.
+- **Health & diagnostics** — an app-health panel, a session error log, and a one-click diagnostics export bundling config, logs and network state.
 - **Run at startup** — launch with Windows, elevated, without a UAC prompt, via a scheduled task.
 - **Close to tray** — closing minimizes to the tray; a true exit warns if filtering is still active.
 - **Themes** — matching dark and light themes with an animated switch.
@@ -225,27 +229,41 @@ Then in GunWall: **Settings → Security & Privacy → GeoIP data source → Sel
 | **v0.41 – v0.60** | Network scopes; GeoIP with country & ASN blocking; built-in DNS resolver; domain heuristics; verdict reasons; captive portal helper; notification center |
 | **v0.61 – v0.75** | ETW per-app metering; Apps Usage Timeline; traffic breakdown by app/host/protocol/country; world map; status bar; per-app activity sparklines |
 | **v0.76 – v0.77** | Block-Internet and P2P/direct scopes; **ordered per-app entity rule engine** with presets |
+| **v0.78 – v0.79** | **Secure DNS (DNS-over-HTTPS)** with fail-closed default; **CNAME-cloaking defence** |
+| **v0.80 – v0.84** | Expanded kernel layer coverage (routed traffic, port binding); server-socket scope; kernel layer **self-test**; notification exclusions; error-log viewer; tray and view options |
 
 ### Planned
 
 **Near term**
 
-- Secure DNS upstream (DNS-over-HTTPS) and anti-hijack protection
-- CNAME-cloaking defense in the resolver
 - Domain and filter-list entities for access rules
-- Notification exclusions, error-log viewer, list view options
+- Per-service attribution for `svchost`-hosted services
+- Anti-hijack protection for DNS settings
 
 **Medium term**
 
-- Expanded WFP layer coverage (resource assignment, connection redirection, forwarding, ICMP error)
-- Per-service attribution for `svchost`-hosted services
 - Per-network trust profiles (home / work / public)
+- Connection-redirection layer support
+- List view modes and further interface options
 
 **Toward v1.0**
 
 - Hardened service split and privilege separation
 - Code signing, installer, and auto-update
 - Tamper-resistant filter protection
+
+---
+
+## Project documentation
+
+| Document | What it covers |
+|---|---|
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in every release |
+| [`ROADMAP.md`](ROADMAP.md) | Planned work, by phase |
+| [`ROADMAP_ADVANCED.md`](ROADMAP_ADVANCED.md) | Deeper design notes for the zero-trust features |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How GunWall is built: the WFP engine, filter weights, persistence, DNS, metering |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Build setup, conventions, and the rules for touching kernel interop |
+| [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability, and the guarantees GunWall intends to hold |
 
 ---
 

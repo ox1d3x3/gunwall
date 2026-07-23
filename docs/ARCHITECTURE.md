@@ -1,52 +1,62 @@
 # GunWall — Architecture
 
-This document describes how the **v0.1** release is actually built. It reflects
-the code in this repository, not an aspirational design. Where the long-term
-plan differs from what ships today, that is called out explicitly.
+This document describes how GunWall is **actually built** as of v0.84.0. It
+reflects the code in this repository, not an aspirational design. Where the
+long-term plan differs from what ships today, that is called out explicitly.
 
 ---
 
 ## 1. Design goals
 
-1. **Build cleanly into a single EXE** from Visual Studio with no exotic SDKs.
-2. **Never silently touch the network.** Every filter that exists corresponds
-   to an action the user took. Default policy is *allow*, not *block*.
-3. **Survive restarts.** Rules are persistent at the OS level and on disk.
-4. **No telemetry, no accounts, no cloud.** Everything stays on the machine.
+1. **One portable executable.** Builds cleanly from Visual Studio with no exotic
+   SDKs, no installer, and no packaging step.
+2. **Never silently touch the network.** Every filter that exists corresponds to
+   an action the user took. A fresh install changes nothing until protection is
+   turned on.
+3. **Fail loudly, not silently.** A filter that cannot be installed must say so.
+   Hiding a failure so the interface looks correct is worse than showing it: the
+   user believes they are protected when they are not.
+4. **Survive restarts.** Rules are persistent at the OS level and on disk, and
+   every filter is removable — including after a crash.
+5. **No telemetry, no accounts, no cloud.** Everything stays on the machine.
+6. **Zero third-party packages.** The dependency surface is the .NET base class
+   library and Win32, so the supply chain is trivial to audit.
 
-To meet goal #1 the v0.1 release uses **WPF on .NET 8** (`net8.0-windows`)
-rather than WinUI 3. WPF compiles to a clean native-host EXE without MSIX
-packaging or the Windows App SDK, which makes "open solution → Build → run the
-EXE" reliable. The richer WinUI 3 shell remains a future option (see Roadmap in
-the README).
+GunWall uses **WPF on .NET 8** (`net8.0-windows`) rather than WinUI 3, because
+WPF compiles to a clean native-host EXE without MSIX packaging or the Windows
+App SDK — which is what makes "open the solution, build, run the EXE" reliable.
 
 ---
 
 ## 2. High-level structure
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                     WPF UI (MainWindow)                    │
-│   Dashboard  •  Firewall (per-app)  •  Connections (live)  │
-└───────────────┬───────────────────────────┬──────────────┘
-                │                           │
-        FirewallManager              NetworkMonitor / ProcessService
-        (orchestration)              (read-only telemetry)
-                │
-     ┌──────────┴──────────┐
-     │                     │
-  RuleStore            WfpEngine
-  (JSON on disk)       (P/Invoke → fwpuclnt.dll)
-                            │
-                   Windows Filtering Platform
+┌───────────────────────────────────────────────────────────────┐
+│                       WPF UI (MainWindow)                      │
+│  Dashboard · Apps · Traffic · Connections · Packets · DNS      │
+│  Rules · Security · Network · Alerts · Settings                │
+├───────────────────────────────────────────────────────────────┤
+│  Event-driven detection  +  1-second sampling loop             │
+│                                                                │
+│  FirewallManager   orchestration, policy, persistence          │
+│  AppRuleEngine     pure first-match-wins policy evaluation     │
+│  DnsResolver       caching resolver, DoH, blocklists, CNAME    │
+│  GeoIpService      country / ASN attribution                   │
+│  EtwByteMeter      per-process byte metering (kernel events)   │
+│  NetworkMonitor    live connections, throughput                │
+│  RuleStore         JSON persistence                            │
+├───────────────────────────────────────────────────────────────┤
+│  WfpEngine → fwpuclnt.dll     WinVerifyTrust     ETW/advapi32  │
+│  hosts file · system DNS · scheduled task                      │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-The whole thing runs as **one elevated process**. There is no Windows Service
-in v0.1 — the app requires administrator rights (declared in `app.manifest`
-with `requireAdministrator`) because opening the WFP engine and adding filters
-needs them. A background service that keeps enforcing rules while the GUI is
-closed is planned but not required, because the filters themselves are
-persistent (see §5).
+The whole thing runs as **one elevated process**. There is no Windows Service:
+the app requires administrator rights (declared in `app.manifest` with
+`requireAdministrator`) because opening the WFP engine and adding filters needs
+them. Enforcement does not depend on the app staying open — the filters
+themselves are persistent at the OS level (see §6). Splitting into a privileged
+service is tracked for 1.0.
 
 ---
 
@@ -54,205 +64,216 @@ persistent (see §5).
 
 | Path | Responsibility |
 |------|----------------|
-| `App.xaml` / `App.xaml.cs` | App entry, merges the theme dictionary, global unhandled-exception trap. |
-| `MainWindow.xaml(.cs)` | The shell: navigation rail, three panels, 1-second refresh timer, hand-drawn bandwidth graph, dark title bar. |
-| `Themes/Controls.xaml` | Dark palette and all control styles (no third-party theme library). |
-| `Models/Models.cs` | `ConnectionInfo`, `AppInfo`, `AppStatus`, `FirewallRule`. |
-| `Converters/Converters.cs` | Status → brush / text converters for binding. |
-| `Services/FirewallManager.cs` | The one class the UI talks to for blocking. |
-| `Services/NetworkMonitor.cs` | Live connections + cumulative throughput. |
-| `Services/ProcessService.cs` | PID → name/path resolution. |
-| `Services/RuleStore.cs` | Persists rules to `%ProgramData%`. |
-| `Services/Wfp/WfpNative.cs` | Raw P/Invoke surface for WFP. |
-| `Services/Wfp/WfpEngine.cs` | Safe managed facade over WFP. |
+| `App.xaml(.cs)` | Entry point, theme dictionaries, global exception traps and fault classification. |
+| `MainWindow.xaml(.cs)` | The shell: navigation rail, all panels, sampling loop, hand-drawn charts, dialogs. |
+| `Themes/` | Dark and light palettes and all control styles (no third-party theme library). |
+| `Models/` | Data types: connections, apps, rules, access policies, notifications, the system-rule catalog. |
+| `Services/Wfp/WfpNative.cs` | Raw P/Invoke surface for WFP: layer and condition GUIDs, structs, entry points. |
+| `Services/Wfp/WfpEngine.cs` | Safe managed facade over WFP. Filter construction, weights, removal, self-test. |
+| `Services/Wfp/NetEventMonitor.cs` | Kernel net-event subscription for event-driven detection. |
+| `Services/FirewallManager.cs` | The one class the UI talks to for policy. Owns the engine and the store. |
+| `Services/AppRuleEngine.cs` | Pure, testable first-match-wins evaluator plus the IP scope classifier. |
+| `Services/DnsResolver.cs`, `DnsMessage.cs` | Resolver, DoH transport, blocklists, CNAME-chain inspection, wire-format parsing. |
+| `Services/EtwByteMeterService.cs` | Real-time ETW session against the kernel network provider. |
+| `Services/GeoIpService.cs`, `GeoData.cs` | Country and ASN attribution, local database or self-hosted API. |
+| `Services/NetworkMonitor.cs`, `ConnectionService.cs` | Live connection tables and throughput. |
+| `Services/AppUsageService.cs`, `NetworkStatsService.cs` | Usage history and traffic attribution. |
+| `Services/RuleStore.cs` | JSON persistence of every rule and setting. |
+| `Services/DiagnosticLog.cs` | Always-on log with a deduplicating in-memory error buffer. |
+| `Services/SignatureService.cs`, `HashService.cs` | Authenticode verification and SHA-256 tamper hashing. |
 
 ---
 
 ## 4. The WFP engine (`Services/Wfp`)
 
-This is the security core. Everything else is presentation.
-
 ### Identity
-GunWall owns exactly **one sublayer**, keyed by a fixed GUID
-(`8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`). All of our filters live in it, which
-means we can enumerate, reason about, and tear down *only* our own rules
-without disturbing Windows Firewall or any other product.
 
-### Policy model — allow-by-default (blacklist)
-The engine adds **no filters at startup**. An app reaches the network freely
-default, and is a deliberate safety choice: a fresh install can never lock you
-out of your own connection.
+Every object GunWall creates is tagged with its own **provider** and lives in
+its own **sublayer**. This is what makes clean removal possible: the sublayer can
+be deleted by key, which removes every filter inside it, even if the stored list
+of filter identifiers is lost to a crash.
 
-### Blocking an app
-`BlockApplication(exePath)` resolves the executable to a WFP "app ID" blob via
-`FwpmGetAppIdFromFileName0`, then adds **four** persistent BLOCK filters — one
-on each of:
+### Policy model — Zero-Trust default-deny
 
-- `FWPM_LAYER_ALE_AUTH_CONNECT_V4` (outbound IPv4)
-- `FWPM_LAYER_ALE_AUTH_CONNECT_V6` (outbound IPv6)
-- `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4` (inbound IPv4)
-- `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6` (inbound IPv6)
+The engine adds **no filters at startup**. When Zero-Trust mode is enabled it
+installs a low-weight block-all baseline plus per-app permits above it, so an
+application reaches the network only once it has been approved. Loopback and
+core Windows networking are permitted by infrastructure filters at the highest
+weight so the machine keeps working.
 
-Each filter has a single condition: `FWPM_CONDITION_ALE_APP_ID == <app id>`,
-action `FWP_ACTION_BLOCK`, weight `10`. The four filter IDs are returned to the
-caller and stored so the block can be reversed precisely.
+With Zero-Trust off, GunWall observes without enforcing and only the explicit
+rules the user created apply.
 
-### Lockdown
-`EngageLockdown()` adds four **condition-less** BLOCK filters (one per layer) at
-weight `15`. With no condition they match everything, and the higher weight
-means they win over any per-app rule — an instant "block all network" panic
-switch. Disabling lockdown removes exactly those filter IDs.
+### Weights
 
-### Removal
-- `RemoveFilters(ids)` deletes specific filters by ID (used to unblock an app or
-  lift lockdown). `FWP_E_FILTER_NOT_FOUND` is treated as success.
-- `RemoveAllFiltering()` deletes the whole sublayer (cascading every filter we
-  own) and recreates an empty one so the engine stays usable. This is the
-  "remove all GunWall rules" reset.
+Filter weight decides which rule wins within the sublayer — highest first, first
+terminating match ends evaluation. The ordering, from the top:
 
-### Persistence
-The sublayer and every filter are created with the **persistent** flag, so they
-keep enforcing after the app closes and across reboots — the same behaviour
+| Weight | Purpose |
+|--------|---------|
+| `0x0F` | Infrastructure permits (loopback, core networking, GunWall itself) |
+| `0x0E` | Lockdown |
+| `0x0C` | Explicit user block |
+| `0x0B` | Explicit user allow |
+| `0x09` | Per-app rules |
+| `0x08` | Zero-Trust block-all baseline |
 
-### Error handling
-`WfpEngine` never returns silent failure: any non-zero WFP status raises a
-`WfpException` carrying the hex code, *except* for the benign idempotent cases
-that are explicitly tolerated (`FWP_E_ALREADY_EXISTS`,
-`FWP_E_FILTER_NOT_FOUND`, `FWP_E_SUBLAYER_NOT_FOUND`).
+Lockdown deliberately sits *below* infrastructure permits so that "block
+everything" cannot hard-lock the local stack.
 
-> **Interop caveat.** The P/Invoke structs in `WfpNative.cs` collapse several
-> WFP unions to their largest member. This is the single most likely place to
-> need a small adjustment when you first compile and run on real hardware. If a
-> filter add fails with an unexpected code, that struct layout is where to look.
+### Layer coverage
 
----
+Sixteen layers are wired: outbound connect, inbound accept, listen, resource
+assignment (bind), inbound and outbound transport, outbound ICMP error, and IP
+forwarding — each in v4 and v6. Forwarding matters because traffic merely
+*routed through* the machine, via a bridged VM or a mesh VPN peer, never reaches
+the ALE layers at all.
 
-## 5. Persistence on disk (`RuleStore`)
+### Verifying the kernel surface
 
-Independently of the OS-level persistent filters, GunWall records its own
-intent as JSON at:
+Layer and condition identifiers cannot be validated by compiling; a wrong one
+either fails silently or, worse, resolves to a different real layer and filters
+the wrong thing. `WfpEngine.VerifyLayers()` therefore probes every layer and
+condition by installing a filter and immediately deleting it. The probe is a
+**permit** action at **weight 0** (below every real weight), **non-persistent**,
+and removed within microseconds, so it cannot block traffic, weaken a block, or
+survive a crash. Conditions are probed separately, because a layer probe
+structurally cannot catch a bad condition identifier.
 
-```
-%ProgramData%\GunWall\rules.json
-```
+This exists because three incorrect identifiers shipped undetected for months.
+Anyone touching this layer should run it (Settings → Diagnostics → *Verify
+kernel layers*) and check the result.
 
-`StoreData` holds the list of `FirewallRule`s, whether lockdown is engaged, and
-the lockdown filter IDs. Writes are **atomic** (write to a temp file, then
-replace) so a crash mid-save cannot corrupt the rule set. On startup the
-manager reads this file to rebuild the UI's view of what is blocked. The OS
-filters are the source of truth for *enforcement*; this file is the source of
-truth for *display and reconciliation*.
+### Fault tolerance
 
-Nothing else is written anywhere. No logs leave the machine.
+Optional filters go through `TryAdd`, which tolerates a layer this Windows build
+does not expose. Failures are recorded to the diagnostics log, deduplicated —
+previously they went only to the debugger and were invisible in release builds.
 
----
+### Reactive enforcement
 
-## 6. Telemetry, read-only (`NetworkMonitor`, `ProcessService`)
-
-These services only ever **read**:
-
-- `NetworkMonitor` calls `GetExtendedTcpTable` (`TCP_TABLE_OWNER_PID_ALL`) for
-  IPv4 and IPv6 to list active connections with their owning PID, and uses the
-  managed `NetworkInterface` API for cumulative bytes sent/received (the source
-  for the dashboard graph).
-- `ProcessService` maps PIDs to process names and image paths so the
-  Connections and Firewall views can show friendly names.
-
-Ports from the TCP table are byte-swapped (`NetworkToHostOrder`) because the API
-returns them in network order.
+Entity rules (country, ASN, scope, P2P) cannot be expressed as a single static
+filter, because the facts are not known until a connection appears. These are
+enforced **reactively**: the sampling loop evaluates each new connection, and a
+block verdict installs a persistent per-address filter and tears down the
+session. Filter identifiers are stored under the owning rule so that changing
+the rule removes everything it accumulated.
 
 ---
 
-## 7. Threading & UI
+## 5. Detection
 
-Since v0.3 all sampling (process snapshot, TCP/UDP tables, interface
-statistics) runs in an async background loop via `Task.Run`; only the cheap
-"apply to UI" step executes on the dispatcher. Process paths are cached per
-PID because `Process.MainModule` is the most expensive call in the app — each
-PID is resolved exactly once. The refresh interval is user-configurable
-(1/2/5 s). The bandwidth graph is drawn by
-hand onto a WPF `Canvas` (no charting dependency), and the title bar is darkened
-via `DwmSetWindowAttribute`.
+Detection is **event-driven** off the WFP kernel event stream rather than
+polling, with a 1-second sampling loop for the interface, throughput, and
+reactive rule evaluation. Process enumeration is cached with a short TTL, since
+the naive approach called `Process.GetProcesses()` several times a second.
 
----
-
-## 8. What is intentionally *not* here yet
-
-- No Windows Service / driver of our own (we use the OS WFP, persistently).
-  allow-by-default mode it fires on the first **observed** connection of a new
-  executable (detected by the polling loop + a persisted known-apps list).
-  apps by default and subscribes to WFP net events (`kernel net-event subscription`)
-  for drop notifications. Matching that requires whitelist mode plus the
-  net-event interop — planned for v0.5.
-- No per-rule scoping (remote address, port, direction-only). Today a block is
-  all-or-nothing per executable.
-- No packet inspection or DNS filtering.
-
-These are tracked in the roadmap. The architecture deliberately keeps the WFP
-facade small and honest so these can be layered on without rework.
+Each sampling step is isolated: one failing step degrades its own feature rather
+than blanking the interface, and errors are counted and surfaced in the
+diagnostics export.
 
 ---
 
-## 9. Dependency policy
+## 6. Persistence
+
+Rules and settings live in `GunWallData` beside the executable, falling back to
+`%ProgramData%\GunWall` when that location is read-only. The format is plain
+JSON that can be read, backed up, or deleted by hand. Versioned backups are
+taken automatically and on demand.
+
+Persistence is two-layered, and both layers matter:
+
+- **On disk** — so the interface can show what is configured.
+- **In the kernel** — filters are created persistent, so enforcement continues
+  when the app is closed and across reboots.
+
+Because the two can drift (a crash between adding a filter and saving its
+identifier), removal never relies solely on the stored list: deleting the
+sublayer by key clears everything GunWall ever installed.
+
+---
+
+## 7. DNS
+
+The resolver is written from scratch — message parsing, caching, and forwarding
+— with no DNS library. It listens on loopback and can be made the system
+resolver by rewriting adapter DNS, which is VPN-aware so it cooperates with an
+active tunnel.
+
+Forwarding is either plaintext UDP or **DNS-over-HTTPS** (RFC 8484: the wire
+query POSTed as `application/dns-message`). Built-in DoH endpoints are addressed
+by IP, so enabling encryption needs no plaintext lookup to bootstrap itself.
+When DoH fails, the default is to **fail closed** rather than silently
+downgrade; plaintext fallback is opt-in and stays with the same provider.
+
+Blocklists are applied at resolution time. The resolver also inspects the
+**CNAME chain** of every answer, so a tracker cannot evade a blocklist by
+aliasing from a clean first-party name; a cloaked answer is refused and never
+cached. Answers additionally feed a resolved-address memory, which is what makes
+"block direct connections" meaningful — a public address an application dials
+without ever looking it up by name is a direct connection.
+
+---
+
+## 8. Metering
+
+Per-application bandwidth has two engines:
+
+- **Measured** — a real-time ETW session against the Microsoft-Windows-Kernel-
+  Network provider, hand-parsed from the raw event records, attributing bytes to
+  process identifiers. Opt-in.
+- **Estimated** — measured adapter totals apportioned across applications by
+  their share of active connections. Always available.
+
+The measured engine is opt-in because it is the most delicate interop in the
+project. A watchdog degrades to the estimate if the session stops producing
+events while traffic is flowing, so a metering failure can never blank the usage
+data, and the interface always states which engine produced the numbers.
+
+---
+
+## 9. Threading and the UI
+
+The interface is a single WPF window with panels rather than pages. Long
+operations — reverse DNS, VirusTotal lookups, blocklist downloads, GeoIP —
+run off the UI thread and marshal back through the dispatcher. Shared state
+crossing threads is lock-guarded; an early bug came from unsynchronised
+dictionary writes across sampling loops.
+
+Charts are drawn by hand onto a canvas rather than with a charting library, in
+keeping with the zero-dependency rule.
+
+---
+
+## 10. What is intentionally not here yet
+
+- **No service or privilege split.** GunWall is one elevated process. A
+  compromise of the UI is a compromise of the firewall. Tracked for 1.0.
+- **No code signing or installer.** Builds are unsigned, which is also why
+  behavioural antivirus sometimes flags them.
+- **No kernel-mode callout driver.** Mature user-mode WFP firewalls do not use
+  one either; it would require driver signing and carry BSOD risk that
+  contradicts being free, portable, and install-free.
+- **No packet payload inspection.** GunWall filters connections and resolves
+  names; it does not read traffic contents.
+- **No secure (tamper-protected) filters or boot-time filters.** Both carry
+  lockout risk and need a guaranteed recovery path first.
+
+These are tracked in [`ROADMAP.md`](../ROADMAP.md). The WFP facade is kept
+deliberately small and honest so they can be layered on without rework.
+
+---
+
+## 11. Dependency policy
 
 **Zero third-party NuGet packages.** Everything uses the .NET base class library
 and direct Win32 P/Invoke. This keeps the supply chain trivial to audit — a
 firewall that pulls in a dozen opaque dependencies undermines its own promise.
 
+This applies to functionality that would normally justify a library: the DNS
+resolver, the ETW metering, the GeoIP lookups, the domain heuristics, and the
+charts are all hand-written.
 
-## Strict mode (full control) — corrected design
+---
 
-Strict mode is the "block everything except what you allow" takeover. Getting
-it right requires more than a single block filter, because a naive block-all
-also blocks the traffic the network itself needs to function (DNS, DHCP, ARP-
-like discovery, IPv6 neighbor discovery). The engine therefore installs a
-layered set of filters, ordered by an 8-level weight hierarchy (highest wins):
-
-1. **Infrastructure permits (weight 0x0F, highest important).** Loopback (via
-   the loopback condition flag) plus the core IPv4 ranges: `0.0.0.0/8` (DHCP),
-   `10/8`, `172.16/12`, `192.168/16` (private), `100.64/10` (CGNAT),
-   `169.254/16` (link-local), `224/4` (multicast), `240/4` and the broadcast
-   address. These must outrank the block-all or the local network dies.
-2. **DNS permit (weight 0x0F).** Remote port 53 is permitted so allowed apps
-   can resolve names.
-3. **Per-app permits (weight 0x0B).** Apps the user allows.
-4. **Per-app blocks (weight 0x0C).** Explicit blocks beat permits.
-5. **Block-all default (weight 0x08, lowest).** Catches everything not
-   permitted above.
-
-Two correctness details that are easy to miss and cause silent breakage:
-
-- **Every BLOCK filter sets `FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT`.** Without it,
-  a block can be overridden by a lower-priority permit elsewhere in the system,
-  so blocks become unreliable.
-- **Block actions and highest-importance filters clear the action right** so the
-  weight hierarchy is actually honored by the WFP arbitration.
-
-Removing strict mode deletes exactly these filter IDs, restoring open
-connectivity.
-
-
-## Zero Trust behavior (Enable Firewall)
-
-When the firewall is enabled, GunWall operates default-deny:
-
-- The block-all default (lowest weight) denies any traffic not explicitly
-  permitted. This is active immediately, so an app is blocked *before* it is
-  approved.
-- The fast detection loop (300 ms) watches the socket tables. Any process that
-  owns a socket and has not been decided (not allowed, not blocked) raises an
-  approval prompt exactly once per session.
-- **Allow** writes a persistent per-app PERMIT (weight above the block-all);
-  **Block** writes a persistent per-app BLOCK (weight above permits). Both
-  decisions are saved to disk and survive restarts, so an app is never asked
-  about twice.
-- If the user ignores the prompt, the grace timer simply dismisses it and the
-  app stays blocked — doing nothing is the safe default under Zero Trust.
-
-Honest limitation: detection is poll-based, so a single blocked connection
-attempt that never retries can be missed within a poll interval. The app stays
-correctly blocked; it just may not raise a prompt until it tries again (most
-software retries). Catching every blocked attempt at the instant it happens,
-and showing the exact destination of a *blocked* attempt, requires kernel
-net-event subscription — the next major engine milestone.
-
+<div align="center"><sub>Guard your network. Bismillah.</sub></div>

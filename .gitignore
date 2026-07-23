@@ -62,3 +62,10 @@ Desktop.ini
 # ---- GunWall runtime data (created on the user's machine) ----
 # Rules live in %ProgramData%\GunWall and are never committed.
 *.local.json
+
+# ---- GunWall runtime data (portable data folder beside the EXE) ----
+GunWallData/
+**/GunWallData/
+publish/
+*.zip
+GunWall-diagnostics-*.zip
