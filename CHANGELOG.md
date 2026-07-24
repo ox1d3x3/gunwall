@@ -6,6 +6,14 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.88.0] — 2026-07-24
+
+### Added
+- **Domain rules in the access-rule engine.** A per-app rule can now target a domain — `block doubleclick.net`, or `allow github.com` above a block-all — completing the entity set alongside country, continent, ASN, IP, range and scope. Matching covers subdomains by default (`example.com` matches `cdn.example.com`) and is label-aware, so `evilexample.com` never matches `example.com`. An explicit `*.` prefix is accepted and behaves identically.
+- The resolver now records which name produced each resolved address, which is what allows a rule about a *name* to be enforced against a connection that only carries an *address*. Domain rules therefore require GunWall's resolver to be running, and the block alert names the domain that matched.
+
+---
+
 ## [0.87.0] — 2026-07-24
 
 ### Fixed

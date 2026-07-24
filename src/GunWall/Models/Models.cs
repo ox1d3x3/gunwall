@@ -282,6 +282,7 @@ public sealed class AppAccessRule
         "country" => "country " + Value.ToUpperInvariant(),
         "continent" => "continent " + Value.ToUpperInvariant(),
         "asn" => "AS" + AppRuleEngineValue,
+        "domain" => "domain " + Value + " (and subdomains)",
         _ => EntityType + " " + Value
     };
 

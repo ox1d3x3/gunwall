@@ -8,7 +8,7 @@
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/NuGet%20dependencies-0-3FB868?style=flat-square)](#-privacy--security)
-[![Status](https://img.shields.io/badge/release-v0.87.0%20(beta)-E0A53F?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.88.0%20(beta)-E0A53F?style=flat-square)](#roadmap)
 
 *Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and no third-party dependencies.*
 
@@ -44,7 +44,7 @@ Test it in a safe environment first, and don't rely on it as your only defense o
 
 - **Zero-Trust mode** — every program is denied by default and must be explicitly approved. Each new app raises an Allow / Block prompt that waits for you, and **dismissing it blocks** — a prompt closed by accident never grants access. Your choice persists. Loopback and core Windows networking stay allowed so the machine keeps working.
 - **Per-app rules** — allow or block any executable, in either direction, with optional **timed** (auto-expiring) and **silent** (muted) variants. Critical system processes are guarded against accidental blocking.
-- **Per-app access rules** — an **ordered, first-match-wins** policy per application. Rules target *entities*: country, continent, ASN, IP, address range (CIDR), or network scope, each set to allow or block, with a default action when nothing matches. Presets included (*Allow LAN only*, *Allow one country only*, and more).
+- **Per-app access rules** — an **ordered, first-match-wins** policy per application. Rules target *entities*: **domain**, country, continent, ASN, IP, address range (CIDR), or network scope, each set to allow or block, with a default action when nothing matches. Presets included (*Allow LAN only*, *Allow one country only*, and more).
 - **Network scopes** — per-app force-blocks by destination: **device-local**, **LAN**, **Internet** (LAN-only mode), **incoming**, **server / listening sockets** (denies the app any listening port, TCP or UDP), and **P2P / direct** (connections to addresses the app never resolved through DNS).
 - **Country & ASN blocking** — block an app, or every app, from reaching a whole country, continent, or network operator.
 - **Custom rules** — block or allow by remote IP / CIDR, port, protocol and direction, independent of any app.

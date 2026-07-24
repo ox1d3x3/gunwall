@@ -27,13 +27,15 @@ public enum RuleVerdict { Allow, Block }
 /// pure and testable.</summary>
 public readonly struct ConnFacts
 {
-    public ConnFacts(string remoteIp, string scope, string country, string continent, int asn)
+    public ConnFacts(string remoteIp, string scope, string country, string continent, int asn,
+                     string domain = "")
     {
         RemoteIp = remoteIp ?? "";
         Scope = scope ?? "";
         Country = country ?? "";
         Continent = continent ?? "";
         Asn = asn;
+        Domain = domain ?? "";
     }
 
     public string RemoteIp { get; }
@@ -41,6 +43,10 @@ public readonly struct ConnFacts
     public string Country { get; }     // ISO-2, e.g. "RU"
     public string Continent { get; }   // "AF" | "AN" | "AS" | "EU" | "NA" | "OC" | "SA"
     public int Asn { get; }            // e.g. 13335
+
+    /// <summary>The name this address was resolved from, when GunWall's own
+    /// resolver answered the lookup; "" otherwise.</summary>
+    public string Domain { get; }
 }
 
 public static class AppRuleEngine
@@ -87,9 +93,34 @@ public static class AppRuleEngine
                        string.Equals(facts.Continent, rule.Value.Trim(), StringComparison.OrdinalIgnoreCase);
             case "asn":
                 return facts.Asn != 0 && facts.Asn == NormalizeAsn(rule.Value);
+            case "domain":
+                return DomainMatches(facts.Domain, rule.Value);
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// Domain rule matching. A bare name matches itself and any subdomain, so
+    /// "example.com" covers "cdn.example.com" - that is what people mean, and
+    /// requiring a wildcard for the common case invites mistakes. A leading
+    /// "*." is accepted and treated identically. Matching is case-insensitive
+    /// and label-aware, so "notexample.com" never matches "example.com".
+    /// </summary>
+    public static bool DomainMatches(string domain, string pattern)
+    {
+        if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(pattern)) return false;
+
+        string d = domain.Trim().TrimEnd('.').ToLowerInvariant();
+        string p = pattern.Trim().TrimEnd('.').ToLowerInvariant();
+        if (p.StartsWith("*.", StringComparison.Ordinal)) p = p[2..];
+        if (p.Length == 0 || d.Length == 0) return false;
+
+        if (d.Equals(p, StringComparison.Ordinal)) return true;
+        // Subdomain: must align on a label boundary, so "evilexample.com" is
+        // not a match for "example.com".
+        return d.Length > p.Length && d.EndsWith(p, StringComparison.Ordinal)
+            && d[d.Length - p.Length - 1] == '.';
     }
 
     /// <summary>Parses "AS13335", "as13335", or "13335" to 13335; 0 on garbage.</summary>

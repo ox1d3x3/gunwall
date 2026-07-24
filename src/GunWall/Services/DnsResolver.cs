@@ -38,7 +38,11 @@ public sealed class DnsResolver : IDisposable
     // Resolved-IPv4 memory for P2P/direct detection: every A record this
     // resolver has handed out. Bounded; on overflow the whole set resets
     // (a brief blind spot beats unbounded growth).
-    private readonly HashSet<uint> _resolvedV4 = new();
+    // Maps each resolved IPv4 to the name that produced it. The set membership
+    // still answers "was this looked up?" (P2P detection); the value additionally
+    // answers "what was it called?", which is what lets an access rule match a
+    // domain even though the connection itself only carries an address.
+    private readonly Dictionary<uint, string> _resolvedV4 = new();
     private readonly object _resolvedLock = new();
     private const int MaxResolvedIps = 30000;
 
@@ -342,7 +346,7 @@ public sealed class DnsResolver : IDisposable
 
             int ttl = DnsMessage.GetMinTtl(answer);
             _cache[key] = ((byte[])answer.Clone(), DateTime.UtcNow.AddSeconds(ttl));
-            TrackResolvedIps(answer);
+            TrackResolvedIps(answer, name);
             Interlocked.Increment(ref _forwarded);
             Emit(name, qtype, DnsAction.Forwarded);
         }
@@ -429,14 +433,17 @@ public sealed class DnsResolver : IDisposable
         _http = null;
     }
 
-    private void TrackResolvedIps(byte[] answer)
+    private void TrackResolvedIps(byte[] answer, string queriedName)
     {
         var ips = DnsMessage.ExtractARecords(answer);
         if (ips.Count == 0) return;
+        string name = (queriedName ?? "").Trim().TrimEnd('.').ToLowerInvariant();
         lock (_resolvedLock)
         {
             if (_resolvedV4.Count + ips.Count > MaxResolvedIps) _resolvedV4.Clear();
-            foreach (uint ip in ips) _resolvedV4.Add(ip);
+            // Last writer wins: a CDN address reused by another host should carry
+            // the most recent name, which is the one the app just asked for.
+            foreach (uint ip in ips) _resolvedV4[ip] = name;
         }
     }
 
@@ -450,7 +457,22 @@ public sealed class DnsResolver : IDisposable
             return true; // non-v4: don't accuse what we can't check
         var b = ip.GetAddressBytes();
         uint v = (uint)((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]);
-        lock (_resolvedLock) return _resolvedV4.Contains(v);
+        lock (_resolvedLock) return _resolvedV4.ContainsKey(v);
+    }
+
+    /// <summary>
+    /// The domain this address was resolved from, or "" if this resolver never
+    /// handed it out. Lets a rule about a NAME be enforced against a connection
+    /// that only carries an ADDRESS.
+    /// </summary>
+    public string DomainForIp(string ipv4)
+    {
+        if (!System.Net.IPAddress.TryParse(ipv4, out var ip) ||
+            ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return "";
+        var b = ip.GetAddressBytes();
+        uint v = (uint)((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]);
+        lock (_resolvedLock) return _resolvedV4.TryGetValue(v, out var name) ? name : "";
     }
 
     public int ResolvedIpCount { get { lock (_resolvedLock) return _resolvedV4.Count; } }

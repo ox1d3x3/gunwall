@@ -305,7 +305,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.87.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.88.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1342,7 +1342,7 @@ public partial class MainWindow : Window
         actionCombo.Items.Add(new ComboBoxItem { Content = "Allow", Tag = "allow" });
         actionCombo.SelectedIndex = 0;
         var typeCombo = new ComboBox { Width = 110, Height = 28, Margin = new Thickness(0, 0, 6, 0) };
-        foreach (var (label, tag) in new[] { ("Country", "country"), ("Continent", "continent"),
+        foreach (var (label, tag) in new[] { ("Domain", "domain"), ("Country", "country"), ("Continent", "continent"),
                  ("ASN", "asn"), ("IP", "ip"), ("IP range", "cidr"), ("Scope", "scope"), ("Any", "any") })
             typeCombo.Items.Add(new ComboBoxItem { Content = label, Tag = tag });
         typeCombo.SelectedIndex = 0;
@@ -1379,6 +1379,8 @@ public partial class MainWindow : Window
             work.Rules.Add(new() { Action = "block", EntityType = "scope", Value = "internet" });
             work.DefaultBlock = false; defaultCombo.SelectedIndex = 0;
         });
+        AddPreset("Block a domain", () =>
+            work.Rules.Add(new() { Action = "block", EntityType = "domain", Value = "doubleclick.net" }));
         AddPreset("Block a country", () =>
             work.Rules.Add(new() { Action = "block", EntityType = "country", Value = "RU" }));
         AddPreset("Block an ASN", () =>
@@ -1399,7 +1401,8 @@ public partial class MainWindow : Window
         });
         content.Children.Add(new TextBlock
         {
-            Text = "Rules are checked top to bottom; the first match decides. Enforcement is reactive (GunWall blocks a remote when it sees traffic to it) and IPv4-only for geo rules.",
+            Text = "Rules are checked top to bottom; the first match decides. Enforcement is reactive (GunWall blocks a remote when it sees traffic to it) and IPv4-only for geo rules. " +
+                   "Domain rules need GunWall's DNS resolver running, since that is what links an address back to the name it came from.",
             Foreground = (Brush)FindResource("TextSecondary"),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10)
         });
@@ -1411,7 +1414,9 @@ public partial class MainWindow : Window
         content.Children.Add(new TextBlock { Text = "ADD RULE", FontSize = 11, Foreground = (Brush)FindResource("TextSecondary"), Margin = new Thickness(0, 6, 0, 2) });
         content.Children.Add(new TextBlock
         {
-            Text = "Value examples:  country RU / AU  \u00B7  continent EU / AS  \u00B7  ASN AS13335  \u00B7  IP 1.2.3.4  \u00B7  range 10.0.0.0/8  \u00B7  scope internet / lan / local",
+            Text = "Value examples:  domain doubleclick.net (covers subdomains)  \u00B7  country RU / AU  \u00B7  " +
+                   "continent EU / AS  \u00B7  ASN AS13335  \u00B7  IP 1.2.3.4  \u00B7  range 10.0.0.0/8  \u00B7  " +
+                   "scope internet / lan / local",
             FontSize = 10.5, Foreground = (Brush)FindResource("TextSecondary"),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4)
         });
@@ -1482,7 +1487,11 @@ public partial class MainWindow : Window
 
                 string scope = IpScopeClassifier.Classify(c.RemoteAddress);
                 string continent = c.Country.Length > 0 ? Services.GeoData.Continent(c.Country) : "";
-                var facts = new ConnFacts(c.RemoteAddress, scope, c.Country, continent, c.Asn);
+                // The connection carries only an address; the resolver knows what
+                // name produced it, which is what makes a domain rule enforceable.
+                string domain = _dnsResolver is { Running: true }
+                    ? _dnsResolver.DomainForIp(c.RemoteAddress) : "";
+                var facts = new ConnFacts(c.RemoteAddress, scope, c.Country, continent, c.Asn, domain);
 
                 if (AppRuleEngine.Evaluate(policy, facts) != RuleVerdict.Block) continue;
 
@@ -1495,6 +1504,7 @@ public partial class MainWindow : Window
                         c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
                 if (added)
                     Notify("warn", $"Access rule blocked: {pi.Name}",
+                        (domain.Length > 0 ? domain + " \u2014 " : "") +
                         $"{c.RemoteAddress}:{c.RemotePort}" +
                         (c.Country.Length > 0 ? $" ({Services.GeoData.CountryName(c.Country)})" : "") +
                         " matched a block rule.", "security");
