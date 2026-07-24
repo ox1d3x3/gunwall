@@ -947,6 +947,10 @@
                                 <TextBlock Text="Countries" Style="{StaticResource Muted}" FontSize="11"
                                            FontWeight="SemiBold" Margin="0,0,0,8" />
                                 <ItemsControl x:Name="BreakCountries" ItemTemplate="{StaticResource BreakRowTemplate}" />
+                                <TextBlock x:Name="BreakCountriesHint" Visibility="Collapsed"
+                                           TextWrapping="Wrap" FontSize="11" Margin="0,2,16,0"
+                                           Foreground="{DynamicResource TextSecondary}"
+                                           Text="No country data. The GeoIP database hasn't been downloaded, so country, continent and ASN rules can't match. Set it up in Security &#8594; GeoIP." />
                             </StackPanel>
                         </Grid>
                     </DockPanel>

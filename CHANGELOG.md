@@ -6,6 +6,13 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.87.0] — 2026-07-24
+
+### Fixed
+- **GeoIP silence.** With the local database never downloaded, every country and ASN lookup returned nothing — so the Countries breakdown was empty and country, continent and ASN rules could never match — with no indication anywhere that this was the cause. An empty Countries column read as "no foreign traffic" when it actually meant "no data". The state is now reported in three places: the App Health card, the diagnostics export, and an inline note on the Countries column itself.
+
+---
+
 ## [0.86.0] — 2026-07-24
 
 ### Changed

@@ -305,7 +305,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.86.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.87.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1614,6 +1614,14 @@ public partial class MainWindow : Window
                 countries.Add((Services.GeoData.CountryName(cb.Code), cb.Bytes, cb.Code));
             BreakCountries.ItemsSource = ToRows(countries);
 
+            // An empty Countries column looks like "no foreign traffic" when it
+            // really means "no geo data" - say which, rather than letting the
+            // user draw the wrong conclusion about their own machine.
+            if (BreakCountriesHint != null)
+                BreakCountriesHint.Visibility =
+                    countries.Count == 0 && !_firewall.GeoIpActive
+                        ? Visibility.Visible : Visibility.Collapsed;
+
             bool measured = _etwMeter is { SessionActive: true } && !_etwDegraded;
             BreakSubtitle.Text = measured
                 ? "Session totals - measured bytes (ETW), split across each app's connections"
@@ -1895,7 +1903,10 @@ public partial class MainWindow : Window
         var geo = _firewall.GeoIp;
         HealthGeo.Text = _firewall.GeoIpApiActive
             ? $"GeoIP: API server \u00B7 {geo.ApiOkCount} ok / {geo.ApiFailCount} failed"
-            : "GeoIP: local database";
+            : _firewall.GeoIpRangeCount > 0
+                ? $"GeoIP: local database \u00B7 {_firewall.GeoIpRangeCount:N0} ranges"
+                : "GeoIP: NO DATA \u2014 country, continent and ASN rules are inactive. "
+                  + "Download the database in Security \u2192 GeoIP.";
 
         HealthDns.Text = _dnsResolver.Running
             ? $"DNS resolver: listening on 127.0.0.1:{_dnsResolver.Port} \u00B7 {_dnsResolver.Total} queries, {_dnsResolver.Blocked} blocked"
@@ -3925,6 +3936,10 @@ public partial class MainWindow : Window
             $"Errors this session: {Services.DiagnosticLog.DistinctErrorCount} distinct, " +
             $"{Services.DiagnosticLog.TotalErrorCount} total  |  benign faults: " +
             Services.DiagnosticLog.BenignFaultSummary());
+        Services.DiagnosticLog.Log(
+            $"GeoIP: mode={(_firewall.GeoIpApiActive ? "api" : "local")}, " +
+            $"ranges={_firewall.GeoIpRangeCount:N0}, active={_firewall.GeoIpActive}" +
+            (_firewall.GeoIpActive ? "" : "  WARNING: no country/ASN data - those rules cannot match"));
         Services.DiagnosticLog.Log(
             $"Service attribution: {Services.ServiceAttributionService.HostingProcessCount} host process(es), " +
             $"{Services.ServiceAttributionService.MappedServiceCount} service(s) mapped, " +
