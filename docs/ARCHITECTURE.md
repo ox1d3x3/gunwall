@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.88.0. It
+This document describes how GunWall is **actually built** as of v0.89.0. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 

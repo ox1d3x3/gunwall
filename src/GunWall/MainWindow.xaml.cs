@@ -305,7 +305,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.88.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.89.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1992,6 +1992,12 @@ public partial class MainWindow : Window
     /// <summary>Reflect persisted routing state in the toggles + status line.</summary>
     private void UpdateDnsRedirectUi()
     {
+        // Keep the resolver's safety-net flag in step with reality: the machine
+        // depends on GunWall for name resolution only when routing is on AND a
+        // Gaming Session isn't temporarily pointing DNS back at normal servers.
+        _dnsResolver.SystemRoutingActive =
+            _firewall.DnsRedirectActive && !_firewall.DnsGamingSession;
+
         if (DnsRedirectToggle == null) return;
         _dnsToggleGuard = true;
         DnsRedirectToggle.IsChecked = _firewall.DnsRedirectActive;
@@ -3941,7 +3947,8 @@ public partial class MainWindow : Window
         Services.DiagnosticLog.Log(
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
-            $"plaintextFallback={_dnsResolver.DohFallbackAllowed}");
+            $"plaintextFallback={_dnsResolver.DohFallbackAllowed}, " +
+            $"systemRouting={_dnsResolver.SystemRoutingActive}");
         Services.DiagnosticLog.Log(
             $"Errors this session: {Services.DiagnosticLog.DistinctErrorCount} distinct, " +
             $"{Services.DiagnosticLog.TotalErrorCount} total  |  benign faults: " +

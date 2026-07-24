@@ -58,6 +58,11 @@ public sealed class DnsResolver : IDisposable
     private bool _blockCloaked = true;
     private long _cloaked;
 
+    // Set by the app while this PC's own DNS is pointed at the resolver. When
+    // true, a total resolution failure would knock the machine offline, so the
+    // forwarder keeps a plaintext path of last resort even in fail-closed mode.
+    public volatile bool SystemRoutingActive;
+
     private long _total, _blocked, _cached, _forwarded, _errors;
 
     public bool Running { get; private set; }
@@ -227,10 +232,30 @@ public sealed class DnsResolver : IDisposable
             if (_dohUrl.Length > 0)
             {
                 _http?.Dispose();
-                _http = new HttpClient
+                // A SocketsHttpHandler with pooled, kept-warm connections. The
+                // previous default handler let a single slow request's timeout
+                // abort the shared connection, which then broke the next few
+                // in-flight lookups - the cause of the intermittent failures
+                // seen against slower DoH endpoints. Pinning the pool lifetime
+                // and keep-alive holds the TLS session open between queries.
+                var handler = new SocketsHttpHandler
                 {
-                    Timeout = TimeSpan.FromSeconds(5),
-                    DefaultRequestVersion = new Version(2, 0)
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+                    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+                    KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+                    KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
+                    MaxConnectionsPerServer = 8,
+                    EnableMultipleHttp2Connections = true,
+                    ConnectTimeout = TimeSpan.FromSeconds(5)
+                };
+                _http = new HttpClient(handler)
+                {
+                    // No global Timeout: a single slow lookup must fail on its
+                    // OWN cancellation token, never by tearing down the client.
+                    // Each request is bounded by PerQueryTimeout below.
+                    Timeout = System.Threading.Timeout.InfiniteTimeSpan,
+                    DefaultRequestVersion = new Version(2, 0),
+                    DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
                 };
                 _http.DefaultRequestHeaders.Accept.Clear();
                 _http.DefaultRequestHeaders.Accept.Add(
@@ -365,9 +390,19 @@ public sealed class DnsResolver : IDisposable
             if (secure != null) { Interlocked.Increment(ref _dohOk); return secure; }
 
             Interlocked.Increment(ref _dohFail);
-            // Fail closed unless the user explicitly permitted plaintext fallback:
-            // silently downgrading would defeat the point of encrypting queries.
-            if (!_dohFallback) return null;
+
+            // The machine's own DNS may be routed through this resolver. If so,
+            // returning null here means the OS gets no answer and the user sees
+            // "the internet is down" - a far worse outcome than a single query
+            // going out in plaintext. When the user allowed fallback we take the
+            // plaintext peer (pinned to the same provider). When they did NOT,
+            // we still fall back only while system routing is active, because a
+            // dead resolver on the machine's own DNS path is not a defensible
+            // "fail closed" - it's a failure. With routing off (GunWall is just
+            // a resolver something else opted into) we honour fail-closed.
+            if (_dohFallback || SystemRoutingActive)
+                return await ForwardPlainAsync(query, ct);
+            return null;
         }
         return await ForwardPlainAsync(query, ct);
     }
@@ -377,24 +412,48 @@ public sealed class DnsResolver : IDisposable
     /// read the wire response back. Never throws; null means "failed", which
     /// the caller turns into either fallback or an error per policy.
     /// </summary>
+    private const int PerQueryTimeoutMs = 4000;
+
     private async Task<byte[]?> ForwardDohAsync(byte[] query, CancellationToken ct)
     {
         var http = _http;
         if (http == null) return null;
-        try
-        {
-            using var content = new ByteArrayContent(query);
-            content.Headers.ContentType =
-                new System.Net.Http.Headers.MediaTypeHeaderValue("application/dns-message");
-            using var resp = await http.PostAsync(_dohUrl, content, ct);
-            if (!resp.IsSuccessStatusCode) return null;
 
-            byte[] body = await resp.Content.ReadAsByteArrayAsync(ct);
-            // A DNS response is at least a 12-byte header; anything shorter is
-            // a captive portal or error page, not an answer.
-            return body.Length >= 12 ? body : null;
+        // One quick retry on the SAME warm client. A first attempt can lose the
+        // race to open a cold TLS connection; the second reuses the now-open
+        // pooled connection and almost always succeeds. Each attempt is bounded
+        // by its own linked token, so a slow endpoint fails that one request
+        // rather than stalling or aborting the shared client.
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            using var perQuery = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            perQuery.CancelAfter(PerQueryTimeoutMs);
+            try
+            {
+                using var content = new ByteArrayContent(query);
+                content.Headers.ContentType =
+                    new System.Net.Http.Headers.MediaTypeHeaderValue("application/dns-message");
+                using var resp = await http.PostAsync(_dohUrl, content, perQuery.Token);
+                if (!resp.IsSuccessStatusCode) return null;   // a real HTTP error won't fix on retry
+
+                byte[] body = await resp.Content.ReadAsByteArrayAsync(perQuery.Token);
+                return body.Length >= 12 ? body : null;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return null;                                   // resolver is stopping
+            }
+            catch when (attempt == 0)
+            {
+                // First attempt failed (cold connection, transient reset) - loop
+                // once more on the warm pool before giving up.
+            }
+            catch
+            {
+                return null;
+            }
         }
-        catch { return null; }
+        return null;
     }
 
     private async Task<byte[]?> ForwardPlainAsync(byte[] query, CancellationToken ct)

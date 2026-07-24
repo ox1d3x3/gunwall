@@ -8,7 +8,7 @@
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/NuGet%20dependencies-0-3FB868?style=flat-square)](#-privacy--security)
-[![Status](https://img.shields.io/badge/release-v0.88.0%20(beta)-E0A53F?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.89.0%20(beta)-E0A53F?style=flat-square)](#roadmap)
 
 *Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and no third-party dependencies.*
 
