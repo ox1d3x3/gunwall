@@ -89,6 +89,17 @@ public sealed class CategoryToTextConverter : IValueConverter
 }
 
 /// <summary>Maps a rule's Protected flag to the toggle-button label.</summary>
+/// <summary>Visible when the bound string has content, Collapsed when empty -
+/// used for badges that should simply not exist when there's nothing to say.</summary>
+public sealed class NotEmptyToVisConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object? p, CultureInfo c) =>
+        string.IsNullOrWhiteSpace(value as string) ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object? value, Type t, object? p, CultureInfo c) =>
+        throw new NotSupportedException();
+}
+
 public sealed class ProtectLabelConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

@@ -6,6 +6,22 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.86.0] — 2026-07-24
+
+### Changed
+- **The approval prompt now fails closed.** It no longer auto-decides by default — it waits for the user — and if the prompt is dismissed or closed by accident, the app is **blocked** rather than silently allowed. Previously the default was to auto-*allow* after 20 seconds, and closing the window decided nothing. A firewall that grants access to something you walked away from is not doing its job. The settings still allow a timeout, but the safe options are listed first and a missing setting falls back to block.
+- **Service labels adapt to the column width.** Long Windows service display names were truncating mid-word; the label now fits as many names as will show and appends a count, with the full list in the tooltip.
+
+---
+
+## [0.85.0] — 2026-07-24
+
+### Added
+- **Per-service attribution.** Connections opened by service hosts now name the actual Windows service — `svchost (Windows Update, BITS)` rather than an indistinguishable row of `svchost` entries — with the full hosted-service list in a tooltip. The Apps list shows a service badge on host executables. Resolved through `EnumServicesStatusEx`, cached for 20 seconds, with the struct layout and constants verified against the Windows SDK headers and Microsoft's win32metadata.
+- Service attribution counters in the diagnostics export.
+
+---
+
 ## [0.84.0] — 2026-07-24
 
 ### Fixed

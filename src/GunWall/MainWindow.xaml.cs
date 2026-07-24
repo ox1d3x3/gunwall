@@ -253,10 +253,10 @@ public partial class MainWindow : Window
             if (PopupTimeoutCombo != null)
                 PopupTimeoutCombo.SelectedIndex = _firewall.PopupTimeoutSeconds switch
                 {
-                    15 => 0, 30 => 1, 60 => 2, 0 => 3, _ => 1
+                    0 => 0, 15 => 1, 30 => 2, 60 => 3, _ => 0
                 };
             if (PopupDefaultCombo != null)
-                PopupDefaultCombo.SelectedIndex = _firewall.PopupDefaultAllow ? 0 : 1;
+                PopupDefaultCombo.SelectedIndex = _firewall.PopupDefaultAllow ? 1 : 0;
             if (AutoBackupCheck != null) AutoBackupCheck.IsChecked = _firewall.AutoBackup;
             if (VtKeyStatus != null)
                 VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
@@ -305,7 +305,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.84.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.86.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -465,6 +465,14 @@ public partial class MainWindow : Window
                 c.ExePath = p.Path ?? "";
             }
             else c.ProcessName = $"PID {c.ProcessId}";
+
+            // Attribute service hosts (svchost and friends) so a connection row
+            // says WHICH service is talking, not just which container process.
+            // Backed by a 20-second cache, so this is a dictionary hit per row.
+            c.Services = Services.ServiceAttributionService.LabelForPid(c.ProcessId);
+            c.ServicesDetail = c.Services.Length > 0
+                ? Services.ServiceAttributionService.DetailForPid(c.ProcessId)
+                : "";
         }
 
         var (rx, tx) = _monitor.GetCumulativeBytes();
@@ -771,6 +779,42 @@ public partial class MainWindow : Window
                 : "No traffic in the last 30 min";
         }
         catch { a.Spark = null; a.SparkTip = ""; }
+    }
+
+    /// <summary>
+    /// Summarises the Windows services hosted by every live process of this
+    /// executable. The Apps list is keyed by path, so all svchost instances
+    /// collapse into one row - the per-PID breakdown lives in Connections.
+    /// This at least tells you the row is a service host and which ones.
+    /// </summary>
+    private void AttachServices(AppInfo a)
+    {
+        try
+        {
+            a.ServicesSummary = "";
+            a.ServicesDetail = "";
+            if (a.ExecutablePath.Length == 0) return;
+
+            var names = new List<string>();
+            var seenPids = new HashSet<int>();
+            foreach (var c in _lastConns)
+            {
+                if (c.ProcessId <= 0 || !seenPids.Add(c.ProcessId)) continue;
+                if (!string.Equals(c.ExePath, a.ExecutablePath, StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var svc in Services.ServiceAttributionService.ForPid(c.ProcessId))
+                    if (!names.Contains(svc.Best, StringComparer.OrdinalIgnoreCase)) names.Add(svc.Best);
+            }
+            if (names.Count == 0) return;
+
+            names.Sort(StringComparer.OrdinalIgnoreCase);
+            a.ServicesSummary = names.Count == 1
+                ? names[0]
+                : $"{names.Count} services";
+            a.ServicesDetail = $"Hosts {names.Count} service{(names.Count == 1 ? "" : "s")} with " +
+                               "network activity:" + Environment.NewLine +
+                               string.Join(Environment.NewLine, names.Select(n => "\u2022 " + n));
+        }
+        catch { a.ServicesSummary = ""; a.ServicesDetail = ""; }
     }
 
     private static void Shift(double[] series, double newest)
@@ -2621,6 +2665,7 @@ public partial class MainWindow : Window
                      .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase))
         {
             ComputeSpark(a);
+            AttachServices(a);
             _apps.Add(a);
         }
 
@@ -3880,6 +3925,10 @@ public partial class MainWindow : Window
             $"Errors this session: {Services.DiagnosticLog.DistinctErrorCount} distinct, " +
             $"{Services.DiagnosticLog.TotalErrorCount} total  |  benign faults: " +
             Services.DiagnosticLog.BenignFaultSummary());
+        Services.DiagnosticLog.Log(
+            $"Service attribution: {Services.ServiceAttributionService.HostingProcessCount} host process(es), " +
+            $"{Services.ServiceAttributionService.MappedServiceCount} service(s) mapped, " +
+            $"lastError=[{Services.ServiceAttributionService.LastError}]");
         var skips = Services.Wfp.WfpEngine.SkippedFilterReasons();
         Services.DiagnosticLog.Log(skips.Length == 0
             ? "WFP optional filters: none skipped (all requested layers accepted)"
@@ -5077,7 +5126,8 @@ public partial class MainWindow : Window
             int.TryParse(pti.Tag?.ToString(), out int secs))
             _firewall.SetPopupTimeoutSeconds(secs);
         if (PopupDefaultCombo?.SelectedItem is ComboBoxItem pdi)
-            _firewall.SetPopupDefaultAllow((pdi.Tag?.ToString() ?? "allow") == "allow");
+            // Fallback is "block": if the tag is ever missing, fail closed.
+            _firewall.SetPopupDefaultAllow((pdi.Tag?.ToString() ?? "block") == "allow");
         _firewall.SetAutoBackup(AutoBackupCheck?.IsChecked == true);
         _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
         _firewall.SetExperimentalEvents(ExperimentalEventsCheck?.IsChecked == true);

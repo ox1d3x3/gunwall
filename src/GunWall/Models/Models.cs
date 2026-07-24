@@ -18,6 +18,18 @@ public sealed class ConnectionInfo
     // Filled in by the UI layer once the PID is resolved to a process.
     public string ProcessName { get; set; } = "";
 
+    /// <summary>Windows services hosted by this PID, e.g. "Windows Update, BITS".
+    /// Empty for ordinary programs. Turns a row of identical "svchost" entries
+    /// into something a rule can be reasoned about.</summary>
+    public string Services { get; set; } = "";
+
+    /// <summary>Full hosted-service list for the tooltip / inspector.</summary>
+    public string ServicesDetail { get; set; } = "";
+
+    /// <summary>Process name with its services appended when it hosts any.</summary>
+    public string ProcessDisplay =>
+        Services.Length > 0 ? $"{ProcessName}  ({Services})" : ProcessName;
+
     // Full executable path of the owning process (filled by the UI layer; "" if the
     // socket has no resolvable owner, e.g. PID 0 TIME_WAIT). Used by the inspector to
     // surface the app's current policy.
@@ -98,6 +110,13 @@ public sealed class AppInfo
     /// <summary>VirusTotal verdict text for the list ("Clean · 0/72", "3/72 flagged",
     /// "Checking…", "Not on VirusTotal"); empty when no API key / no hash.</summary>
     public string VtText { get; set; } = "";
+
+    /// <summary>How many services this executable currently hosts across all of
+    /// its processes, e.g. "hosts 14 services". Empty for ordinary programs.</summary>
+    public string ServicesSummary { get; set; } = "";
+
+    /// <summary>Full hosted-service list for the tooltip.</summary>
+    public string ServicesDetail { get; set; } = "";
 
     /// <summary>Pre-scaled sparkline of this app's last-30-minutes traffic
     /// (points in a 90x20 box); recomputed on every list rebuild.</summary>

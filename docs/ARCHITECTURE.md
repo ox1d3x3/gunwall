@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.84.0. It
+This document describes how GunWall is **actually built** as of v0.86.0. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -77,6 +77,7 @@ service is tracked for 1.0.
 | `Services/EtwByteMeterService.cs` | Real-time ETW session against the kernel network provider. |
 | `Services/GeoIpService.cs`, `GeoData.cs` | Country and ASN attribution, local database or self-hosted API. |
 | `Services/NetworkMonitor.cs`, `ConnectionService.cs` | Live connection tables and throughput. |
+| `Services/ServiceAttributionService.cs` | Maps process identifiers to the Windows services they host. |
 | `Services/AppUsageService.cs`, `NetworkStatsService.cs` | Usage history and traffic attribution. |
 | `Services/RuleStore.cs` | JSON persistence of every rule and setting. |
 | `Services/DiagnosticLog.cs` | Always-on log with a deduplicating in-memory error buffer. |

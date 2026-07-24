@@ -33,11 +33,12 @@ public partial class AlertWindow : Window
     private readonly bool _strictMode;
     private readonly int _timeoutSeconds;   // 0 = never auto-decide
     private readonly bool _defaultAllow;     // what happens on timeout
+    private bool _decided;                   // guards against deciding twice
     private System.Windows.Threading.DispatcherTimer? _countdown;
     private int _secondsLeft;
 
     public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null, bool strictMode = false,
-                       int timeoutSeconds = 20, bool defaultAllow = true)
+                       int timeoutSeconds = 0, bool defaultAllow = false)
     {
         InitializeComponent();
         _info = info;
@@ -110,6 +111,8 @@ public partial class AlertWindow : Window
 
     private void Allow_Click(object sender, RoutedEventArgs e)
     {
+        if (_decided) return;
+        _decided = true;
         StopCountdown();
         // In alert mode this is a no-op (app already allowed by default);
         // in strict mode the callback creates persistent PERMIT filters.
@@ -124,6 +127,8 @@ public partial class AlertWindow : Window
 
     private void Block_Click(object sender, RoutedEventArgs e)
     {
+        if (_decided) return;
+        _decided = true;
         StopCountdown();
         try { _onBlock(); }
         catch (Exception ex)
@@ -134,7 +139,25 @@ public partial class AlertWindow : Window
         Close();
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e) { StopCountdown(); Close(); }
+    // Dismissing the prompt is not "no answer" - the connection is pending a
+    // decision, so the safe answer is deny. Closing by accident must never
+    // grant network access.
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        StopCountdown();
+        if (!_decided)
+        {
+            _decided = true;
+            try { _onBlock(); }
+            catch (Exception ex)
+            {
+                GunWall.Services.DiagnosticLog.LogException("AlertWindow.CloseBlock", ex);
+            }
+        }
+        base.OnClosed(e);
+    }
 
     private void StartCountdown()
     {
@@ -142,7 +165,7 @@ public partial class AlertWindow : Window
         if (_timeoutSeconds <= 0)
         {
             if (CountdownHint != null)
-                CountdownHint.Text = "Waiting for your choice";
+                CountdownHint.Text = "Waiting for your choice \u2014 closing this window blocks the app";
             return;
         }
 

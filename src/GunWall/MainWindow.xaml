@@ -23,6 +23,7 @@
         <conv:NameInitialConverter x:Key="NameInitial" />
         <conv:NullToVisibleConverter x:Key="NullToVisible" />
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:NotEmptyToVisConverter x:Key="NotEmptyToVis" />
 
         <Style x:Key="SearchBox" TargetType="TextBox">
             <Setter Property="Background" Value="{DynamicResource BgSecondary}" />
@@ -488,6 +489,14 @@
                                                 <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
                                                 <Border CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
                                                         VerticalAlignment="Center"
+                                                        Background="{DynamicResource BgElevated}"
+                                                        ToolTip="{Binding ServicesDetail}"
+                                                        Visibility="{Binding ServicesSummary, Converter={StaticResource NotEmptyToVis}}">
+                                                    <TextBlock Text="{Binding ServicesSummary}" FontSize="10"
+                                                               Foreground="{DynamicResource TextSecondary}" />
+                                                </Border>
+                                                <Border CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
+                                                        VerticalAlignment="Center"
                                                         Background="{DynamicResource AccentSoft}"
                                                         Visibility="{Binding IsStoreApp, Converter={StaticResource BoolToVis}}"
                                                         ToolTip="{Binding PackageFamily}">
@@ -629,8 +638,15 @@
                         </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Process" Width="170"
-                                                DisplayMemberBinding="{Binding ProcessName}" />
+                                <GridViewColumn Header="Process" Width="230">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding ProcessDisplay}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding ServicesDetail}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="PID" Width="64"
                                                 DisplayMemberBinding="{Binding ProcessId}" />
                                 <GridViewColumn Header="Proto" Width="56"
@@ -1792,17 +1808,17 @@
                                            Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
                                 <ComboBox x:Name="PopupTimeoutCombo" Width="120" Height="30"
                                           SelectionChanged="Pref_Changed">
+                                    <ComboBoxItem Content="Never (recommended)" Tag="0" />
                                     <ComboBoxItem Content="15 seconds" Tag="15" />
                                     <ComboBoxItem Content="30 seconds" Tag="30" />
                                     <ComboBoxItem Content="60 seconds" Tag="60" />
-                                    <ComboBoxItem Content="Never (wait for me)" Tag="0" />
                                 </ComboBox>
                                 <TextBlock Text="then" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="12,0,8,0" />
                                 <ComboBox x:Name="PopupDefaultCombo" Width="100" Height="30"
                                           SelectionChanged="Pref_Changed">
-                                    <ComboBoxItem Content="Allow" Tag="allow" />
                                     <ComboBoxItem Content="Block" Tag="block" />
+                                    <ComboBoxItem Content="Allow" Tag="allow" />
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">

@@ -221,10 +221,15 @@ public sealed class StoreData
     public bool TrayNotifications { get; set; }
 
     /// <summary>Seconds before a popup auto-decides; 0 = never (stays open).</summary>
-    public int PopupTimeoutSeconds { get; set; } = 20;
+    // Default 0 = never auto-decide: the approval prompt waits for the user
+    // rather than silently granting access to something they walked away from.
+    public int PopupTimeoutSeconds { get; set; }
 
     /// <summary>On popup timeout: true = allow, false = block.</summary>
-    public bool PopupDefaultAllow { get; set; } = true;
+    // Default false = deny. If a decision is ever made without the user - a
+    // timeout they configured, or the prompt being dismissed - it must be the
+    // safe one. A firewall that fails open isn't a firewall.
+    public bool PopupDefaultAllow { get; set; }
 
     /// <summary>Suppress new-app approval popups while a fullscreen app/game is foreground.</summary>
     public bool FullscreenSilent { get; set; }
