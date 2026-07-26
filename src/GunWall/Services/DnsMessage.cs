@@ -171,6 +171,74 @@ public static class DnsMessage
         return copy;
     }
 
+    /// <summary>
+    /// Builds a standard recursive query for a name, used by the resolver's
+    /// own loopback self-test so the probe is a real DNS query rather than a
+    /// simulation.
+    /// </summary>
+    public static byte[] BuildQuery(string name, ushort qtype, ushort id)
+    {
+        var labels = new List<byte>();
+        foreach (var part in (name ?? "").Split('.'))
+        {
+            if (part.Length == 0 || part.Length > 63) continue;
+            labels.Add((byte)part.Length);
+            foreach (char c in part) labels.Add((byte)c);
+        }
+        labels.Add(0);
+
+        var msg = new byte[12 + labels.Count + 4];
+        msg[0] = (byte)(id >> 8);
+        msg[1] = (byte)(id & 0xFF);
+        msg[2] = 0x01;               // RD = 1 (recursion desired)
+        msg[3] = 0x00;
+        msg[4] = 0x00; msg[5] = 0x01; // QDCOUNT = 1
+        labels.CopyTo(msg, 12);
+        int p = 12 + labels.Count;
+        msg[p] = (byte)(qtype >> 8); msg[p + 1] = (byte)(qtype & 0xFF);
+        msg[p + 2] = 0x00; msg[p + 3] = 0x01; // QCLASS = IN
+        return msg;
+    }
+
+    // ---- response-code inspection -------------------------------------
+    // RCODE lives in the low 4 bits of header byte 3.
+    public const int RcodeNoError  = 0;
+    public const int RcodeFormErr  = 1;
+    public const int RcodeServFail = 2;
+    public const int RcodeNameError = 3;   // NXDOMAIN - a real, cacheable answer
+    public const int RcodeNotImp   = 4;
+    public const int RcodeRefused  = 5;
+
+    /// <summary>The response code, or -1 if the message is too short.</summary>
+    public static int Rcode(byte[] msg) =>
+        msg == null || msg.Length < 12 ? -1 : msg[3] & 0x0F;
+
+    /// <summary>Number of records in the answer section (0 if unreadable).</summary>
+    public static int AnswerCount(byte[] msg) =>
+        msg == null || msg.Length < 12 ? 0 : (msg[6] << 8) | msg[7];
+
+    /// <summary>
+    /// True when the upstream actually answered the question, whether the name
+    /// exists (NOERROR) or definitively does not (NXDOMAIN). SERVFAIL, REFUSED,
+    /// FORMERR and NOTIMP are upstream *failures*: the question was not
+    /// answered, so they must not be treated as results.
+    /// </summary>
+    public static bool IsAuthoritativeResult(byte[] msg)
+    {
+        int rc = Rcode(msg);
+        return rc == RcodeNoError || rc == RcodeNameError;
+    }
+
+    /// <summary>
+    /// Whether a response may be remembered. Only genuine answers qualify.
+    /// Caching a failure is far worse than not caching at all: one transient
+    /// upstream hiccup would be replayed to every subsequent lookup for that
+    /// name until the entry expired, turning a momentary blip into a sustained
+    /// outage - and the client, seeing failures, retries hard and keeps hitting
+    /// the same poisoned entry.
+    /// </summary>
+    public static bool IsCacheable(byte[] msg) => IsAuthoritativeResult(msg);
+
     /// <summary>Smallest TTL across the answer records, clamped to [min,max];
     /// returns <paramref name="fallback"/> when there are no answers.</summary>
     public static int GetMinTtl(byte[] resp, int min = 10, int max = 3600, int fallback = 60)

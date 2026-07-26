@@ -1321,6 +1321,12 @@ public sealed class FirewallManager : IDisposable
                 net.AppendLine();
                 net.AppendLine("===== ipconfig /all =====");
                 net.AppendLine(RunCapture("ipconfig", "/all"));
+                net.AppendLine();
+                // The configuration Windows is REALLY using, both address
+                // families plus name-resolution policy. ipconfig alone hides
+                // NRPT rules, which override adapter DNS and can send queries
+                // somewhere other than where GunWall pointed them.
+                net.AppendLine(DnsService.DescribeCurrentDnsState());
                 System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "network.txt"), net.ToString());
             }
             catch { }

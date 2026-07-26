@@ -24,7 +24,8 @@ namespace GunWall.Services;
 /// </summary>
 public sealed class DnsResolver : IDisposable
 {
-    private UdpClient? _listener;
+    private UdpClient? _listener;    // IPv4 loopback (127.0.0.1)
+    private UdpClient? _listener6;   // IPv6 loopback (::1)
     private CancellationTokenSource? _cts;
     private IPEndPoint _upstream = new(IPAddress.Parse("1.1.1.1"), 53);
     private readonly object _gate = new();
@@ -53,6 +54,20 @@ public sealed class DnsResolver : IDisposable
     private bool _dohFallback;          // allow plaintext if DoH fails (off = fail closed)
     private HttpClient? _http;
     private long _dohOk, _dohFail;
+
+    // Upstream answered, but with a failure code (SERVFAIL / REFUSED / ...).
+    // Tracked separately from transport failures because the two need very
+    // different diagnoses.
+    private long _upstreamRefused;
+
+    // Which loopback family queries actually arrive on, and whether replies
+    // leave successfully. Without these, a resolver that is answering perfectly
+    // and a resolver nothing can reach look identical from the outside.
+    private long _recvV4, _recvV6, _sendOk, _sendFail;
+    private string _lastSendError = "";
+
+    /// <summary>How long a "name does not exist" answer may be remembered.</summary>
+    private const int NegativeTtlSeconds = 30;
 
     // ---- §3b CNAME-cloaking defense ----
     private bool _blockCloaked = true;
@@ -90,6 +105,26 @@ public sealed class DnsResolver : IDisposable
 
     /// <summary>Most recent cloak caught, as "queried -> hidden target" (for logs).</summary>
     public string LastCloak { get; private set; } = "";
+
+    /// <summary>Queries received on 127.0.0.1 this session.</summary>
+    public long ReceivedV4 => Interlocked.Read(ref _recvV4);
+
+    /// <summary>Queries received on ::1 this session.</summary>
+    public long ReceivedV6 => Interlocked.Read(ref _recvV6);
+
+    /// <summary>Replies successfully handed to the socket.</summary>
+    public long RepliesSent => Interlocked.Read(ref _sendOk);
+
+    /// <summary>Replies that failed to send.</summary>
+    public long ReplySendFailures => Interlocked.Read(ref _sendFail);
+
+    public string LastSendError => _lastSendError;
+
+    /// <summary>Which loopback endpoints are actually bound, for diagnostics.</summary>
+    public string ListenerStatus { get; private set; } = "not started";
+
+    /// <summary>Upstream responses carrying a DNS failure code this session.</summary>
+    public long UpstreamRefused => Interlocked.Read(ref _upstreamRefused);
 
     public long DohSuccess => Interlocked.Read(ref _dohOk);
     public long DohFailures => Interlocked.Read(ref _dohFail);
@@ -229,6 +264,8 @@ public sealed class DnsResolver : IDisposable
             _dohFallback = dohFallback;
             Interlocked.Exchange(ref _dohOk, 0);
             Interlocked.Exchange(ref _dohFail, 0);
+            Interlocked.Exchange(ref _upstreamRefused, 0);
+            _cache.Clear();   // never carry answers across a configuration change
             if (_dohUrl.Length > 0)
             {
                 _http?.Dispose();
@@ -264,14 +301,48 @@ public sealed class DnsResolver : IDisposable
             }
 
             var listener = new UdpClient(AddressFamily.InterNetwork);
-            listener.Client.Bind(new IPEndPoint(IPAddress.Loopback, port)); // loopback only
+            listener.Client.Bind(new IPEndPoint(IPAddress.Loopback, port));   // 127.0.0.1
             _listener = listener;
+
+            // Windows resolves against BOTH loopback families, and with a VPN
+            // active it often prefers ::1. Binding v4 only meant those queries
+            // hit nothing and the name "could not be found" even though the
+            // resolver was healthy - the reported outage. Bind ::1 as well.
+            // If v6 is unavailable on the machine, that's not fatal: v4 still
+            // serves, so the failure is logged and swallowed.
+            try
+            {
+                var l6 = new UdpClient(AddressFamily.InterNetworkV6);
+                l6.Client.Bind(new IPEndPoint(IPAddress.IPv6Loopback, port));  // ::1
+                _listener6 = l6;
+            }
+            catch (Exception ex)
+            {
+                _listener6 = null;
+                DiagnosticLog.Log($"DNS resolver: IPv6 loopback bind FAILED, serving IPv4 only ({ex.Message}).");
+            }
+
+            // Positive confirmation, not just failure logging: previously a
+            // successful bind produced no evidence at all, so a diagnostics
+            // bundle couldn't distinguish "listening on both" from "v4 only".
+            ListenerStatus = _listener6 != null
+                ? $"127.0.0.1:{port} and [::1]:{port}"
+                : $"127.0.0.1:{port} only (no IPv6)";
+            DiagnosticLog.Log($"DNS resolver listening on {ListenerStatus}.");
+            Interlocked.Exchange(ref _recvV4, 0);
+            Interlocked.Exchange(ref _recvV6, 0);
+            Interlocked.Exchange(ref _sendOk, 0);
+            Interlocked.Exchange(ref _sendFail, 0);
+            _lastSendError = "";
+
             _cts = new CancellationTokenSource();
             Port = port;
             Running = true;
 
             var token = _cts.Token;
             _ = Task.Run(() => Loop(listener, token));
+            if (_listener6 != null)
+                _ = Task.Run(() => Loop(_listener6, token));
         }
     }
 
@@ -283,12 +354,120 @@ public sealed class DnsResolver : IDisposable
             Running = false;
             try { _cts?.Cancel(); } catch { }
             try { _listener?.Close(); } catch { }
+            try { _listener6?.Close(); } catch { }
             _listener = null;
+            _listener6 = null;
             _cts = null;
         }
     }
 
     public void ClearCache() => _cache.Clear();
+
+    /// <summary>Outcome of one loopback probe.</summary>
+    public readonly record struct PathProbe(string Endpoint, bool Ok, string Detail);
+
+    /// <summary>
+    /// Asks this resolver a real question over the loopback socket, exactly as
+    /// Windows would, and reports what came back. This is the one test that
+    /// distinguishes the two possibilities the counters cannot: a resolver that
+    /// answers correctly but whose replies never reach the client, versus one
+    /// the client never reaches at all. Both families are probed, because
+    /// Windows prefers IPv6 and will use whichever it is configured with.
+    /// </summary>
+    public async Task<List<PathProbe>> TestLoopbackPathAsync(string probeName = "example.com")
+    {
+        var results = new List<PathProbe>();
+        if (!Running)
+        {
+            results.Add(new PathProbe("resolver", false, "not running"));
+            return results;
+        }
+
+        foreach (var (label, addr) in new[]
+                 { ($"127.0.0.1:{Port}", IPAddress.Loopback), ($"[::1]:{Port}", IPAddress.IPv6Loopback) })
+        {
+            if (addr.Equals(IPAddress.IPv6Loopback) && _listener6 == null)
+            {
+                results.Add(new PathProbe(label, false, "not listening on IPv6"));
+                continue;
+            }
+            try
+            {
+                using var probe = new UdpClient(addr.AddressFamily);
+                probe.Client.ReceiveTimeout = 3000;
+                byte[] query = DnsMessage.BuildQuery(probeName, 1, 0x4747);
+                var target = new IPEndPoint(addr, Port);
+
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                await probe.SendAsync(query, query.Length, target);
+
+                using var cts = new CancellationTokenSource(3000);
+                byte[] reply;
+                try
+                {
+                    var r = await probe.ReceiveAsync(cts.Token);
+                    reply = r.Buffer;
+                }
+                catch (OperationCanceledException)
+                {
+                    results.Add(new PathProbe(label, false,
+                        "no reply within 3s - the query reached the socket but nothing came back, " +
+                        "or nothing is listening here"));
+                    continue;
+                }
+                sw.Stop();
+
+                if (reply.Length < 12)
+                {
+                    results.Add(new PathProbe(label, false, $"malformed reply ({reply.Length} bytes)"));
+                    continue;
+                }
+                ushort gotId = (ushort)((reply[0] << 8) | reply[1]);
+                int rcode = DnsMessage.Rcode(reply);
+                int answers = DnsMessage.AnswerCount(reply);
+
+                if (gotId != 0x4747)
+                {
+                    results.Add(new PathProbe(label, false,
+                        $"reply id {gotId:X4} does not match query id 4747 - Windows would discard this"));
+                    continue;
+                }
+                results.Add(new PathProbe(label, rcode == 0 && answers > 0,
+                    $"rcode={rcode}, answers={answers}, {sw.ElapsedMilliseconds} ms"));
+            }
+            catch (Exception ex)
+            {
+                results.Add(new PathProbe(label, false, $"{ex.GetType().Name}: {ex.Message}"));
+            }
+        }
+        return results;
+    }
+
+
+    /// <summary>
+    /// Sends one reply, recording whether it actually left. A reply that fails
+    /// to send is invisible to every other counter: the query is logged as
+    /// answered, the client sees nothing, and retries - which looks exactly
+    /// like a healthy resolver serving a broken machine.
+    /// </summary>
+    private async Task SendReplyAsync(UdpClient listener, byte[] payload, IPEndPoint to)
+    {
+        try
+        {
+            int sent = await listener.SendAsync(payload, payload.Length, to);
+            if (sent == payload.Length) Interlocked.Increment(ref _sendOk);
+            else
+            {
+                Interlocked.Increment(ref _sendFail);
+                _lastSendError = $"short send: {sent}/{payload.Length} bytes to {to}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Interlocked.Increment(ref _sendFail);
+            _lastSendError = $"{ex.GetType().Name}: {ex.Message} (to {to})";
+        }
+    }
 
     private async Task Loop(UdpClient listener, CancellationToken ct)
     {
@@ -299,6 +478,10 @@ public sealed class DnsResolver : IDisposable
             catch (OperationCanceledException) { break; }
             catch (ObjectDisposedException) { break; }
             catch { continue; }
+            if (req.RemoteEndPoint.AddressFamily == AddressFamily.InterNetworkV6)
+                Interlocked.Increment(ref _recvV6);
+            else
+                Interlocked.Increment(ref _recvV4);
             _ = HandleAsync(listener, req, ct);
         }
     }
@@ -322,7 +505,7 @@ public sealed class DnsResolver : IDisposable
             if (IsBlocked(name))
             {
                 byte[] nx = DnsMessage.BuildNxDomain(query);
-                await listener.SendAsync(nx, nx.Length, req.RemoteEndPoint);
+                await SendReplyAsync(listener, nx, req.RemoteEndPoint);
                 Interlocked.Increment(ref _blocked);
                 Emit(name, qtype, DnsAction.Blocked);
                 return;
@@ -333,7 +516,7 @@ public sealed class DnsResolver : IDisposable
             if (_cache.TryGetValue(key, out var hit) && hit.Exp > DateTime.UtcNow)
             {
                 byte[] cached = DnsMessage.WithId(hit.Resp, id);
-                await listener.SendAsync(cached, cached.Length, req.RemoteEndPoint);
+                await SendReplyAsync(listener, cached, req.RemoteEndPoint);
                 Interlocked.Increment(ref _cached);
                 Emit(name, qtype, DnsAction.Cached);
                 return;
@@ -358,7 +541,7 @@ public sealed class DnsResolver : IDisposable
                 {
                     if (!IsBlocked(hop)) continue;
                     byte[] nxc = DnsMessage.BuildNxDomain(query);
-                    await listener.SendAsync(nxc, nxc.Length, req.RemoteEndPoint);
+                    await SendReplyAsync(listener, nxc, req.RemoteEndPoint);
                     Interlocked.Increment(ref _blocked);
                     Interlocked.Increment(ref _cloaked);
                     LastCloak = $"{name} -> {hop}";
@@ -367,10 +550,22 @@ public sealed class DnsResolver : IDisposable
                 }
             }
 
-            await listener.SendAsync(answer, answer.Length, req.RemoteEndPoint);
+            await SendReplyAsync(listener, answer, req.RemoteEndPoint);
 
-            int ttl = DnsMessage.GetMinTtl(answer);
-            _cache[key] = ((byte[])answer.Clone(), DateTime.UtcNow.AddSeconds(ttl));
+            // Only remember genuine answers. A failure response must never enter
+            // the cache: it would be replayed to every retry for the lifetime of
+            // the entry, and clients retry hard on failure - so a single blip
+            // turns into a self-sustaining outage for that name.
+            if (DnsMessage.IsCacheable(answer))
+            {
+                int ttl = DnsMessage.GetMinTtl(answer);
+                // "This name does not exist" is a real answer and worth caching,
+                // but only briefly - names appear, and a stale NXDOMAIN looks
+                // exactly like a broken internet.
+                if (DnsMessage.Rcode(answer) == DnsMessage.RcodeNameError)
+                    ttl = Math.Min(ttl, NegativeTtlSeconds);
+                _cache[key] = ((byte[])answer.Clone(), DateTime.UtcNow.AddSeconds(ttl));
+            }
             TrackResolvedIps(answer, name);
             Interlocked.Increment(ref _forwarded);
             Emit(name, qtype, DnsAction.Forwarded);
@@ -437,7 +632,20 @@ public sealed class DnsResolver : IDisposable
                 if (!resp.IsSuccessStatusCode) return null;   // a real HTTP error won't fix on retry
 
                 byte[] body = await resp.Content.ReadAsByteArrayAsync(perQuery.Token);
-                return body.Length >= 12 ? body : null;
+                if (body.Length < 12) return null;
+
+                // HTTP 200 does NOT mean the lookup succeeded. A SERVFAIL or
+                // REFUSED arrives as a perfectly valid HTTP response carrying a
+                // DNS failure. Treating that as success meant the failure was
+                // handed to the client, counted as "ok", and cached - so one
+                // upstream hiccup became a lasting outage for that name.
+                if (!DnsMessage.IsAuthoritativeResult(body))
+                {
+                    Interlocked.Increment(ref _upstreamRefused);
+                    if (attempt == 0) continue;   // a retry often lands on a healthy node
+                    return null;                  // let the caller fall back
+                }
+                return body;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -465,7 +673,15 @@ public sealed class DnsResolver : IDisposable
             var recv = up.ReceiveAsync(ct).AsTask();
             var done = await Task.WhenAny(recv, Task.Delay(3000, ct));
             if (done != recv) return null;                  // upstream timed out
-            return recv.Result.Buffer;
+
+            byte[] body = recv.Result.Buffer;
+            // Same rule as the encrypted path: a SERVFAIL is not an answer.
+            if (!DnsMessage.IsAuthoritativeResult(body))
+            {
+                Interlocked.Increment(ref _upstreamRefused);
+                return null;
+            }
+            return body;
         }
         catch { return null; }
     }

@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.89.0. It
+This document describes how GunWall is **actually built** as of v0.92.0. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -197,15 +197,23 @@ sublayer by key clears everything GunWall ever installed.
 ## 7. DNS
 
 The resolver is written from scratch — message parsing, caching, and forwarding
-— with no DNS library. It listens on loopback and can be made the system
-resolver by rewriting adapter DNS, which is VPN-aware so it cooperates with an
-active tunnel.
+— with no DNS library. It listens on both IPv4 (127.0.0.1) and IPv6 (::1) loopback - necessary because
+Windows resolves over both families and prefers IPv6 - and can be made the
+system resolver by rewriting adapter DNS for both families. This is VPN-aware:
+without covering IPv6, an active tunnel's v6 resolver would take priority and
+bypass GunWall, which was a real cause of resolution failures.
 
 Forwarding is either plaintext UDP or **DNS-over-HTTPS** (RFC 8484: the wire
 query POSTed as `application/dns-message`). Built-in DoH endpoints are addressed
 by IP, so enabling encryption needs no plaintext lookup to bootstrap itself.
 When DoH fails, the default is to **fail closed** rather than silently
 downgrade; plaintext fallback is opt-in and stays with the same provider.
+
+Upstream replies are validated before use: only a genuine answer (`NOERROR`) or
+a definitive "no such name" (`NXDOMAIN`) counts as a result, and only those are
+cached. A failure code carried inside an otherwise-valid HTTPS response is a
+failure, not an answer - caching one would replay it to every retry until the
+entry expired, and clients retry hardest exactly when they are failing.
 
 Blocklists are applied at resolution time. The resolver also inspects the
 **CNAME chain** of every answer, so a tracker cannot evade a blocklist by

@@ -993,6 +993,9 @@
                             </StackPanel>
                             <Button x:Name="DnsStartBtn" Content="Start resolver" Style="{StaticResource PrimaryButton}"
                                     Click="DnsStart_Click" Padding="16,9" VerticalAlignment="Bottom" />
+                            <Button x:Name="DnsPathTestBtn" Content="Test DNS path" Style="{StaticResource ActionButton}"
+                                    Click="DnsPathTest_Click" Padding="14,9" Margin="8,0,0,0" VerticalAlignment="Bottom"
+                                    ToolTip="Sends a real DNS query to GunWall's own resolver over loopback, exactly as Windows does, and reports what came back." />
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,12,0,0" VerticalAlignment="Bottom">

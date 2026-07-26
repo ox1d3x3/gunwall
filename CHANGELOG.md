@@ -6,6 +6,34 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.92.0] — 2026-07-26
+
+### Added
+- **Diagnosis tooling for the DNS routing problem.** Three previous attempts at this fault were based on plausible theories that the logs could neither confirm nor rule out, because the resolver reported success for work whose outcome it never checked. This release adds the missing observability rather than another guess.
+  - **Test DNS path** (DNS panel) sends a real DNS query to GunWall's own resolver over loopback — exactly as Windows does — on both IPv4 and IPv6, and reports the response code, answer count, round-trip time, and whether the reply's transaction ID matches. This distinguishes the two possibilities the counters cannot: a resolver that answers correctly but whose replies never reach the client, versus one the client never reaches at all.
+  - The resolver now confirms **which loopback endpoints it actually bound**, rather than only logging failures, and counts queries received per address family, replies sent, and reply-send failures. A reply that fails to send was previously invisible: the query was recorded as answered while the client saw nothing and retried.
+  - The diagnostics bundle now captures the DNS configuration **Windows is really using** — per-adapter servers for both address families, plus the **Name Resolution Policy Table**. NRPT rules override per-adapter DNS, so a VPN or mesh client with rules there wins over GunWall's redirection; `ipconfig` alone does not show them.
+
+---
+
+## [0.91.0] — 2026-07-26
+
+### Fixed
+- **Cached failures breaking name resolution — the real cause of the routing outage.** The response code of an upstream reply was never checked anywhere. Two consequences compounded: a `SERVFAIL` or `REFUSED` arrives as a perfectly valid HTTP 200 over DNS-over-HTTPS, so it was counted as a successful lookup (which is why diagnostics reported zero DoH failures during an outage); and it was then written to the cache, where the TTL fallback for an answer-less response is a full 60 seconds. Every subsequent lookup for that name was served the cached failure, and because clients retry hard on failure, they kept hitting the same poisoned entry — one transient upstream hiccup became a sustained outage for that name, while GunWall reported that it had answered every query. Switching adapters over to the resolver is exactly when such a hiccup occurs, which is why the problem appeared the moment routing was enabled and disappeared when it was turned off.
+  - Upstream responses are now validated: only `NOERROR` and `NXDOMAIN` count as answers. Failure codes are treated as failures, so the retry and plaintext-fallback paths engage as intended.
+  - Only genuine answers are cached. `NXDOMAIN` is cached briefly (30 s) rather than for the full TTL, since a stale "does not exist" is indistinguishable from a broken connection.
+  - The cache is flushed when DNS routing is switched on or off, and on any resolver configuration change, so nothing captured mid-change can be served.
+  - Diagnostics report an `upstreamRefused` count, making DNS-level failures visible instead of being hidden inside the success counter.
+
+---
+
+## [0.90.0] — 2026-07-25
+
+### Fixed
+- **Internet still dropping when routing this PC's DNS through GunWall — the real cause.** The resolver bound only IPv4 loopback (127.0.0.1) and routing set only the IPv4 DNS server, but Windows resolves over IPv6 as well and prefers it. With a VPN active, the machine kept an IPv6 DNS server (often the tunnel's) and sent lookups there, bypassing GunWall entirely; when that path was slow or unreachable, names "could not be found" even though GunWall's resolver was healthy and caching correctly. The resolver now also listens on IPv6 loopback (::1), routing points IPv6 DNS at ::1 too, and restore returns both families to automatic. This is the fix for the reported outage; the v0.89 connection-pool work stands, but the true problem was the IPv6 bypass.
+
+---
+
 ## [0.89.0] — 2026-07-25
 
 ### Fixed

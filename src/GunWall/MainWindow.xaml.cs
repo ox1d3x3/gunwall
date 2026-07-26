@@ -305,7 +305,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.89.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.92.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2065,12 +2065,17 @@ public partial class MainWindow : Window
                 return;
             }
             _firewall.SaveDnsRedirectState(true, false, poisoned ? null : captured);
+            // Switching adapters over is exactly the moment upstream lookups can
+            // fail, so start from a clean cache rather than risk serving anything
+            // captured mid-change.
+            _dnsResolver.ClearCache();
             Services.DiagnosticLog.Log($"DNS routing ON: {changed} adapter(s) -> 127.0.0.1.");
         }
         else
         {
             int n = DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
             _firewall.SaveDnsRedirectState(false, false, null);
+            _dnsResolver.ClearCache();
             Services.DiagnosticLog.Log($"DNS routing OFF: {n} adapter(s) restored.");
         }
         UpdateDnsRedirectUi();
@@ -3279,6 +3284,53 @@ public partial class MainWindow : Window
         catch (Exception ex) { Services.DiagnosticLog.LogException("FitColumns", ex); }
     }
 
+    /// <summary>
+    /// End-to-end check of the path Windows actually uses: a real query sent to
+    /// GunWall's own resolver over loopback. Answers the question the counters
+    /// cannot - whether replies are reaching the client at all.
+    /// </summary>
+    private async void DnsPathTest_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!_dnsResolver.Running)
+            {
+                MessageBox.Show("Start the resolver first, then run this test.",
+                    "Test DNS path", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var probes = await _dnsResolver.TestLoopbackPathAsync();
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Listening on: {_dnsResolver.ListenerStatus}");
+            sb.AppendLine();
+            foreach (var p in probes)
+                sb.AppendLine($"{(p.Ok ? "OK   " : "FAIL ")}{p.Endpoint}  -  {p.Detail}");
+            sb.AppendLine();
+            sb.AppendLine($"Queries received: {_dnsResolver.ReceivedV4} on IPv4, {_dnsResolver.ReceivedV6} on IPv6");
+            sb.AppendLine($"Replies sent: {_dnsResolver.RepliesSent}, failed: {_dnsResolver.ReplySendFailures}");
+            if (_dnsResolver.LastSendError.Length > 0)
+                sb.AppendLine($"Last send error: {_dnsResolver.LastSendError}");
+
+            bool anyOk = probes.Any(p => p.Ok);
+            sb.AppendLine();
+            sb.AppendLine(anyOk
+                ? "GunWall answers correctly on loopback. If this PC still can't resolve names "
+                  + "while routing is on, something is intercepting DNS before it reaches GunWall - "
+                  + "a VPN or mesh client's name-resolution policy is the usual cause. The "
+                  + "diagnostics export now includes those policy rules."
+                : "GunWall did not answer its own query. The resolver is not reachable on loopback, "
+                  + "so no application on this PC can use it.");
+
+            Services.DiagnosticLog.Log("DNS path test: " + string.Join(" | ",
+                probes.Select(p => $"{p.Endpoint} {(p.Ok ? "OK" : "FAIL")} {p.Detail}")));
+
+            MessageBox.Show(sb.ToString(), "Test DNS path",
+                MessageBoxButton.OK, anyOk ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("DnsPathTest", ex); ShowError(ex); }
+    }
+
     /// <summary>Runs the WFP layer self-test and shows the results. Confirms
     /// which kernel layers this Windows build accepts, so an unsupported (or
     /// mis-specified) layer is visible rather than silently doing nothing.</summary>
@@ -3948,7 +4000,13 @@ public partial class MainWindow : Window
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
             $"plaintextFallback={_dnsResolver.DohFallbackAllowed}, " +
-            $"systemRouting={_dnsResolver.SystemRoutingActive}");
+            $"systemRouting={_dnsResolver.SystemRoutingActive}, " +
+            $"upstreamRefused={_dnsResolver.UpstreamRefused}");
+        Services.DiagnosticLog.Log(
+            $"DNS loopback path: listening=[{_dnsResolver.ListenerStatus}], " +
+            $"receivedV4={_dnsResolver.ReceivedV4}, receivedV6={_dnsResolver.ReceivedV6}, " +
+            $"repliesSent={_dnsResolver.RepliesSent}, sendFailures={_dnsResolver.ReplySendFailures}, " +
+            $"lastSendError=[{_dnsResolver.LastSendError}]");
         Services.DiagnosticLog.Log(
             $"Errors this session: {Services.DiagnosticLog.DistinctErrorCount} distinct, " +
             $"{Services.DiagnosticLog.TotalErrorCount} total  |  benign faults: " +

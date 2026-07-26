@@ -39,6 +39,55 @@ public static class DnsService
         }
     }
 
+    /// <summary>
+    /// Runs netsh and returns its output. Used to capture the machine's ACTUAL
+    /// DNS configuration for diagnostics, rather than the configuration GunWall
+    /// believes it applied - the two can differ, and that gap is exactly where
+    /// resolution problems hide.
+    /// </summary>
+    private static string NetshOutput(string args)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("netsh", args)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var p = Process.Start(psi);
+            if (p == null) return "(netsh did not start)";
+            string outp = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(8000);
+            return outp.Trim();
+        }
+        catch (Exception ex) { return $"(netsh failed: {ex.Message})"; }
+    }
+
+    /// <summary>
+    /// The DNS configuration Windows is really using, for the diagnostics
+    /// bundle: per-adapter servers for BOTH address families, plus the Name
+    /// Resolution Policy Table. NRPT matters because a VPN client can install
+    /// policy rules that override adapter DNS entirely - so GunWall can appear
+    /// to have redirected DNS while Windows quietly sends queries elsewhere.
+    /// </summary>
+    public static string DescribeCurrentDnsState()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("===== IPv4 DNS servers (netsh) =====");
+        sb.AppendLine(NetshOutput("interface ipv4 show dnsservers"));
+        sb.AppendLine();
+        sb.AppendLine("===== IPv6 DNS servers (netsh) =====");
+        sb.AppendLine(NetshOutput("interface ipv6 show dnsservers"));
+        sb.AppendLine();
+        sb.AppendLine("===== Name Resolution Policy Table (effective) =====");
+        sb.AppendLine("NRPT rules override per-adapter DNS. A VPN or mesh client");
+        sb.AppendLine("with rules here will win over GunWall's redirection.");
+        sb.AppendLine(NetshOutput("namespace show effectivepolicy"));
+        return sb.ToString();
+    }
+
     private static bool RunNetsh(string args)
     {
         try
@@ -144,7 +193,8 @@ public static class DnsService
     /// Such a capture must never overwrite the genuine saved state.</summary>
     public static bool LooksLikeOurRedirect(List<SavedAdapterDns> captured) =>
         captured.Count > 0 && captured.All(s =>
-            !s.WasDhcp && s.Servers.Count == 1 && s.Servers[0] == "127.0.0.1");
+            !s.WasDhcp && s.Servers.Count == 1 &&
+            (s.Servers[0] == "127.0.0.1" || s.Servers[0] == "::1"));
 
     /// <summary>Points every active physical adapter's IPv4 DNS at 127.0.0.1
     /// (GunWall's resolver). Returns adapters changed.</summary>
@@ -152,8 +202,16 @@ public static class DnsService
     {
         int changed = 0;
         foreach (var name in ActiveAdapterNames())
-            if (RunNetsh($"interface ipv4 set dnsservers name=\"{name}\" static 127.0.0.1 primary validate=no"))
-                changed++;
+        {
+            bool any = RunNetsh($"interface ipv4 set dnsservers name=\"{name}\" static 127.0.0.1 primary validate=no");
+            // Also point IPv6 DNS at ::1. Without this, Windows keeps its v6
+            // resolver (often the VPN's) and - because it prefers IPv6 - sends
+            // lookups there, bypassing GunWall entirely. When that path is slow
+            // or down, the name "can't be found" even though our resolver is
+            // healthy. The resolver now listens on ::1 to receive these.
+            bool any6 = RunNetsh($"interface ipv6 set dnsservers name=\"{name}\" static ::1 primary validate=no");
+            if (any || any6) changed++;
+        }
         HostsFileService.FlushDns();
         return changed;
     }
@@ -177,6 +235,9 @@ public static class DnsService
                 for (int i = 1; i < s.Servers.Count; i++)
                     RunNetsh($"interface ipv4 add dnsservers name=\"{s.Name}\" address={s.Servers[i]} index={i + 1}");
             }
+            // Return IPv6 DNS to automatic. We set ::1 on redirect, so we must
+            // undo it; DHCP/RA restores whatever the network (or VPN) provides.
+            RunNetsh($"interface ipv6 set dnsservers name=\"{s.Name}\" source=dhcp");
             if (ok) changed++;
         }
         HostsFileService.FlushDns();
