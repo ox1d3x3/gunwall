@@ -462,9 +462,63 @@ public sealed class DnsResolver : IDisposable
     /// the client never reaches at all. Both families are probed, because
     /// Windows prefers IPv6 and will use whichever it is configured with.
     /// </summary>
+    /// <summary>
+    /// Sends a UDP datagram between two sockets in this process over loopback,
+    /// with no involvement from the resolver at all. This separates the two
+    /// possibilities cleanly: if even this fails, plain UDP loopback delivery is
+    /// broken on the machine - by another network filter driver, not by
+    /// anything in the resolver - and no local DNS server of any kind could
+    /// work here.
+    /// </summary>
+    public static async Task<PathProbe> TestRawLoopbackAsync(AddressFamily family)
+    {
+        string label = family == AddressFamily.InterNetworkV6
+            ? "raw UDP loopback [::1]" : "raw UDP loopback 127.0.0.1";
+        IPAddress addr = family == AddressFamily.InterNetworkV6
+            ? IPAddress.IPv6Loopback : IPAddress.Loopback;
+        try
+        {
+            using var receiver = new UdpClient(family);
+            receiver.Client.Bind(new IPEndPoint(addr, 0));       // any free port
+            int port = ((IPEndPoint)receiver.Client.LocalEndPoint!).Port;
+
+            using var sender = new UdpClient(family);
+            byte[] payload = System.Text.Encoding.ASCII.GetBytes("GUNWALL-LOOPBACK-PROBE");
+
+            using var cts = new CancellationTokenSource(2000);
+            var receiving = receiver.ReceiveAsync(cts.Token).AsTask();
+            await sender.SendAsync(payload, payload.Length, new IPEndPoint(addr, port));
+
+            try
+            {
+                var got = await receiving;
+                bool same = got.Buffer.Length == payload.Length;
+                return new PathProbe(label, same,
+                    same ? $"delivered {got.Buffer.Length} bytes"
+                         : $"delivered but altered ({got.Buffer.Length} bytes)");
+            }
+            catch (OperationCanceledException)
+            {
+                return new PathProbe(label, false,
+                    "NOT DELIVERED - a plain UDP packet between two sockets in this " +
+                    "process never arrived. Something outside GunWall is dropping " +
+                    "loopback UDP; no local DNS server can work until that stops.");
+            }
+        }
+        catch (Exception ex)
+        {
+            return new PathProbe(label, false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
     public async Task<List<PathProbe>> TestLoopbackPathAsync(string probeName = "example.com")
     {
         var results = new List<PathProbe>();
+
+        // Establish first whether loopback UDP works at all on this machine.
+        results.Add(await TestRawLoopbackAsync(AddressFamily.InterNetwork));
+        results.Add(await TestRawLoopbackAsync(AddressFamily.InterNetworkV6));
+
         if (!Running)
         {
             results.Add(new PathProbe("resolver", false, "not running"));
@@ -486,6 +540,8 @@ public sealed class DnsResolver : IDisposable
                 byte[] query = DnsMessage.BuildQuery(probeName, 1, 0x4747);
                 var target = new IPEndPoint(addr, Port);
 
+                long recvBefore = ReceivedV4 + ReceivedV6;
+                long sentBefore = RepliesSent;
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 await probe.SendAsync(query, query.Length, target);
 
@@ -498,9 +554,17 @@ public sealed class DnsResolver : IDisposable
                 }
                 catch (OperationCanceledException)
                 {
-                    results.Add(new PathProbe(label, false,
-                        "no reply within 3s - the query reached the socket but nothing came back, " +
-                        "or nothing is listening here"));
+                    // Did the resolver even see it? That single fact decides
+                    // whether the request or the reply is the broken half.
+                    await Task.Delay(150);
+                    bool sawIt = (ReceivedV4 + ReceivedV6) > recvBefore;
+                    bool replied = RepliesSent > sentBefore;
+                    results.Add(new PathProbe(label, false, sawIt
+                        ? (replied
+                            ? "resolver RECEIVED this query and SENT a reply, but the reply never " +
+                              "arrived - the return path is being dropped"
+                            : "resolver received this query but sent no reply")
+                        : "resolver never received the query - it is being dropped on the way in"));
                     continue;
                 }
                 sw.Stop();

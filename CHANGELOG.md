@@ -17,6 +17,17 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.93.0] — 2026-07-26
+
+### Added
+- **Raw loopback probe in the DNS path test.** Before testing the resolver, GunWall now sends a plain UDP datagram between two sockets inside its own process, with the resolver not involved at all. This separates two very different situations that previously looked identical: a fault in the resolver, versus loopback UDP delivery being broken on the machine by another network filter driver — in which case no local DNS server of any kind can work, and it is not something GunWall can fix in software.
+- The resolver probe now samples its own receive and reply counters around the query, so a timeout reports whether the query was dropped on the way in or the reply was dropped on the way back.
+
+### Fixed
+- `FWP_CONDITION_FLAG_IS_APPCONTAINER_LOOPBACK` was `0x00000400`; the correct value is `0x00400000` (verified against `fwptypes.h` and Microsoft's win32metadata). This affected stealth mode's ICMP suppression, which used the flag to exempt loopback traffic.
+
+---
+
 ## [0.92.0] — 2026-07-26
 
 ### Added

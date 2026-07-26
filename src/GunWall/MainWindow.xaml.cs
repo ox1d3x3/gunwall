@@ -3353,15 +3353,29 @@ public partial class MainWindow : Window
             if (_dnsResolver.LastSendError.Length > 0)
                 sb.AppendLine($"Last send error: {_dnsResolver.LastSendError}");
 
-            bool anyOk = probes.Any(p => p.Ok);
+            bool rawOk = probes.Any(p => p.Endpoint.StartsWith("raw UDP") && p.Ok);
+            bool dnsOk = probes.Any(p => !p.Endpoint.StartsWith("raw UDP") && p.Ok);
             sb.AppendLine();
-            sb.AppendLine(anyOk
-                ? "GunWall answers correctly on loopback. If this PC still can't resolve names "
-                  + "while routing is on, something is intercepting DNS before it reaches GunWall - "
-                  + "a VPN or mesh client's name-resolution policy is the usual cause. The "
-                  + "diagnostics export now includes those policy rules."
-                : "GunWall did not answer its own query. The resolver is not reachable on loopback, "
-                  + "so no application on this PC can use it.");
+            if (!rawOk)
+                sb.AppendLine(
+                    "VERDICT: plain UDP loopback does not work on this PC. A packet sent between "
+                    + "two sockets inside GunWall itself never arrived, and the resolver was not "
+                    + "involved at all. Another network filter driver - security software or a VPN "
+                    + "client - is dropping loopback UDP. No local DNS server of any kind can work "
+                    + "until that is changed, so this is not something GunWall can fix in software. "
+                    + "Try temporarily disabling other network-filtering software to confirm which.");
+            else if (!dnsOk)
+                sb.AppendLine(
+                    "VERDICT: loopback UDP works, but the resolver did not answer. The detail above "
+                    + "says whether the query failed on the way in or the reply failed on the way "
+                    + "back.");
+            else
+                sb.AppendLine(
+                    "VERDICT: GunWall answers correctly on loopback. If this PC still can't resolve "
+                    + "names while routing is on, something is intercepting DNS before it reaches "
+                    + "GunWall - a VPN or mesh client's name-resolution policy is the usual cause, "
+                    + "and those rules are now captured in the diagnostics export.");
+            bool anyOk = rawOk && dnsOk;
 
             Services.DiagnosticLog.Log("DNS path test: " + string.Join(" | ",
                 probes.Select(p => $"{p.Endpoint} {(p.Ok ? "OK" : "FAIL")} {p.Detail}")));

@@ -55,7 +55,8 @@ internal static class WfpNative
 
     // ----- Condition flag bits ------------------------------------------------
     internal const uint FWP_CONDITION_FLAG_IS_LOOPBACK = 0x00000001;
-    internal const uint FWP_CONDITION_FLAG_IS_APPCONTAINER_LOOPBACK = 0x00000400;
+    // Verified against fwptypes.h / win32metadata: 0x00400000, not 0x00000400.
+    internal const uint FWP_CONDITION_FLAG_IS_APPCONTAINER_LOOPBACK = 0x00400000;
 
     // ----- FWP_ACTION_TYPE --------------------------------------------------
     internal const uint FWP_ACTION_FLAG_TERMINATING = 0x00001000;
