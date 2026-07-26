@@ -141,26 +141,114 @@ public sealed class DnsResolver : IDisposable
     /// <summary>Fires (off the UI thread) once per query with what we did.</summary>
     public event Action<DnsLogEntry>? Query;
 
+    /// <summary>What became of one blocklist line.</summary>
+    /// <param name="Original">The line as the user wrote it.</param>
+    /// <param name="Domain">The domain that will actually be blocked, or "".</param>
+    /// <param name="Problem">Why the line was unusable, or "" if it was fine.</param>
+    public readonly record struct BlocklistEntry(string Original, string Domain, string Problem)
+    {
+        public bool Ignored => Domain.Length == 0 && Problem.Length == 0;   // blank or comment
+        public bool Rejected => Domain.Length == 0 && Problem.Length > 0;
+        public bool Rewritten => Domain.Length > 0 &&
+            !string.Equals(Domain, Original.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Turns one written line into the domain it means, or "" if it cannot mean
+    /// one. DNS blocking matches NAMES, so a pasted URL, a hosts-file line, or
+    /// an adblock-style wildcard all have to be reduced to the bare hostname
+    /// first - previously a line like "https://example.com/" was stored verbatim
+    /// and could never match anything, with nothing to say so.
+    /// </summary>
+    public static string NormalizeBlocklistEntry(string? raw, out string problem)
+    {
+        problem = "";
+        string d = (raw ?? "").Trim();
+        if (d.Length == 0) return "";
+        if (d.StartsWith("#") || d.StartsWith("!")) return "";   // comment styles
+
+        int hash = d.IndexOf('#');                                // trailing comment
+        if (hash >= 0) d = d[..hash].Trim();
+        if (d.Length == 0) return "";
+
+        // Hosts-file form: "0.0.0.0 example.com" / "127.0.0.1  example.com".
+        var parts = d.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length > 1)
+        {
+            // Only the hosts-file shape is unambiguous. Anything else with
+            // spaces is guesswork, and guessing here silently stores a fragment
+            // that can never match - better to say the line wasn't understood.
+            if (!IPAddress.TryParse(parts[0], out _))
+            { problem = "one domain per line (this line has several words)"; return ""; }
+            d = parts[1];
+        }
+        else if (parts.Length == 1)
+            d = parts[0];
+
+        if (d.Contains("://", StringComparison.Ordinal))          // scheme
+            d = d[(d.IndexOf("://", StringComparison.Ordinal) + 3)..];
+        int at = d.LastIndexOf('@');                              // user:pass@
+        if (at >= 0) d = d[(at + 1)..];
+        int slash = d.IndexOf('/');                               // path
+        if (slash >= 0) d = d[..slash];
+        int q = d.IndexOfAny(new[] { '?', '#' });                 // query / fragment
+        if (q >= 0) d = d[..q];
+        if (d.StartsWith("*.", StringComparison.Ordinal)) d = d[2..];   // adblock wildcard
+        d = d.TrimStart('.').TrimEnd('.').Trim();
+        int colon = d.IndexOf(':');                               // :port
+        if (colon >= 0) d = d[..colon];
+        d = d.ToLowerInvariant();
+
+        if (d.Length == 0) { problem = "no hostname in this line"; return ""; }
+        if (IPAddress.TryParse(d, out _))
+        {
+            problem = "that's an IP address - DNS blocking matches names, not addresses";
+            return "";
+        }
+        if (d.Length > 253) { problem = "hostname is too long"; return ""; }
+        foreach (var label in d.Split('.'))
+        {
+            if (label.Length == 0 || label.Length > 63)
+            { problem = "not a valid hostname"; return ""; }
+            foreach (char c in label)
+                if (!(char.IsLetterOrDigit(c) || c == '-' || c == '_'))
+                { problem = $"'{c}' isn't valid in a hostname"; return ""; }
+        }
+        return d;
+    }
+
+    /// <summary>
+    /// Reports what every line would do, so the interface can tell the user
+    /// which entries were rewritten and which were thrown away rather than
+    /// silently accepting input that can never match.
+    /// </summary>
+    public static List<BlocklistEntry> InspectBlocklist(IEnumerable<string>? lines)
+    {
+        var result = new List<BlocklistEntry>();
+        if (lines == null) return result;
+        foreach (var raw in lines)
+        {
+            string d = NormalizeBlocklistEntry(raw, out string problem);
+            result.Add(new BlocklistEntry(raw ?? "", d, problem));
+        }
+        return result;
+    }
+
     /// <summary>Replace the set of blocked domains. Accepts plain domains, blank
-    /// lines, '#' comments, and hosts-style "0.0.0.0 domain" lines.</summary>
+    /// lines, comments, hosts-style lines, pasted URLs and wildcard forms.</summary>
     public void SetBlocklist(IEnumerable<string>? domains)
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (domains != null)
-        {
             foreach (var raw in domains)
             {
-                if (string.IsNullOrWhiteSpace(raw)) continue;
-                string d = raw.Trim();
-                if (d.StartsWith("#")) continue;
-                int sp = d.LastIndexOf(' ');                 // "0.0.0.0 domain"
-                if (sp < 0) sp = d.LastIndexOf('\t');
-                if (sp >= 0) d = d[(sp + 1)..].Trim();
-                d = d.TrimEnd('.').ToLowerInvariant();
-                if (d.Length > 0 && !d.StartsWith("#")) set.Add(d);
+                string d = NormalizeBlocklistEntry(raw, out _);
+                if (d.Length > 0) set.Add(d);
             }
-        }
         _block = set;
+        // A name resolved before the rule existed would keep being served from
+        // cache, so the block would appear not to work at all.
+        _cache.Clear();
     }
 
     /// <summary>True if the name, or any parent domain of it, is blocked.</summary>

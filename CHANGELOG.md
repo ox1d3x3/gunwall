@@ -6,6 +6,17 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.93.0] — 2026-07-26
+
+### Fixed
+- **Blocklist entries that could never match, accepted silently.** A pasted URL such as `https://www.example.com/` was stored verbatim, and since DNS blocking matches host names, it could never match anything — the entry looked applied and did nothing. Lines are now reduced to the host name they mean: schemes, paths, queries, credentials, ports, `*.` wildcards and leading dots are all stripped, and hosts-file lines are understood. Anything genuinely unusable — a bare IP address, invalid characters, several words on one line — is now reported rather than quietly turned into a fragment.
+- Applying the blocklist now clears the resolver's cache and flushes the Windows DNS cache. Without that, a name resolved before the rule existed kept being answered from cache, so a correct new block appeared not to work.
+
+### Added
+- Applying a blocklist reports what each line became: entries that were read as a domain name, entries that were ignored and why, and a reminder that blocking a name covers its subdomains but not its parent.
+
+---
+
 ## [0.92.0] — 2026-07-26
 
 ### Added

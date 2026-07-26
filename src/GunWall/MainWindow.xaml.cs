@@ -305,7 +305,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.92.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.93.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -921,11 +921,52 @@ public partial class MainWindow : Window
     private void DnsApplyBlock_Click(object sender, RoutedEventArgs e)
     {
         var block = DnsBlockLines(DnsBlockBox.Text);
+
+        // Tell the user what their lines actually did. Silently accepting a
+        // pasted URL and storing something that can never match was the whole
+        // problem: the entry looked applied and simply did nothing.
+        var report = Services.DnsResolver.InspectBlocklist(block);
+        var rewritten = report.Where(r => r.Rewritten).ToList();
+        var rejected = report.Where(r => r.Rejected).ToList();
+
         ApplyDnsBlocklists();   // preset file + manual lines
         int port = int.TryParse(DnsPortBox.Text.Trim(), out int p) && p > 0 ? p : 53;
         _firewall.SaveDnsResolverConfig(port, DnsUpstreamBox.Text.Trim(), block);
+
+        // A name looked up before the rule existed is still in Windows' own
+        // cache and in any open browser connection, so without a flush the new
+        // block appears to do nothing for as long as the old answer lives.
+        try { Services.HostsFileService.FlushDns(); } catch { }
+
         RefreshDnsPresetStatus();
         UpdateDnsUi();
+
+        if (rewritten.Count > 0 || rejected.Count > 0)
+        {
+            var sb = new System.Text.StringBuilder();
+            int active = report.Count(r => r.Domain.Length > 0);
+            sb.AppendLine($"{active} domain(s) applied from your list.");
+            if (rewritten.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Read as a domain name:");
+                foreach (var r in rewritten.Take(8))
+                    sb.AppendLine($"  {r.Original.Trim()}  \u2192  {r.Domain}");
+            }
+            if (rejected.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Not usable, so ignored:");
+                foreach (var r in rejected.Take(8))
+                    sb.AppendLine($"  {r.Original.Trim()}  \u2014  {r.Problem}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Blocking a domain also covers its subdomains, but not the other "
+                        + "way round: an entry for www.example.com will not block example.com. "
+                        + "Add the shorter name to cover both.");
+            MessageBox.Show(sb.ToString(), "Blocklist applied",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
     }
 
     private void OnDnsQuery(DnsLogEntry entry)
