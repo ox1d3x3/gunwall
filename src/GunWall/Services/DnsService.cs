@@ -196,28 +196,82 @@ public static class DnsService
             !s.WasDhcp && s.Servers.Count == 1 &&
             (s.Servers[0] == "127.0.0.1" || s.Servers[0] == "::1"));
 
-    /// <summary>Points every active physical adapter's IPv4 DNS at 127.0.0.1
-    /// (GunWall's resolver). Returns adapters changed.</summary>
-    public static int RedirectToLocal()
-    {
-        int changed = 0;
-        foreach (var name in ActiveAdapterNames())
-        {
-            bool any = RunNetsh($"interface ipv4 set dnsservers name=\"{name}\" static 127.0.0.1 primary validate=no");
-            // Also point IPv6 DNS at ::1. Without this, Windows keeps its v6
-            // resolver (often the VPN's) and - because it prefers IPv6 - sends
-            // lookups there, bypassing GunWall entirely. When that path is slow
-            // or down, the name "can't be found" even though our resolver is
-            // healthy. The resolver now listens on ::1 to receive these.
-            bool any6 = RunNetsh($"interface ipv6 set dnsservers name=\"{name}\" static ::1 primary validate=no");
-            if (any || any6) changed++;
-        }
-        HostsFileService.FlushDns();
-        return changed;
-    }
+    // NOTE: GunWall no longer changes this PC's DNS settings. The routing
+    // feature was removed because taking over port 53 puts the firewall in
+    // direct conflict with other software that also claims it - security
+    // suites' DNS protection and VPN leak protection in particular - and the
+    // failure mode is the machine appearing to lose its internet connection.
+    // RestoreAdapters is retained so an upgrade from a version that HAD routed
+    // DNS can put the machine back the way it found it.
 
     /// <summary>Puts adapters back exactly as captured: DHCP, or the original
     /// static server list. Returns adapters changed.</summary>
+    /// <summary>
+    /// Finds any adapter still pointing at GunWall's own loopback resolver and
+    /// returns that family to automatic.
+    ///
+    /// This exists because restoring from the saved list alone is not enough:
+    /// the old redirect applied to every adapter that was active at the moment
+    /// it ran, so an adapter that appeared later - a VPN reconnecting, a VM
+    /// adapter coming up - could be redirected without ever being recorded. It
+    /// also saved nothing at all when it detected a crash-leftover state. Either
+    /// way those adapters would keep pointing at 127.0.0.1 with no interface
+    /// left to undo it. This sweep guarantees that cannot happen.
+    ///
+    /// Deliberately called ONLY during the one-time migration, never on every
+    /// launch: pointing DNS at 127.0.0.1 by hand is now a legitimate way to use
+    /// the resolver, and GunWall must not undo a choice the user made.
+    /// </summary>
+    public static int ClearLoopbackRedirects()
+    {
+        int cleared = 0;
+        cleared += SweepFamily("ipv4", "127.0.0.1");
+        cleared += SweepFamily("ipv6", "::1");
+        if (cleared > 0) HostsFileService.FlushDns();
+        return cleared;
+    }
+
+    private static int SweepFamily(string family, string loopback)
+    {
+        int cleared = 0;
+        try
+        {
+            string dump = NetshOutput($"interface {family} show dnsservers");
+            string? current = null;
+            bool hit = false;
+
+            foreach (string raw in dump.Split('\n'))
+            {
+                string line = raw.TrimEnd('\r');
+                int q1 = line.IndexOf('"');
+                if (line.TrimStart().StartsWith("Configuration for interface", StringComparison.OrdinalIgnoreCase)
+                    && q1 >= 0)
+                {
+                    if (current != null && hit && ResetFamily(family, current)) cleared++;
+                    int q2 = line.IndexOf('"', q1 + 1);
+                    current = q2 > q1 ? line.Substring(q1 + 1, q2 - q1 - 1) : null;
+                    hit = false;
+                    continue;
+                }
+                // Match the address as a whole token so "127.0.0.1" doesn't also
+                // match something merely containing it.
+                foreach (string tok in line.Split(new[] { ' ', '\t', ',' }, StringSplitOptions.RemoveEmptyEntries))
+                    if (string.Equals(tok, loopback, StringComparison.OrdinalIgnoreCase)) hit = true;
+            }
+            if (current != null && hit && ResetFamily(family, current)) cleared++;
+        }
+        catch { }
+        return cleared;
+    }
+
+    private static bool ResetFamily(string family, string adapter)
+    {
+        bool ok = RunNetsh($"interface {family} set dnsservers name=\"{adapter}\" source=dhcp");
+        if (ok)
+            DiagnosticLog.Log($"Cleared leftover loopback DNS redirect on \"{adapter}\" ({family}).");
+        return ok;
+    }
+
     public static int RestoreAdapters(IEnumerable<SavedAdapterDns> saved)
     {
         int changed = 0;

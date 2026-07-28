@@ -6,6 +6,34 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.95.1] — 2026-07-27
+
+### Fixed
+- **The removal migration could itself strand an adapter.** Restoring only the adapters recorded in the saved list left behind any that the old redirect had touched without recording — one that came up after the capture, or the case where a crash-leftover state was deliberately saved as nothing. Those would have kept pointing at the loopback resolver with no interface left to change them. The migration now also sweeps every adapter and returns any still aimed at 127.0.0.1 or ::1 to automatic.
+- Corrected the claim that GunWall no longer changes this PC's DNS at all: *Security → Filtering DNS* still assigns a public resolver when asked. It never claims port 53 locally, so it carries none of the conflict that caused the removal.
+
+---
+
+## [0.95.0] — 2026-07-27
+
+### Removed
+- **"Route this PC's DNS through GunWall"**, along with the Gaming Session bypass that existed to suspend it. Redirecting the machine's DNS means claiming port 53, which puts GunWall in direct competition with other software that also claims it — security suites' DNS protection and VPN clients' leak protection in particular. Testing on hardware showed the failure precisely: plain UDP and DNS-shaped UDP both crossed loopback normally, while replies from the resolver on port 53 were discarded before delivery, with the resolver reporting every query answered. The result is a machine that appears to lose its internet connection, from a cause outside the firewall's control and impossible to fix in software. A feature that fails that way, on an unpredictable subset of machines, is not worth its cost.
+- GunWall no longer points this PC's DNS at itself. The code that redirected adapters to the loopback resolver has been removed outright. *Security → Filtering DNS* is unaffected and still sets a public resolver (Cloudflare, Quad9, AdGuard) on request — that is an explicit choice of upstream provider and never claims port 53 locally, so it carries none of the conflict described above.
+
+### Changed
+- **Upgrading is safe even if routing was switched on.** On first launch the saved routing state is detected, the adapters are restored to the servers they used before, and the state is cleared. Restoring the saved list alone is not enough: the old redirect applied to whichever adapters were active when it ran, so one that appeared later could be redirected without ever being recorded, and a crash-leftover state was deliberately saved as nothing at all. The migration therefore also sweeps every adapter and returns any still aimed at the loopback resolver to automatic — so removing the feature cannot strand a machine with DNS pointing somewhere it can no longer manage. The sweep runs only during this one-time migration, never on every launch, because setting DNS to 127.0.0.1 by hand is now a legitimate way to use the resolver and must not be undone. A shutdown-time restore is retained as a further line of defence.
+- The resolver keeps everything that did not depend on system routing: blocklists, DNS-over-HTTPS, CNAME-cloaking defence, the query log, and the name-to-address history that domain rules and the "block direct connections" scope rely on. Point an application — or this PC's DNS, deliberately and by hand — at 127.0.0.1 to use it.
+- With nothing on the machine depending on GunWall for name resolution, fail-closed now means exactly that: a failed encrypted lookup fails rather than quietly falling back to plaintext.
+
+---
+
+## [0.94.0] — 2026-07-26
+
+### Added
+- **DNS-shaped loopback probe**, completing the diagnosis of the DNS-routing outage. Testing on real hardware established that plain UDP crosses loopback normally while the resolver's replies — sent successfully, with no send failures — are destroyed before delivery. Nothing in GunWall treats those two cases differently, so the difference is imposed from outside the application. The path test now also sends a genuine DNS message between two ordinary sockets, so the results triangulate the cause: whether loopback UDP is broken generally, whether DNS messages are dropped regardless of port, or whether port 53 specifically has been taken over. The verdict names the likely causes — security software with DNS protection, or a VPN client's DNS leak protection — and gives an ordered way to confirm which, including re-testing on port 5353.
+
+---
+
 ## [0.93.0] — 2026-07-26
 
 ### Fixed
@@ -14,10 +42,6 @@ All notable changes to GunWall are recorded here. Format follows
 
 ### Added
 - Applying a blocklist reports what each line became: entries that were read as a domain name, entries that were ignored and why, and a reminder that blocking a name covers its subdomains but not its parent.
-
----
-
-## [0.93.0] — 2026-07-26
 
 ### Added
 - **Raw loopback probe in the DNS path test.** Before testing the resolver, GunWall now sends a plain UDP datagram between two sockets inside its own process, with the resolver not involved at all. This separates two very different situations that previously looked identical: a fault in the resolver, versus loopback UDP delivery being broken on the machine by another network filter driver — in which case no local DNS server of any kind can work, and it is not something GunWall can fix in software.

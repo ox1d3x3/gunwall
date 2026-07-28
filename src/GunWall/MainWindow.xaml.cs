@@ -167,12 +167,16 @@ public partial class MainWindow : Window
     {
         if (_reallyExit)
         {
-            // Never leave system DNS pointing at a resolver that's about to die.
-            // Intent stays persisted, so routing resumes on next launch.
+            // Belt-and-braces for the removed routing feature: if a redirect from
+            // an older version somehow survived to here, undo it rather than
+            // leaving the machine pointing at a resolver that is shutting down.
             try
             {
-                if (_firewall.DnsRedirectActive && !_firewall.DnsGamingSession)
+                if (_firewall.DnsRedirectActive)
+                {
                     DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
+                    _firewall.SaveDnsRedirectState(false, false, null);
+                }
             }
             catch { }
             try { _dnsResolver.Stop(); } catch { }
@@ -305,7 +309,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.93.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.95.1 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -825,9 +829,11 @@ public partial class MainWindow : Window
 
     // ============================================================ DNS resolver (§3)
     // GunWall's own local resolver lives here in the UI layer; FirewallManager only
-    // persists its configuration. It binds to 127.0.0.1 and never changes the system
-    // DNS by itself — the user points DNS at it. A guided redirect and "Gaming
-    // Session" toggle are the next phase.
+    // persists its configuration. It binds to loopback (127.0.0.1 and ::1) and never
+    // points the system at itself — anything that wants it must be aimed at it
+    // deliberately. Automatic redirection was removed in 0.95.0: claiming port 53
+    // conflicts with other software that claims it too, and the failure looks to the
+    // user like the machine losing its internet connection.
 
     private void InitDnsPanel()
     {
@@ -839,9 +845,8 @@ public partial class MainWindow : Window
         DnsBlockBox.Text = string.Join(Environment.NewLine, _firewall.DnsResolverBlocklist);
         ApplyDnsBlocklists();            // preset file + manual lines
         RefreshDnsPresetStatus();
-        ReapplyDnsRedirectOnStartup();   // §3 Phase 2: honor saved routing intent (fail-safe inside)
+        RestoreSystemDnsIfPreviouslyRouted();   // undo any leftover redirect from older versions
         UpdateDnsUi();
-        UpdateDnsRedirectUi();
     }
 
     private static List<string> DnsBlockLines(string text) =>
@@ -863,8 +868,7 @@ public partial class MainWindow : Window
             }
             try { _dnsResolver.Stop(); } catch (Exception ex) { ShowError(ex); }
             UpdateDnsUi();
-            UpdateDnsRedirectUi();
-            return;
+                return;
         }
 
         if (!int.TryParse(DnsPortBox.Text.Trim(), out int port) || port < 1 || port > 65535)
@@ -2028,157 +2032,41 @@ public partial class MainWindow : Window
     }
 
     // ---------------------------------------------- §3 Phase 2: system routing
-    private bool _dnsToggleGuard; // suppress handler recursion when we set toggles in code
 
     /// <summary>Reflect persisted routing state in the toggles + status line.</summary>
-    private void UpdateDnsRedirectUi()
+    /// <summary>
+    /// One-time safety migration. Earlier versions could point this PC's
+    /// adapters at 127.0.0.1 ("route this PC's DNS through GunWall"). That
+    /// feature has been removed, so anyone upgrading with it still switched on
+    /// would be left with adapters aimed at a resolver they can no longer
+    /// manage - and no way to undo it from the interface. This restores their
+    /// DNS once and clears the saved state, so removing the feature can never
+    /// strand a machine.
+    /// </summary>
+    private void RestoreSystemDnsIfPreviouslyRouted()
     {
-        // Keep the resolver's safety-net flag in step with reality: the machine
-        // depends on GunWall for name resolution only when routing is on AND a
-        // Gaming Session isn't temporarily pointing DNS back at normal servers.
-        _dnsResolver.SystemRoutingActive =
-            _firewall.DnsRedirectActive && !_firewall.DnsGamingSession;
-
-        if (DnsRedirectToggle == null) return;
-        _dnsToggleGuard = true;
-        DnsRedirectToggle.IsChecked = _firewall.DnsRedirectActive;
-        DnsGamingToggle.IsChecked = _firewall.DnsGamingSession;
-        DnsGamingToggle.IsEnabled = _firewall.DnsRedirectActive;
-        _dnsToggleGuard = false;
-
-        if (!_firewall.DnsRedirectActive)
-            DnsRedirectStatus.Text =
-                "System DNS untouched. Turn on routing to send every app's lookups through GunWall " +
-                "(needs the resolver on port 53). Your current DNS is captured first and restored on exit.";
-        else if (_firewall.DnsGamingSession)
-            DnsRedirectStatus.Text =
-                "Gaming Session: system DNS is back on your normal servers for zero-overhead play. " +
-                "The resolver stays warm - flip the toggle off to route through GunWall again.";
-        else
-            DnsRedirectStatus.Text =
-                $"System DNS routed to GunWall ({_firewall.DnsSavedAdapters.Count} adapter(s) captured for restore; " +
-                "auto-restored on exit)." +
-                (DnsService.TunnelAdapterUp()
-                    ? " VPN detected: while it's connected its in-tunnel DNS may take priority. GunWall " +
-                      "only changes physical adapters, so nothing is broken or leaked either way."
-                    : "");
-    }
-
-    private void SetToggleSilently(CheckBox box, bool value)
-    {
-        _dnsToggleGuard = true; box.IsChecked = value; _dnsToggleGuard = false;
-    }
-
-    private void DnsRedirect_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_dnsToggleGuard || DnsRedirectToggle == null) return;
-
-        if (DnsRedirectToggle.IsChecked == true)
+        try
         {
-            // Routing needs the resolver live on the standard DNS port.
-            if (!int.TryParse(DnsPortBox.Text.Trim(), out int port)) port = 53;
-            if (port != 53)
-            {
-                MessageBox.Show(
-                    "Windows can only send system DNS to port 53, so routing needs the resolver " +
-                    "on port 53. Set the listen port to 53 (stop whatever is using it) and try again.",
-                    "DNS routing", MessageBoxButton.OK, MessageBoxImage.Warning);
-                SetToggleSilently(DnsRedirectToggle, false);
-                return;
-            }
-            if (!_dnsResolver.Running)
-            {
-                DnsStart_Click(this, new RoutedEventArgs()); // shows its own message on failure
-                if (!_dnsResolver.Running) { SetToggleSilently(DnsRedirectToggle, false); return; }
-            }
+            if (!_firewall.DnsRedirectActive) return;
 
-            // Capture what to restore - but never let a crash-leftover 127.0.0.1
-            // state overwrite the genuine saved configuration.
-            var captured = DnsService.CaptureAdapterDns();
-            bool poisoned = DnsService.LooksLikeOurRedirect(captured);
-
-            int changed = DnsService.RedirectToLocal();
-            if (changed == 0)
-            {
-                MessageBox.Show("No adapter accepted the DNS change (netsh failed). Nothing was modified.",
-                    "DNS routing", MessageBoxButton.OK, MessageBoxImage.Warning);
-                SetToggleSilently(DnsRedirectToggle, false);
-                return;
-            }
-            _firewall.SaveDnsRedirectState(true, false, poisoned ? null : captured);
-            // Switching adapters over is exactly the moment upstream lookups can
-            // fail, so start from a clean cache rather than risk serving anything
-            // captured mid-change.
-            _dnsResolver.ClearCache();
-            Services.DiagnosticLog.Log($"DNS routing ON: {changed} adapter(s) -> 127.0.0.1.");
-        }
-        else
-        {
             int n = DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
+
+            // Restoring the saved list is not sufficient on its own - see
+            // ClearLoopbackRedirects. Sweep for anything still aimed at our own
+            // resolver so no adapter can be left stranded.
+            int swept = DnsService.ClearLoopbackRedirects();
+
             _firewall.SaveDnsRedirectState(false, false, null);
-            _dnsResolver.ClearCache();
-            Services.DiagnosticLog.Log($"DNS routing OFF: {n} adapter(s) restored.");
+            Services.DiagnosticLog.Log(
+                $"System DNS routing has been removed from GunWall; restored {n} saved adapter(s)" +
+                (swept > 0 ? $" and cleared {swept} further leftover redirect(s)" : "") + ".");
+            Notify("info", "System DNS restored",
+                   "GunWall no longer changes this PC's DNS settings. Your adapters have been "
+                   + "returned to the servers they used before.", "network");
         }
-        UpdateDnsRedirectUi();
-    }
-
-    private void DnsGaming_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_dnsToggleGuard || DnsGamingToggle == null) return;
-        if (!_firewall.DnsRedirectActive) { SetToggleSilently(DnsGamingToggle, false); return; }
-
-        if (DnsGamingToggle.IsChecked == true)
+        catch (Exception ex)
         {
-            // Bypass: put the system back on its normal DNS; the resolver stays
-            // warm and routing intent is remembered.
-            int n = DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
-            _firewall.SaveDnsRedirectState(true, true, null);
-            Services.DiagnosticLog.Log($"Gaming Session ON: {n} adapter(s) back to normal DNS.");
-        }
-        else
-        {
-            DnsService.RedirectToLocal();
-            _firewall.SaveDnsRedirectState(true, false, null);
-            Services.DiagnosticLog.Log("Gaming Session OFF: system DNS routed to GunWall again.");
-        }
-        UpdateDnsRedirectUi();
-    }
-
-    /// <summary>On launch, honor last session's routing intent - with a fail-safe:
-    /// if the resolver can't start, adapters are restored, never left pointing at
-    /// a dead 127.0.0.1.</summary>
-    private void ReapplyDnsRedirectOnStartup()
-    {
-        if (!_firewall.DnsRedirectActive) return;
-
-        bool resolverOk = _dnsResolver.Running;
-        if (!resolverOk && _firewall.DnsResolverPort == 53)
-        {
-            try
-            {
-                _dnsResolver.Start(53, _firewall.DnsResolverUpstream,
-                                   _firewall.DnsDohUrl, _firewall.DnsDohFallback,
-                                   _firewall.DnsBlockCloakedCnames);
-                resolverOk = true;
-            }
-            catch { resolverOk = false; }
-        }
-
-        if (!resolverOk)
-        {
-            DnsService.RestoreAdapters(_firewall.DnsSavedAdapters);
-            _firewall.SaveDnsRedirectState(false, false, null);
-            Services.DiagnosticLog.Log("DNS routing intent dropped: resolver couldn't start on port 53; adapters restored.");
-            return;
-        }
-
-        if (!_firewall.DnsGamingSession)
-        {
-            var captured = DnsService.CaptureAdapterDns();
-            bool poisoned = DnsService.LooksLikeOurRedirect(captured);
-            DnsService.RedirectToLocal();
-            _firewall.SaveDnsRedirectState(true, false, poisoned ? null : captured);
-            Services.DiagnosticLog.Log("DNS routing re-applied from saved intent.");
+            Services.DiagnosticLog.LogException("RestoreSystemDnsIfPreviouslyRouted", ex);
         }
     }
 
@@ -3354,9 +3242,37 @@ public partial class MainWindow : Window
                 sb.AppendLine($"Last send error: {_dnsResolver.LastSendError}");
 
             bool rawOk = probes.Any(p => p.Endpoint.StartsWith("raw UDP") && p.Ok);
-            bool dnsOk = probes.Any(p => !p.Endpoint.StartsWith("raw UDP") && p.Ok);
+            bool shapedOk = probes.Any(p => p.Endpoint.StartsWith("DNS-shaped") && p.Ok);
+            bool dnsOk = probes.Any(p => p.Endpoint.Contains(":") && !p.Endpoint.StartsWith("raw UDP")
+                                         && !p.Endpoint.StartsWith("DNS-shaped") && p.Ok);
             sb.AppendLine();
-            if (!rawOk)
+            if (rawOk && !dnsOk)
+            {
+                // The decisive comparison: arbitrary bytes cross loopback, DNS
+                // does not. Nothing in GunWall treats those two cases
+                // differently, so the difference is being imposed from outside.
+                sb.AppendLine(shapedOk
+                    ? "VERDICT: plain UDP and DNS-shaped UDP both cross loopback normally, but "
+                      + "replies from the resolver on port 53 are discarded. Another program is "
+                      + "intercepting traffic on port 53 specifically - security software with DNS "
+                      + "protection, or a VPN client's DNS leak protection, are the usual causes."
+                    : "VERDICT: plain UDP crosses loopback, but DNS messages are discarded even "
+                      + "between two ordinary sockets. Something on this PC is inspecting and "
+                      + "dropping DNS traffic regardless of port.");
+                sb.AppendLine();
+                sb.AppendLine("This is happening below the application, so GunWall cannot work around "
+                            + "it in software - and no other local DNS server would work either. "
+                            + "To confirm which program is responsible, disable them one at a time "
+                            + "and re-run this test:");
+                sb.AppendLine("  1. GunWall's own filtering (the Disable Firewall button above)");
+                sb.AppendLine("  2. Any security suite's network or DNS protection");
+                sb.AppendLine("  3. Any VPN client's DNS leak protection");
+                sb.AppendLine();
+                sb.AppendLine("You can also set the listen port above to 5353 and re-test: if the "
+                            + "resolver answers on 5353 but not on 53, that confirms port 53 is "
+                            + "being taken over by something else.");
+            }
+            else if (!rawOk)
                 sb.AppendLine(
                     "VERDICT: plain UDP loopback does not work on this PC. A packet sent between "
                     + "two sockets inside GunWall itself never arrived, and the resolver was not "
@@ -4055,7 +3971,6 @@ public partial class MainWindow : Window
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
             $"plaintextFallback={_dnsResolver.DohFallbackAllowed}, " +
-            $"systemRouting={_dnsResolver.SystemRoutingActive}, " +
             $"upstreamRefused={_dnsResolver.UpstreamRefused}");
         Services.DiagnosticLog.Log(
             $"DNS loopback path: listening=[{_dnsResolver.ListenerStatus}], " +

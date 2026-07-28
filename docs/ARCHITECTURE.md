@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.93.0. It
+This document describes how GunWall is **actually built** as of v0.95.1. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -197,11 +197,20 @@ sublayer by key clears everything GunWall ever installed.
 ## 7. DNS
 
 The resolver is written from scratch — message parsing, caching, and forwarding
-— with no DNS library. It listens on both IPv4 (127.0.0.1) and IPv6 (::1) loopback - necessary because
-Windows resolves over both families and prefers IPv6 - and can be made the
-system resolver by rewriting adapter DNS for both families. This is VPN-aware:
-without covering IPv6, an active tunnel's v6 resolver would take priority and
-bypass GunWall, which was a real cause of resolution failures.
+— with no DNS library. It listens on both IPv4 (127.0.0.1) and IPv6 (::1) loopback and nothing else.
+
+GunWall does **not** point the machine's DNS at itself. An earlier version could
+redirect every adapter to the resolver; that was removed in 0.95.0. (The separate
+*Filtering DNS* setting still assigns a public resolver such as Quad9 when asked
+— that is a choice of upstream provider, not a local interception, and carries
+none of the conflict below.) Claiming
+port 53 puts a firewall in direct competition with other software that also
+claims it - security suites' DNS protection and VPN leak protection especially -
+and on hardware the losing case was stark: plain UDP and DNS-shaped UDP crossed
+loopback normally while replies from port 53 were discarded before delivery,
+with the resolver reporting every query answered. The machine appeared to lose
+its internet connection for a reason no amount of application code could fix.
+Anything that wants the resolver now points at it deliberately.
 
 Forwarding is either plaintext UDP or **DNS-over-HTTPS** (RFC 8484: the wire
 query POSTed as `application/dns-message`). Built-in DoH endpoints are addressed

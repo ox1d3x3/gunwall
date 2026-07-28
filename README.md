@@ -8,7 +8,7 @@
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/NuGet%20dependencies-0-3FB868?style=flat-square)](#-privacy--security)
-[![Status](https://img.shields.io/badge/release-v0.93.0%20(beta)-E0A53F?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.95.1%20(beta)-E0A53F?style=flat-square)](#roadmap)
 
 *Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and no third-party dependencies.*
 
@@ -69,7 +69,7 @@ Test it in a safe environment first, and don't rely on it as your only defense o
 
 - **Secure DNS (DoH)** — forward every lookup encrypted over HTTPS, so nobody on the network can read or tamper with what you resolve. Built-in providers are IP-addressed, so enabling encryption needs no plaintext lookup to bootstrap itself, and the default is to **fail closed** rather than silently downgrade.
 - **CNAME-cloaking defence** — trackers dodge blocklists by aliasing a clean first-party name to a blocked one. GunWall follows each answer's alias chain and refuses the lookup if any hop is blocked.
-- **Built-in resolver** — a from-scratch DNS resolver with caching, blocklist filtering and optional system-wide redirection, VPN-aware so it cooperates with an active tunnel.
+- **Built-in resolver** — a from-scratch DNS resolver with caching and blocklist filtering, bound to loopback only. GunWall never changes this PC's DNS settings; point something at it deliberately to use it.
 - **Domain blocklists** — load a curated list (StevenBlack unified hosts, ~100k domains) or your own, applied at resolution time.
 - **Suspicious-domain heuristics** — algorithmically generated domain names (a common malware signal) are scored and flagged using entropy, character-distribution and structural analysis.
 - **Filtering DNS** — alternatively point Windows at a public filtering resolver (AdGuard for ads/trackers, Quad9 for malware/phishing).

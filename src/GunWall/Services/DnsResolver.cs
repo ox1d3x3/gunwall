@@ -73,10 +73,7 @@ public sealed class DnsResolver : IDisposable
     private bool _blockCloaked = true;
     private long _cloaked;
 
-    // Set by the app while this PC's own DNS is pointed at the resolver. When
-    // true, a total resolution failure would knock the machine offline, so the
-    // forwarder keeps a plaintext path of last resort even in fail-closed mode.
-    public volatile bool SystemRoutingActive;
+
 
     private long _total, _blocked, _cached, _forwarded, _errors;
 
@@ -511,6 +508,71 @@ public sealed class DnsResolver : IDisposable
         }
     }
 
+    /// <summary>
+    /// Same as the raw probe, but the payload is a real DNS message and the
+    /// listening socket sends its reply FROM a port that looks like a DNS
+    /// server. Comparing this against the plain probe isolates what a third
+    /// party is reacting to: if arbitrary bytes cross loopback but DNS-shaped
+    /// bytes do not, something is inspecting DNS specifically.
+    /// </summary>
+    public static async Task<PathProbe> TestDnsShapedLoopbackAsync(bool useDnsPort)
+    {
+        string label = useDnsPort
+            ? "DNS-shaped reply from port 53"
+            : "DNS-shaped reply from a high port";
+        try
+        {
+            using var server = new UdpClient(AddressFamily.InterNetwork);
+            int serverPort = useDnsPort ? 53 : 0;
+            try { server.Client.Bind(new IPEndPoint(IPAddress.Loopback, serverPort)); }
+            catch (SocketException) when (useDnsPort)
+            {
+                return new PathProbe(label, false, "port 53 already in use (the resolver holds it)");
+            }
+            serverPort = ((IPEndPoint)server.Client.LocalEndPoint!).Port;
+
+            using var client = new UdpClient(AddressFamily.InterNetwork);
+            client.Client.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+
+            byte[] query = DnsMessage.BuildQuery("example.com", 1, 0x5151);
+            var serverEp = new IPEndPoint(IPAddress.Loopback, serverPort);
+
+            using var serverCts = new CancellationTokenSource(2000);
+            var serverRecv = server.ReceiveAsync(serverCts.Token).AsTask();
+            await client.SendAsync(query, query.Length, serverEp);
+
+            UdpReceiveResult got;
+            try { got = await serverRecv; }
+            catch (OperationCanceledException)
+            { return new PathProbe(label, false, "the query itself never reached the listener"); }
+
+            // Answer it: a minimal DNS response (QR set, no answers).
+            byte[] reply = (byte[])query.Clone();
+            reply[2] = 0x81; reply[3] = 0x80;          // QR=1, RD=1, RA=1, NOERROR
+
+            using var clientCts = new CancellationTokenSource(2000);
+            var clientRecv = client.ReceiveAsync(clientCts.Token).AsTask();
+            await server.SendAsync(reply, reply.Length, got.RemoteEndPoint);
+
+            try
+            {
+                var back = await clientRecv;
+                return new PathProbe(label, back.Buffer.Length == reply.Length,
+                    $"reply delivered ({back.Buffer.Length} bytes)");
+            }
+            catch (OperationCanceledException)
+            {
+                return new PathProbe(label, false,
+                    "the REPLY was dropped - the query crossed loopback fine, so something is " +
+                    "discarding DNS responses");
+            }
+        }
+        catch (Exception ex)
+        {
+            return new PathProbe(label, false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
     public async Task<List<PathProbe>> TestLoopbackPathAsync(string probeName = "example.com")
     {
         var results = new List<PathProbe>();
@@ -518,6 +580,10 @@ public sealed class DnsResolver : IDisposable
         // Establish first whether loopback UDP works at all on this machine.
         results.Add(await TestRawLoopbackAsync(AddressFamily.InterNetwork));
         results.Add(await TestRawLoopbackAsync(AddressFamily.InterNetworkV6));
+
+        // Then whether DNS-shaped traffic survives the same trip. This is the
+        // comparison that identifies DNS-aware interception.
+        results.Add(await TestDnsShapedLoopbackAsync(useDnsPort: false));
 
         if (!Running)
         {
@@ -738,17 +804,11 @@ public sealed class DnsResolver : IDisposable
 
             Interlocked.Increment(ref _dohFail);
 
-            // The machine's own DNS may be routed through this resolver. If so,
-            // returning null here means the OS gets no answer and the user sees
-            // "the internet is down" - a far worse outcome than a single query
-            // going out in plaintext. When the user allowed fallback we take the
-            // plaintext peer (pinned to the same provider). When they did NOT,
-            // we still fall back only while system routing is active, because a
-            // dead resolver on the machine's own DNS path is not a defensible
-            // "fail closed" - it's a failure. With routing off (GunWall is just
-            // a resolver something else opted into) we honour fail-closed.
-            if (_dohFallback || SystemRoutingActive)
-                return await ForwardPlainAsync(query, ct);
+            // Nothing on this PC depends on GunWall for name resolution unless
+            // the user pointed it here deliberately, so fail-closed can mean
+            // exactly that: a failed encrypted lookup fails, rather than
+            // silently going out in plaintext.
+            if (_dohFallback) return await ForwardPlainAsync(query, ct);
             return null;
         }
         return await ForwardPlainAsync(query, ct);
