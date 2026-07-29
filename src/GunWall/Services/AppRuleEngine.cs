@@ -170,6 +170,29 @@ public static class AppRuleEngine
 /// </summary>
 public static class IpScopeClassifier
 {
+    /// <summary>
+    /// Whether an address may safely be given a machine-wide block filter.
+    ///
+    /// Stricter than "is it on the Internet": multicast and broadcast classify
+    /// as internet scope for rule purposes, but a global block on, say, the
+    /// mDNS group would break local network discovery for everything on the
+    /// machine. A blocklist can name any of these - every hosts file maps its
+    /// entries to a loopback address - so the check belongs here rather than in
+    /// the caller's good intentions.
+    /// </summary>
+    public static bool IsPublicUnicast(string ip)
+    {
+        if (Classify(ip) != "internet") return false;
+        if (!IPAddress.TryParse(ip, out var addr)) return false;
+        if (addr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return false;
+
+        var b = addr.GetAddressBytes();
+        if (b[0] >= 224) return false;                     // multicast (224/4) and reserved (240/4)
+        if (b[0] == 0) return false;                       // "this network"
+        if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) return false;   // CGNAT 100.64/10
+        return true;
+    }
+
     public static string Classify(string ip)
     {
         if (string.IsNullOrWhiteSpace(ip)) return "";

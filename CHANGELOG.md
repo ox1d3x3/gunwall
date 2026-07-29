@@ -6,6 +6,16 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.97.1] — 2026-07-29
+
+### Fixed
+- **Blocklist enforcement could install a machine-wide block on a loopback or private address.** Every hosts file opens by mapping `localhost` and friends to 127.0.0.1, and those lines were being accepted as blocklist entries; the enforcement then dutifully blocked the address they resolved to. Only the infrastructure loopback permit, which outranks it, prevented the machine being cut off from itself — that was luck, not design. Two independent guards now each stop this on their own: loopback plumbing (`localhost`, `broadcasthost`, the `ip6-*` names) is rejected as a blocklist entry, and enforcement will only ever target a public unicast address. Multicast and broadcast are excluded too, since a global block on the mDNS group would break local network discovery.
+
+### Changed
+- The blocklist description now states the real limitation: connection-layer blocking depends on Windows performing the lookup, so a browser using its own encrypted DNS is not covered until that setting is turned off in the browser.
+
+---
+
 ## [0.97.0] — 2026-07-29
 
 ### Fixed

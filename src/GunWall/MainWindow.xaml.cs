@@ -311,7 +311,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.97.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.97.1 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1329,6 +1329,14 @@ public partial class MainWindow : Window
                 if (string.IsNullOrEmpty(remote) || remote is "0.0.0.0" or "::") continue;
                 if (!System.Net.IPAddress.TryParse(remote, out var ip) ||
                     ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+
+                // Only ever block addresses that are actually out on the
+                // Internet. A global filter on loopback, a LAN address or a
+                // link-local one would cut the machine off from itself or its
+                // own network - and a blocklist can name such an address, since
+                // every hosts file maps its entries to 127.0.0.1. Nothing
+                // downstream should have to rely on the list being sensible.
+                if (!Services.IpScopeClassifier.IsPublicUnicast(remote)) continue;
 
                 string domain = Services.DnsObservations.DomainForIp(remote);
                 if (domain.Length == 0) continue;

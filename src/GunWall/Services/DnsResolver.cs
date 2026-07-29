@@ -203,6 +203,16 @@ public sealed class DnsResolver : IDisposable
             return "";
         }
         if (d.Length > 253) { problem = "hostname is too long"; return ""; }
+
+        // Every hosts file opens by mapping these names to loopback. They are
+        // the file's own plumbing, not entries to block, and treating them as
+        // blocks is actively harmful: "localhost" resolves to 127.0.0.1, so
+        // blocking it aims a rule at the machine itself.
+        if (LoopbackNames.Contains(d))
+        {
+            problem = "that's a loopback name from the top of a hosts file, not a site to block";
+            return "";
+        }
         foreach (var label in d.Split('.'))
         {
             if (label.Length == 0 || label.Length > 63)
@@ -247,6 +257,14 @@ public sealed class DnsResolver : IDisposable
         // cache, so the block would appear not to work at all.
         _cache.Clear();
     }
+
+    /// <summary>Names every hosts file defines for the local machine.</summary>
+    private static readonly HashSet<string> LoopbackNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "localhost", "localhost.localdomain", "local", "broadcasthost",
+        "ip6-localhost", "ip6-loopback", "ip6-localnet", "ip6-mcastprefix",
+        "ip6-allnodes", "ip6-allrouters", "ip6-allhosts", "0.0.0.0"
+    };
 
     /// <summary>True if the name, or any parent domain of it, is blocked.</summary>
     public bool IsBlocked(string name)
