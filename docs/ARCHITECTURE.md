@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.96.1. It
+This document describes how GunWall is **actually built** as of v0.97.0. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -226,7 +226,12 @@ cached. A failure code carried inside an otherwise-valid HTTPS response is a
 failure, not an answer - caching one would replay it to every retry until the
 entry expired, and clients retry hardest exactly when they are failing.
 
-Blocklists are applied at resolution time. The resolver also inspects the
+Blocklists are applied two ways. A lookup sent to this resolver for a blocked
+name is refused outright. Separately - and this is what makes the list effective
+on a machine that does not use this resolver at all - the passive observer
+reports which addresses a blocked name resolved to, and connections to those
+addresses are blocked in the kernel. The second path cannot be evaded by an
+application choosing its own DNS server. The resolver also inspects the
 **CNAME chain** of every answer, so a tracker cannot evade a blocklist by
 aliasing from a clean first-party name; a cloaked answer is refused and never
 cached. Answers additionally feed a resolved-address memory, which is what makes

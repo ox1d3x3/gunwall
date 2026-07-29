@@ -311,7 +311,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.96.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.97.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -513,6 +513,7 @@ public partial class MainWindow : Window
             // Session totals: integrate rate over the real tick spacing so the
             // footer's byte counts stay honest even if the timer drifts.
             EnforceP2pBlocks(snap.Conns, snap.Procs);
+            EnforceBlockedDomains(snap.Conns);
             EnforceAccessPolicies(snap.Conns, snap.Procs);
 
             var nowUtc = DateTime.UtcNow;
@@ -1190,6 +1191,18 @@ public partial class MainWindow : Window
     /// <summary>Feed the resolver the preset file plus the user's manual lines.</summary>
     private void ApplyDnsBlocklists()
     {
+        // Filters installed for previously blocked domains must go when the list
+        // changes, or removing a domain would leave its addresses blocked with
+        // nothing in the interface explaining why.
+        try
+        {
+            int cleared = _firewall.ClearDomainReactiveBlocks();
+            _domainBlocked.Clear();
+            if (cleared > 0)
+                Services.DiagnosticLog.Log($"Blocklist changed: removed {cleared} blocked-domain filter(s).");
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("ClearDomainReactiveBlocks", ex); }
+
         var merged = LoadDnsPresetLines();
         merged.AddRange(DnsBlockLines(DnsBlockBox.Text));
         _dnsResolver.SetBlocklist(merged);
@@ -1291,12 +1304,67 @@ public partial class MainWindow : Window
     /// and the user is told once per (app, ip). Runs only while the resolver
     /// is up - without it "never resolved" would accuse everything.
     /// </summary>
+    private readonly HashSet<string> _domainBlocked = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Enforces the DNS blocklist against live connections.
+    ///
+    /// The blocklist used to work only for lookups GunWall itself answered,
+    /// which meant it did nothing at all once the machine stopped sending its
+    /// DNS here. The passive watcher knows which addresses each name resolved
+    /// to, so a connection to an address belonging to a blocked name is blocked
+    /// in the kernel instead - which also holds for applications that bring
+    /// their own resolver and never ask Windows at all.
+    /// </summary>
+    private void EnforceBlockedDomains(List<ConnectionInfo> conns)
+    {
+        try
+        {
+            if (_dnsResolver.BlockedDomainCount == 0) return;
+            if (!Services.DnsObservations.HasData) return;
+
+            foreach (var c in conns)
+            {
+                string remote = c.RemoteAddress;
+                if (string.IsNullOrEmpty(remote) || remote is "0.0.0.0" or "::") continue;
+                if (!System.Net.IPAddress.TryParse(remote, out var ip) ||
+                    ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+
+                string domain = Services.DnsObservations.DomainForIp(remote);
+                if (domain.Length == 0) continue;
+                if (!_dnsResolver.IsBlocked(domain)) continue;
+
+                if (!_domainBlocked.Add(remote)) continue;    // one filter per address
+
+                if (_firewall.AddDomainReactiveBlock(domain, remote))
+                {
+                    // Tear the session down too: a new filter stops the next
+                    // connection but not one already established.
+                    try
+                    {
+                        if (c.Protocol == "TCP")
+                            Services.ConnectionService.CloseTcpConnection(
+                                c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
+                    }
+                    catch { }
+                    Notify("warn", $"Blocked domain reached: {domain}",
+                           $"{remote} belongs to {domain}, which is on your DNS blocklist. "
+                           + "Connections to it are now blocked.", "security");
+                }
+            }
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("EnforceBlockedDomains", ex); }
+    }
+
     private void EnforceP2pBlocks(List<ConnectionInfo> conns,
                                   Dictionary<int, (string Name, string Path)> procs)
     {
         try
         {
-            if (_dnsResolver is not { Running: true }) return;
+            // Observations now come from the passive watcher as well as the
+            // resolver, so this no longer depends on the resolver running - but
+            // with no observations at all, every address would look "direct".
+            if (!Services.DnsObservations.HasData) return;
             var flagged = _firewall.P2pAppPaths;
             if (flagged.Count == 0) return;
 

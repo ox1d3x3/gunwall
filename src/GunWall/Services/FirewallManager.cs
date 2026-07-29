@@ -1114,6 +1114,37 @@ public sealed class FirewallManager : IDisposable
     /// <summary>Reactively block one direct destination for a P2P-flagged app.
     /// The filter IDs are stored under the app's p2p scope key so disabling
     /// the toggle cleans everything up. Returns false if nothing was added.</summary>
+    /// <summary>
+    /// Blocks an address that a blocked domain resolved to, for every
+    /// application. Stored under the domain so removing the domain from the
+    /// blocklist removes everything it accumulated.
+    /// </summary>
+    public bool AddDomainReactiveBlock(string domain, string remoteIp)
+    {
+        var ids = _engine.AddGlobalRemoteIpBlock(remoteIp, $"Blocked domain: {domain}");
+        if (ids.Count == 0) return false;
+        string key = "domainblock|" + domain.ToLowerInvariant();
+        if (_data.ScopeFilters.TryGetValue(key, out var existing)) existing.AddRange(ids);
+        else _data.ScopeFilters[key] = ids;
+        _store.Save(_data);
+        EventLog($"Blocked domain enforced: {domain} -> {remoteIp}");
+        return true;
+    }
+
+    /// <summary>Removes every filter accumulated for a blocked domain.</summary>
+    public int ClearDomainReactiveBlocks()
+    {
+        int removed = 0;
+        foreach (var key in _data.ScopeFilters.Keys.Where(k => k.StartsWith("domainblock|", StringComparison.Ordinal)).ToList())
+        {
+            try { _engine.RemoveFilters(_data.ScopeFilters[key]); removed += _data.ScopeFilters[key].Count; }
+            catch { }
+            _data.ScopeFilters.Remove(key);
+        }
+        if (removed > 0) { _store.Save(_data); EventLog($"Cleared {removed} blocked-domain filter(s)."); }
+        return removed;
+    }
+
     public bool AddP2pReactiveBlock(string exePath, string remoteIp)
     {
         var ids = _engine.AddAppRemoteIpBlock(exePath, remoteIp);

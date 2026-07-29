@@ -1241,6 +1241,73 @@ public sealed class WfpEngine : IDisposable
     /// <summary>§1: reactively block one remote IPv4 for one app (app-ID + that /32).
     /// Reuses the proven 2-condition scope-block filter path. IPv4 only (the GeoIP
     /// table is IPv4); a non-IPv4 / unparseable address is a no-op.</summary>
+    /// <summary>
+    /// Blocks every application from reaching one IPv4 address.
+    ///
+    /// This is how a domain blocklist is enforced now that GunWall does not
+    /// answer the machine's DNS: the passive observer reports which addresses a
+    /// blocked name resolved to, and those addresses are blocked here. The
+    /// enforcement therefore happens in the kernel, where it cannot be evaded
+    /// by an application choosing its own resolver.
+    /// </summary>
+    public List<ulong> AddGlobalRemoteIpBlock(string ipv4, string reason)
+    {
+        var ids = new List<ulong>(1);
+        EnsureReady();
+        if (!System.Net.IPAddress.TryParse(ipv4, out var ip) ||
+            ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return ids;   // IPv4 only, as with the other reactive blocks
+        TryAdd(ids, () => AddRangeBlockFilterV4(
+            FWPM_LAYER_ALE_AUTH_CONNECT_V4, ipv4, 32, reason));
+        return ids;
+    }
+
+    /// <summary>A single-condition block filter: remote IPv4 in base/prefix,
+    /// for any application.</summary>
+    private ulong AddRangeBlockFilterV4(Guid layer, string baseAddress, byte prefix, string name)
+    {
+        var maskStruct = new FWP_V4_ADDR_AND_MASK
+        {
+            addr = IpToHost(baseAddress),
+            mask = prefix == 0 ? 0u : uint.MaxValue << (32 - prefix)
+        };
+        int maskSize = Marshal.SizeOf<FWP_V4_ADDR_AND_MASK>();
+        IntPtr maskPtr = Marshal.AllocHGlobal(maskSize);
+        int condSize = Marshal.SizeOf<FWPM_FILTER_CONDITION0>();
+        IntPtr condArr = Marshal.AllocHGlobal(condSize);
+        try
+        {
+            Marshal.StructureToPtr(maskStruct, maskPtr, false);
+            var rangeCond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_V4_ADDR_MASK, value = (ulong)maskPtr.ToInt64() }
+            };
+            Marshal.StructureToPtr(rangeCond, condArr, false);
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
+                numFilterConditions = 1,
+                filterCondition = condArr,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_BLOCK },
+                displayData = new FWPM_DISPLAY_DATA0 { name = name, description = name }
+            };
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(condArr);
+            Marshal.FreeHGlobal(maskPtr);
+        }
+    }
+
     public List<ulong> AddAppRemoteIpBlock(string exePath, string ipv4)
     {
         var ids = new List<ulong>(1);

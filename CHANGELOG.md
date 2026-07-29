@@ -6,6 +6,21 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.97.0] — 2026-07-29
+
+### Fixed
+- **The DNS blocklist blocked nothing.** It only ever applied to lookups GunWall itself answered, so once the machine stopped sending its DNS here — deliberately, in 0.95.0 — the list became inert while the interface went on implying it worked. Adding a domain appeared to succeed and had no effect.
+
+### Added
+- **Blocklist enforcement at the connection layer.** The passive DNS watch knows which addresses each name resolved to, so a connection to an address belonging to a blocked domain is now blocked in the kernel and the existing session torn down. This is stronger than refusing the lookup: it holds for applications that bring their own resolver and never ask Windows at all, and it cannot be evaded by choosing a different DNS server. Filters are stored per domain, so removing a domain from the list removes everything it accumulated.
+- A global remote-address block filter in the WFP engine, at the user-block weight, for enforcement that is not tied to a single application.
+
+### Changed
+- "Block direct connections" no longer requires GunWall's resolver to be running — it reads the same shared observations as domain rules.
+- The blocklist description now states how blocking is actually applied, rather than implying that entries take effect on their own.
+
+---
+
 ## [0.96.1] — 2026-07-29
 
 ### Fixed
