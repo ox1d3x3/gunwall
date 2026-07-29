@@ -173,11 +173,55 @@ public sealed class DnsEventMonitorService : IDisposable
 
     // ---------------------------------------------------------------- session
 
+    // ---- crash-loop guard -------------------------------------------------
+    // A fault inside an ETW callback terminates the process outright, with no
+    // managed exception and nothing useful in the log. If that ever happens
+    // again the app must not simply die on every launch: a marker is written
+    // before the session is touched and cleared once it has run without
+    // incident, so a launch that finds the marker still present skips the
+    // observer instead of repeating the crash.
+    private static string MarkerPath =>
+        System.IO.Path.Combine(AppContext.BaseDirectory, "GunWallData", "dns-observer.starting");
+
+    private static bool MarkerPresent()
+    { try { return System.IO.File.Exists(MarkerPath); } catch { return false; } }
+
+    private static void SetMarker()
+    {
+        try
+        {
+            string dir = System.IO.Path.GetDirectoryName(MarkerPath)!;
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.WriteAllText(MarkerPath, DateTime.UtcNow.ToString("o"));
+        }
+        catch { }
+    }
+
+    private static void ClearMarker()
+    { try { if (System.IO.File.Exists(MarkerPath)) System.IO.File.Delete(MarkerPath); } catch { } }
+
+    /// <summary>True when the previous attempt to start never completed.</summary>
+    public static bool PreviousAttemptFailed => MarkerPresent();
+
     public bool Start()
     {
         if (SessionActive) return true;
+
+        if (MarkerPresent())
+        {
+            // Clear it so turning the setting off and on again is a genuine retry.
+            ClearMarker();
+            LastError = "skipped after a previous start did not complete";
+            DiagnosticLog.Log(
+                "DNS observer NOT started: the previous attempt did not complete, which usually " +
+                "means the process ended during it. Skipping this launch to avoid repeating it. " +
+                "Toggle 'Watch system DNS lookups' off and on to try again.");
+            return false;
+        }
+
         try
         {
+            SetMarker();                  // before anything native is touched
             StopSessionByName();          // clear a stale session of ours
 
             _propsBuffer = AllocProperties();
@@ -187,6 +231,7 @@ public sealed class DnsEventMonitorService : IDisposable
                 LastError = $"StartTrace failed 0x{r:X8}";
                 DiagnosticLog.Log($"DNS observer: {LastError}");
                 Cleanup();
+                ClearMarker();
                 return false;
             }
 
@@ -198,6 +243,7 @@ public sealed class DnsEventMonitorService : IDisposable
                 DiagnosticLog.Log($"DNS observer: {LastError}");
                 StopSessionByName();
                 Cleanup();
+                ClearMarker();
                 return false;
             }
 
@@ -219,11 +265,20 @@ public sealed class DnsEventMonitorService : IDisposable
                 DiagnosticLog.Log($"DNS observer: {LastError}");
                 StopSessionByName();
                 Cleanup();
+                ClearMarker();
                 return false;
             }
 
             _pump = new Thread(Pump) { IsBackground = true, Name = "GunWall DNS observer" };
             _pump.Start();
+
+            // Survive a spell of real event traffic before declaring the attempt
+            // good; the dangerous moment is the first dispatch into our callback.
+            _ = Task.Run(async () =>
+            {
+                try { await Task.Delay(20000); if (SessionActive) ClearMarker(); }
+                catch { }
+            });
 
             SessionActive = true;
             LastError = "";
@@ -235,6 +290,7 @@ public sealed class DnsEventMonitorService : IDisposable
             LastError = ex.Message;
             DiagnosticLog.LogException("DnsEventMonitor.Start", ex);
             Cleanup();
+            ClearMarker();
             return false;
         }
     }
@@ -243,6 +299,7 @@ public sealed class DnsEventMonitorService : IDisposable
     {
         if (!SessionActive) return;
         SessionActive = false;
+        ClearMarker();
         try { StopSessionByName(); } catch { }      // makes ProcessTrace drain and return
         try { if (_traceHandle != 0 && _traceHandle != INVALID_PROCESSTRACE_HANDLE) CloseTrace(_traceHandle); }
         catch { }
@@ -360,31 +417,35 @@ public sealed class DnsEventMonitorService : IDisposable
 
     private delegate void EventRecordCallback(ref EVENT_RECORD rec);
 
+    /// EVENT_RECORD, x64. EVENT_HEADER is 80 bytes: ProviderId sits at 24 and
+    /// EVENT_DESCRIPTOR begins at 40, so its leading Id field is at 40 too.
+    /// These offsets are shared with the byte meter, which is hardware-proven.
     [StructLayout(LayoutKind.Explicit)]
     private struct EVENT_RECORD
     {
-        [FieldOffset(24)] public ushort EventId;
-        [FieldOffset(40)] public Guid ProviderId;
+        [FieldOffset(24)] public Guid ProviderId;
+        [FieldOffset(40)] public ushort EventId;      // EVENT_DESCRIPTOR.Id
         [FieldOffset(86)] public ushort UserDataLength;
         [FieldOffset(96)] public IntPtr UserData;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    /// <summary>
+    /// EVENT_TRACE_LOGFILEW, x64, by explicit offset. The two embedded structs
+    /// (EVENT_TRACE at 32, TRACE_LOGFILE_HEADER at 120) are large - 88 and 280
+    /// bytes - which puts BufferCallback at 400 and EventRecordCallback at 424.
+    /// Describing this layout by hand is how the callback pointer ended up in
+    /// the wrong place, leaving OpenTrace to read garbage and ProcessTrace to
+    /// call into it, which terminates the process outright. Explicit offsets,
+    /// shared with the byte meter, remove the guesswork.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 448)]
     private struct EVENT_TRACE_LOGFILE
     {
-        public IntPtr LogFileName;
-        public IntPtr LoggerName;
-        public long CurrentTime;
-        public uint BuffersRead;
-        public uint ProcessTraceMode;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 208)] public byte[] CurrentEventPadding;
-        public IntPtr BufferCallback;
-        public uint BufferSize;
-        public uint Filled;
-        public uint EventsLost;
-        public IntPtr EventRecordCallback;
-        public IntPtr IsKernelTrace;
-        public IntPtr Context;
+        [FieldOffset(0)] public IntPtr LogFileName;
+        [FieldOffset(8)] public IntPtr LoggerName;
+        [FieldOffset(28)] public uint ProcessTraceMode;
+        [FieldOffset(400)] public IntPtr BufferCallback;
+        [FieldOffset(424)] public IntPtr EventRecordCallback;
     }
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

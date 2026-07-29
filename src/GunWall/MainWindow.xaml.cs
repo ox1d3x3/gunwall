@@ -311,7 +311,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.96.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.96.1 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4019,7 +4019,7 @@ public partial class MainWindow : Window
             $"plaintextFallback={_dnsResolver.DohFallbackAllowed}, " +
             $"upstreamRefused={_dnsResolver.UpstreamRefused}");
         Services.DiagnosticLog.Log(
-            $"DNS observation: observer={( _dnsObserver.SessionActive ? "active" : "off")}, " +
+            $"DNS observation: observer={(_dnsObserver.SessionActive ? "active" : "off")}, " +
             $"events={_dnsObserver.EventsSeen}, answers={_dnsObserver.AnswersRecorded}, " +
             $"parseFailures={_dnsObserver.ParseFailures}, lastError=[{_dnsObserver.LastError}], " +
             $"knownNames={Services.DnsObservations.Count} " +

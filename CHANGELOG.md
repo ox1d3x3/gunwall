@@ -6,6 +6,20 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.96.1] — 2026-07-29
+
+### Fixed
+- **The application terminated shortly after launch.** Two mistakes in the new DNS observer's native structure declarations, both from describing a layout by hand instead of reusing the one already proven in the byte meter:
+  - `EVENT_TRACE_LOGFILEW` was declared sequentially with a guessed 208-byte gap for its two embedded structures. Those are 88 and 280 bytes, which places `EventRecordCallback` at offset 424; the hand-written version put it near 264. `OpenTrace` therefore read an arbitrary value as the callback address and `ProcessTrace` called into it, ending the process outright — with no managed exception and nothing in the log beyond a second startup line.
+  - `EVENT_RECORD` had `ProviderId` and `EventId` transposed, so even once the session ran, no event would ever have matched and nothing would have been recorded.
+  Both structures now use the explicit offsets shared with the byte meter, which is hardware-proven at over 110,000 events.
+- **A crash-loop guard.** A fault inside an ETW callback ends the process immediately, so an application that dies during startup can otherwise never be recovered from its own interface. A marker is now written before the session is touched and cleared once it has run without incident; a launch that finds the marker still present skips the observer and says so, rather than repeating the crash. Turning the setting off and on again is a genuine retry.
+
+### Added
+- Offset assertions for both native structures, derived from the documented field layouts and checked against what the code declares — so this class of mistake fails a test rather than a machine.
+
+---
+
 ## [0.96.0] — 2026-07-27
 
 ### Added
