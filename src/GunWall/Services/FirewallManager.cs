@@ -244,6 +244,16 @@ public sealed class FirewallManager : IDisposable
     public string DnsDohUrl => _data.DnsDohUrl ?? "";
     public bool DnsDohFallback => _data.DnsDohFallback;
     public bool DnsBlockCloakedCnames => _data.DnsBlockCloakedCnames;
+
+    public bool DnsObserveSystemLookups => _data.DnsObserveSystemLookups;
+    public void SetDnsObserveSystemLookups(bool on)
+    {
+        if (_data.DnsObserveSystemLookups == on) return;
+        _data.DnsObserveSystemLookups = on;
+        _store.Save(_data);
+        EventLog(on ? "Watching system DNS lookups (passive)"
+                    : "Stopped watching system DNS lookups");
+    }
     public void SaveDnsCloakConfig(bool enabled)
     {
         if (_data.DnsBlockCloakedCnames == enabled) return;

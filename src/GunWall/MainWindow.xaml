@@ -1011,6 +1011,11 @@
                                          VerticalContentAlignment="Center"
                                          ToolTip="Must be https://  e.g. https://dns.example/dns-query" />
                             </StackPanel>
+                            <CheckBox x:Name="DnsObserveCheck" Content="Watch system DNS lookups"
+                                      Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                      Margin="0,14,18,0" IsChecked="True"
+                                      Checked="DnsObserve_Changed" Unchecked="DnsObserve_Changed"
+                                      ToolTip="Passively watches the lookups this PC makes, so domain rules and 'block direct connections' know which name produced an address. Nothing is intercepted, redirected or answered - your DNS settings are never touched." />
                             <CheckBox x:Name="DnsCloakCheck" Content="Block CNAME-cloaked trackers"
                                       Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
                                       Margin="0,14,18,0" IsChecked="True"
@@ -1023,7 +1028,7 @@
                         <TextBlock x:Name="DnsResStatus" Style="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
                                    Text="Stopped. Start the resolver, then point a DNS query (or this PC's DNS) at 127.0.0.1 to use it." />
 
-                        <UniformGrid Rows="1" Columns="5" Margin="0,14,0,0">
+                        <UniformGrid Rows="1" Columns="6" Margin="0,14,0,0">
                             <StackPanel>
                                 <TextBlock x:Name="DnsStatQueries" Text="0" Style="{StaticResource H2}" />
                                 <TextBlock Text="Queries" Style="{StaticResource Muted}" />
@@ -1044,6 +1049,11 @@
                                 <TextBlock x:Name="DnsStatCloaked" Text="0" Style="{StaticResource H2}" />
                                 <TextBlock Text="Cloaked" Style="{StaticResource Muted}"
                                            ToolTip="Trackers caught hiding behind a clean-looking first-party name via CNAME aliasing." />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock x:Name="DnsStatObserved" Text="0" Style="{StaticResource H2}" />
+                                <TextBlock Text="Names known" Style="{StaticResource Muted}"
+                                           ToolTip="Addresses GunWall can attribute to a domain name. Domain rules and 'block direct connections' rely on this." />
                             </StackPanel>
                         </UniformGrid>
                     </StackPanel>
@@ -1934,6 +1944,7 @@
                             <TextBlock x:Name="HealthPipeline" Text="Monitoring: -" Margin="0,2,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthGeo" Text="GeoIP: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthDns" Text="DNS resolver: -" Margin="0,6,0,0" TextWrapping="Wrap" />
+                            <TextBlock x:Name="HealthDnsObserver" Text="DNS watch: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthVt" Text="VirusTotal: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthEtw" Text="ETW meter: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthRules" Text="Rules: -" Margin="0,6,0,0" TextWrapping="Wrap" />

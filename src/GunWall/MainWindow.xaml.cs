@@ -38,6 +38,7 @@ public partial class MainWindow : Window
 
     // §3 GunWall's own local DNS resolver (loopback only; never touches system DNS).
     private readonly DnsResolver _dnsResolver = new();
+    private readonly Services.DnsEventMonitorService _dnsObserver = new();
     private readonly ObservableCollection<DnsLogEntry> _dnsLog = new();
     private bool _dnsVisible;
     private const int MaxDnsLog = 500;
@@ -182,6 +183,7 @@ public partial class MainWindow : Window
             try { _dnsResolver.Stop(); } catch { }
             try { _usage.SaveTo(UsageHistoryPath); } catch { }
             try { _etwMeter?.Stop(); } catch { } // stop the OS-level ETW session
+            try { _dnsObserver.Stop(); } catch { }
             return; // genuine exit — let it close
         }
 
@@ -309,7 +311,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.95.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.96.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -841,6 +843,8 @@ public partial class MainWindow : Window
         DnsPortBox.Text = _firewall.DnsResolverPort.ToString();
         DnsUpstreamBox.Text = _firewall.DnsResolverUpstream;
         InitDnsDohCombo();
+        if (DnsObserveCheck != null) DnsObserveCheck.IsChecked = _firewall.DnsObserveSystemLookups;
+        StartOrStopDnsObserver();
         if (DnsCloakCheck != null) DnsCloakCheck.IsChecked = _firewall.DnsBlockCloakedCnames;
         DnsBlockBox.Text = string.Join(Environment.NewLine, _firewall.DnsResolverBlocklist);
         ApplyDnsBlocklists();            // preset file + manual lines
@@ -1003,6 +1007,39 @@ public partial class MainWindow : Window
         }));
     }
 
+    /// <summary>
+    /// Brings the passive DNS observer in line with the setting. Failure is not
+    /// fatal: domain rules and direct-connection detection simply fall back to
+    /// whatever GunWall's own resolver has seen, which is what they used before
+    /// this existed.
+    /// </summary>
+    private void StartOrStopDnsObserver()
+    {
+        try
+        {
+            if (_firewall.DnsObserveSystemLookups)
+            {
+                if (!_dnsObserver.SessionActive && !_dnsObserver.Start())
+                    Services.DiagnosticLog.Log(
+                        $"DNS observer could not start ({_dnsObserver.LastError}); domain rules will " +
+                        "only see lookups answered by GunWall's own resolver.");
+            }
+            else if (_dnsObserver.SessionActive)
+            {
+                _dnsObserver.Stop();
+            }
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("StartOrStopDnsObserver", ex); }
+    }
+
+    private void DnsObserve_Changed(object sender, RoutedEventArgs e)
+    {
+        if (DnsObserveCheck == null) return;
+        _firewall.SetDnsObserveSystemLookups(DnsObserveCheck.IsChecked == true);
+        StartOrStopDnsObserver();
+        UpdateDnsUi();
+    }
+
     /// <summary>Fills the Secure-DNS picker and restores the saved choice.</summary>
     private void InitDnsDohCombo()
     {
@@ -1086,6 +1123,8 @@ public partial class MainWindow : Window
         DnsStatCached.Text = _dnsResolver.Cached.ToString("N0");
         DnsStatBlocked.Text = _dnsResolver.Blocked.ToString("N0");
         if (DnsStatCloaked != null) DnsStatCloaked.Text = _dnsResolver.CloakedBlocked.ToString("N0");
+        if (DnsStatObserved != null)
+            DnsStatObserved.Text = Services.DnsObservations.Count.ToString("N0");
     }
 
     // ======================================================== rule profiles (§10)
@@ -1276,7 +1315,7 @@ public partial class MainWindow : Window
                                  (b[0] == 192 && b[1] == 168) ||
                                  (b[0] == 169 && b[1] == 254) || b[0] >= 224;
                 if (isPrivate) continue;
-                if (_dnsResolver.WasResolved(c.RemoteAddress)) continue;
+                if (Services.DnsObservations.WasResolved(c.RemoteAddress)) continue;
 
                 string dedupe = pi.Path + "|" + c.RemoteAddress;
                 if (!_p2pHandled.Add(dedupe)) continue;
@@ -1532,10 +1571,11 @@ public partial class MainWindow : Window
 
                 string scope = IpScopeClassifier.Classify(c.RemoteAddress);
                 string continent = c.Country.Length > 0 ? Services.GeoData.Continent(c.Country) : "";
-                // The connection carries only an address; the resolver knows what
-                // name produced it, which is what makes a domain rule enforceable.
-                string domain = _dnsResolver is { Running: true }
-                    ? _dnsResolver.DomainForIp(c.RemoteAddress) : "";
+                // The connection carries only an address. The shared observation
+                // memory knows the name it came from - whether GunWall's own
+                // resolver answered the lookup or the system observer merely
+                // watched it happen.
+                string domain = Services.DnsObservations.DomainForIp(c.RemoteAddress);
                 var facts = new ConnFacts(c.RemoteAddress, scope, c.Country, continent, c.Asn, domain);
 
                 if (AppRuleEngine.Evaluate(policy, facts) != RuleVerdict.Block) continue;
@@ -1962,6 +2002,12 @@ public partial class MainWindow : Window
                 ? $"GeoIP: local database \u00B7 {_firewall.GeoIpRangeCount:N0} ranges"
                 : "GeoIP: NO DATA \u2014 country, continent and ASN rules are inactive. "
                   + "Download the database in Security \u2192 GeoIP.";
+
+        HealthDnsObserver.Text = _dnsObserver.SessionActive
+            ? $"DNS watch: active \u00B7 {Services.DnsObservations.Count:N0} names known"
+            : Services.DnsObservations.Count > 0
+                ? $"DNS watch: off \u00B7 {Services.DnsObservations.Count:N0} names known from GunWall's resolver"
+                : "DNS watch: off \u2014 domain rules and 'block direct connections' have no data to match on.";
 
         HealthDns.Text = _dnsResolver.Running
             ? $"DNS resolver: listening on 127.0.0.1:{_dnsResolver.Port} \u00B7 {_dnsResolver.Total} queries, {_dnsResolver.Blocked} blocked"
@@ -3972,6 +4018,12 @@ public partial class MainWindow : Window
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
             $"plaintextFallback={_dnsResolver.DohFallbackAllowed}, " +
             $"upstreamRefused={_dnsResolver.UpstreamRefused}");
+        Services.DiagnosticLog.Log(
+            $"DNS observation: observer={( _dnsObserver.SessionActive ? "active" : "off")}, " +
+            $"events={_dnsObserver.EventsSeen}, answers={_dnsObserver.AnswersRecorded}, " +
+            $"parseFailures={_dnsObserver.ParseFailures}, lastError=[{_dnsObserver.LastError}], " +
+            $"knownNames={Services.DnsObservations.Count} " +
+            $"(resolver {Services.DnsObservations.RecordedByResolver}, observer {Services.DnsObservations.RecordedByObserver})");
         Services.DiagnosticLog.Log(
             $"DNS loopback path: listening=[{_dnsResolver.ListenerStatus}], " +
             $"receivedV4={_dnsResolver.ReceivedV4}, receivedV6={_dnsResolver.ReceivedV6}, " +

@@ -312,6 +312,10 @@ public sealed class StoreData
     /// <summary>§3b: check CNAME chains against the blocklist (default: on).</summary>
     public bool DnsBlockCloakedCnames { get; set; } = true;
 
+    /// <summary>Watch the Windows DNS client so domain rules and direct-connection
+    /// detection have data without redirecting this PC's DNS (default: on).</summary>
+    public bool DnsObserveSystemLookups { get; set; } = true;
+
     /// <summary>Alerts-page categories the user has silenced
     /// (security / protection / network / rules).</summary>
     public List<string> MutedAlertCategories { get; set; } = new();

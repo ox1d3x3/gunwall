@@ -6,6 +6,18 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.96.0] — 2026-07-27
+
+### Added
+- **Passive observation of the system's DNS lookups**, restoring what removing DNS redirection took away. Domain rules and the "block direct connections" scope both need to know which name produced an address; until now the only source was GunWall's own resolver, so both were blind unless something was pointed at it. GunWall now subscribes to the events the Windows DNS client already emits and reads the results. It claims nothing, rewrites nothing and answers nothing — so unlike redirection it cannot come into conflict with security software or a VPN over ownership of port 53, and it sees every lookup the machine makes rather than only those routed through GunWall.
+- A shared name-to-address memory that both the resolver and the observer write to, so the rule engine reads one source regardless of where a lookup was answered. IPv4-mapped IPv6 answers resolve to the same host, and aliases are deliberately never recorded as destinations.
+- A **Names known** counter in the DNS panel and a **DNS watch** line in App Health, both stating plainly when domain rules have no data to match on. Observer event, answer and parse-failure counts appear in the diagnostics export.
+
+### Changed
+- Domain rules and direct-connection detection no longer require GunWall's resolver to be running.
+
+---
+
 ## [0.95.1] — 2026-07-27
 
 ### Fixed

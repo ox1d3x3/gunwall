@@ -932,6 +932,9 @@ public sealed class DnsResolver : IDisposable
             // the most recent name, which is the one the app just asked for.
             foreach (uint ip in ips) _resolvedV4[ip] = name;
         }
+        // Also publish to the shared memory, so a lookup answered here counts
+        // the same as one merely observed - domain rules read one source.
+        DnsObservations.Record(name, ips, null, DnsObservations.Source.Resolver);
     }
 
     /// <summary>True if this resolver has ever answered with the given IPv4 -

@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.95.1. It
+This document describes how GunWall is **actually built** as of v0.96.0. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -78,6 +78,8 @@ service is tracked for 1.0.
 | `Services/GeoIpService.cs`, `GeoData.cs` | Country and ASN attribution, local database or self-hosted API. |
 | `Services/NetworkMonitor.cs`, `ConnectionService.cs` | Live connection tables and throughput. |
 | `Services/ServiceAttributionService.cs` | Maps process identifiers to the Windows services they host. |
+| `Services/DnsObservations.cs` | Shared name-to-address memory behind domain rules and direct-connection detection. |
+| `Services/DnsEventMonitorService.cs` | Passive ETW observer of the Windows DNS client; records answers without intercepting them. |
 | `Services/AppUsageService.cs`, `NetworkStatsService.cs` | Usage history and traffic attribution. |
 | `Services/RuleStore.cs` | JSON persistence of every rule and setting. |
 | `Services/DiagnosticLog.cs` | Always-on log with a deduplicating in-memory error buffer. |
