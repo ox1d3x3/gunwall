@@ -792,6 +792,9 @@ public sealed class FirewallManager : IDisposable
     /// Windows networking services are auto-allowed so DNS/DHCP keep working —
     /// without this, strict mode would appear to "break the internet".
     /// </summary>
+    /// <summary>Whether the WFP engine is open and usable.</summary>
+    public bool EngineStarted => EngineHandle != IntPtr.Zero;
+
     // ==================== tamper detection ====================
 
     /// <summary>Every filter id GunWall believes it has installed.</summary>

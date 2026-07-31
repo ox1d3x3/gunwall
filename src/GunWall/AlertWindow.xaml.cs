@@ -56,8 +56,10 @@ public partial class AlertWindow : Window
         PortText.Text = info.RemotePort == 0 ? "\u2014" : PortLabel(info.RemotePort);
         PathText.Text = info.ExePath;
         DateText.Text = info.Time.ToString("g");
-        SignatureText.Text = "Checking signature...";
+        SignatureText.Text = "Info";
+        SignatureText.ToolTip = "Checking the digital signature...";
         HostText.Text = "Resolving...";
+        UpdateSummary();
 
         // In Zero Trust (strict) mode the app is currently BLOCKED and stays
         // blocked unless approved; reflect that in the header.
@@ -78,12 +80,22 @@ public partial class AlertWindow : Window
         var ip = _info.RemoteAddress;
 
         var sig = await Task.Run(() => SignatureService.Verify(path));
+        // One word in the chip, the whole verdict on hover: the prompt has room
+        // for a label, not a sentence, and the sentence is what matters only
+        // once someone is actually weighing it up.
         SignatureText.Text = sig.Status switch
         {
-            SignatureStatus.Valid    => $"\u2713 Verified publisher: {sig.Signer}",
-            SignatureStatus.Unsigned => "\u26A0 Unsigned \u2014 no digital signature",
-            SignatureStatus.Invalid  => $"\u2717 INVALID signature \u2014 {sig.Detail}",
-            _                        => "Signature could not be checked"
+            SignatureStatus.Valid    => "Signed",
+            SignatureStatus.Unsigned => "Unsigned",
+            SignatureStatus.Invalid  => "Invalid",
+            _                        => "Info"
+        };
+        SignatureText.ToolTip = sig.Status switch
+        {
+            SignatureStatus.Valid    => $"Verified publisher: {sig.Signer}",
+            SignatureStatus.Unsigned => "No digital signature. Anyone could have produced this file.",
+            SignatureStatus.Invalid  => $"INVALID signature - {sig.Detail}",
+            _                        => "The digital signature could not be checked."
         };
         SignatureText.Foreground = new SolidColorBrush(sig.Status switch
         {
@@ -96,6 +108,7 @@ public partial class AlertWindow : Window
         if (string.IsNullOrEmpty(ip)) { HostText.Text = "\u2014"; return; }
         string host = await NetInfoService.ResolveHostAsync(ip);
         HostText.Text = string.IsNullOrEmpty(host) ? "\u2014" : host;
+        UpdateSummary();   // the name is better than the address, so re-state it
     }
 
     private static string PortLabel(int port) => port switch
@@ -143,6 +156,55 @@ public partial class AlertWindow : Window
     // decision, so the safe answer is deny. Closing by accident must never
     // grant network access.
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// Folds the endpoint detail out and back. The prompt opens compact
+    /// deliberately: it interrupts whatever the person was doing, so it should
+    /// ask one short question. Everything needed to answer it properly is one
+    /// click away rather than absent - and the countdown, if one is running, is
+    /// stopped on the way, since someone reading the detail is deciding rather
+    /// than ignoring it.
+    /// </summary>
+    private void Details_Click(object sender, RoutedEventArgs e)
+    {
+        if (DetailsPanel == null) return;
+        bool showing = DetailsPanel.Visibility == Visibility.Visible;
+
+        DetailsPanel.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
+        if (DetailsLabel != null) DetailsLabel.Text = showing ? "Details" : "Hide details";
+        if (DetailsChevron != null) DetailsChevron.Text = showing ? "\uE70D" : "\uE70E";
+        if (!showing)
+        {
+            StopCountdown();
+            if (CountdownHint != null)
+                CountdownHint.Text = "Waiting for your choice \u2014 closing this window blocks the app";
+        }
+        SizeToContent = SizeToContent.Height;
+    }
+
+    /// <summary>
+    /// Keeps the endpoint line reading as a destination rather than an address.
+    /// A hostname is something a person can recognise or distrust; a bare
+    /// address is not, so the name replaces it as soon as one resolves, with
+    /// the port appended because "which service" is part of the question.
+    /// </summary>
+    private void UpdateSummary()
+    {
+        if (HostText == null) return;
+        string host = HostText.Text ?? "";
+        if (host.Length == 0 || host == "\u2014" || host.StartsWith("Resolving"))
+        {
+            string addr = AddressText?.Text ?? "";
+            if (addr.Length > 0 && addr != "\u2014") host = addr;
+        }
+        if (host.Length == 0 || host == "\u2014") return;
+
+        string port = PortText?.Text ?? "";
+        int colon = port.IndexOf(' ');
+        if (colon > 0) port = port[..colon];          // "443 (HTTPS)" -> "443"
+        HostText.Text = port.Length > 0 && port != "\u2014" && !host.Contains(':')
+            ? $"{host}:{port}" : host;
+    }
 
     protected override void OnClosed(EventArgs e)
     {

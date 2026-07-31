@@ -313,7 +313,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.0 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.4 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2663,9 +2663,15 @@ public partial class MainWindow : Window
         {
             try
             {
-                _tray.BalloonTipTitle = "New network access";
-                _tray.BalloonTipText = $"{info.ProcessName} is trying to connect.";
-                _tray.ShowBalloonTip(3000);
+                // Name where it is going, not just that it is going somewhere:
+                // "trying to connect" tells the reader nothing they can judge.
+                string where = info.RemoteAddress ?? "";
+                if (info.RemotePort > 0 && where.Length > 0) where += ":" + info.RemotePort;
+                _tray.BalloonTipTitle = "First network activity";
+                _tray.BalloonTipText = where.Length > 0
+                    ? $"{info.ProcessName}  \u2192  {where}"
+                    : $"{info.ProcessName} is connecting for the first time.";
+                _tray.ShowBalloonTip(5000);
             }
             catch { }
         }

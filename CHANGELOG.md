@@ -6,6 +6,41 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.4] — 2026-08-01
+
+### Changed
+- **The connection prompt was rebuilt.** It had grown into a tall rounded card with a bright green primary button and five always-visible detail rows — the shape a dialog takes when nobody decides what it is for. It now asks one question in the space it needs: a ringed badge, a title, and two lines saying which application and where it is going, with the address, port, path and time behind **Details**.
+- **The two action buttons are deliberately identical in colour.** A green Allow beside a red Block turns a decision into a reflex, and the reflex people learn is to click the coloured one — which in a security prompt is the wrong lesson to teach. The labels carry the meaning, the icons separate them at a glance, and dismissing the window still blocks.
+- The corner radius, shadow and type scale were all pulled in. A window that interrupts someone unbidden should take as little room and attention as it can while still being answerable.
+- The signature verdict moved into a chip beside the application name — one word, with the full finding on hover. The endpoint line now shows the hostname in place of the address as soon as one resolves, with the port appended, since a name is something a person can recognise or distrust and an address is not.
+
+---
+
+## [0.99.3] — 2026-08-01
+
+### Changed
+- **The dark theme is now a lifted navy rather than a near-black.** The previous pass went too far toward black: a monitoring tool is read for long stretches, and a raised, distinctly blue base is easier to sit with while giving the status colours somewhere to sit without glowing. The map is deliberately inverted — its landmasses are lighter than the page — so geography reads as the subject rather than the background. The light theme was retuned to match, so switching changes the brightness and not the personality.
+- **The approval prompt opens compact.** It interrupts whatever the person was doing, so it now asks one short question — which application, connecting where — with **Details** revealing the address, host, port, path and time beneath it. Opening the details stops any countdown, on the reasoning that someone reading them is deciding rather than ignoring the prompt.
+- The Windows notification for first network activity now names the destination rather than saying only that something is connecting, which was not enough to judge anything by.
+
+---
+
+## [0.99.2] — 2026-08-01
+
+### Changed
+- **Visual refresh, and a palette that can actually be changed.** The neutral ramp now carries a faint cool cast rather than being pure grey — a small shift, but it is the difference between a dark interface that reads as a decision and one that reads as a default. Both themes were rebuilt around the same structure so switching changes the brightness, not the personality.
+- **The palette grew from 12 tokens to 28, matched across both themes.** Interaction states (hover, pressed, selected, focus ring), a third level of text emphasis, warning and information pills, chart and map surfaces, and four named data-series colours all have names now. Thirty colour values had been written directly into the window and controls, where no theme could reach them; fourteen are now tokens and the rest were already theme-invariant accents. The only literal colour left in the window is inside a sentence explaining hex codes to the user.
+- Every referenced token is verified to resolve, and both themes are checked to define the same set, so a control can no longer end up with no brush at runtime.
+
+---
+
+## [0.99.1] — 2026-07-31
+
+### Fixed
+- **The 0.99.0 source did not compile.** The tamper-detection code referred to an `EngineStarted` property that had never been written — the codebase expresses the same thing as `EngineHandle != IntPtr.Zero`. The property now exists and both call sites resolve. The reason this escaped the pre-release check is worth recording: the offline compile filtered `CS0103` (unknown name) everywhere, because WPF's generated field declarations produce that error for `MainWindow.xaml.cs` when compiling away from Windows. Outside XAML code-behind there are no generated fields, so `CS0103` there is always genuine. The check now scopes that suppression to `.xaml.cs` files only.
+
+---
+
 ## [0.99.0] — 2026-07-30
 
 ### Added

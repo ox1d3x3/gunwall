@@ -357,7 +357,7 @@
                                     SizeChanged="GraphCanvas_SizeChanged"
                                     MouseMove="GraphCanvas_MouseMove" MouseLeave="GraphCanvas_MouseLeave" />
                             <Canvas x:Name="GraphOverlay" IsHitTestVisible="False" ClipToBounds="True">
-                                <Rectangle x:Name="GraphCursorLine" Width="1" Fill="#55FFFFFF"
+                                <Rectangle x:Name="GraphCursorLine" Width="1" Fill="{DynamicResource GraphCursor}"
                                            Visibility="Collapsed" />
                                 <Border x:Name="GraphTooltip" Visibility="Collapsed" CornerRadius="6"
                                         Background="{DynamicResource BgElevated}"
@@ -415,13 +415,13 @@
                         </StackPanel>
                     </Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,12,0,0">
-                        <Ellipse Width="9" Height="9" Fill="#30D158" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse Width="9" Height="9" Fill="{DynamicResource Series1}" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Signed" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                        <Ellipse Width="9" Height="9" Fill="#FF9F0A" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse Width="9" Height="9" Fill="{DynamicResource Series2}" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Unsigned" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                        <Ellipse Width="9" Height="9" Fill="#0A84FF" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse Width="9" Height="9" Fill="{DynamicResource Series3}" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="System" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                        <Ellipse Width="9" Height="9" Fill="#FF453A" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse Width="9" Height="9" Fill="{DynamicResource Series4}" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Invalid sig" Style="{StaticResource Muted}" />
                     </StackPanel>
                 </StackPanel>
@@ -476,7 +476,7 @@
                                                     <Ellipse Fill="{Binding Name, Converter={StaticResource NameToBrush}}"
                                                              Visibility="{Binding Icon, Converter={StaticResource NullToVisible}}" />
                                                     <TextBlock Text="{Binding Name, Converter={StaticResource NameInitial}}"
-                                                               Foreground="#F2F4F6" FontSize="11" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextPrimary}" FontSize="11" FontWeight="SemiBold"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                                                Visibility="{Binding Icon, Converter={StaticResource NullToVisible}}" />
                                                     <Image Source="{Binding Icon}" Width="22" Height="22"
@@ -567,7 +567,7 @@
                                 <GridViewColumn Header="Activity" Width="106">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Polyline Points="{Binding Spark}" Stroke="#0A84FF"
+                                            <Polyline Points="{Binding Spark}" Stroke="{DynamicResource Series3}"
                                                       StrokeThickness="1.3" StrokeLineJoin="Round"
                                                       Width="90" Height="20" Stretch="None"
                                                       VerticalAlignment="Center"
@@ -785,7 +785,7 @@
                         <Viewbox Stretch="Uniform" MaxHeight="320" HorizontalAlignment="Stretch">
                             <Grid Width="1000" Height="500">
                                 <Path Data="{Binding Source={x:Static svc:WorldMapData.LandPathData}}"
-                                      Fill="#20272B" Stroke="#333A3F" StrokeThickness="0.4" />
+                                      Fill="{DynamicResource MapLand}" Stroke="{DynamicResource MapBorder}" StrokeThickness="0.4" />
                                 <Canvas x:Name="MapMarkers" Width="1000" Height="500" />
                             </Grid>
                         </Viewbox>
@@ -868,9 +868,9 @@
                                         MouseMove="UsageStrip_MouseMove"
                                         MouseLeftButtonUp="UsageStrip_MouseUp" />
                                 <Canvas x:Name="UsageStripOverlay" IsHitTestVisible="False" ClipToBounds="True">
-                                    <Rectangle x:Name="UsageSelRect" Fill="#2EFFFFFF" Visibility="Collapsed" />
-                                    <Rectangle x:Name="UsageSelHandleL" Width="2.5" Fill="#0A84FF" Visibility="Collapsed" />
-                                    <Rectangle x:Name="UsageSelHandleR" Width="2.5" Fill="#0A84FF" Visibility="Collapsed" />
+                                    <Rectangle x:Name="UsageSelRect" Fill="{DynamicResource SelectionFill}" Visibility="Collapsed" />
+                                    <Rectangle x:Name="UsageSelHandleL" Width="2.5" Fill="{DynamicResource Series3}" Visibility="Collapsed" />
+                                    <Rectangle x:Name="UsageSelHandleR" Width="2.5" Fill="{DynamicResource Series3}" Visibility="Collapsed" />
                                 </Canvas>
                             </Grid>
                         </Border>
@@ -922,7 +922,7 @@
                                                        Foreground="{DynamicResource TextPrimary}"
                                                        TextTrimming="CharacterEllipsis" />
                                         </DockPanel>
-                                        <Border Height="3" CornerRadius="1.5" Background="#0A84FF"
+                                        <Border Height="3" CornerRadius="1.5" Background="{DynamicResource Series3}"
                                                 Width="{Binding BarWidth}" HorizontalAlignment="Left"
                                                 Margin="0,3,0,0" />
                                     </StackPanel>
@@ -1226,7 +1226,7 @@
                                         <DataTemplate>
                                             <Border CornerRadius="9" Padding="9,2" HorizontalAlignment="Left"
                                                     Background="{Binding ActionBrush}">
-                                                <TextBlock Text="{Binding Action}" Foreground="#0E1117"
+                                                <TextBlock Text="{Binding Action}" Foreground="{DynamicResource TextOnAccent}"
                                                            FontSize="11" FontWeight="SemiBold" />
                                             </Border>
                                         </DataTemplate>
@@ -2111,7 +2111,7 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,7">
             <DockPanel LastChildFill="False">
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                    <Ellipse x:Name="FooterProtDot" Width="8" Height="8" Fill="#FF9F0A"
+                    <Ellipse x:Name="FooterProtDot" Width="8" Height="8" Fill="{DynamicResource Series2}"
                              VerticalAlignment="Center" Margin="0,0,7,0" />
                     <TextBlock x:Name="FooterProtText" Text="Starting..." FontSize="11.5"
                                Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"

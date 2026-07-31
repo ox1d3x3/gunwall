@@ -9,22 +9,79 @@
          referenced with DynamicResource so they update live on theme switch.
          The accent, status, and gradient brushes below are theme-INVARIANT —
          the same cyan/violet identity works on both black and white. -->
-    <Color x:Key="AccentColor">#23C05C</Color>
-    <Color x:Key="Accent2Color">#23C05C</Color>
+    <!-- The action accent. Green because in this application the affirmative
+         action is "allow", and the colour should agree with the verdict it
+         produces. Hover and pressed are steps of the same hue rather than
+         opacity changes, which stay legible on both themes. -->
+    <Color x:Key="AccentColor">#28C85F</Color>
+    <Color x:Key="Accent2Color">#28C85F</Color>
 
-    <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}" />
-    <SolidColorBrush x:Key="Accent2" Color="{StaticResource Accent2Color}" />
-    <SolidColorBrush x:Key="AllowBrush" Color="#30D158" />
+    <SolidColorBrush x:Key="Accent"         Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="Accent2"        Color="{StaticResource Accent2Color}" />
+    <SolidColorBrush x:Key="AccentHover"    Color="#33D86C" />
+    <SolidColorBrush x:Key="AccentPressed"  Color="#1DA94D" />
+
+    <SolidColorBrush x:Key="AllowBrush" Color="#34D164" />
     <SolidColorBrush x:Key="BlockBrush" Color="#FF453A" />
-    <SolidColorBrush x:Key="InboundBrush" Color="#3DA9FC" />
+    <SolidColorBrush x:Key="InboundBrush" Color="#4DA3FF" />
     <SolidColorBrush x:Key="OutboundBrush" Color="#E066A6" />
+
+    <!-- Data series. Charts and legend dots draw from these rather than
+         restating hex values, so the palette is one place and a series can be
+         retuned without hunting through the window. Ordered by how often a
+         reading eye meets them: allowed, warning, information, blocked. -->
+    <SolidColorBrush x:Key="Series1" Color="#34D164" />
+    <SolidColorBrush x:Key="Series2" Color="#FFB020" />
+    <SolidColorBrush x:Key="Series3" Color="#4DA3FF" />
+    <SolidColorBrush x:Key="Series4" Color="#FF453A" />
 
     <!-- Flat accent (kept as a 'gradient' key name for compatibility, but solid
          for a clean, professional, non-AI look). -->
     <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#23C05C" Offset="0" />
-        <GradientStop Color="#1B9E4B" Offset="1" />
+        <GradientStop Color="#28C85F" Offset="0" />
+        <GradientStop Color="#1DA94D" Offset="1" />
     </LinearGradientBrush>
+
+    <!-- Prompt buttons. Muted and identical to each other on purpose: an
+         interruption should not steer the answer, and a coloured button in a
+         security prompt trains people to click the colour rather than read the
+         label. Hover lifts slightly, pressed sinks. -->
+    <SolidColorBrush x:Key="PromptButtonBg"        Color="#7C8CA6" />
+    <SolidColorBrush x:Key="PromptButtonBgHover"   Color="#8B9BB4" />
+    <SolidColorBrush x:Key="PromptButtonBgPressed" Color="#6B7A93" />
+
+    <Style x:Key="PromptButton" TargetType="Button">
+        <Setter Property="Foreground" Value="#FFFFFF" />
+        <Setter Property="Background" Value="{StaticResource PromptButtonBg}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Height" Value="30" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                            CornerRadius="3" SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{StaticResource PromptButtonBgHover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{StaticResource PromptButtonBgPressed}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{StaticResource PromptButtonBgHover}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <!-- ======================= Base TextBlock ======================= -->
     <Style TargetType="TextBlock">

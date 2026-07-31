@@ -2,23 +2,58 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- ===== DARK THEME (AMOLED black) =====
-         True-black window with neutral, Apple-style lifted surfaces: near-black
-         cards, hairline separators, warm-white text and soft tinted status pills. -->
-    <SolidColorBrush x:Key="BgPrimary" Color="#0D0E0F" />
-    <SolidColorBrush x:Key="BgSecondary" Color="#141516" />
-    <SolidColorBrush x:Key="BgCard" Color="#1C1D1F" />
-    <SolidColorBrush x:Key="BgElevated" Color="#26282B" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#303336" />
-    <SolidColorBrush x:Key="TextPrimary" Color="#EDEEEF" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#96999E" />
+    <!-- ===== DARK THEME =====
+         A lifted navy-indigo rather than a near-black. The instinct with a dark
+         interface is to go as dark as possible, but a monitoring tool is read
+         for long stretches and a raised, distinctly blue base is easier to sit
+         with - it also gives the status colours somewhere to sit without
+         glowing. The map is the exception: its landmasses are deliberately
+         lighter than the page, so geography reads as the subject rather than
+         the background.
 
-    <!-- Soft status fills + foregrounds (pills) -->
-    <SolidColorBrush x:Key="AllowFill" Color="#0E2B19" />
-    <SolidColorBrush x:Key="AllowText" Color="#30D158" />
-    <SolidColorBrush x:Key="BlockFill" Color="#331A18" />
-    <SolidColorBrush x:Key="BlockText" Color="#FF6961" />
-    <SolidColorBrush x:Key="AccentSoft" Color="#12351F" />
+         The ramp is deliberately shallow: five surfaces from window to elevated
+         card, each a small step, so depth comes from hairline borders rather
+         than heavy contrast. -->
+
+    <!-- Surfaces, darkest to lightest -->
+    <SolidColorBrush x:Key="BgPrimary"     Color="#1A2032" />
+    <SolidColorBrush x:Key="BgSecondary"   Color="#1F2639" />
+    <SolidColorBrush x:Key="BgCard"        Color="#242C42" />
+    <SolidColorBrush x:Key="BgElevated"    Color="#2C3550" />
+
+    <!-- Lines. Border delineates, Divider only whispers. -->
+    <SolidColorBrush x:Key="BorderBrush"   Color="#39435F" />
+    <SolidColorBrush x:Key="Divider"       Color="#2A3249" />
+
+    <!-- Interaction states, so controls stop inventing their own -->
+    <SolidColorBrush x:Key="SurfaceHover"   Color="#2F3A56" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#222A3E" />
+    <SolidColorBrush x:Key="SurfaceSelected" Color="#33415F" />
+    <SolidColorBrush x:Key="FocusRing"      Color="#5B8DEF" />
+
+    <!-- Type: three weights of emphasis, cool-white so it agrees with the ramp -->
+    <SolidColorBrush x:Key="TextPrimary"   Color="#EAEEF6" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#9AA5BC" />
+    <SolidColorBrush x:Key="TextTertiary"  Color="#6B7691" />
+    <SolidColorBrush x:Key="TextOnAccent"  Color="#121A0B" />
+
+    <!-- Status pills: a dim tinted fill with a bright foreground reads clearly
+         at small sizes without shouting. -->
+    <SolidColorBrush x:Key="AllowFill" Color="#1E3325" />
+    <SolidColorBrush x:Key="AllowText" Color="#8FD14F" />
+    <SolidColorBrush x:Key="BlockFill" Color="#3A2226" />
+    <SolidColorBrush x:Key="BlockText" Color="#FF7B72" />
+    <SolidColorBrush x:Key="WarnFill"  Color="#3A2F1C" />
+    <SolidColorBrush x:Key="WarnText"  Color="#F2B23C" />
+    <SolidColorBrush x:Key="InfoFill"  Color="#22314F" />
+    <SolidColorBrush x:Key="InfoText"  Color="#6FA8FF" />
+    <SolidColorBrush x:Key="AccentSoft" Color="#22331F" />
+
+    <!-- Chart and map surfaces, which need to sit just off the card colour -->
+    <SolidColorBrush x:Key="GraphCursor"    Color="#66FFFFFF" />
+    <SolidColorBrush x:Key="SelectionFill"  Color="#385B8DEF" />
+    <SolidColorBrush x:Key="MapLand"        Color="#8E9BC4" />
+    <SolidColorBrush x:Key="MapBorder"      Color="#4A5578" />
 
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">True</sys:Boolean>
 </ResourceDictionary>
