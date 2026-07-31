@@ -33,6 +33,8 @@ internal static class WfpNative
     internal const uint FWP_V4_ADDR_MASK = 0x100;  // FWP_V4_ADDR_AND_MASK*
     internal const uint FWP_V6_ADDR_MASK = 0x101;  // FWP_V6_ADDR_AND_MASK*
     internal const uint FWP_BYTE_BLOB_TYPE = 12;
+    internal const uint FWP_SECURITY_DESCRIPTOR_TYPE = 14;   // verified against win32metadata
+    internal const uint SDDL_REVISION_1 = 1;
 
     // ----- Filter flags -----------------------------------------------------
     internal const uint FWPM_FILTER_FLAG_PERSISTENT = 0x00000001;
@@ -128,6 +130,11 @@ internal static class WfpNative
         new("3971ef2b-623e-4f9a-8cb1-6e79b806b9a7");
     // The SDK defines ICMP_TYPE as an alias of IP_LOCAL_PORT (and ICMP_CODE as
     // an alias of IP_REMOTE_PORT) - the ICMP layers reuse the port fields.
+    // Identity of the account a connection is made under. A service's token
+    // carries its own SID, so this is what tells one service apart from another
+    // inside a shared svchost.exe. Verified against win32metadata.
+    internal static readonly Guid FWPM_CONDITION_ALE_USER_ID =
+        new("af043a0a-b34d-4f86-979c-c90371af6e66");
     internal static readonly Guid FWPM_CONDITION_ICMP_TYPE =
         new("0c1ba1af-5765-453f-af22-a8f791ac775b");
     internal static readonly Guid FWPM_CONDITION_IP_REMOTE_PORT =
@@ -240,6 +247,15 @@ internal static class WfpNative
     //  Functions
     // =========================================================================
 
+    // Turns an SDDL string into the self-relative security descriptor WFP wants
+    // for an ALE_USER_ID condition. The buffer it returns is freed with LocalFree.
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        string sddl, uint revision, out IntPtr securityDescriptor, out uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern IntPtr LocalFree(IntPtr handle);
+
     [DllImport(FwpuclntDll, CharSet = CharSet.Unicode)]
     internal static extern uint FwpmEngineOpen0(
         string? serverName,
@@ -273,6 +289,17 @@ internal static class WfpNative
     internal static extern uint FwpmFilterDeleteById0(
         IntPtr engineHandle,
         ulong id);
+
+    /// Looks a filter up by id. Returns FWP_E_FILTER_NOT_FOUND (0x80320003)
+    /// when it no longer exists - which is how GunWall notices that something
+    /// outside it has removed one of its filters.
+    [DllImport(FwpuclntDll)]
+    internal static extern uint FwpmFilterGetById0(
+        IntPtr engineHandle,
+        ulong id,
+        out IntPtr filter);   // FWPM_FILTER0**
+
+    internal const uint FWP_E_FILTER_NOT_FOUND = 0x80320003;
 
     [DllImport(FwpuclntDll, CharSet = CharSet.Unicode)]
     internal static extern uint FwpmGetAppIdFromFileName0(

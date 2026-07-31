@@ -1396,6 +1396,17 @@
                                 <GridViewColumn Header="Service" Width="220" DisplayMemberBinding="{Binding Display}" />
                                 <GridViewColumn Header="Status" Width="90" DisplayMemberBinding="{Binding Status}" />
                                 <GridViewColumn Header="Name" Width="160" DisplayMemberBinding="{Binding Name}" />
+                                <GridViewColumn Header="Rule" Width="90"
+                                                DisplayMemberBinding="{Binding BlockedText}" />
+                                <GridViewColumn Header="" Width="130">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding ServiceActionText}" Style="{StaticResource ActionButton}"
+                                                    Click="BlockThisService_Click" Tag="{Binding Name}"
+                                                    ToolTip="Blocks just this service, even when it shares svchost.exe with others - so you can stop one without stopping the rest." />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="" Width="110">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
@@ -1764,6 +1775,10 @@
                             <CheckBox x:Name="StartMinimizedCheck" Content="Start minimized to tray"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <CheckBox x:Name="TamperWatchCheck" Content="Watch for tampering with the firewall's filters"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="Pref_Changed" Unchecked="Pref_Changed"
+                                      ToolTip="Every 30 seconds, confirms GunWall's filters are still installed in the kernel and re-applies any that were removed. It cannot stop a program with administrator rights from deleting them, but it makes doing so visible and short-lived." />
                             <CheckBox x:Name="TraySingleClickCheck" Content="Open GunWall with a single tray click (double-click always works)"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
@@ -1833,6 +1848,9 @@
                                 <Button Content="Verify kernel layers" Style="{StaticResource ActionButton}"
                                         Click="VerifyLayers_Click" Margin="8,0,0,0" Padding="10,3"
                                         ToolTip="Checks which Windows Filtering Platform layers this build of Windows accepts. Adds and immediately removes a harmless test filter on each - nothing is changed or left behind." />
+                                <Button Content="Check filter integrity" Style="{StaticResource ActionButton}"
+                                        Click="CheckIntegrity_Click" Margin="8,0,0,0" Padding="10,3"
+                                        ToolTip="Asks the kernel whether every filter GunWall installed is still there, and confirms GunWall can still remove its own filtering." />
                             </StackPanel>
                             <CheckBox x:Name="FullscreenSilentCheck" Content="Silence popups while a fullscreen app or game is running"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"

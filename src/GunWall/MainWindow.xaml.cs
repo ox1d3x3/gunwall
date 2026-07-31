@@ -224,6 +224,7 @@ public partial class MainWindow : Window
             _firewall.Initialize();
             _engineReady = true;
             _firewall.EnsureSelfConnectivity(); // GunWall must not block its own update/list/VT traffic
+            _firewall.ReapplyServiceBlocks();   // service rules survive an engine rebuild
             _firewall.LoadCategoryColors();      // apply any customised category dot colors
             _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
             _firewall.AutoBackupIfEnabled(); // snapshot the profile on launch (if enabled)
@@ -251,6 +252,7 @@ public partial class MainWindow : Window
             if (AlertCatNetworkCheck != null) AlertCatNetworkCheck.IsChecked = !muted.Contains("network");
             if (AlertCatRulesCheck != null) AlertCatRulesCheck.IsChecked = !muted.Contains("rules");
             if (TraySingleClickCheck != null) TraySingleClickCheck.IsChecked = _firewall.TraySingleClick;
+            if (TamperWatchCheck != null) TamperWatchCheck.IsChecked = _firewall.TamperWatchEnabled;
             if (UiZoomCombo != null)
                 UiZoomCombo.SelectedIndex = _firewall.UiZoomPercent switch
                 { 90 => 0, 100 => 1, 110 => 2, 125 => 3, _ => 1 };
@@ -311,7 +313,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.97.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.0 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -514,6 +516,7 @@ public partial class MainWindow : Window
             // footer's byte counts stay honest even if the timer drifts.
             EnforceP2pBlocks(snap.Conns, snap.Procs);
             EnforceBlockedDomains(snap.Conns);
+            TamperWatchTick();
             EnforceAccessPolicies(snap.Conns, snap.Procs);
 
             var nowUtc = DateTime.UtcNow;
@@ -1305,6 +1308,34 @@ public partial class MainWindow : Window
     /// is up - without it "never resolved" would accuse everything.
     /// </summary>
     private readonly HashSet<string> _domainBlocked = new(StringComparer.OrdinalIgnoreCase);
+
+    private int _tamperTick;
+    private const int TamperCheckEverySeconds = 30;
+
+    /// <summary>
+    /// Periodically confirms GunWall's filters are still installed, and puts
+    /// them back if not. Checking every tick would query the kernel once per
+    /// filter per second for no benefit; every half-minute catches tampering
+    /// while it still matters and costs nothing noticeable.
+    /// </summary>
+    private void TamperWatchTick()
+    {
+        try
+        {
+            if (!_firewall.TamperWatchEnabled) return;
+            if (++_tamperTick < TamperCheckEverySeconds) return;
+            _tamperTick = 0;
+
+            var report = _firewall.CheckIntegrity(repair: true);
+            if (report.Intact || report.Expected == 0) return;
+
+            Notify("warn", "Firewall filters were removed",
+                   $"{report.Missing} of {report.Expected} filters had been deleted from the kernel "
+                   + "by something outside GunWall. They have been re-applied. If this repeats, "
+                   + "another program is interfering with the firewall.", "security");
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("TamperWatchTick", ex); }
+    }
 
     /// <summary>
     /// Enforces the DNS blocklist against live connections.
@@ -3424,6 +3455,60 @@ public partial class MainWindow : Window
         catch (Exception ex) { Services.DiagnosticLog.LogException("DnsPathTest", ex); ShowError(ex); }
     }
 
+    /// <summary>
+    /// Reports whether GunWall's filters are still in the kernel, and whether
+    /// GunWall can still remove its own filtering. The second half matters as
+    /// much as the first: every safeguard here depends on that escape hatch
+    /// working, so it is proved rather than assumed.
+    /// </summary>
+    private void CheckIntegrity_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!RequireEngine()) return;
+
+            var report = _firewall.CheckIntegrity(repair: false);
+            bool recovery = _firewall.VerifyRecoveryPath(out string recoveryDetail);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(report.Expected == 0
+                ? "No filters are currently installed, so there is nothing to verify."
+                : report.Intact
+                    ? $"All {report.Expected} filters are present in the kernel."
+                    : $"{report.Missing} of {report.Expected} filters are MISSING - something outside "
+                      + "GunWall removed them.");
+            sb.AppendLine();
+            sb.AppendLine(recovery
+                ? $"Recovery path: working ({recoveryDetail})."
+                : $"Recovery path: FAILED - {recoveryDetail}. GunWall may not be able to remove its "
+                  + "own filtering; use Reset all filtering before relying on it.");
+            sb.AppendLine();
+            sb.AppendLine("Note: GunWall runs elevated as you, not as the system, so it cannot stop a "
+                        + "program with administrator rights from deleting these filters. What the "
+                        + "integrity watch does is notice when that happens and put them back.");
+
+            Services.DiagnosticLog.Log(
+                $"Manual integrity check: expected={report.Expected}, missing={report.Missing}, " +
+                $"recovery={(recovery ? "ok" : "FAILED")} [{recoveryDetail}]");
+
+            if (!report.Intact)
+            {
+                var fix = MessageBox.Show(sb + Environment.NewLine + "Re-apply the missing filters now?",
+                    "Filter integrity", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (fix == MessageBoxResult.Yes)
+                {
+                    var repaired = _firewall.CheckIntegrity(repair: true);
+                    MessageBox.Show(repaired.Detail, "Filter integrity",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                return;
+            }
+            MessageBox.Show(sb.ToString(), "Filter integrity", MessageBoxButton.OK,
+                recovery ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("CheckIntegrity", ex); ShowError(ex); }
+    }
+
     /// <summary>Runs the WFP layer self-test and shows the results. Confirms
     /// which kernel layers this Windows build accepts, so an unsupported (or
     /// mis-specified) layer is visible rather than silently doing nothing.</summary>
@@ -4113,6 +4198,14 @@ public partial class MainWindow : Window
             $"GeoIP: mode={(_firewall.GeoIpApiActive ? "api" : "local")}, " +
             $"ranges={_firewall.GeoIpRangeCount:N0}, active={_firewall.GeoIpActive}" +
             (_firewall.GeoIpActive ? "" : "  WARNING: no country/ASN data - those rules cannot match"));
+        var tamper = _firewall.CheckIntegrity(repair: false);
+        Services.DiagnosticLog.Log(
+            $"Filter integrity: watch={_firewall.TamperWatchEnabled}, " +
+            $"expected={tamper.Expected}, missing={tamper.Missing} ({tamper.Detail})");
+        Services.DiagnosticLog.Log(
+            $"Service rules: {_firewall.BlockedServiceNames.Count} blocked service(s)" +
+            (_firewall.BlockedServiceNames.Count > 0
+                ? " [" + string.Join(", ", _firewall.BlockedServiceNames) + "]" : ""));
         Services.DiagnosticLog.Log(
             $"Service attribution: {Services.ServiceAttributionService.HostingProcessCount} host process(es), " +
             $"{Services.ServiceAttributionService.MappedServiceCount} service(s) mapped, " +
@@ -4684,12 +4777,61 @@ public partial class MainWindow : Window
         try
         {
             _services.Clear();
-            foreach (var s in ServicesService.GetServices()) _services.Add(s);
+            foreach (var s in ServicesService.GetServices())
+            {
+                s.Blocked = _firewall.IsServiceBlocked(s.Name);
+                _services.Add(s);
+            }
         }
         catch (Exception ex) { ShowError(ex); }
     }
 
     private void RefreshServices_Click(object sender, RoutedEventArgs e) => LoadServices();
+
+    /// <summary>
+    /// Blocks or unblocks a single service by its own identity, rather than the
+    /// process hosting it. This is the difference between stopping telemetry and
+    /// stopping every service that happens to share the same svchost.exe.
+    /// </summary>
+    private void BlockThisService_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!RequireEngine()) return;
+            if (sender is not Button b || b.Tag is not string name || name.Length == 0) return;
+
+            bool nowBlocked = !_firewall.IsServiceBlocked(name);
+            if (nowBlocked)
+            {
+                var confirm = MessageBox.Show(
+                    $"Block network access for the service \"{name}\"?\n\n" +
+                    "Only this service is affected - others sharing the same process keep working. " +
+                    "Blocking a service Windows relies on (networking, updates, time) can have " +
+                    "side effects, and the rule persists until you remove it here.",
+                    "Block service", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                if (confirm != MessageBoxResult.OK) return;
+            }
+
+            if (!_firewall.SetServiceBlocked(name, nowBlocked))
+            {
+                MessageBox.Show(
+                    $"The rule for \"{name}\" could not be applied - this build of Windows did not accept " +
+                    "the filter. Nothing was changed; the diagnostics log has the detail.",
+                    "Block service", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            LoadServices();
+            Notify(nowBlocked ? "warn" : "info",
+                   nowBlocked ? $"Service blocked: {name}" : $"Service unblocked: {name}",
+                   nowBlocked
+                     ? $"{ServiceSidService.AccountNameFor(name)} can no longer reach the network. "
+                       + "Other services in the same process are unaffected."
+                     : $"{name} may reach the network again.",
+                   "rules");
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("BlockThisService", ex); ShowError(ex); }
+    }
 
     private void ServicesSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -5295,6 +5437,7 @@ public partial class MainWindow : Window
         _firewall.SetAlertCategoryMuted("network", AlertCatNetworkCheck?.IsChecked != true);
         _firewall.SetAlertCategoryMuted("rules", AlertCatRulesCheck?.IsChecked != true);
         _firewall.SetTraySingleClick(TraySingleClickCheck?.IsChecked == true);
+        _firewall.SetTamperWatch(TamperWatchCheck?.IsChecked == true);
         if (UiZoomCombo?.SelectedItem is ComboBoxItem uzi &&
             int.TryParse(uzi.Tag?.ToString(), out int uzv))
         {

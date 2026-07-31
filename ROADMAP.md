@@ -26,7 +26,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 
 ### Phase 1 — App model & visibility (safe, managed C#)
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
-- ☐ **Service & network-app categorization** — distinguish svchost-hosted network services and show the owning service per rule (beyond the current Services tab).
+- ✅ **Service & network-app categorization** *(v0.85.0, v0.98.0)* — connections name the hosted service, and services can be blocked individually by their own identity.
 - ☐ **Pico / subsystem process support** — identify WSL and other minimal-process traffic.
 - ✅ **App icons in the list** — each executable's icon is shown in the Application column.
 - ✅ **App properties dialog** — a per-app detail window (path, publisher, hash, signature, type/package, counts) with **Open file location**, **Copy path** and a notes field.
@@ -38,7 +38,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 ### Phase 2 — Notifications, blocklists & logging (safe)
 - ✅ **Fullscreen-silent mode** — approval popups are held back while a fullscreen app/game/presentation is foreground (detected via the OS notification-state signal), and appear once it ends.
 - ✅ **Confirmation prompts** — confirm-before-clearing the Activity / Packets logs, and an always-confirm-on-exit option (on top of the existing active-firewall exit warning).
-- ☐ **Notification exclusions** — independently silence notifications for classify-allow, custom-rule, stealth, and blocklist hits. *(GunWall currently raises a single new-app approval prompt, so this waits on having multiple notification categories to exclude.)*
+- ✅ **Notification exclusions** *(v0.81.0)* — alerts are categorised (security, protection changes, network, rules) and each category can be silenced independently. *(GunWall currently raises a single new-app approval prompt, so this waits on having multiple notification categories to exclude.)*
 - ☐ **3-level blocklist control** — allow / block / disable per category (adds an explicit allow/whitelist level over today's on/off), plus an **"extra" curated list** and **exclude-apps-from-blocklist**.
 - ✅ **Logging upgrades** *(complete)* — blocked/allowed events to the **Windows Event Log** (toggle), a configurable **log-size limit** (live-row cap + CSV rotation size), and a separate **error log viewer** with deduplicated entries (v0.81, v0.84).
 - ◐ **View & tray niceties** — ✅ autosize columns, **tray single-click**, and **UI size / zoom** (v0.81). Remaining: list view modes (details / icon / tile) and icon sizes.
@@ -48,7 +48,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
   - ✅ **Kernel layer self-test** (v0.82–v0.83) — probes every layer *and condition* the kernel accepts, using a permit filter at weight 0 that is non-persistent and deleted immediately. This surfaced three incorrect WFP identifiers that had been failing silently, including one that had disabled IPv4 stealth-mode ICMP suppression entirely.
   - Remaining: ALE_CONNECT_REDIRECT and the matching *_DISCARD* layers (v4/v6).
 - ☐ **Quick rule toggles** — one-tap *Allow Windows Update* and *Allow 6to4 / IPv6 transition*.
-- ☐ **Secure filters** — protect GunWall's sublayer/filters from tampering via a DACL. *Carries a lockout risk; needs a guaranteed recovery path before shipping.* The sublayer-delete-by-key removal path is now proven, which is a prerequisite.
+- ◐ **Filter tamper resistance** — ✅ detection and self-healing ship in v0.99.0. Remaining: true prevention via an access-control list, which needs the privilege split first (an elevated-user process cannot lock out other administrators without locking out itself). *Carries a lockout risk; needs a guaranteed recovery path before shipping.* The sublayer-delete-by-key removal path is now proven, which is a prerequisite.
 
 ### Phase 4 — Advanced / dangerous (opt-in, heavily warned, last)
 - ☐ **Boot-time filters** — enforce blocking during boot before GunWall starts. *Can break boot networking; must be reversible from Safe Mode.*

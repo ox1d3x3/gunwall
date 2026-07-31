@@ -303,6 +303,104 @@ public sealed class WfpEngine : IDisposable
         }
     }
 
+    // ==================== filter integrity ====================
+
+    /// <summary>How a set of expected filters compares with what the kernel holds.</summary>
+    public readonly record struct IntegrityReport(int Expected, int Present, int Missing)
+    {
+        public bool Intact => Missing == 0;
+        public string Summary => Expected == 0
+            ? "no filters to check"
+            : Intact ? $"{Present}/{Expected} filters present"
+                     : $"{Missing} of {Expected} filters MISSING";
+    }
+
+    /// <summary>
+    /// Asks the kernel whether each filter GunWall believes it installed is
+    /// still there.
+    ///
+    /// Nothing prevents a process with administrator rights from deleting these
+    /// - GunWall runs elevated as the user, not as the system, so any access
+    /// control strong enough to stop such a process would equally lock GunWall
+    /// out of its own objects. What this does instead is remove the silence:
+    /// filters that disappear are noticed, reported and put back, so tampering
+    /// costs an attacker a visible alert and a few seconds of effect rather
+    /// than the whole firewall.
+    /// </summary>
+    /// <summary>
+    /// Whether a lookup result means the filter is genuinely gone.
+    ///
+    /// Only the kernel saying "no such filter" counts. Any other error is a
+    /// failure on our side - a busy engine, a transient fault - and treating it
+    /// as removal would raise a tampering alarm at the first hiccup and then
+    /// rebuild filtering for no reason. The bias is deliberately toward missing
+    /// real tampering rather than inventing it.
+    /// </summary>
+    public static bool IndicatesRemoved(uint filterLookupResult) =>
+        filterLookupResult == FWP_E_FILTER_NOT_FOUND;
+
+    public IntegrityReport CheckFilters(IEnumerable<ulong> expected)
+    {
+        EnsureReady();
+        int total = 0, present = 0;
+        foreach (ulong id in expected)
+        {
+            if (id == 0) continue;
+            total++;
+            IntPtr p = IntPtr.Zero;
+            try
+            {
+                uint r = FwpmFilterGetById0(_engine, id, out p);
+                if (!IndicatesRemoved(r)) present++;
+            }
+            catch { present++; }   // our own failure is never evidence of tampering
+            finally { if (p != IntPtr.Zero) { try { FwpmFreeMemory0(ref p); } catch { } } }
+        }
+        return new IntegrityReport(total, present, total - present);
+    }
+
+    /// <summary>
+    /// Confirms GunWall can still remove its own filtering, which is the escape
+    /// hatch every other safeguard depends on. Adds a throwaway permit filter,
+    /// deletes it, and reports whether both halves worked - so the recovery path
+    /// is known to work rather than assumed.
+    /// </summary>
+    public bool VerifyRecoveryPath(out string detail)
+    {
+        detail = "";
+        try
+        {
+            EnsureReady();
+            var probe = new FWPM_FILTER0
+            {
+                layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4,
+                subLayerKey = SublayerKey,
+                flags = 0,                      // never persistent
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = 0 },
+                numFilterConditions = 0,
+                filterCondition = IntPtr.Zero,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_PERMIT },
+                displayData = new FWPM_DISPLAY_DATA0
+                { name = "GunWall recovery probe", description = "Temporary self-test filter" }
+            };
+            uint r = FwpmFilterAdd0(_engine, ref probe, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) { detail = $"could not add a filter (0x{r:X8})"; return false; }
+
+            uint d = FwpmFilterDeleteById0(_engine, id);
+            if (d != ERROR_SUCCESS) { detail = $"could not delete a filter (0x{d:X8})"; return false; }
+
+            IntPtr gone = IntPtr.Zero;
+            uint g = FwpmFilterGetById0(_engine, id, out gone);
+            if (gone != IntPtr.Zero) { try { FwpmFreeMemory0(ref gone); } catch { } }
+            if (g != FWP_E_FILTER_NOT_FOUND)
+            { detail = $"a deleted filter still resolves (0x{g:X8})"; return false; }
+
+            detail = "add, delete and confirm all succeeded";
+            return true;
+        }
+        catch (Exception ex) { detail = ex.Message; return false; }
+    }
+
     // ==================== §12: kernel layer self-test ====================
 
     /// <summary>Result of probing one WFP layer.</summary>
@@ -1250,6 +1348,94 @@ public sealed class WfpEngine : IDisposable
     /// enforcement therefore happens in the kernel, where it cannot be evaded
     /// by an application choosing its own resolver.
     /// </summary>
+    /// <summary>
+    /// Blocks one named Windows service, even when it shares a process with
+    /// others.
+    ///
+    /// A rule written against svchost.exe applies to every service inside it,
+    /// which is why blocking telemetry that way also stops Windows Update. The
+    /// ALE_USER_ID condition compares the connecting token against a security
+    /// descriptor naming just this service's SID, so only that service matches.
+    /// Both address families and both directions are covered.
+    /// </summary>
+    public List<ulong> AddServiceBlock(string serviceName)
+    {
+        var ids = new List<ulong>(4);
+        EnsureReady();
+
+        string sddl = GunWall.Services.ServiceSidService.SddlForServiceName(serviceName);
+        if (sddl.Length == 0) return ids;
+
+        if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1,
+                out IntPtr sd, out uint sdSize) || sd == IntPtr.Zero)
+        {
+            DiagnosticLogSafe($"Service block: could not build a descriptor for '{serviceName}' " +
+                              $"(err {Marshal.GetLastWin32Error()}).");
+            return ids;
+        }
+
+        try
+        {
+            foreach (var layer in new[]
+                     {
+                         FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWPM_LAYER_ALE_AUTH_CONNECT_V6,
+                         FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6
+                     })
+            {
+                Guid captured = layer;
+                TryAdd(ids, () => AddUserIdBlockFilter(captured, sd, sdSize,
+                                                       $"Service block: {serviceName}"));
+            }
+        }
+        finally { LocalFree(sd); }
+
+        if (ids.Count == 0)
+            DiagnosticLogSafe($"Service block: no filter was accepted for '{serviceName}'.");
+        return ids;
+    }
+
+    /// <summary>A block filter conditioned on the connecting account's identity.</summary>
+    private ulong AddUserIdBlockFilter(Guid layer, IntPtr sd, uint sdSize, string name)
+    {
+        var blob = new FWP_BYTE_BLOB { size = sdSize, data = sd };
+        int blobSize = Marshal.SizeOf<FWP_BYTE_BLOB>();
+        IntPtr blobPtr = Marshal.AllocHGlobal(blobSize);
+        int condSize = Marshal.SizeOf<FWPM_FILTER_CONDITION0>();
+        IntPtr condArr = Marshal.AllocHGlobal(condSize);
+        try
+        {
+            Marshal.StructureToPtr(blob, blobPtr, false);
+            var cond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_ALE_USER_ID,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0
+                { type = FWP_SECURITY_DESCRIPTOR_TYPE, value = (ulong)blobPtr.ToInt64() }
+            };
+            Marshal.StructureToPtr(cond, condArr, false);
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
+                numFilterConditions = 1,
+                filterCondition = condArr,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_BLOCK },
+                displayData = new FWPM_DISPLAY_DATA0 { name = name, description = name }
+            };
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(condArr);
+            Marshal.FreeHGlobal(blobPtr);
+        }
+    }
+
     public List<ulong> AddGlobalRemoteIpBlock(string ipv4, string reason)
     {
         var ids = new List<ulong>(1);

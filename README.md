@@ -8,7 +8,7 @@
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/NuGet%20dependencies-0-3FB868?style=flat-square)](#-privacy--security)
-[![Status](https://img.shields.io/badge/release-v0.97.1%20(beta)-E0A53F?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.99.0%20(beta)-E0A53F?style=flat-square)](#roadmap)
 
 *Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and no third-party dependencies.*
 
@@ -61,6 +61,7 @@ Test it in a safe environment first, and don't rely on it as your only defense o
 - **Live throughput graph** — smooth download / upload chart with hover readout and session totals, plus a persistent status bar showing rates, totals, protection state and metering mode.
 - **Connection inspector** — every live TCP connection and UDP socket (IPv4 + IPv6) with owning process, endpoints, state, country and ASN, with instant search. Right-click to close a connection, block the app, or terminate the process.
 - **Per-service attribution** — service hosts are named, so a connection reads `svchost (Windows Update)` instead of one of a dozen identical `svchost` rows. A rule you can't explain isn't really control.
+- **Per-service rules** — block one Windows service without touching the others sharing its process, so stopping telemetry doesn't also stop Windows Update.
 - **Packets Log** — a live, searchable, color-coded log of every connection event, with the **reason** for each verdict, exportable to CSV.
 - **Network scanner** — discover devices on your LAN (IP, MAC, host name).
 - **Notification center** — session alerts for protection changes, threats and network events, with an unread badge.
@@ -88,6 +89,7 @@ Test it in a safe environment first, and don't rely on it as your only defense o
 - **Versioned backups** — automatic and on-demand snapshots of all rules and settings, restorable in one click.
 - **Windows Firewall integration** — read its status, toggle it, and import its block rules.
 - **Kernel self-test** — verify which Windows Filtering Platform layers and conditions this build of Windows accepts. A test filter is added and immediately removed on each; nothing is changed or left behind.
+- **Tamper detection** — GunWall checks that its own filters are still installed and puts them back if something removes them, so interference is visible and short-lived rather than silent.
 - **Health & diagnostics** — an app-health panel, a session error log, and a one-click diagnostics export bundling config, logs and network state.
 - **Run at startup** — launch with Windows, elevated, without a UAC prompt, via a scheduled task.
 - **Close to tray** — closing minimizes to the tray; a true exit warns if filtering is still active.

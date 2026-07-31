@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.97.1. It
+This document describes how GunWall is **actually built** as of v0.99.0. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -78,6 +78,7 @@ service is tracked for 1.0.
 | `Services/GeoIpService.cs`, `GeoData.cs` | Country and ASN attribution, local database or self-hosted API. |
 | `Services/NetworkMonitor.cs`, `ConnectionService.cs` | Live connection tables and throughput. |
 | `Services/ServiceAttributionService.cs` | Maps process identifiers to the Windows services they host. |
+| `Services/ServiceSidService.cs` | Derives a service's own security identifier, so one service can be filtered inside a shared host. |
 | `Services/DnsObservations.cs` | Shared name-to-address memory behind domain rules and direct-connection detection. |
 | `Services/DnsEventMonitorService.cs` | Passive ETW observer of the Windows DNS client; records answers without intercepting them. |
 | `Services/AppUsageService.cs`, `NetworkStatsService.cs` | Usage history and traffic attribution. |
@@ -273,7 +274,10 @@ keeping with the zero-dependency rule.
 ## 10. What is intentionally not here yet
 
 - **No service or privilege split.** GunWall is one elevated process. A
-  compromise of the UI is a compromise of the firewall. Tracked for 1.0.
+  compromise of the UI is a compromise of the firewall, and it is also why the
+  filters cannot be protected from other administrator processes: any access
+  control strong enough to stop them would lock GunWall out too. Removal is
+  detected and undone instead (see §4). Tracked for 1.0.
 - **No code signing or installer.** Builds are unsigned, which is also why
   behavioural antivirus sometimes flags them.
 - **No kernel-mode callout driver.** Mature user-mode WFP firewalls do not use

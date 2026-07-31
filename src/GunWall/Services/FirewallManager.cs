@@ -245,6 +245,59 @@ public sealed class FirewallManager : IDisposable
     public bool DnsDohFallback => _data.DnsDohFallback;
     public bool DnsBlockCloakedCnames => _data.DnsBlockCloakedCnames;
 
+    // ---- per-service rules -------------------------------------------------
+    public IReadOnlyCollection<string> BlockedServiceNames => _data.BlockedServices.Keys;
+
+    public bool IsServiceBlocked(string serviceName) =>
+        !string.IsNullOrWhiteSpace(serviceName) && _data.BlockedServices.ContainsKey(serviceName);
+
+    /// <summary>
+    /// Blocks or unblocks one Windows service by name. Unlike a rule on the
+    /// executable, this separates services that share a host process.
+    /// </summary>
+    public bool SetServiceBlocked(string serviceName, bool blocked)
+    {
+        if (string.IsNullOrWhiteSpace(serviceName)) return false;
+
+        if (blocked)
+        {
+            if (_data.BlockedServices.ContainsKey(serviceName)) return true;
+            var ids = _engine.AddServiceBlock(serviceName);
+            if (ids.Count == 0)
+            {
+                EventLog($"Could not block service {serviceName} - no filter was accepted.");
+                return false;
+            }
+            _data.BlockedServices[serviceName] = ids;
+            _store.Save(_data);
+            EventLog($"Service blocked: {serviceName} ({ids.Count} filters)");
+            DiagnosticLog.Log($"Service block ON: {serviceName} -> {ids.Count} filter(s), " +
+                              $"sid={ServiceSidService.SidForServiceName(serviceName)}");
+            return true;
+        }
+
+        if (!_data.BlockedServices.TryGetValue(serviceName, out var existing)) return true;
+        try { _engine.RemoveFilters(existing); } catch { }
+        _data.BlockedServices.Remove(serviceName);
+        _store.Save(_data);
+        EventLog($"Service unblocked: {serviceName}");
+        DiagnosticLog.Log($"Service block OFF: {serviceName} -> {existing.Count} filter(s) removed.");
+        return true;
+    }
+
+    /// <summary>Re-asserts service blocks after the engine is rebuilt.</summary>
+    public void ReapplyServiceBlocks()
+    {
+        if (_data.BlockedServices.Count == 0) return;
+        foreach (var name in _data.BlockedServices.Keys.ToList())
+        {
+            var ids = _engine.AddServiceBlock(name);
+            if (ids.Count > 0) _data.BlockedServices[name] = ids;
+        }
+        _store.Save(_data);
+        DiagnosticLog.Log($"Re-applied {_data.BlockedServices.Count} service block(s).");
+    }
+
     public bool DnsObserveSystemLookups => _data.DnsObserveSystemLookups;
     public void SetDnsObserveSystemLookups(bool on)
     {
@@ -739,6 +792,119 @@ public sealed class FirewallManager : IDisposable
     /// Windows networking services are auto-allowed so DNS/DHCP keep working —
     /// without this, strict mode would appear to "break the internet".
     /// </summary>
+    // ==================== tamper detection ====================
+
+    /// <summary>Every filter id GunWall believes it has installed.</summary>
+    private IEnumerable<ulong> AllKnownFilterIds()
+    {
+        foreach (var id in _data.StrictFilterIds) yield return id;
+        foreach (var id in _data.SelfFilterIds) yield return id;
+        foreach (var id in _data.LockdownFilterIds) yield return id;
+        foreach (var id in _data.BlocklistFilterIds) yield return id;
+        foreach (var id in _data.EntityReactiveFilters) yield return id;
+        foreach (var r in _data.Rules)
+            foreach (var id in r.FilterIds) yield return id;
+        foreach (var d in new[] { _data.SystemRules, _data.ScopeFilters, _data.Blocklists,
+                                  _data.BlocklistWfpFilters, _data.BlockedServices })
+            foreach (var list in d.Values)
+                foreach (var id in list) yield return id;
+    }
+
+    /// <summary>Result of an integrity check, for the interface and the log.</summary>
+    public readonly record struct TamperReport(int Expected, int Missing, bool Repaired, string Detail)
+    {
+        public bool Intact => Missing == 0;
+    }
+
+    /// <summary>
+    /// Checks that GunWall's filters are still in the kernel, and puts back any
+    /// that are not.
+    ///
+    /// This is detection and repair, not prevention: a process with
+    /// administrator rights can remove these filters, and no access control
+    /// GunWall can apply would stop it while GunWall itself runs as an elevated
+    /// user rather than as the system. What changes is that removal is no
+    /// longer silent or lasting - it is noticed, reported and undone.
+    /// </summary>
+    public TamperReport CheckIntegrity(bool repair)
+    {
+        if (!EngineStarted) return new TamperReport(0, 0, false, "engine not running");
+        try
+        {
+            var report = _engine.CheckFilters(AllKnownFilterIds());
+            if (report.Intact || !repair)
+                return new TamperReport(report.Expected, report.Missing, false, report.Summary);
+
+            // Something removed filters behind our back. Rebuild from the saved
+            // rules rather than trying to patch individual ids: the stored ids
+            // are now stale, and a rebuild is the operation we already trust.
+            DiagnosticLog.Log($"FILTER TAMPERING DETECTED: {report.Missing} of {report.Expected} " +
+                              "filters are missing from the kernel. Re-applying.");
+            int restored = RepairFiltering();
+            return new TamperReport(report.Expected, report.Missing, true,
+                                    $"{report.Missing} filter(s) were missing; {restored} re-applied");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("CheckIntegrity", ex);
+            return new TamperReport(0, 0, false, ex.Message);
+        }
+    }
+
+    /// <summary>Re-installs filtering from the saved rules. Returns how many
+    /// filters were created.</summary>
+    public int RepairFiltering()
+    {
+        int made = 0;
+        try
+        {
+            if (_data.StrictMode)
+            {
+                _data.StrictFilterIds = _engine.EngageStrictMode();
+                made += _data.StrictFilterIds.Count;
+            }
+            _data.SelfFilterIds = _engine.PermitApplication(Environment.ProcessPath ?? "");
+            made += _data.SelfFilterIds.Count;
+
+            foreach (var rule in _data.Rules.Where(r => r.Status == AppStatus.Allowed))
+            {
+                try { rule.FilterIds = _engine.PermitApplication(rule.ExecutablePath); made += rule.FilterIds.Count; }
+                catch { }
+            }
+            foreach (var name in _data.BlockedServices.Keys.ToList())
+            {
+                var ids = _engine.AddServiceBlock(name);
+                if (ids.Count > 0) { _data.BlockedServices[name] = ids; made += ids.Count; }
+            }
+            if (_data.LockdownEngaged)
+            {
+                _data.LockdownFilterIds = _engine.EngageLockdown();
+                made += _data.LockdownFilterIds.Count;
+            }
+            _store.Save(_data);
+            DiagnosticLog.Log($"Filtering re-applied after tampering: {made} filter(s) installed.");
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("RepairFiltering", ex); }
+        return made;
+    }
+
+    /// <summary>Proves GunWall can still add and remove its own filters - the
+    /// escape hatch every other safeguard rests on.</summary>
+    public bool VerifyRecoveryPath(out string detail)
+    {
+        if (!EngineStarted) { detail = "engine not running"; return false; }
+        return _engine.VerifyRecoveryPath(out detail);
+    }
+
+    public bool TamperWatchEnabled => _data.TamperWatchEnabled;
+    public void SetTamperWatch(bool on)
+    {
+        if (_data.TamperWatchEnabled == on) return;
+        _data.TamperWatchEnabled = on;
+        _store.Save(_data);
+        EventLog(on ? "Filter integrity watch enabled" : "Filter integrity watch disabled");
+    }
+
     public void SetStrictMode(bool enabled)
     {
         if (enabled == _data.StrictMode) return;

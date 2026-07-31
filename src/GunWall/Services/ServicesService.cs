@@ -10,7 +10,17 @@ namespace GunWall.Services;
 /// </summary>
 public sealed class ServicesService
 {
-    public sealed record ServiceItem(string Name, string Display, string Status, string ExePath);
+    public sealed record ServiceItem(string Name, string Display, string Status, string ExePath)
+    {
+        /// <summary>Whether this individual service is blocked, independently of
+        /// the process hosting it. Set by the UI when the list is built.</summary>
+        public bool Blocked { get; set; }
+
+        public string BlockedText => Blocked ? "Blocked" : "";
+
+        /// <summary>Label for the per-service action button.</summary>
+        public string ServiceActionText => Blocked ? "Unblock service" : "Block service";
+    }
 
     /// <summary>Lists all services with their state (path resolved on demand).</summary>
     public static List<ServiceItem> GetServices()

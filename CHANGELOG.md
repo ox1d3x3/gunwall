@@ -6,6 +6,31 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.0] — 2026-07-30
+
+### Added
+- **Tamper detection and self-healing for the firewall's filters.** Every 30 seconds GunWall asks the kernel whether each filter it installed is still there, and re-applies any that are not — raising an alert naming how many were removed. A manual check is available in Settings → Diagnostics, which also proves the recovery path by adding and deleting a throwaway filter, so the escape hatch every other safeguard depends on is demonstrated rather than assumed.
+- Filter-integrity figures in the diagnostics export.
+
+### Note on scope
+The roadmap proposed protecting these objects with an access-control list. That was examined and deliberately not built: GunWall runs elevated as the user rather than as the system, so any descriptor restrictive enough to stop another administrator process would equally lock GunWall out of its own filters, with no way back. Genuine prevention needs the privilege split tracked for 1.0. What ships here is the part that can be done honestly — removal is no longer silent or lasting. A run of engine errors is deliberately never treated as tampering, so the watch cannot cry wolf and cannot trigger a needless rebuild.
+
+---
+
+## [0.98.0] — 2026-07-30
+
+### Added
+- **Per-service rules.** A rule written against an executable applies to everything inside it, and dozens of Windows services share a handful of `svchost.exe` processes — so blocking svchost to stop telemetry also stopped Windows Update, DHCP and time synchronisation. Services can now be blocked individually, by their own identity, from the Services page. Others in the same process are unaffected.
+  - Enforcement uses the `ALE_USER_ID` condition against a security descriptor naming the service's own SID, on outbound and inbound layers for both address families.
+  - The SID is derived from the service name exactly as Windows derives it — uppercase, UTF-16, SHA-1, read as five little-endian values — so it needs no privileges and no system call. It is checked in tests against Microsoft's published value for `TrustedInstaller`, because a wrong SID yields a filter that silently matches nothing rather than an error.
+  - Rules are stored by service name, so they survive the service moving between host processes, and are re-asserted when the engine is rebuilt.
+  - A rule that installs no filters is reported rather than recorded, so the interface never claims a block that does not exist.
+- The Services page shows which services are blocked, and blocked-service names appear in the diagnostics export.
+
+This completes what per-service attribution began in 0.85.0: that release made it possible to see which service was talking, this one makes it possible to do something about one without affecting the rest.
+
+---
+
 ## [0.97.1] — 2026-07-29
 
 ### Fixed

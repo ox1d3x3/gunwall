@@ -316,6 +316,15 @@ public sealed class StoreData
     /// detection have data without redirecting this PC's DNS (default: on).</summary>
     public bool DnsObserveSystemLookups { get; set; } = true;
 
+    /// <summary>Blocked Windows services, by service name, with the filter ids
+    /// each one installed. Keyed by name so a rule survives the service moving
+    /// between host processes.</summary>
+    public Dictionary<string, List<ulong>> BlockedServices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Periodically confirm GunWall's filters are still in the kernel,
+    /// and re-apply them if something removed them (default: on).</summary>
+    public bool TamperWatchEnabled { get; set; } = true;
+
     /// <summary>Alerts-page categories the user has silenced
     /// (security / protection / network / rules).</summary>
     public List<string> MutedAlertCategories { get; set; } = new();
