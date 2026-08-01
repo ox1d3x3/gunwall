@@ -95,7 +95,15 @@
          Applied to the content host, so switching pages animates without every
          control inside needing to know about it. -->
     <Style x:Key="PanelTransition" TargetType="ContentControl">
+        <!-- All setters first, then the trigger block. XAML will not accept a
+             property element sitting between two others (MC3088), which is what
+             an interleaved Style.Triggers produced here. -->
         <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+        <Setter Property="RenderTransform">
+            <Setter.Value>
+                <TranslateTransform />
+            </Setter.Value>
+        </Setter>
         <Style.Triggers>
             <EventTrigger RoutedEvent="Loaded">
                 <BeginStoryboard>
@@ -103,7 +111,7 @@
                         <DoubleAnimation Storyboard.TargetProperty="Opacity"
                                          From="0" To="1" Duration="0:0:0.22" />
                         <DoubleAnimation
-                            Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                            Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)"
                             From="20" To="0" Duration="0:0:0.22">
                             <DoubleAnimation.EasingFunction>
                                 <CubicEase EasingMode="EaseOut" />
@@ -113,11 +121,6 @@
                 </BeginStoryboard>
             </EventTrigger>
         </Style.Triggers>
-        <Setter Property="RenderTransform">
-            <Setter.Value>
-                <TranslateTransform />
-            </Setter.Value>
-        </Setter>
     </Style>
 
     <!-- The library styles ScrollBar, ScrollViewer and ToolTip implicitly, and

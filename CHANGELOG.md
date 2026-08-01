@@ -6,6 +6,13 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.12] — 2026-08-01
+
+### Fixed
+- **The panel transition style would not compile (MC3088).** Its `Style.Triggers` block sat between two `Setter` elements; XAML requires property elements before or after an element's content, never interleaved. Setters now come first and the trigger block last. Worth noting why the pre-release check missed it: the file is perfectly well-formed *XML*, so parsing it proved nothing about whether it is valid *XAML*. The verification now checks that ordering rule directly, across every style in the project.
+
+---
+
 ## [0.99.11] — 2026-08-01
 
 ### Changed
