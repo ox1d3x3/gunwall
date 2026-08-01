@@ -109,19 +109,32 @@
                                HorizontalAlignment="Center"
                                Foreground="{DynamicResource TextPrimary}" />
                 </StackPanel>
-                <Border DockPanel.Dock="Top" Margin="12,0,12,12" Padding="12,11" CornerRadius="8"
+                <!-- Protection state. The rail is 92 pixels wide, so a card with an
+                     icon and two lines of text beside it could only ever clip -
+                     which is what it was doing. It reads as a shield with a short
+                     word under it, and the full sentence is on hover, since the
+                     state itself is what needs to be glanceable, not the
+                     explanation of it. -->
+                <Border DockPanel.Dock="Top" Margin="8,0,8,10" Padding="0,8" CornerRadius="6"
                         Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1">
-                    <StackPanel Orientation="Horizontal">
+                    <Border.ToolTip>
+                        <ToolTip>
+                            <StackPanel>
+                                <TextBlock x:Name="SideStatusTitle" Text="Monitoring Only"
+                                           FontWeight="SemiBold" />
+                                <TextBlock x:Name="SideStatusSub" Text="Watching, not blocking"
+                                           Margin="0,2,0,0" />
+                            </StackPanel>
+                        </ToolTip>
+                    </Border.ToolTip>
+                    <StackPanel HorizontalAlignment="Center">
                         <TextBlock x:Name="SideStatusIcon" Text="&#xEA18;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20"
-                                   VerticalAlignment="Center" Margin="0,0,10,0" />
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock x:Name="SideStatusTitle" Text="Monitoring Only" FontSize="12.5"
-                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
-                            <TextBlock x:Name="SideStatusSub" Text="Watching, not blocking" FontSize="10"
-                                       Foreground="{DynamicResource TextSecondary}" Margin="0,1,0,0" />
-                        </StackPanel>
+                                   HorizontalAlignment="Center" />
+                        <TextBlock x:Name="SideStatusWord" Text="Watching" FontSize="10"
+                                   Margin="0,3,0,0" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondary}" />
                     </StackPanel>
                 </Border>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -193,8 +206,8 @@
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavAlerts" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Alerts">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Alert24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="Alert24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock x:Name="AlertsNavLabel" Style="{StaticResource SideNavLabel}" Text="Alerts" />
                             </StackPanel>
                         </RadioButton>
@@ -1432,6 +1445,40 @@
                 </StackPanel>
             </Grid>
 
+            <!-- ========== System rule library, same page ========== -->
+            <Grid x:Name="PanelSystem" Margin="0,28,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="System Rules" Style="{StaticResource H1}" />
+                        <TextBlock Text="A curated library of named firewall rules. Allow common services, or harden against risky traffic. Each applies immediately."
+                                   Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
+                        <TextBlock x:Name="WfpCoverageText" Style="{StaticResource Muted}" Margin="0,6,0,0"
+                                   HorizontalAlignment="Left" Text="" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <TextBox x:Name="SystemSearch" Width="190" Height="32" VerticalContentAlignment="Center"
+                                 ToolTip="Search rules" Margin="0,0,8,0" TextChanged="SystemSearch_TextChanged" />
+                        <Button Content="Secure baseline" Style="{StaticResource ActionButton}"
+                                Click="SecureBaseline_Click"
+                                ToolTip="Turn on a recommended set of hardening rules" />
+                    </StackPanel>
+                </Grid>
+                <StackPanel Grid.Row="1">
+                    <TextBlock Text="HARDEN AGAINST RISKY TRAFFIC" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+                    <StackPanel x:Name="SystemBlockList" Margin="0,0,0,8" />
+                    <TextBlock Text="ALLOW COMMON SERVICES" Style="{StaticResource SectionLabel}" Margin="0,8,0,8" />
+                    <TextBlock Text="These permit a service outbound. They matter most when you've blocked traffic by default (strict mode or block-all-inbound)."
+                               Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
+                    <StackPanel x:Name="SystemAllowList" />
+                </StackPanel>
+            </Grid>
+              </StackPanel>
+            </ScrollViewer>
+
             <!-- ========== Services ========== -->
             <Grid x:Name="PanelServices" Visibility="Collapsed">
                 <Grid.RowDefinitions>
@@ -1513,40 +1560,6 @@
                     </ListView>
                 </Border>
             </Grid>
-
-            <!-- ========== System rule library, same page ========== -->
-            <Grid x:Name="PanelSystem" Margin="0,28,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <Grid Grid.Row="0" Margin="0,0,0,12">
-                    <StackPanel>
-                        <TextBlock Text="System Rules" Style="{StaticResource H1}" />
-                        <TextBlock Text="A curated library of named firewall rules. Allow common services, or harden against risky traffic. Each applies immediately."
-                                   Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
-                        <TextBlock x:Name="WfpCoverageText" Style="{StaticResource Muted}" Margin="0,6,0,0"
-                                   HorizontalAlignment="Left" Text="" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
-                        <TextBox x:Name="SystemSearch" Width="190" Height="32" VerticalContentAlignment="Center"
-                                 ToolTip="Search rules" Margin="0,0,8,0" TextChanged="SystemSearch_TextChanged" />
-                        <Button Content="Secure baseline" Style="{StaticResource ActionButton}"
-                                Click="SecureBaseline_Click"
-                                ToolTip="Turn on a recommended set of hardening rules" />
-                    </StackPanel>
-                </Grid>
-                <StackPanel Grid.Row="1">
-                    <TextBlock Text="HARDEN AGAINST RISKY TRAFFIC" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
-                    <StackPanel x:Name="SystemBlockList" Margin="0,0,0,8" />
-                    <TextBlock Text="ALLOW COMMON SERVICES" Style="{StaticResource SectionLabel}" Margin="0,8,0,8" />
-                    <TextBlock Text="These permit a service outbound. They matter most when you've blocked traffic by default (strict mode or block-all-inbound)."
-                               Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
-                    <StackPanel x:Name="SystemAllowList" />
-                </StackPanel>
-            </Grid>
-              </StackPanel>
-            </ScrollViewer>
 
             <!-- ========== Security & Privacy ========== -->
             <Grid x:Name="PanelSecurity" Visibility="Collapsed">

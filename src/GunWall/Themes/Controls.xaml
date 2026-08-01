@@ -19,13 +19,13 @@
          notice, and neither is clearly either. Fluent separates them, and so do
          we now: blue carries interaction (selection, focus, the primary action),
          green and red stay reserved for what a firewall actually decides. -->
-    <Color x:Key="AccentColor">#4CA0FF</Color>
-    <Color x:Key="Accent2Color">#4CA0FF</Color>
+    <Color x:Key="AccentColor">#3A86E0</Color>
+    <Color x:Key="Accent2Color">#3A86E0</Color>
 
     <SolidColorBrush x:Key="Accent"         Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="Accent2"        Color="{StaticResource Accent2Color}" />
-    <SolidColorBrush x:Key="AccentHover"    Color="#6BB2FF" />
-    <SolidColorBrush x:Key="AccentPressed"  Color="#3A86E0" />
+    <SolidColorBrush x:Key="AccentHover"    Color="#4C97EE" />
+    <SolidColorBrush x:Key="AccentPressed"  Color="#2C6EBF" />
 
     <SolidColorBrush x:Key="AllowBrush" Color="#34D164" />
     <SolidColorBrush x:Key="BlockBrush" Color="#FF453A" />
@@ -44,8 +44,8 @@
     <!-- Flat accent (kept as a 'gradient' key name for compatibility, but solid
          for a clean, professional, non-AI look). -->
     <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#4CA0FF" Offset="0" />
-        <GradientStop Color="#3A86E0" Offset="1" />
+        <GradientStop Color="#3A86E0" Offset="0" />
+        <GradientStop Color="#2C6EBF" Offset="1" />
     </LinearGradientBrush>
 
     <!-- Prompt buttons. Muted and identical to each other on purpose: an

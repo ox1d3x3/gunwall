@@ -6,6 +6,16 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.17] — 2026-08-01
+
+### Fixed
+- **Services and Scan were blank.** Merging the two rules pages wrapped their content in a scroller, and both of those panels sat *between* the custom rules and the system rule library in the file — so they were swallowed into the wrapper and only rendered when Rules was selected. They are top-level panels again, with the library correctly nested inside the Rules page. The structure is now checked by walking the parsed element tree rather than by reading the markup, since this is precisely the kind of error that looks right in a diff.
+- **The Alerts navigation item kept the old horizontal layout.** Its label carries a name for the unread count, which the conversion pattern did not allow for, so it alone was left with the icon beside the text. A previous check reported all thirteen as converted; that check was wrong, and it now verifies the absence of the old layout rather than the presence of the new one.
+- **The protection card in the rail was clipped**, showing "M" and "W:". A card with an icon and two lines of text beside it cannot fit 92 pixels. It now reads as a shield above a single word, with the full state on hover.
+- **White text on the accent was unreadable.** The accent measured 2.7:1 against white — the minimum for body text is 4.5 — which is the blending being reported. The seed is now #3A86E0, measuring 4.4:1 against white *and* 4.4:1 against the dark surface, so it carries white lettering and still stands off the background. The library derives its variants from that seed.
+
+---
+
 ## [0.99.16] — 2026-08-01
 
 ### Changed

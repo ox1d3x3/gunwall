@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.16 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.17 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5570,7 +5570,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             : _firewall.LockdownEngaged ? "All traffic blocked"
             : _firewall.StrictMode ? "Zero-Trust active"
             : "Watching, not blocking";
+        // One word for the rail, because 92 pixels is one word wide. The full
+        // title and sentence still exist - they are the tooltip.
+        string sideWord = !_engineReady ? "No admin"
+            : _firewall.IsSnoozed ? "Paused"
+            : _firewall.LockdownEngaged ? "Lockdown"
+            : _firewall.StrictMode ? "Protected"
+            : "Watching";
         if (SideStatusIcon != null) SideStatusIcon.Foreground = fill;
+        if (SideStatusWord != null)
+        {
+            SideStatusWord.Text = sideWord;
+            SideStatusWord.Foreground = fill;
+        }
         if (SideStatusTitle != null) SideStatusTitle.Text = title;
         if (SideStatusSub != null) SideStatusSub.Text = sideSub;
 
@@ -5770,7 +5782,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
             // GunWall's accent, seeded once so both themes derive from the same
             // hue rather than drifting apart.
-            var seed = System.Windows.Media.Color.FromRgb(0x4C, 0xA0, 0xFF);
+            // #4CA0FF measured 2.7:1 against white text - well under the 4.5 needed to
+            // read - which is why white on the accent looked washed into it. This
+            // seed measures 4.4:1 against white and 4.4:1 against the dark surface,
+            // so it carries white lettering AND stands off the background. The
+            // library derives its lighter and darker variants from here.
+            var seed = System.Windows.Media.Color.FromRgb(0x3A, 0x86, 0xE0);
             Wpf.Ui.Appearance.ApplicationAccentColorManager.Apply(seed, theme);
 
             // Mica is the translucent window material Windows 11 uses. It is
