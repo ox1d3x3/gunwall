@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.23 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.24 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5326,21 +5326,34 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// you allow. This is the same protective engine the Settings mode selects,
     /// surfaced as a one-click button.
     /// </summary>
-    private void EnableFirewall_Click(object sender, RoutedEventArgs e)
+    private async void EnableFirewall_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireEngine()) return;
         bool turningOn = !_firewall.StrictMode;
 
         if (turningOn)
         {
-            var answer = MessageBox.Show(
-                "Enable Firewall takes full control of your network.\n\n" +
-                "Every app will be blocked except the ones you allow. Core Windows " +
-                "networking (DNS / DHCP) and loopback stay on automatically, but other " +
-                "apps - including your browser - will need an Allow (you'll get a popup, " +
-                "or use the Firewall tab).\n\nEnable now?",
-                "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (answer != MessageBoxResult.Yes) return;
+            // The library's dialog rather than the system one: a Win32 message
+            // box in the middle of a Fluent window is the most jarring thing
+            // left in this application, and this is the dialog people see at the
+            // single most important moment.
+            var confirm = new Wpf.Ui.Controls.MessageBox
+            {
+                Title = "Enable protection",
+                Content =
+                    "GunWall will take full control of this PC's network.\n\n" +
+                    "Every application is blocked until you allow it. Core Windows " +
+                    "networking - DNS, DHCP and loopback - stays on automatically, but " +
+                    "everything else, including your browser, will need an Allow. You " +
+                    "will be prompted as each one asks, or you can decide in advance " +
+                    "on the Apps page.",
+                PrimaryButtonText = "Enable protection",
+                CloseButtonText = "Cancel",
+                PrimaryButtonAppearance = Wpf.Ui.Controls.ControlAppearance.Primary,
+                Owner = this
+            };
+            var answer = await confirm.ShowDialogAsync();
+            if (answer != Wpf.Ui.Controls.MessageBoxResult.Primary) return;
         }
 
         try

@@ -6,6 +6,17 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.24] — 2026-08-02
+
+### Changed
+- **The enable-protection confirmation is a Fluent dialog.** It was a Win32 message box — the most jarring thing left in the application, and it appeared at the single most important moment. Its wording was rewritten too: it now says what will happen rather than warning about it, and offers the Apps page as an alternative to answering prompts one at a time.
+- **The prompt's badge is one mark instead of two.** A pin outline with a green "NEW" pill hung off its corner had the two shapes competing for the same space, and at that size the pill read as a stray dot rather than a label. It is a single tinted circle with the shield inside. The word itself is gone: the title already says this is first network access, so the badge was repeating it somewhere too small to read.
+
+### Fixed
+- **The rule dropdowns still clipped.** Widening them by guesswork was not enough, so the library's own measurements were read instead: its `ComboBox` spends about 49 pixels on chrome before any text — 10 and 10 of padding, 8 and 10 of chevron margin, and an 11-pixel chevron. The widths budget for that now rather than for the text alone.
+
+---
+
 ## [0.99.23] — 2026-08-02
 
 ### Fixed

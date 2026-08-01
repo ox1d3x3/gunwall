@@ -1345,21 +1345,21 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Action" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="RuleAction" MinWidth="96" Height="32">
+                                <ComboBox x:Name="RuleAction" MinWidth="106" Height="32">
                                     <ComboBoxItem Content="Block" IsSelected="True" />
                                     <ComboBoxItem Content="Allow" />
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Direction" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="RuleDirection" MinWidth="118" Height="32">
+                                <ComboBox x:Name="RuleDirection" MinWidth="132" Height="32">
                                     <ComboBoxItem Content="Outbound" IsSelected="True" />
                                     <ComboBoxItem Content="Inbound" />
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Protocol" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="RuleProtocol" MinWidth="92" Height="32">
+                                <ComboBox x:Name="RuleProtocol" MinWidth="104" Height="32">
                                     <ComboBoxItem Content="Any" IsSelected="True" />
                                     <ComboBoxItem Content="TCP" />
                                     <ComboBoxItem Content="UDP" />
