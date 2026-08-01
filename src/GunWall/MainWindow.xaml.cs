@@ -17,7 +17,7 @@ using GunWall.Services.Wfp;
 
 namespace GunWall;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly FirewallManager _firewall = new();
     private readonly NetworkMonitor _monitor = new();
@@ -313,7 +313,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.13 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.14 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5893,6 +5893,13 @@ public partial class MainWindow : Window
 
     private void TryEnableDarkTitleBar() => TrySetTitleBarTheme(true);
 
+    /// <summary>
+    /// Kept, but now only for the system's own frame - the shadow, the border
+    /// and the taskbar preview - since the caption itself is drawn by the
+    /// application. Telling the system its caption is dark while the window no
+    /// longer has one is harmless, and it stays because the value still
+    /// influences how the frame is composited around a light or dark window.
+    /// </summary>
     private void TrySetTitleBarTheme(bool dark)
     {
         try
@@ -5905,7 +5912,7 @@ public partial class MainWindow : Window
         }
         catch
         {
-            Debug.WriteLine("Title bar theme not supported on this build.");
+            Debug.WriteLine("Frame theme hint not supported on this build.");
         }
     }
 }

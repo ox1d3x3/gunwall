@@ -1,4 +1,4 @@
-<Window
+<ui:FluentWindow
     x:Class="GunWall.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -9,9 +9,23 @@
     Height="760" Width="1180"
     MinHeight="640" MinWidth="1000"
     WindowStartupLocation="CenterScreen"
-    Background="{DynamicResource BgPrimary}">
+    ExtendsContentIntoTitleBar="True"
+    WindowBackdropType="Mica"
+    WindowCornerPreference="Round"
+    ui:Design.Background="{DynamicResource BgPrimary}">
+    <!-- No runtime Background is set on purpose.
 
-    <Window.Resources>
+         The library clears it to Transparent before applying a backdrop, but it
+         does so with SetCurrentValue, which a locally set Background outranks -
+         so setting one here silently prevents Mica from ever appearing. Their
+         own source says it plainly: backdrop effects are not applied when the
+         window has an opaque background.
+
+         ui:Design.Background above is design-time only, so the Visual Studio
+         designer still shows a surface instead of a void, exactly as the
+         library's own gallery does it. -->
+
+    <ui:FluentWindow.Resources>
         <conv:StatusToBrushConverter x:Key="StatusToBrush" />
         <conv:StatusToFillConverter x:Key="StatusToFill" />
         <conv:StatusToActionTextConverter x:Key="StatusToAction" />
@@ -37,9 +51,29 @@
             <Setter Property="Width" Value="220" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
-    </Window.Resources>
+    </ui:FluentWindow.Resources>
 
-    <Grid x:Name="RootGrid">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- the app-drawn title bar -->
+            <RowDefinition Height="*" />      <!-- everything else          -->
+        </Grid.RowDefinitions>
+
+        <!-- With ExtendsContentIntoTitleBar the window no longer draws its own
+             caption, so the application supplies one. This is what lets the
+             backdrop run to the top edge instead of stopping under a strip of
+             system chrome, and it is the single most visible difference between
+             a Fluent window and a stock one.
+
+             It carries the same shield mark used in the navigation pane, so the
+             identity reads in the taskbar preview and the Alt-Tab card too. -->
+        <ui:TitleBar Grid.Row="0" Title="GunWall" ShowMaximize="True" ShowMinimize="True">
+            <ui:TitleBar.Icon>
+                <ui:SymbolIcon Symbol="ShieldTask24" />
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
+
+        <Grid x:Name="RootGrid" Grid.Row="1">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -2168,5 +2202,6 @@
                 </StackPanel>
             </DockPanel>
         </Border>
+        </Grid>
     </Grid>
-</Window>
+</ui:FluentWindow>
