@@ -6,6 +6,16 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.20] — 2026-08-02
+
+### Changed
+- **Every switch in the application is now the library's own.** The four remaining hand-templated toggles — the theme switch and the ones built in code for blocklists and system rules — are `ToggleSwitch` controls. It derives from `ToggleButton`, so `IsChecked`, `Click` and `Tag` carried over untouched, and the knob animation and focus states come with it. A hand-drawn imitation of a control the library already provides has no upside; it can only drift away from the thing it imitates.
+
+### Removed
+- Six dead styles: `SlideToggle` and `ThemeSwitch` (superseded above), `SideNavIcon` (left behind when the rail moved to Fluent icons), and `TabButton`/`TabIcon`/`TabLabel` from a tab strip this window no longer has. The style dictionary is down from seventeen to eleven, none unused. Dead styles are not harmless — they get maintained, copied and reasoned about as though they were live, and this set was found by a check for definitions nothing references rather than by reading.
+
+---
+
 ## [0.99.19] — 2026-08-01
 
 ### Added

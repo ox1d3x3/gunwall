@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.19 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.20 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4486,9 +4486,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         left.Children.Add(desc);
         DockPanel.SetDock(left, Dock.Left);
 
-        var toggle = new CheckBox
+        // The library's switch rather than a hand-templated CheckBox: it derives
+        // from ToggleButton, so IsChecked, Click and Tag carry over unchanged,
+        // and it brings the knob animation and the states Windows users know.
+        var toggle = new Wpf.Ui.Controls.ToggleSwitch
         {
-            Style = (Style)FindResource("SlideToggle"),
             VerticalAlignment = VerticalAlignment.Center,
             Tag = cat.Key,
             IsChecked = on
@@ -4632,9 +4634,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         left.Children.Add(desc);
         DockPanel.SetDock(left, Dock.Left);
 
-        var toggle = new CheckBox
+        // The library's switch rather than a hand-templated CheckBox: it derives
+        // from ToggleButton, so IsChecked, Click and Tag carry over unchanged,
+        // and it brings the knob animation and the states Windows users know.
+        var toggle = new Wpf.Ui.Controls.ToggleSwitch
         {
-            Style = (Style)FindResource("SlideToggle"),
             VerticalAlignment = VerticalAlignment.Center,
             Tag = preset.Key,
             IsChecked = _firewall.IsSystemRuleOn(preset.Key)

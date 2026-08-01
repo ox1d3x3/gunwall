@@ -102,6 +102,12 @@
          controls beside it are drawn from the same values. Verified against
          Wpf.Ui/Controls/ListView and Resources/Variables.xaml. -->
 
+    <!-- Removed as dead: SideNavIcon (superseded when the rail moved to Fluent
+         SymbolIcons) and the TabButton/TabIcon/TabLabel trio (from a tab strip
+         this window no longer has). Styles that nothing references are not
+         harmless - they get maintained, copied and reasoned about as if they
+         were live. -->
+
     <!-- ======================= Base TextBlock ======================= -->
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
@@ -203,170 +209,27 @@
     <!-- A CheckBox rendered as an animated pill switch: gray when off, green
          when on, with a thumb that slides across. IsChecked / Click behave
          exactly like a normal CheckBox. -->
-    <Style x:Key="SlideToggle" TargetType="CheckBox">
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Width" Value="46" />
-        <Setter Property="Height" Value="24" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="CheckBox">
-                    <Border x:Name="track" CornerRadius="12"
-                            Background="{DynamicResource BgElevated}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                        <Border x:Name="thumb" Width="18" Height="18" CornerRadius="8"
-                                Background="{DynamicResource TextSecondary}"
-                                HorizontalAlignment="Left" VerticalAlignment="Center" Margin="2,0,0,0">
-                            <Border.RenderTransform>
-                                <TranslateTransform x:Name="thumbShift" X="0" />
-                            </Border.RenderTransform>
-                        </Border>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="track" Property="Background" Value="{StaticResource AllowBrush}" />
-                            <Setter TargetName="track" Property="BorderBrush" Value="{StaticResource AllowBrush}" />
-                            <Setter TargetName="thumb" Property="Background" Value="#FFFFFF" />
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="thumbShift"
-                                                         Storyboard.TargetProperty="X"
-                                                         To="22" Duration="0:0:0.16">
-                                            <DoubleAnimation.EasingFunction>
-                                                <CubicEase EasingMode="EaseInOut" />
-                                            </DoubleAnimation.EasingFunction>
-                                        </DoubleAnimation>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                            <Trigger.ExitActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="thumbShift"
-                                                         Storyboard.TargetProperty="X"
-                                                         To="0" Duration="0:0:0.16">
-                                            <DoubleAnimation.EasingFunction>
-                                                <CubicEase EasingMode="EaseInOut" />
-                                            </DoubleAnimation.EasingFunction>
-                                        </DoubleAnimation>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.ExitActions>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
+    <!-- SlideToggle removed: every switch in this application is now the
+         library's ToggleSwitch, so a hand-templated CheckBox pretending to be
+         one served no purpose except to drift away from it. -->
+
 
     <!-- ===================== Animated theme switch ===================== -->
     <!-- A pill toggle with a thumb that slides between the two ends, animated.
          Checked = light theme, Unchecked = dark theme. Sun/moon glyphs sit on
          each end so the meaning is clear in both states. -->
-    <Style x:Key="ThemeSwitch" TargetType="ToggleButton">
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Width" Value="58" />
-        <Setter Property="Height" Value="30" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="track" CornerRadius="12"
-                            Background="{DynamicResource BgElevated}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                        <Grid>
-                            <TextBlock Text="&#x263E;" FontSize="13" Foreground="{DynamicResource TextSecondary}"
-                                       HorizontalAlignment="Left" VerticalAlignment="Center" Margin="9,0,0,0" />
-                            <TextBlock Text="&#x2600;" FontSize="13" Foreground="{DynamicResource TextSecondary}"
-                                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0" />
-                            <Border x:Name="thumb" Width="24" Height="24" CornerRadius="12"
-                                    Background="{StaticResource AccentGradient}"
-                                    HorizontalAlignment="Left" VerticalAlignment="Center" Margin="3,0,0,0">
-                                <Border.RenderTransform>
-                                    <TranslateTransform x:Name="thumbShift" X="0" />
-                                </Border.RenderTransform>
-                            </Border>
-                        </Grid>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="thumbShift"
-                                                         Storyboard.TargetProperty="X"
-                                                         To="28" Duration="0:0:0.18">
-                                            <DoubleAnimation.EasingFunction>
-                                                <CubicEase EasingMode="EaseInOut" />
-                                            </DoubleAnimation.EasingFunction>
-                                        </DoubleAnimation>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                            <Trigger.ExitActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="thumbShift"
-                                                         Storyboard.TargetProperty="X"
-                                                         To="0" Duration="0:0:0.18">
-                                            <DoubleAnimation.EasingFunction>
-                                                <CubicEase EasingMode="EaseInOut" />
-                                            </DoubleAnimation.EasingFunction>
-                                        </DoubleAnimation>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.ExitActions>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
+    <!-- ThemeSwitch removed for the same reason as SlideToggle: the theme
+         control is now the library's ToggleSwitch, like every other switch. -->
+
 
     <!-- ======================= Top tab button =======================
          Modern style: a Segoe icon glyph above the label, with a soft
          rounded tinted highlight on the active tab (no underline). The icon
          glyph is supplied per-tab via the Tag-adjacent IconGlyph attached
          text; here we render whatever the RadioButton's content provides. -->
-    <Style x:Key="TabButton" TargetType="RadioButton">
-        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="FontSize" Value="11.5" />
-        <Setter Property="Margin" Value="3,0" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="4"
-                            Padding="14,7">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
-                        </Trigger>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoft}" />
-                            <Setter Property="Foreground" Value="{StaticResource Accent}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
 
     <!-- Tab icon glyph (Segoe Fluent / MDL2) -->
-    <Style x:Key="TabIcon" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-        <Setter Property="FontSize" Value="18" />
-        <Setter Property="HorizontalAlignment" Value="Center" />
-        <Setter Property="TextAlignment" Value="Center" />
-        <Setter Property="Margin" Value="0,0,0,3" />
-    </Style>
 
-    <Style x:Key="TabLabel" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="11.5" />
-        <Setter Property="HorizontalAlignment" Value="Center" />
-        <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}" />
-    </Style>
 
     <!-- ===================== Sidebar navigation ===================== -->
         <!-- Restated so they resolve at parse time no matter the merge order.
@@ -493,15 +356,6 @@
         <Setter Property="TextAlignment" Value="Center" />
     </Style>
 
-    <Style x:Key="SideNavIcon" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-        <Setter Property="FontSize" Value="17" />
-        <Setter Property="Width" Value="22" />
-        <Setter Property="TextAlignment" Value="Center" />
-        <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="Margin" Value="0,0,12,0" />
-        <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}" />
-    </Style>
 
 
     <!-- ======================= Primary button ======================= -->

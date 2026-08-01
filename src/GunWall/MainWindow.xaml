@@ -234,9 +234,11 @@
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                             VerticalAlignment="Center" Margin="20,12">
-                    <ToggleButton x:Name="ThemeToggle" Style="{StaticResource ThemeSwitch}"
-                                  Click="ThemeToggle_Click" Margin="0,0,16,0"
-                                  ToolTip="Switch light / dark theme" />
+                    <!-- The library's switch: same control as every other toggle here,
+                         so the theme control does not look like a one-off. -->
+                    <ui:ToggleSwitch x:Name="ThemeToggle"
+                                     Click="ThemeToggle_Click" Margin="0,0,16,0"
+                                     ToolTip="Switch light / dark theme" />
                     <TextBlock x:Name="EngineStatus" Text="Engine: starting"
                                Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,16,0" />
                     <Button x:Name="LockdownButton" Content="Engage lockdown"
