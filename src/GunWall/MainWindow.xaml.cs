@@ -313,7 +313,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.12 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.13 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5741,6 +5741,48 @@ public partial class MainWindow : Window
         _firewall.SetThemeDark(dark);
     }
 
+    /// <summary>
+    /// Hands the theme to the control library so it derives its own palette.
+    ///
+    /// The first attempt at this restated a dozen of the library's colour keys
+    /// by hand. That was the wrong shape: the library COMPUTES its accent
+    /// palette from one seed - lighter variants for a dark theme, darker ones
+    /// for a light theme - and writes around fourteen resources from it. Fixing
+    /// a handful of them by hand left the rest at their defaults, so half the
+    /// accent system was ours and half was not, which is exactly why the result
+    /// looked flat and why the light theme never came right.
+    ///
+    /// Giving it the seed colour and the theme instead lets it derive the whole
+    /// set consistently, the way its own controls expect.
+    /// </summary>
+    private void ApplyControlLibraryTheme(bool dark)
+    {
+        try
+        {
+            var theme = dark
+                ? Wpf.Ui.Appearance.ApplicationTheme.Dark
+                : Wpf.Ui.Appearance.ApplicationTheme.Light;
+
+            // GunWall's accent, seeded once so both themes derive from the same
+            // hue rather than drifting apart.
+            var seed = System.Windows.Media.Color.FromRgb(0x4C, 0xA0, 0xFF);
+            Wpf.Ui.Appearance.ApplicationAccentColorManager.Apply(seed, theme);
+
+            // Mica is the translucent window material Windows 11 uses. It is
+            // requested rather than assumed: the library checks support and
+            // falls back on its own where the OS cannot provide it.
+            Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
+                theme,
+                Wpf.Ui.Controls.WindowBackdropType.Mica,
+                updateAccent: false);   // we just set the accent deliberately
+        }
+        catch (Exception ex)
+        {
+            // A theme that fails to apply must not take the window down.
+            Services.DiagnosticLog.LogException("ApplyControlLibraryTheme", ex);
+        }
+    }
+
     private void ApplyTheme(bool dark)
     {
         try
@@ -5769,21 +5811,7 @@ public partial class MainWindow : Window
             if (idx >= 0) dicts[idx] = palette;
             else dicts.Insert(0, palette);
 
-            // The control library carries its own palette too, so switching only
-            // GunWall's would leave every text box and dropdown in the previous
-            // theme. Swap the bridge that restates its tokens in our colours.
-            var bridge = new ResourceDictionary
-            {
-                Source = new Uri(dark
-                    ? "Themes/WpfUiBridge.xaml"
-                    : "Themes/WpfUiBridge.Light.xaml", UriKind.Relative)
-            };
-            for (int i = 0; i < dicts.Count; i++)
-            {
-                string src = dicts[i].Source?.OriginalString ?? "";
-                if (src.Contains("WpfUiBridge", StringComparison.OrdinalIgnoreCase))
-                { dicts[i] = bridge; break; }
-            }
+            ApplyControlLibraryTheme(dark);
 
             // Match the OS title bar to the theme.
             TrySetTitleBarTheme(dark);

@@ -3,7 +3,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ===== DARK THEME =====
-         A lifted navy-indigo rather than a near-black. The instinct with a dark
+         Matched to the control library's own dark surfaces (#202020 base).
+
+         The earlier navy was chosen before the library was adopted, and it
+         cannot survive alongside it: the library's cards and controls are
+         TRANSLUCENT overlays (#0DFFFFFF and similar) that tint whatever sits
+         behind them, which is what lets the Mica window material show through.
+         A competing solid colour underneath would either cancel that or clash
+         with it. The neutral base is therefore not a retreat from having a
+         palette - it is the surface the material needs. GunWall's identity
+         lives in the accent and the status colours, which stay ours. The instinct with a dark
          interface is to go as dark as possible, but a monitoring tool is read
          for long stretches and a raised, distinctly blue base is easier to sit
          with - it also gives the status colours somewhere to sit without
@@ -16,25 +25,25 @@
          than heavy contrast. -->
 
     <!-- Surfaces, darkest to lightest -->
-    <SolidColorBrush x:Key="BgPrimary"     Color="#1A2032" />
-    <SolidColorBrush x:Key="BgSecondary"   Color="#1F2639" />
-    <SolidColorBrush x:Key="BgCard"        Color="#242C42" />
-    <SolidColorBrush x:Key="BgElevated"    Color="#2C3550" />
+    <SolidColorBrush x:Key="BgPrimary"     Color="#202020" />
+    <SolidColorBrush x:Key="BgSecondary"   Color="#272727" />
+    <SolidColorBrush x:Key="BgCard"        Color="#2B2B2B" />
+    <SolidColorBrush x:Key="BgElevated"    Color="#323232" />
 
     <!-- Lines. Border delineates, Divider only whispers. -->
-    <SolidColorBrush x:Key="BorderBrush"   Color="#39435F" />
-    <SolidColorBrush x:Key="Divider"       Color="#2A3249" />
+    <SolidColorBrush x:Key="BorderBrush"   Color="#3A3A3A" />
+    <SolidColorBrush x:Key="Divider"       Color="#2E2E2E" />
 
     <!-- Interaction states, so controls stop inventing their own -->
-    <SolidColorBrush x:Key="SurfaceHover"   Color="#2F3A56" />
-    <SolidColorBrush x:Key="SurfacePressed" Color="#222A3E" />
-    <SolidColorBrush x:Key="SurfaceSelected" Color="#33415F" />
+    <SolidColorBrush x:Key="SurfaceHover"   Color="#333333" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#282828" />
+    <SolidColorBrush x:Key="SurfaceSelected" Color="#3B3B3B" />
     <SolidColorBrush x:Key="FocusRing"      Color="#5B8DEF" />
 
     <!-- Type: three weights of emphasis, cool-white so it agrees with the ramp -->
-    <SolidColorBrush x:Key="TextPrimary"   Color="#EAEEF6" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#9AA5BC" />
-    <SolidColorBrush x:Key="TextTertiary"  Color="#6B7691" />
+    <SolidColorBrush x:Key="TextPrimary"   Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#C5C5C5" />
+    <SolidColorBrush x:Key="TextTertiary"  Color="#8A8A8A" />
     <SolidColorBrush x:Key="TextOnAccent"  Color="#121A0B" />
 
     <!-- Status pills: a dim tinted fill with a bright foreground reads clearly

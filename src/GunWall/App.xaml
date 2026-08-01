@@ -8,19 +8,15 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <!-- WPF UI (lepoco/wpfui, MIT) supplies the Fluent control set.
-                     It is merged FIRST so that GunWall's own dictionaries below
-                     can override anything it defines: last writer wins for a
-                     given key, and this application has styles it needs to keep.
+                     Merged FIRST so GunWall's dictionaries below can override
+                     what they need to: last writer wins for a given key.
 
-                     The theme entry here is WPF UI's own; GunWall's palette is
-                     swapped separately and is located by name rather than by
-                     position, so the order of this list is free to change. -->
+                     The palette here is a starting point only. At runtime the
+                     library derives the full theme - including the fourteen or
+                     so accent resources it computes from a single seed colour -
+                     which is why nothing restates those keys by hand any more.
+                     See ApplyControlLibraryTheme in MainWindow. -->
                 <ui:ThemesDictionary Theme="Dark" />
-
-                <!-- Restates WPF UI's own colour tokens in GunWall's palette,
-                     between their theme and their controls, so their templates
-                     resolve our navy and our accent rather than their greys. -->
-                <ResourceDictionary Source="Themes/WpfUiBridge.xaml" />
 
                 <ui:ControlsDictionary />
 

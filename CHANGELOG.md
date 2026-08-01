@@ -6,6 +6,15 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.13] — 2026-08-01
+
+### Changed
+- **The control library now derives its own palette instead of having one imposed on it.** The previous attempt restated a dozen of its colour keys by hand. That was the wrong shape and it is why the result looked flat: the library *computes* its accent palette from a single seed — lighter variants for a dark theme, darker ones for a light theme — and writes around fourteen resources from it. Fixing a handful by hand left the rest at their defaults, so half the accent system was GunWall's and half was not, and the light theme was never derived at all. It is now given the seed colour and the theme and derives the whole set consistently. The two bridge dictionaries are deleted.
+- **Mica is requested for the window.** It is the translucent material Windows 11 uses; the library checks whether the system can provide it and falls back on its own where it cannot.
+- **GunWall's surfaces were re-based on the library's neutral (#202020 dark, #F3F3F3 light).** The navy chosen earlier cannot survive alongside it: the library's cards and controls are *translucent overlays* that tint whatever sits behind them, which is what lets a window material show through. A competing solid colour underneath would either cancel that or clash with it. This is not a retreat from having a palette — GunWall's identity lives in the accent and the status colours, and those stay.
+
+---
+
 ## [0.99.12] — 2026-08-01
 
 ### Fixed
