@@ -56,37 +56,11 @@
     <SolidColorBrush x:Key="PromptButtonBgHover"   Color="#8B9BB4" />
     <SolidColorBrush x:Key="PromptButtonBgPressed" Color="#6B7A93" />
 
-    <Style x:Key="PromptButton" TargetType="Button">
-        <Setter Property="Foreground" Value="#FFFFFF" />
-        <Setter Property="Background" Value="{StaticResource PromptButtonBg}" />
-        <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Height" Value="30" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="SnapsToDevicePixels" Value="True" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Border x:Name="Chrome" Background="{TemplateBinding Background}"
-                            CornerRadius="3" SnapsToDevicePixels="True">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Chrome" Property="Background"
-                                    Value="{StaticResource PromptButtonBgHover}" />
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Chrome" Property="Background"
-                                    Value="{StaticResource PromptButtonBgPressed}" />
-                        </Trigger>
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Chrome" Property="Background"
-                                    Value="{StaticResource PromptButtonBgHover}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+        <!-- Deliberately identical to each other and quieter than the accent, so
+         an interruption does not steer the answer. Fluent chrome underneath. -->
+    <Style x:Key="PromptButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="12,0" />
     </Style>
 
     <!-- Type ramp. There were nine font sizes in this file with no relationship
@@ -114,6 +88,44 @@
          type ramp and colours on TextBlock, the list metrics the fixed-width
          columns depend on, and every keyed style (the navigation rail, cards,
          the firewall switch, the prompt buttons). -->
+
+    <!-- Panel entrance. Fluent moves things a short distance quickly rather
+         than far and slowly: 20 pixels over 220 milliseconds, on a decelerating
+         curve, so a panel appears to settle into place instead of sliding in.
+         Applied to the content host, so switching pages animates without every
+         control inside needing to know about it. -->
+    <Style x:Key="PanelTransition" TargetType="ContentControl">
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+        <Style.Triggers>
+            <EventTrigger RoutedEvent="Loaded">
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                         From="0" To="1" Duration="0:0:0.22" />
+                        <DoubleAnimation
+                            Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                            From="20" To="0" Duration="0:0:0.22">
+                            <DoubleAnimation.EasingFunction>
+                                <CubicEase EasingMode="EaseOut" />
+                            </DoubleAnimation.EasingFunction>
+                        </DoubleAnimation>
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+        </Style.Triggers>
+        <Setter Property="RenderTransform">
+            <Setter.Value>
+                <TranslateTransform />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- The library styles ScrollBar, ScrollViewer and ToolTip implicitly, and
+         its ListView styles target its OWN ListView type rather than the
+         framework one - so the lists here keep their styles, but take the
+         library's state brushes and corner-radius token so a row and the
+         controls beside it are drawn from the same values. Verified against
+         Wpf.Ui/Controls/ListView and Resources/Variables.xaml. -->
 
     <!-- ======================= Base TextBlock ======================= -->
     <Style TargetType="TextBlock">
@@ -150,17 +162,15 @@
     </Style>
 
     <!-- ========================= Card border ========================= -->
-    <!-- A card is defined by its edge, not by a glow behind it. Every card
-         carried a 22-pixel drop shadow, which softens the very boundary the
-         card exists to draw and costs a blur pass per card on a window that
-         shows a dozen of them. Fluent keeps cards flat and reserves shadow for
-         things that genuinely float above the page - flyouts and dialogs. -->
+        <!-- Uses the control library's own card tokens rather than restating a
+         surface colour, so a card and the controls sitting on it are drawn from
+         the same source and cannot drift apart. -->
     <Style x:Key="Card" TargetType="Border">
-        <Setter Property="Background" Value="{DynamicResource BgCard}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="Padding" Value="20" />
+        <Setter Property="Padding" Value="16" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
@@ -437,118 +447,38 @@
     </Style>
 
     <!-- ======================= Primary button ======================= -->
-    <!-- The firewall switch. Enabling and disabling protection is the most
-         consequential thing in this window, and a button that relabels itself
-         ("Enable" / "Disable") makes the reader work out the current state from
-         the verb. A switch shows the state instead of describing it. Wide
-         enough to carry a word, so it reads at a glance from across the room. -->
-    <Style x:Key="FirewallSwitch" TargetType="CheckBox">
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="SnapsToDevicePixels" Value="True" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="CheckBox">
-                    <Border x:Name="Track" Width="94" Height="32" CornerRadius="16"
-                            Background="{DynamicResource BgElevated}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                        <Grid>
-                            <TextBlock x:Name="OffLabel" Text="OFF" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondary}"
-                                       HorizontalAlignment="Right" VerticalAlignment="Center"
-                                       Margin="0,0,14,0" />
-                            <TextBlock x:Name="OnLabel" Text="ON" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="#FFFFFF" Visibility="Collapsed"
-                                       HorizontalAlignment="Left" VerticalAlignment="Center"
-                                       Margin="14,0,0,0" />
-                            <Border x:Name="Knob" Width="24" Height="24" CornerRadius="12"
-                                    Background="{DynamicResource TextSecondary}"
-                                    HorizontalAlignment="Left" Margin="4,0,0,0" />
-                        </Grid>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource AllowText}" />
-                            <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AllowText}" />
-                            <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
-                            <Setter TargetName="Knob" Property="Margin" Value="0,0,4,0" />
-                            <Setter TargetName="Knob" Property="Background" Value="#FFFFFF" />
-                            <Setter TargetName="OnLabel" Property="Visibility" Value="Visible" />
-                            <Setter TargetName="OffLabel" Property="Visibility" Value="Collapsed" />
-                        </Trigger>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Knob" Property="Opacity" Value="0.85" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style x:Key="PrimaryButton" TargetType="Button">
-        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
+    
+    <!-- Derived from WPF UI's button rather than replacing it: the Fluent
+         chrome - corner radius, focus visual, the faint top highlight, the
+         pressed and disabled states - all comes from their template. We set
+         only what makes it OURS, which is the accent fill. Replacing the
+         template outright is what kept this application looking unchanged
+         after the library was added. -->
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
         <Setter Property="Foreground" Value="#FFFFFF" />
-        <Setter Property="Background" Value="{StaticResource AccentGradient}" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="16,0" />
-        <Setter Property="Height" Value="32" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBackground}" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Border x:Name="bd"
-                            Background="{TemplateBinding Background}"
-                            CornerRadius="4"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Opacity" Value="0.92" />
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="bd" Property="Opacity" Value="0.82" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="16,0" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBackgroundPressed}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ======================= Action button ======================= -->
-    <Style x:Key="ActionButton" TargetType="Button">
-        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="Background" Value="{DynamicResource BgCard}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <!-- The standard Fluent button, unaltered apart from a shared height so
+         rows of controls line up. -->
+    <Style x:Key="ActionButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="MinHeight" Value="32" />
         <Setter Property="Padding" Value="14,0" />
-        <Setter Property="Height" Value="32" />
-        <Setter Property="FontSize" Value="13" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Border x:Name="bd"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgSecondary}" />
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="bd" Property="Opacity" Value="0.8" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
     </Style>
 
     <!-- ===================== List view styling ===================== -->
@@ -593,14 +523,14 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ListViewItem">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="4"
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="{DynamicResource ControlCornerRadius}"
                             Padding="{TemplateBinding Padding}">
                         <GridViewRowPresenter Content="{TemplateBinding Content}"
                                               Columns="{TemplateBinding GridView.ColumnCollection}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource ListViewItemBackgroundPointerOver}" />
                         </Trigger>
                         <!-- Selection is a different surface from hover: a row you are
                              pointing at and a row you have chosen must not look alike. -->

@@ -6,6 +6,14 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.11] — 2026-08-01
+
+### Changed
+- **Verified the integration against WPF UI's actual source** rather than inferring it. The findings mattered: the library auto-applies its styles to plain framework controls (`<Style BasedOn="{StaticResource DefaultButtonStyle}" TargetType="{x:Type Button}" />` with no key), so every ordinary Button, ScrollBar, ScrollViewer and ToolTip is already Fluent. Its ListView styles, however, target *its own* ListView type rather than the framework one, so this project's list styles are correctly retained instead of being redundant.
+- The lists now draw from the library's own tokens — `ControlCornerRadius`, `ListViewItemBackgroundPointerOver` — so a row and the controls beside it come from one set of values and cannot drift apart. Every token depended on was confirmed present in the library source before being used.
+
+---
+
 ## [0.99.9] — 2026-08-01
 
 ### Added
