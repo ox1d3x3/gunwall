@@ -89,35 +89,11 @@
          columns depend on, and every keyed style (the navigation rail, cards,
          the firewall switch, the prompt buttons). -->
 
-    <!-- Panel entrance, matched to the library's FadeInWithSlide.
-         Its values, from TransitionAnimationProvider: translate from 30 to 0
-         with DecelerationRatio 0.7, opacity 0 to 1, same duration for both.
-         A deceleration ratio is not the same as an easing function - it front-
-         loads the movement so content arrives and settles, which is why an
-         approximation with CubicEase read differently. -->
-    <Style x:Key="PanelTransition" TargetType="ContentControl">
-        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
-        <Setter Property="RenderTransform">
-            <Setter.Value>
-                <TranslateTransform />
-            </Setter.Value>
-        </Setter>
-        <Style.Triggers>
-            <EventTrigger RoutedEvent="Loaded">
-                <BeginStoryboard>
-                    <Storyboard>
-                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                         From="0" To="1" Duration="0:0:0.2"
-                                         DecelerationRatio="0.7" />
-                        <DoubleAnimation
-                            Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)"
-                            From="30" To="0" Duration="0:0:0.2"
-                            DecelerationRatio="0.7" />
-                    </Storyboard>
-                </BeginStoryboard>
-            </EventTrigger>
-        </Style.Triggers>
-    </Style>
+    <!-- The panel entrance lives in code (AnimatePanelIn), because it has to
+         run on every navigation rather than once when the element loads. A
+         Loaded-triggered style was defined here and never applied to anything,
+         which is a quiet way to look animated while standing still. -->
+
 
     <!-- The library styles ScrollBar, ScrollViewer and ToolTip implicitly, and
          its ListView styles target its OWN ListView type rather than the
@@ -399,20 +375,16 @@
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="PaneFluentButtonWidth">60</sys:Double>
 
     <!-- Navigation item, on the library's LeftFluent specification.
-         Values read from NavigationLeftFluent.xaml and NavigationViewConstants
-         rather than estimated: item 60 by 60, icon 24, label beneath, selection
-         indicator 3 by 24 in the pane gutter.
+         Geometry from NavigationLeftFluent.xaml and NavigationViewConstants:
+         60 by 60, 24-pixel icon above the label, indicator 3 by 24.
 
-         The earlier version of this style used the STANDARD NavigationViewItem
-         metrics - a 36-pixel row with the icon beside the label. Both are real
-         parts of the library, but the Fluent gallery uses LeftFluent, which is
-         why matching the other one did not look like the thing being pointed
-         at. A rail of icon tiles also gives roughly 120 pixels back to the
-         content, which is what lets the window material show.
-
-         Selection is signalled twice on purpose - a filled background AND an
-         accent-coloured icon - which is how the library does it and why its
-         selected item reads instantly. -->
+         Motion follows the library's own convention, which is worth stating
+         because it is not symmetric: states fade IN over 167 milliseconds and
+         OUT over 80. Arriving gently and leaving quickly is what makes a
+         surface feel responsive rather than laggy - an equal fade in both
+         directions reads as hesitation. The library animates Opacity and the
+         indicator's Height rather than colours, which is both cheaper and
+         smoother than interpolating brushes, so this does the same. -->
     <Style x:Key="SideNavButton" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource NavigationViewItemForegroundLeftFluent}" />
         <Setter Property="FontSize" Value="11" />
@@ -426,33 +398,80 @@
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
                     <Grid>
-                        <Rectangle x:Name="bar" Width="3" Height="24"
+                        <!-- Hover and selection are separate layers so each can
+                             fade on its own; a single background could only jump
+                             between states. -->
+                        <Border x:Name="hoverLayer" CornerRadius="4" Opacity="0"
+                                Background="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
+                        <Border x:Name="selLayer" CornerRadius="4" Opacity="0"
+                                Background="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
+                        <Rectangle x:Name="bar" Width="3" Height="0"
                                    Margin="-6,0,0,0" RadiusX="1.5" RadiusY="1.5"
                                    HorizontalAlignment="Left" VerticalAlignment="Center"
-                                   Fill="{DynamicResource NavigationViewSelectionIndicatorForeground}"
-                                   Visibility="Collapsed" />
-                        <Border x:Name="bd" Background="Transparent" CornerRadius="4"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter x:Name="cp"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              TextElement.Foreground="{TemplateBinding Foreground}"
-                                              SnapsToDevicePixels="True" />
-                        </Border>
+                                   Fill="{DynamicResource NavigationViewSelectionIndicatorForeground}" />
+                        <ContentPresenter x:Name="cp"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          TextElement.Foreground="{TemplateBinding Foreground}"
+                                          SnapsToDevicePixels="True" />
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background"
-                                    Value="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="hoverLayer"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.167" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="hoverLayer"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                             <Setter TargetName="cp" Property="TextElement.Foreground"
                                     Value="{DynamicResource NavigationViewItemForegroundPointerOverLeftFluent}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="bd" Property="Background"
-                                    Value="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="selLayer"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.167" />
+                                        <!-- The indicator grows from nothing to
+                                             its full 24 pixels, as the library
+                                             does it, so selection reads as a
+                                             movement and not a flash. -->
+                                        <DoubleAnimation Storyboard.TargetName="bar"
+                                                         Storyboard.TargetProperty="Height"
+                                                         To="24" Duration="0:0:0.167">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="selLayer"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="bar"
+                                                         Storyboard.TargetProperty="Height"
+                                                         To="0" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                             <Setter TargetName="cp" Property="TextElement.Foreground"
                                     Value="{DynamicResource NavigationViewSelectionIndicatorForeground}" />
-                            <Setter TargetName="bar" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
@@ -487,27 +506,35 @@
 
     <!-- ======================= Primary button ======================= -->
     
-    <!-- Derived from WPF UI's button rather than replacing it: the Fluent
-         chrome - corner radius, focus visual, the faint top highlight, the
-         pressed and disabled states - all comes from their template. We set
-         only what makes it OURS, which is the accent fill. Replacing the
-         template outright is what kept this application looking unchanged
-         after the library was added. -->
+    <!-- The accent button, entirely on the library's own accent brushes.
+
+         This previously set Foreground to white, which is what made it look
+         washed out: Fluent LIGHTENS the accent for a dark theme so it stands
+         off a dark surface, then pairs it with BLACK text
+         (TextOnAccentFillColorPrimary is #000000 in dark, #FFFFFF in light).
+         White lettering on a lightened accent has almost no contrast, and no
+         amount of retuning the seed colour fixes that - the foreground was the
+         wrong half of the pair. Taking both from the library keeps them in step
+         in either theme. -->
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
         <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
-        <Setter Property="Foreground" Value="#FFFFFF" />
-        <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="MinHeight" Value="32" />
         <Setter Property="Padding" Value="16,0" />
         <Style.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPointerOver}" />
             </Trigger>
             <Trigger Property="IsPressed" Value="True">
                 <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBackgroundPressed}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPressed}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundDisabled}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundDisabled}" />
             </Trigger>
         </Style.Triggers>
     </Style>

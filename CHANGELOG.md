@@ -6,6 +6,29 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.19] — 2026-08-01
+
+### Added
+- **The navigation rail animates its states**, on the library's own timings — and those are deliberately asymmetric: 167 milliseconds in, 80 out. Arriving gently and leaving quickly is what makes a surface feel responsive; an equal fade in both directions reads as hesitation. Hover and selection are separate layers so each can fade independently, and the selection indicator grows from nothing to its full height rather than appearing, exactly as the library does it. Opacity and height are animated rather than colours, which is both cheaper and smoother than interpolating brushes.
+- **The connection prompt uses Fluent icons.** Its six glyphs were Segoe MDL2 characters set as text; they are `SymbolIcon` elements now, and no legacy icon-font reference remains in that window. The details chevron changes by setting `Symbol` rather than `Text` — a `SymbolIcon` ignores `Text`, so the previous approach would have compiled and quietly done nothing.
+
+---
+
+## [0.99.18] — 2026-08-01
+
+### Fixed
+- **White text on the accent button, properly this time.** The previous release retuned the seed colour, which could not have worked: Fluent *lightens* the accent for a dark theme so it stands off a dark surface, then pairs it with **black** text — `TextOnAccentFillColorPrimary` is `#000000` in dark and `#FFFFFF` in light. The button hardcoded white, so the foreground was simply the wrong half of the pair and no amount of adjusting the background would fix it. Both halves now come from the library and stay in step in either theme.
+- **Dropdowns clipped their own contents** — "Any" and "Outbound" were cut off. Their widths were measured against the old dropdown template; the library's has a wider chevron well and different padding. They size to their content now, and two further dropdowns that would have clipped next were widened at the same time.
+
+### Changed
+- **The panel entrance matches the library's FadeInWithSlide.** It was translating 12 pixels with a cubic ease, against the library's 30 pixels with a deceleration ratio of 0.7 — which is why the motion felt unlike the rest of the surface. A deceleration ratio front-loads the movement so content arrives and settles; an easing function distributes it evenly and reads as a slower slide.
+- Removed a `PanelTransition` style that was defined and never applied to anything — a quiet way for an interface to look animated while standing still. The entrance runs in code, because it has to fire on every navigation rather than once when an element loads.
+
+### Performance
+- The sampling loop was reviewed rather than assumed: the expensive list rebuilds are already gated on their panel being visible, and the 250 ms graph timer exits immediately when the dashboard is not shown. No change was needed, and none was made for its own sake.
+
+---
+
 ## [0.99.17] — 2026-08-01
 
 ### Fixed

@@ -184,7 +184,12 @@ public partial class AlertWindow : Window
 
         DetailsPanel.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
         if (DetailsLabel != null) DetailsLabel.Text = showing ? "Details" : "Hide details";
-        if (DetailsChevron != null) DetailsChevron.Text = showing ? "\uE70D" : "\uE70E";
+        // A SymbolIcon carries a Symbol, not a character - setting Text on it
+        // would compile and then quietly do nothing.
+        if (DetailsChevron != null)
+            DetailsChevron.Symbol = showing
+                ? Wpf.Ui.Controls.SymbolRegular.ChevronDown24
+                : Wpf.Ui.Controls.SymbolRegular.ChevronUp24;
         if (!showing)
         {
             StopCountdown();

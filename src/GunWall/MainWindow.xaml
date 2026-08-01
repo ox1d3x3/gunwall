@@ -1343,21 +1343,21 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Action" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="RuleAction" Width="82" Height="32">
+                                <ComboBox x:Name="RuleAction" MinWidth="96" Height="32">
                                     <ComboBoxItem Content="Block" IsSelected="True" />
                                     <ComboBoxItem Content="Allow" />
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Direction" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="RuleDirection" Width="96" Height="32">
+                                <ComboBox x:Name="RuleDirection" MinWidth="118" Height="32">
                                     <ComboBoxItem Content="Outbound" IsSelected="True" />
                                     <ComboBoxItem Content="Inbound" />
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Protocol" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="RuleProtocol" Width="74" Height="32">
+                                <ComboBox x:Name="RuleProtocol" MinWidth="92" Height="32">
                                     <ComboBoxItem Content="Any" IsSelected="True" />
                                     <ComboBoxItem Content="TCP" />
                                     <ComboBoxItem Content="UDP" />
@@ -1907,7 +1907,7 @@
                                 </ComboBox>
                                 <TextBlock Text="then" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="12,0,8,0" />
-                                <ComboBox x:Name="PopupDefaultCombo" Width="100" Height="30"
+                                <ComboBox x:Name="PopupDefaultCombo" MinWidth="120" Height="30"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="Block" Tag="block" />
                                     <ComboBoxItem Content="Allow" Tag="allow" />
@@ -1952,7 +1952,7 @@
                                 </ComboBox>
                                 <TextBlock Text="live rows; rotate CSV at" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="12,0,8,0" />
-                                <ComboBox x:Name="MaxLogFileCombo" Width="90" Height="30"
+                                <ComboBox x:Name="MaxLogFileCombo" MinWidth="110" Height="30"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="2 MB" Tag="2" />
                                     <ComboBoxItem Content="5 MB" Tag="5" />

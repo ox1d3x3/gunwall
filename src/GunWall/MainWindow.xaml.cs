@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.17 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.19 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3821,13 +3821,21 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             if (PanelHost == null || PanelHostShift == null) return;
-            var ease = new System.Windows.Media.Animation.CubicEase
-            { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
 
-            var fade = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0,
-                TimeSpan.FromMilliseconds(180)) { EasingFunction = ease };
-            var rise = new System.Windows.Media.Animation.DoubleAnimation(12.0, 0.0,
-                TimeSpan.FromMilliseconds(220)) { EasingFunction = ease };
+            // The library's FadeInWithSlide, matched exactly: translate from 30
+            // with DecelerationRatio 0.7, opacity 0 to 1, one duration for both.
+            // A deceleration ratio is not an easing function - it front-loads
+            // the movement so content arrives and settles, where an ease-out
+            // distributes it evenly and reads as a slower slide. This used 12
+            // pixels with a cubic ease, which is why the motion felt unlike the
+            // rest of the Fluent surface.
+            const double slideFrom = 30.0;
+            var span = TimeSpan.FromMilliseconds(200);
+
+            var fade = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0, span)
+            { DecelerationRatio = 0.7 };
+            var rise = new System.Windows.Media.Animation.DoubleAnimation(slideFrom, 0.0, span)
+            { DecelerationRatio = 0.7 };
 
             PanelHost.BeginAnimation(OpacityProperty, fade);
             PanelHostShift.BeginAnimation(TranslateTransform.YProperty, rise);
