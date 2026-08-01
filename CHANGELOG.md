@@ -6,6 +6,13 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.23] — 2026-08-02
+
+### Fixed
+- **The protection pulse did not compile.** It used `KeyTime`, which lives in `System.Windows.Media.Animation` — a namespace this file does not import. It is now a single reversing animation instead of a key-frame sequence: fewer moving parts, and nothing outside the namespaces already in use. Worth recording why the offline check missed it: `CS0103` inside a `.xaml.cs` file is filtered, because WPF's generated field declarations produce that error when compiling away from Windows — which also hides genuinely unresolved names in exactly that file. A check for bare WPF type names without a covering `using` now runs alongside it.
+
+---
+
 ## [0.99.22] — 2026-08-02
 
 ### Fixed

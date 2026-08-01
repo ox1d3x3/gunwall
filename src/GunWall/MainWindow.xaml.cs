@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.22 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.23 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5377,18 +5377,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             SideStatusIcon.RenderTransformOrigin = new Point(0.5, 0.5);
             SideStatusIcon.RenderTransform = scale;
 
-            // 1 -> 1.35 -> 1 over 420ms. Fast enough not to delay anything,
-            // slow enough to register as a response rather than a glitch.
-            var grow = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames
-            { Duration = new Duration(TimeSpan.FromMilliseconds(420)) };
-            grow.KeyFrames.Add(new System.Windows.Media.Animation.EasingDoubleKeyFrame(
-                1.35, KeyTime.FromPercent(0.35))
-            { EasingFunction = new System.Windows.Media.Animation.CubicEase
-              { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });
-            grow.KeyFrames.Add(new System.Windows.Media.Animation.EasingDoubleKeyFrame(
-                1.0, KeyTime.FromPercent(1.0))
-            { EasingFunction = new System.Windows.Media.Animation.CubicEase
-              { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });
+            // A single animation that reverses, rather than a key-frame
+            // sequence: 1 -> 1.35 -> 1 in 360ms, expressed in one object with
+            // no KeyTime involved. Fewer moving parts, and it avoids depending
+            // on a namespace this file does not import.
+            var grow = new System.Windows.Media.Animation.DoubleAnimation(1.0, 1.35,
+                TimeSpan.FromMilliseconds(180))
+            {
+                AutoReverse = true,
+                EasingFunction = new System.Windows.Media.Animation.CubicEase
+                { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+            };
 
             scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, grow);
             scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, grow);
