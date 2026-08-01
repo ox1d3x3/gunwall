@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.20 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.22 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4454,7 +4454,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private string _systemFilter = "";
 
     // ---------------------------------------------- curated blocklists UI
-    private readonly List<CheckBox> _blocklistToggles = new();
+    // Typed to the base class rather than the concrete control: everything this
+    // list does is IsEnabled and IsChecked, both of which live on ToggleButton,
+    // so it keeps working whichever switch implementation is in use.
+    private readonly List<System.Windows.Controls.Primitives.ToggleButton> _blocklistToggles = new();
     private bool _blocklistBusy;
 
     private void BuildBlocklistCatUi()
@@ -4512,7 +4515,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private async void Blocklist_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not CheckBox cb || cb.Tag is not string key) return;
+        // Matched on ToggleButton, not CheckBox: the switch is a ToggleSwitch
+        // now, so a CheckBox pattern would compile, never match, and make every
+        // click silently do nothing.
+        if (sender is not System.Windows.Controls.Primitives.ToggleButton cb ||
+            cb.Tag is not string key) return;
         var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
         if (cat == null) return;
 
@@ -4687,7 +4694,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void SystemRule_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireEngine()) { BuildSystemRulesUi(); return; }
-        if (sender is not CheckBox cb || cb.Tag is not string key) return;
+        // Matched on ToggleButton, not CheckBox: the switch is a ToggleSwitch
+        // now, so a CheckBox pattern would compile, never match, and make every
+        // click silently do nothing.
+        if (sender is not System.Windows.Controls.Primitives.ToggleButton cb ||
+            cb.Tag is not string key) return;
         try
         {
             bool on = cb.IsChecked == true;
@@ -5337,8 +5348,52 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _firewall.SetStrictMode(turningOn);
             SyncFirewallToggle();
             RebuildAppsList();
+            // After the state is applied and the indicator has been repainted,
+            // so the pulse confirms what actually happened rather than what was
+            // requested.
+            if (turningOn) PulseProtection();
         }
         catch (Exception ex) { ShowError(ex); }
+    }
+
+    /// <summary>
+    /// A short pulse on the protection indicator when the firewall is switched
+    /// on. Turning protection on is the most consequential thing this window
+    /// does, and it currently happens with no acknowledgement at all - the
+    /// switch moves and nothing else confirms it took effect. A brief scale and
+    /// fade on the shield gives the action a result you can see.
+    ///
+    /// Deliberately only on the way ON. Celebrating the removal of protection
+    /// would be the wrong signal, and motion that fires in both directions
+    /// stops meaning anything.
+    /// </summary>
+    private void PulseProtection()
+    {
+        try
+        {
+            if (SideStatusIcon == null) return;
+
+            var scale = new System.Windows.Media.ScaleTransform(1, 1);
+            SideStatusIcon.RenderTransformOrigin = new Point(0.5, 0.5);
+            SideStatusIcon.RenderTransform = scale;
+
+            // 1 -> 1.35 -> 1 over 420ms. Fast enough not to delay anything,
+            // slow enough to register as a response rather than a glitch.
+            var grow = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames
+            { Duration = new Duration(TimeSpan.FromMilliseconds(420)) };
+            grow.KeyFrames.Add(new System.Windows.Media.Animation.EasingDoubleKeyFrame(
+                1.35, KeyTime.FromPercent(0.35))
+            { EasingFunction = new System.Windows.Media.Animation.CubicEase
+              { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });
+            grow.KeyFrames.Add(new System.Windows.Media.Animation.EasingDoubleKeyFrame(
+                1.0, KeyTime.FromPercent(1.0))
+            { EasingFunction = new System.Windows.Media.Animation.CubicEase
+              { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });
+
+            scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, grow);
+            scale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, grow);
+        }
+        catch { /* motion is cosmetic - it must never block protection */ }
     }
 
     private void SyncFirewallToggle()
@@ -5808,7 +5863,25 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
                 theme,
                 Wpf.Ui.Controls.WindowBackdropType.Mica,
-                updateAccent: false);   // we just set the accent deliberately
+                updateAccent: false);   // the accent was just set deliberately
+
+            // The library takes the seed and, for a dark theme, uses a variant
+            // brightened by 17 and desaturated by 45 as the accent fill. That is
+            // the right call for a chrome accent on a dark surface, but it is
+            // what makes a filled button read as pale sky blue no matter which
+            // seed is supplied - the lightening happens after the choice.
+            //
+            // Filled buttons are restored to the seed itself, which is the
+            // colour actually chosen and the one measured for contrast. The
+            // lightened variant stays where the library intends it: text,
+            // indicators and the selection accent on dark backgrounds.
+            var app = System.Windows.Application.Current;
+            if (app != null && theme == Wpf.Ui.Appearance.ApplicationTheme.Dark)
+            {
+                app.Resources["AccentFillColorDefault"] = seed;
+                app.Resources["AccentFillColorDefaultBrush"] =
+                    new System.Windows.Media.SolidColorBrush(seed);
+            }
         }
         catch (Exception ex)
         {

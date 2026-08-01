@@ -234,7 +234,12 @@
     <!-- ===================== Sidebar navigation ===================== -->
         <!-- Restated so they resolve at parse time no matter the merge order.
          Values are the library's own (NavigationViewConstants.xaml). -->
-    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="PaneFluentButtonHeight">60</sys:Double>
+    <!-- The library's own value is 60, sized for a rail of half a dozen
+         items. GunWall has thirteen, which needs 806 pixels of height and put
+         four tabs off-screen behind a scrollbar. 48 fits them all in a normal
+         window; navigation you cannot see is worse than a tile that is not
+         exactly to spec. -->
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="PaneFluentButtonHeight">48</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="PaneFluentButtonWidth">60</sys:Double>
 
     <!-- Navigation item, on the library's LeftFluent specification.
@@ -253,7 +258,7 @@
         <Setter Property="FontSize" Value="11" />
         <Setter Property="Width" Value="{StaticResource PaneFluentButtonWidth}" />
         <Setter Property="Height" Value="{StaticResource PaneFluentButtonHeight}" />
-        <Setter Property="Margin" Value="0,2,0,0" />
+        <Setter Property="Margin" Value="0,1,0,0" />
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
@@ -352,7 +357,7 @@
         <Setter Property="Margin" Value="0,2,0,0" />
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-        <Setter Property="MaxWidth" Value="58" />
+        <Setter Property="MaxWidth" Value="56" />
         <Setter Property="TextAlignment" Value="Center" />
     </Style>
 

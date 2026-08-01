@@ -27,9 +27,22 @@
          a glance, and dismissing the window blocks anyway.
          ============================================================ -->
 
-    <Border Background="{DynamicResource BgCard}"
+    <!-- An opaque surface, not the card token.
+
+         BgCard now points at the library's card fill, which is a translucent
+         overlay (#0DFFFFFF) - correct in the main window, where it tints the
+         Mica material behind it, and useless here, where the window itself is
+         transparent and there is nothing behind it to tint. The prompt was
+         therefore almost invisible.
+
+         SolidBackgroundFillColorSecondary is the library's own opaque surface,
+         so this still follows the theme; it just does not rely on something
+         being painted underneath. Opacity 0.96 keeps a trace of the desktop
+         showing through without costing legibility - a prompt that asks a
+         security question has to be readable first. -->
+    <Border Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-            CornerRadius="6" Margin="12">
+            CornerRadius="6" Margin="12" Opacity="0.96">
         <Border.Effect>
             <DropShadowEffect BlurRadius="18" ShadowDepth="3" Direction="270"
                               Opacity="0.30" Color="#000000" />

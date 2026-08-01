@@ -6,6 +6,30 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.22] — 2026-08-02
+
+### Fixed
+- **Four navigation tabs were off-screen.** The rail adopted the library's 60-pixel tile, which is sized for a rail of about six items; thirteen of them need 806 pixels and pushed Dashboard, Apps, Networks and Traffic above the visible area behind a scrollbar. The tile is 48 pixels now and all thirteen fit. Navigation you cannot see is worse than a tile that is not exactly to specification.
+- **The connection prompt was almost invisible.** Aliasing the surfaces pointed `BgCard` at the library's card fill, which is a *translucent overlay* — correct in the main window, where it tints the Mica behind it, and useless in a transparent-background prompt where there is nothing behind it to tint. It uses the library's opaque surface now, at 96% opacity.
+- **The accent stayed pale regardless of the seed.** The library takes the seed and, for a dark theme, uses a variant brightened by 17 and desaturated by 45 as the fill — so the lightening happens *after* the choice, and no seed avoids it. That is right for chrome on a dark surface but wrong for a filled button. Filled buttons are restored to the chosen accent, which is also the one measured for contrast; the lightened variant stays where the library intends it, on text and indicators.
+
+### Added
+- **The protection indicator pulses when the firewall is switched on.** Enabling protection is the most consequential action in this window and it happened with no acknowledgement at all. Only on the way on: celebrating the *removal* of protection would be the wrong signal, and motion that fires in both directions stops meaning anything.
+
+---
+
+## [0.99.21] — 2026-08-02
+
+### Fixed
+- **The build broke, and two toggles would have silently stopped working.** Migrating the switches changed their type but not what consumed them: a list was still declared as `List<CheckBox>`, which is the reported compile error, and *both* click handlers still matched `sender is not CheckBox`. That second one is the worse defect — it compiles perfectly, never matches, and makes every click do nothing at all. The list is typed to `ToggleButton` and both handlers match on it.
+
+### Changed
+- **GunWall's surface colours are now aliases of the library's.** This was the real reason the interface kept reading as its old self: its own surface and text tokens were referenced **115 times** across the window and control styles, against **18** references to the library's. The library was styling the controls while GunWall painted everything around them, so the two could never agree. Those thirteen tokens are now brushes whose colour points at the library's equivalent, which moves all 115 call sites without editing any of them.
+  - The pointers are `DynamicResource`, not `StaticResource`, and that distinction matters: `ApplyTheme` loads the palette file standalone when switching themes, and a static alias would resolve against that lone dictionary — where the library's colours are not in scope — instead of the application. Late binding is what lets the alias survive the swap.
+  - What stays GunWall's own is what carries meaning rather than surface: the allow/block/warn verdict colours and the chart series. "Allowed" has to mean the same thing in both themes, and no control library has an opinion about that.
+
+---
+
 ## [0.99.20] — 2026-08-02
 
 ### Changed

@@ -3,53 +3,49 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ===== DARK THEME =====
-         Matched to the control library's own dark surfaces (#202020 base).
+         These are aliases, not a palette.
 
-         The earlier navy was chosen before the library was adopted, and it
-         cannot survive alongside it: the library's cards and controls are
-         TRANSLUCENT overlays (#0DFFFFFF and similar) that tint whatever sits
-         behind them, which is what lets the Mica window material show through.
-         A competing solid colour underneath would either cancel that or clash
-         with it. The neutral base is therefore not a retreat from having a
-         palette - it is the surface the material needs. GunWall's identity
-         lives in the accent and the status colours, which stay ours. The instinct with a dark
-         interface is to go as dark as possible, but a monitoring tool is read
-         for long stretches and a raised, distinctly blue base is easier to sit
-         with - it also gives the status colours somewhere to sit without
-         glowing. The map is the exception: its landmasses are deliberately
-         lighter than the page, so geography reads as the subject rather than
-         the background.
+         GunWall's own surface and text tokens are referenced 115 times across
+         the window and the control styles, against 18 references to the control
+         library's. That ratio is why the interface kept reading as its old self
+         after the library was adopted: the library was styling the controls
+         while GunWall was still painting everything around them, so the two
+         never agreed. Redefining these as pointers to the library's own brushes
+         makes all 115 call sites resolve to its colours without touching any of
+         them, and means a theme change moves the whole window at once.
 
-         The ramp is deliberately shallow: five surfaces from window to elevated
-         card, each a small step, so depth comes from hairline borders rather
-         than heavy contrast. -->
+         The library's surfaces are deliberately translucent, which is what lets
+         the Mica material show through. A solid colour here would cancel that.
 
-    <!-- Surfaces, darkest to lightest -->
-    <SolidColorBrush x:Key="BgPrimary"     Color="#202020" />
-    <SolidColorBrush x:Key="BgSecondary"   Color="#272727" />
-    <SolidColorBrush x:Key="BgCard"        Color="#2B2B2B" />
-    <SolidColorBrush x:Key="BgElevated"    Color="#323232" />
+         What stays GunWall's own is below: the status colours a firewall
+         actually decides with, and the chart series. Those carry meaning rather
+         than surface, and the library has no opinion about them. -->
 
-    <!-- Lines. Border delineates, Divider only whispers. -->
-    <SolidColorBrush x:Key="BorderBrush"   Color="#3A3A3A" />
-    <SolidColorBrush x:Key="Divider"       Color="#2E2E2E" />
+    <!-- Surfaces, aliased to the library -->
+    <SolidColorBrush x:Key="BgPrimary" Color="{DynamicResource ApplicationBackgroundColor}" />
+    <SolidColorBrush x:Key="BgSecondary" Color="{DynamicResource SolidBackgroundFillColorSecondary}" />
+    <SolidColorBrush x:Key="BgCard" Color="{DynamicResource CardBackgroundFillColorDefault}" />
+    <SolidColorBrush x:Key="BgElevated" Color="{DynamicResource SolidBackgroundFillColorTertiary}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{DynamicResource CardStrokeColorDefault}" />
+    <SolidColorBrush x:Key="Divider" Color="{DynamicResource DividerStrokeColorDefault}" />
 
-    <!-- Interaction states, so controls stop inventing their own -->
-    <SolidColorBrush x:Key="SurfaceHover"   Color="#333333" />
-    <SolidColorBrush x:Key="SurfacePressed" Color="#282828" />
-    <SolidColorBrush x:Key="SurfaceSelected" Color="#3B3B3B" />
-    <SolidColorBrush x:Key="FocusRing"      Color="#5B8DEF" />
+    <!-- Interaction states -->
+    <SolidColorBrush x:Key="SurfaceHover" Color="{DynamicResource ControlFillColorSecondary}" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="{DynamicResource ControlFillColorTertiary}" />
+    <SolidColorBrush x:Key="SurfaceSelected" Color="{DynamicResource SubtleFillColorSecondary}" />
+    <SolidColorBrush x:Key="FocusRing" Color="{DynamicResource SystemAccentColorSecondary}" />
 
-    <!-- Type: three weights of emphasis, cool-white so it agrees with the ramp -->
-    <SolidColorBrush x:Key="TextPrimary"   Color="#FFFFFF" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#C5C5C5" />
-    <SolidColorBrush x:Key="TextTertiary"  Color="#8A8A8A" />
-    <SolidColorBrush x:Key="TextOnAccent"  Color="#121A0B" />
+    <!-- Type -->
+    <SolidColorBrush x:Key="TextPrimary" Color="{DynamicResource TextFillColorPrimary}" />
+    <SolidColorBrush x:Key="TextSecondary" Color="{DynamicResource TextFillColorSecondary}" />
+    <SolidColorBrush x:Key="TextTertiary" Color="{DynamicResource TextFillColorTertiary}" />
+    <SolidColorBrush x:Key="TextOnAccent" Color="{DynamicResource TextOnAccentFillColorPrimary}" />
 
-    <!-- Status pills: a dim tinted fill with a bright foreground reads clearly
-         at small sizes without shouting. -->
+    <!-- ===== GunWall's own, because they carry meaning =====
+         A verdict colour is not a surface: "allowed" and "blocked" have to mean
+         the same thing in either theme, and no control library can decide that. -->
     <SolidColorBrush x:Key="AllowFill" Color="#1E3325" />
-    <SolidColorBrush x:Key="AllowText" Color="#8FD14F" />
+    <SolidColorBrush x:Key="AllowText" Color="#6CCB5F" />
     <SolidColorBrush x:Key="BlockFill" Color="#3A2226" />
     <SolidColorBrush x:Key="BlockText" Color="#FF7B72" />
     <SolidColorBrush x:Key="WarnFill"  Color="#3A2F1C" />
@@ -58,11 +54,11 @@
     <SolidColorBrush x:Key="InfoText"  Color="#6FA8FF" />
     <SolidColorBrush x:Key="AccentSoft" Color="#22331F" />
 
-    <!-- Chart and map surfaces, which need to sit just off the card colour -->
-    <SolidColorBrush x:Key="GraphCursor"    Color="#66FFFFFF" />
-    <SolidColorBrush x:Key="SelectionFill"  Color="#385B8DEF" />
-    <SolidColorBrush x:Key="MapLand"        Color="#8E9BC4" />
-    <SolidColorBrush x:Key="MapBorder"      Color="#4A5578" />
+    <!-- Charts and the world map -->
+    <SolidColorBrush x:Key="GraphCursor"   Color="#66FFFFFF" />
+    <SolidColorBrush x:Key="SelectionFill" Color="#385B8DEF" />
+    <SolidColorBrush x:Key="MapLand"       Color="#8E9BC4" />
+    <SolidColorBrush x:Key="MapBorder"     Color="#4A5578" />
 
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">True</sys:Boolean>
 </ResourceDictionary>
