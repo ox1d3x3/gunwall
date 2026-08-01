@@ -133,85 +133,85 @@
                     <StackPanel Margin="0,2,0,12">
                         <RadioButton x:Name="NavDashboard" Style="{StaticResource SideNavButton}" IsChecked="True" Checked="Nav_Checked" Tag="Dashboard">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9D9;" />
+                                <ui:SymbolIcon Symbol="Board24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Dashboard" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavFirewall" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Firewall">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE71D;" />
+                                <ui:SymbolIcon Symbol="AppsList24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Apps" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavConnections" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Connections">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE968;" />
+                                <ui:SymbolIcon Symbol="PlugConnected24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Connections" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavTraffic" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Traffic">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE774;" />
+                                <ui:SymbolIcon Symbol="DataUsage24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Traffic" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavDns" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Dns">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE71C;" />
+                                <ui:SymbolIcon Symbol="Globe24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="DNS" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavServices" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Services">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9F5;" />
+                                <ui:SymbolIcon Symbol="Server24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Services" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavNetwork" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Network">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE839;" />
+                                <ui:SymbolIcon Symbol="Router24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Network" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavPackets" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Packets">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9D2;" />
+                                <ui:SymbolIcon Symbol="DocumentTable24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Packets Log" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavRules" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Rules">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE90F;" />
+                                <ui:SymbolIcon Symbol="Wrench24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Custom Rules" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavSystem" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="System">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE72E;" />
+                                <ui:SymbolIcon Symbol="Options24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="System Rules" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavSecurity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Security">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xEA18;" />
+                                <ui:SymbolIcon Symbol="ShieldTask24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Security" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavActivity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Activity">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE9F9;" />
+                                <ui:SymbolIcon Symbol="History24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Activity" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavAlerts" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Alerts">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE7E7;" />
+                                <ui:SymbolIcon Symbol="Alert24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock x:Name="AlertsNavLabel" Style="{StaticResource SideNavLabel}" Text="Alerts" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavSettings" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Settings">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource SideNavIcon}" Text="&#xE713;" />
+                                <ui:SymbolIcon Symbol="Settings24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Settings" />
                             </StackPanel>
                         </RadioButton>

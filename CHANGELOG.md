@@ -6,6 +6,17 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.15] — 2026-08-01
+
+### Changed
+- **The navigation rail was rebuilt to the library's own NavigationViewItem specification** — geometry read from `NavigationLeftFluent.xaml` rather than estimated: a 4-pixel corner radius, a 2-pixel top margin, and a 3 by 24 pixel selection indicator offset into the pane gutter. It uses the library's own state brushes, so the rail is drawn from exactly the same values its real control would use.
+- **All fourteen navigation glyphs are now Fluent system icons** (`ui:SymbolIcon`) rather than Segoe MDL2 characters. Every symbol was checked against the library's `SymbolRegular` enum before being used, since a wrong name compiles happily and renders nothing.
+
+### Note on `ui:NavigationView`
+The control itself was examined and deliberately not adopted. It throws unless every item names a `TargetPageType`: it navigates a `Frame` between `Page` classes, whereas this window keeps all fourteen panels inline and switches their visibility. Adopting it would mean splitting the window into fourteen pages and re-plumbing the one-second sampling loop that reaches into their elements directly — a rewrite of the application shell, not a styling change. The rail now matches its appearance exactly, which was the goal, and the swap remains available later without the look changing.
+
+---
+
 ## [0.99.14] — 2026-08-01
 
 ### Changed
@@ -15,11 +26,6 @@ All notable changes to GunWall are recorded here. Format follows
 ### Notes
 - Close-to-tray is unaffected: the title bar's close button raises the same `Closing` event the existing handler already intercepts.
 - The layout is re-nested one level (title bar row above the previous root grid) rather than rebuilt, so every named element and event handler is unchanged — verified rather than assumed.
-
----
-
-## [0.99.14] — 2026-08-01
-
 ### Fixed
 - **Mica could never have appeared.** The window set `Background="{DynamicResource BgPrimary}"` as a local value. The library clears the background to transparent before applying a backdrop, but it does so through `SetCurrentValue`, which a locally set value outranks — so the request for Mica was made and silently discarded. Their own source states the rule outright: backdrop effects are not applied when the window has an opaque background. The runtime background is gone; a design-time one remains so the Visual Studio designer still shows a surface, which is how the library's own gallery handles it.
 

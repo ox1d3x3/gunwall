@@ -397,35 +397,62 @@
     </Style>
 
     <!-- ===================== Sidebar navigation ===================== -->
+        <!-- Navigation item, matched to the library's own NavigationViewItem.
+         Geometry taken from NavigationLeftFluent.xaml rather than guessed:
+         4-pixel corner radius, 2-pixel top margin, and a 3 by 24 selection
+         indicator offset -4 to the left so it sits in the pane gutter rather
+         than inside the item.
+
+         The control itself is not used because NavigationView throws unless
+         every item names a TargetPageType - it navigates a Frame between Page
+         classes, and this window keeps all fourteen panels inline and switches
+         their visibility. Adopting the control would mean splitting the window
+         into fourteen pages and re-plumbing the one-second sampling loop that
+         reaches into their elements directly. The library's state brushes are
+         used here, so this rail is drawn from exactly the same values as its
+         own, and can be swapped for the real control later without the look
+         changing. -->
     <Style x:Key="SideNavButton" TargetType="RadioButton">
-        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="FontSize" Value="13" />
-        <Setter Property="Margin" Value="10,2" />
+        <Setter Property="Foreground" Value="{DynamicResource NavigationViewItemForegroundLeftFluent}" />
+        <Setter Property="FontSize" Value="{StaticResource BodyFontSize}" />
+        <Setter Property="Margin" Value="4,2,4,0" />
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="4" Padding="12,10">
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="4"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
                         <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="3" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Rectangle x:Name="bar" Grid.Column="0" Width="3" RadiusX="2" RadiusY="2"
-                                       Fill="Transparent" HorizontalAlignment="Left" Margin="0,1,0,1" />
-                            <ContentPresenter Grid.Column="1" VerticalAlignment="Center"
-                                              HorizontalAlignment="Left" Margin="9,0,0,0" />
+                            <Rectangle x:Name="bar" Width="3" Height="24"
+                                       Margin="-8,0,0,0" RadiusX="1.5" RadiusY="1.5"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center"
+                                       Fill="{DynamicResource NavigationViewSelectionIndicatorForeground}"
+                                       Visibility="Collapsed" />
+                            <ContentPresenter VerticalAlignment="Center"
+                                              SnapsToDevicePixels="True" />
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
+                            <Setter TargetName="bd" Property="Background"
+                                    Value="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource NavigationViewItemForegroundPointerOverLeftFluent}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoft}" />
-                            <Setter TargetName="bar" Property="Fill" Value="{StaticResource Accent}" />
-                            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                            <Setter TargetName="bd" Property="Background"
+                                    Value="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <Setter TargetName="bar" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
