@@ -32,10 +32,15 @@ is done the way it is.
 
 ## Non-negotiables
 
-**Zero third-party packages.** No NuGet dependencies. Everything is the .NET
-base class library or direct Win32 P/Invoke. A firewall that pulls in opaque
-dependencies undermines its own promise, and the single portable executable is a
-core goal. A pull request that adds a package reference will not be merged.
+**Nothing third-party in the filtering path.** GunWall has exactly one package
+dependency — [WPF UI](https://github.com/lepoco/wpfui), MIT, for the interface —
+and that is where it ends. The WFP engine, the rule evaluator, the DNS resolver
+and the rule store use the .NET base class library and direct Win32 P/Invoke
+only. A pull request that adds a dependency to any of those will not be merged,
+whatever it does; the part of this program that decides whether traffic lives or
+dies has to stay readable end to end. Additions to the interface layer are
+discussable, but the bar is high: the single portable executable is still a
+goal, and every package is a supply chain someone has to trust.
 
 **No telemetry.** GunWall makes no outbound request the user did not ask for.
 

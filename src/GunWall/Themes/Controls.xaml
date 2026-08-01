@@ -13,13 +13,19 @@
          action is "allow", and the colour should agree with the verdict it
          produces. Hover and pressed are steps of the same hue rather than
          opacity changes, which stay legible on both themes. -->
-    <Color x:Key="AccentColor">#28C85F</Color>
-    <Color x:Key="Accent2Color">#28C85F</Color>
+    <!-- Green was doing two unrelated jobs: it marked the primary action AND it
+         meant "allowed". That is why the interface reads as noisy - the same
+         colour appears on a button you should press and on a verdict you should
+         notice, and neither is clearly either. Fluent separates them, and so do
+         we now: blue carries interaction (selection, focus, the primary action),
+         green and red stay reserved for what a firewall actually decides. -->
+    <Color x:Key="AccentColor">#4CA0FF</Color>
+    <Color x:Key="Accent2Color">#4CA0FF</Color>
 
     <SolidColorBrush x:Key="Accent"         Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="Accent2"        Color="{StaticResource Accent2Color}" />
-    <SolidColorBrush x:Key="AccentHover"    Color="#33D86C" />
-    <SolidColorBrush x:Key="AccentPressed"  Color="#1DA94D" />
+    <SolidColorBrush x:Key="AccentHover"    Color="#6BB2FF" />
+    <SolidColorBrush x:Key="AccentPressed"  Color="#3A86E0" />
 
     <SolidColorBrush x:Key="AllowBrush" Color="#34D164" />
     <SolidColorBrush x:Key="BlockBrush" Color="#FF453A" />
@@ -38,8 +44,8 @@
     <!-- Flat accent (kept as a 'gradient' key name for compatibility, but solid
          for a clean, professional, non-AI look). -->
     <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#28C85F" Offset="0" />
-        <GradientStop Color="#1DA94D" Offset="1" />
+        <GradientStop Color="#4CA0FF" Offset="0" />
+        <GradientStop Color="#3A86E0" Offset="1" />
     </LinearGradientBrush>
 
     <!-- Prompt buttons. Muted and identical to each other on purpose: an
@@ -83,25 +89,51 @@
         </Setter>
     </Style>
 
+    <!-- Type ramp. There were nine font sizes in this file with no relationship
+         to one another - 11, 11.5, 12, 12.5, 13, 14, 16, 18, 24 - which is what
+         makes text look placed rather than set. These are Fluent's steps, named
+         so a new control picks one instead of inventing another.
+
+         Body stays at 13 rather than Fluent's 14 on purpose: the lists here have
+         fixed column widths, and widening the text without re-measuring every
+         column would truncate names. That is a deliberate deviation, not an
+         oversight. -->
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="CaptionFontSize">12</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="BodyFontSize">13</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="BodyStrongFontSize">13</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="SubtitleFontSize">20</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="TitleFontSize">28</sys:Double>
+
+    <!-- Handed over to WPF UI: ComboBox, ComboBoxItem, PasswordBox, TextBox,
+         ContextMenu, MenuItem and Separator no longer have styles here.
+         GunWall's dictionaries are merged after WPF UI's, so any style left in
+         this file wins - which would have quietly cancelled the upgrade for
+         exactly the controls it most improves.
+
+         What stays is what carries a decision WPF UI cannot know about: the
+         type ramp and colours on TextBlock, the list metrics the fixed-width
+         columns depend on, and every keyed style (the navigation rail, cards,
+         the firewall switch, the prompt buttons). -->
+
     <!-- ======================= Base TextBlock ======================= -->
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{StaticResource BodyFontSize}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
     </Style>
 
     <Style x:Key="H1" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
-        <Setter Property="FontSize" Value="24" />
+        <Setter Property="FontSize" Value="{StaticResource TitleFontSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="H2" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
-        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontSize" Value="{StaticResource SubtitleFontSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
@@ -118,26 +150,35 @@
     </Style>
 
     <!-- ========================= Card border ========================= -->
+    <!-- A card is defined by its edge, not by a glow behind it. Every card
+         carried a 22-pixel drop shadow, which softens the very boundary the
+         card exists to draw and costs a blur pass per card on a window that
+         shows a dozen of them. Fluent keeps cards flat and reserves shadow for
+         things that genuinely float above the page - flyouts and dialogs. -->
     <Style x:Key="Card" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource BgCard}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="20" />
-        <Setter Property="Effect">
-            <Setter.Value>
-                <DropShadowEffect Color="#000000" BlurRadius="22" ShadowDepth="1"
-                                  Direction="270" Opacity="0.20" />
-            </Setter.Value>
-        </Setter>
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
     <!-- ===================== Navigation button ===================== -->
+    <!-- Navigation rail, on Fluent NavigationView proportions.
+
+         Selected and hover both painted themselves with the card colour, so
+         pointing at an item looked exactly like having chosen it - the one
+         thing a navigation list has to make obvious. They are now distinct
+         surfaces, and the selected indicator is a short centred pill rather
+         than a full-height bar, which is what stops the rail reading as a
+         stack of tabs. -->
     <Style x:Key="NavButton" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="FontSize" Value="14" />
-        <Setter Property="Margin" Value="8,2" />
-        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="FontSize" Value="{StaticResource BodyFontSize}" />
+        <Setter Property="Margin" Value="8,1" />
+        <Setter Property="Height" Value="38" />
+        <Setter Property="Padding" Value="14,0" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -146,22 +187,25 @@
                     <Grid>
                         <Border x:Name="bd"
                                 Background="Transparent"
-                                CornerRadius="8"
+                                CornerRadius="4"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter VerticalAlignment="Center" Margin="8,0,0,0" />
                         </Border>
-                        <!-- Selected-item accent indicator bar -->
-                        <Rectangle x:Name="bar" Width="3" HorizontalAlignment="Left"
-                                   Margin="0,6,0,6" RadiusX="1.5" RadiusY="1.5"
+                        <!-- A short pill, vertically centred, as Fluent draws it -->
+                        <Rectangle x:Name="bar" Width="3" Height="16"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center"
+                                   Margin="0" RadiusX="1.5" RadiusY="1.5"
                                    Fill="{StaticResource Accent}" Visibility="Collapsed" />
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgCard}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgCard}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSelected}" />
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
                             <Setter TargetName="bar" Property="Visibility" Value="Visible" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -184,7 +228,7 @@
                     <Border x:Name="track" CornerRadius="12"
                             Background="{DynamicResource BgElevated}"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                        <Border x:Name="thumb" Width="18" Height="18" CornerRadius="9"
+                        <Border x:Name="thumb" Width="18" Height="18" CornerRadius="8"
                                 Background="{DynamicResource TextSecondary}"
                                 HorizontalAlignment="Left" VerticalAlignment="Center" Margin="2,0,0,0">
                             <Border.RenderTransform>
@@ -241,7 +285,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="track" CornerRadius="15"
+                    <Border x:Name="track" CornerRadius="12"
                             Background="{DynamicResource BgElevated}"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                         <Grid>
@@ -306,7 +350,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="10"
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="4"
                             Padding="14,7">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -349,7 +393,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="10" Padding="12,10">
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="4" Padding="12,10">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="3" />
@@ -393,13 +437,61 @@
     </Style>
 
     <!-- ======================= Primary button ======================= -->
+    <!-- The firewall switch. Enabling and disabling protection is the most
+         consequential thing in this window, and a button that relabels itself
+         ("Enable" / "Disable") makes the reader work out the current state from
+         the verb. A switch shows the state instead of describing it. Wide
+         enough to carry a word, so it reads at a glance from across the room. -->
+    <Style x:Key="FirewallSwitch" TargetType="CheckBox">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Border x:Name="Track" Width="94" Height="32" CornerRadius="16"
+                            Background="{DynamicResource BgElevated}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <Grid>
+                            <TextBlock x:Name="OffLabel" Text="OFF" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextSecondary}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       Margin="0,0,14,0" />
+                            <TextBlock x:Name="OnLabel" Text="ON" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#FFFFFF" Visibility="Collapsed"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center"
+                                       Margin="14,0,0,0" />
+                            <Border x:Name="Knob" Width="24" Height="24" CornerRadius="12"
+                                    Background="{DynamicResource TextSecondary}"
+                                    HorizontalAlignment="Left" Margin="4,0,0,0" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource AllowText}" />
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AllowText}" />
+                            <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                            <Setter TargetName="Knob" Property="Margin" Value="0,0,4,0" />
+                            <Setter TargetName="Knob" Property="Background" Value="#FFFFFF" />
+                            <Setter TargetName="OnLabel" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="OffLabel" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Knob" Property="Opacity" Value="0.85" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="PrimaryButton" TargetType="Button">
         <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
         <Setter Property="Foreground" Value="#FFFFFF" />
         <Setter Property="Background" Value="{StaticResource AccentGradient}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="14,11" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Padding" Value="16,0" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -407,7 +499,7 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="bd"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="10"
+                            CornerRadius="4"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -431,7 +523,8 @@
         <Setter Property="Background" Value="{DynamicResource BgCard}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="14,8" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="Height" Value="32" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -441,7 +534,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="10"
+                            CornerRadius="4"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -469,7 +562,7 @@
     <Style TargetType="GridViewColumnHeader">
         <Setter Property="OverridesDefaultStyle" Value="True" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{StaticResource CaptionFontSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Template">
@@ -500,17 +593,19 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ListViewItem">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="8"
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="4"
                             Padding="{TemplateBinding Padding}">
                         <GridViewRowPresenter Content="{TemplateBinding Content}"
                                               Columns="{TemplateBinding GridView.ColumnCollection}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceHover}" />
                         </Trigger>
+                        <!-- Selection is a different surface from hover: a row you are
+                             pointing at and a row you have chosen must not look alike. -->
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSelected}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -518,183 +613,13 @@
         </Setter>
     </Style>
     <!-- ===================== Themed ComboBox ===================== -->
-    <Style TargetType="ComboBox">
-        <Setter Property="OverridesDefaultStyle" Value="True" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="Background" Value="{DynamicResource BgElevated}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-        <Setter Property="Height" Value="32" />
-        <Setter Property="FontSize" Value="12" />
-        <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="SnapsToDevicePixels" Value="True" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ComboBox">
-                    <Grid>
-                        <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
-                                      Background="{TemplateBinding Background}"
-                                      BorderBrush="{TemplateBinding BorderBrush}"
-                                      IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
-                            <ToggleButton.Template>
-                                <ControlTemplate TargetType="ToggleButton">
-                                    <Border x:Name="b" Background="{TemplateBinding Background}"
-                                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
-                                            CornerRadius="8">
-                                        <TextBlock Text="&#xE70D;" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="9"
-                                                   Foreground="{DynamicResource TextSecondary}" Margin="0,0,10,0" />
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </ToggleButton.Template>
-                        </ToggleButton>
-                        <ContentPresenter IsHitTestVisible="False"
-                                          Content="{TemplateBinding SelectionBoxItem}"
-                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                          VerticalAlignment="Center" HorizontalAlignment="Left"
-                                          Margin="11,0,26,0" />
-                        <Popup x:Name="Popup" Placement="Bottom" Focusable="False" AllowsTransparency="True"
-                               IsOpen="{TemplateBinding IsDropDownOpen}">
-                            <Border Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
-                                    BorderThickness="1" CornerRadius="10" Margin="0,3,0,6"
-                                    MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
-                                    MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                                <Border.Effect>
-                                    <DropShadowEffect Color="#000000" BlurRadius="12" ShadowDepth="2" Opacity="0.25" />
-                                </Border.Effect>
-                                <ScrollViewer>
-                                    <ItemsPresenter Margin="0,3" />
-                                </ScrollViewer>
-                            </Border>
-                        </Popup>
-                    </Grid>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style TargetType="ComboBoxItem">
-        <Setter Property="OverridesDefaultStyle" Value="True" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontSize" Value="12" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ComboBoxItem">
-                    <Border x:Name="bd" Background="Transparent" Padding="11,7" CornerRadius="5" Margin="3,1">
-                        <ContentPresenter TextElement.Foreground="{DynamicResource TextPrimary}" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
+    
+    
     <!-- ===================== Themed TextBox ===================== -->
-    <Style TargetType="TextBox">
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="b" Background="{DynamicResource BgElevated}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
-                        <ScrollViewer x:Name="PART_ContentHost" Margin="9,6"
-                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style TargetType="PasswordBox">
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="PasswordBox">
-                    <Border x:Name="b" Background="{DynamicResource BgElevated}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
-                        <ScrollViewer x:Name="PART_ContentHost" Margin="9,0" VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
+    
+    
     <!-- ===================== Themed context menu ===================== -->
-    <Style TargetType="ContextMenu">
-        <Setter Property="OverridesDefaultStyle" Value="True" />
-        <Setter Property="HasDropShadow" Value="False" />
-        <Setter Property="Background" Value="{DynamicResource BgCard}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ContextMenu">
-                    <Border Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="11" Padding="5">
-                        <Border.Effect>
-                            <DropShadowEffect Color="#000000" BlurRadius="16" ShadowDepth="3" Opacity="0.3" />
-                        </Border.Effect>
-                        <ItemsPresenter />
-                    </Border>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style TargetType="MenuItem">
-        <Setter Property="OverridesDefaultStyle" Value="True" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="MenuItem">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="6" Padding="12,7" Margin="1">
-                        <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
-                                          TextElement.Foreground="{DynamicResource TextPrimary}" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BgElevated}" />
-                        </Trigger>
-                        <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style TargetType="Separator">
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Separator">
-                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="8,4" />
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
+    
+    
+    
 </ResourceDictionary>

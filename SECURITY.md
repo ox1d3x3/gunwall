@@ -76,5 +76,7 @@ them is a valid security report:
    turned on. A fresh install changes nothing until protection is enabled.
 4. **Clean removal.** Every persistent filter can be removed, including after a
    crash — the sublayer is deleted by key rather than relying on a stored list.
-5. **No third-party packages.** The dependency surface is the .NET base class
-   library and Win32, so the supply chain stays auditable.
+5. **No third-party code in the filtering path.** The WFP engine, rule
+   evaluator, DNS resolver and rule store depend on nothing beyond the .NET base
+   class library and Win32. The interface uses one MIT-licensed control library
+   (WPF UI); it draws controls and has no part in deciding what is allowed.

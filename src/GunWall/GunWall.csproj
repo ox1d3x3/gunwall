@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.99.4</Version>
+    <Version>0.99.9</Version>
     <Company>GunWall</Company>
     <Product>GunWall Firewall</Product>
     <Description>A modern, open-source Windows firewall built on the Windows Filtering Platform.</Description>
@@ -45,6 +45,15 @@
   <ItemGroup>
     <None Remove="Flags\**\*.png" />
     <Resource Include="Flags\**\*.png" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <!-- WPF UI (lepoco/wpfui) - MIT. Supplies the Fluent control set and
+         theming. Its licence is reproduced in third-party-licenses/, as the
+         MIT terms require. This is GunWall's only package dependency; see
+         docs/ARCHITECTURE.md for what that changes and what it does not. -->
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
 </Project>

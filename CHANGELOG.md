@@ -6,6 +6,62 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.9] — 2026-08-01
+
+### Added
+- **WPF UI (lepoco/wpfui, MIT) now supplies the Fluent control set.** Its dictionaries are merged ahead of GunWall's own, so anything this project defines still wins where it needs to. Its licence is reproduced in `third-party-licenses/`, as the MIT terms require.
+
+### Changed
+- **The dependency policy is narrower and more honest than it was.** GunWall claimed zero packages; it now has one, for the interface. The claim that was doing the actual work has been kept and stated precisely: **no third-party code runs in the filtering path.** The WFP engine, rule evaluator, DNS resolver and rule store still depend on nothing beyond the .NET base class library and Win32, so the part of this program that decides whether traffic lives or dies remains readable end to end. A control library draws buttons and has no access to any of that. Four documents claimed the old policy and all four have been updated rather than left to age.
+- Styles for ComboBox, ComboBoxItem, PasswordBox, TextBox, ContextMenu, MenuItem and Separator were removed from this project so WPF UI's versions apply. Because GunWall's dictionaries merge last, leaving them in place would have silently cancelled the upgrade for exactly the controls it most improves. What stays is what carries a decision a library cannot know: the type ramp, the list metrics the fixed-width columns depend on, and every keyed style.
+
+### Fixed
+- **The two palettes would not have matched.** WPF UI ships its own dark theme built on neutral greys (#202020, #1C1C1C); GunWall's is navy. Left alone, every control the library styles — text boxes, dropdowns, menus — would have sat as a grey island on a navy panel, which reads as two applications sharing a window. A bridge dictionary restates WPF UI's own colour tokens in GunWall's palette, merged between their theme and their controls so their templates resolve our values. Their translucent control fills are deliberately left alone: an overlay tints to whatever is beneath it, so those already pick up our surfaces.
+- **Switching to the light theme would have left the library dark.** The palette swap only replaced GunWall's dictionary; the bridge is now swapped with it, and both bridges are checked to define an identical set of keys.
+- **Theme switching assumed the palette was the first merged dictionary** and replaced index 0 outright. That held only while GunWall's palette happened to be merged first; adding any dictionary ahead of it would have made switching themes overwrite that library instead. The palette is now located by name, so merge order is free to change.
+
+---
+
+## [0.99.8] — 2026-08-01
+
+### Changed
+- **List rows had the same defect as the navigation rail:** hover and selection were painted with the same colour, so a row you were pointing at looked identical to one you had chosen. They are separate surfaces now.
+- **One set of control metrics.** Text boxes, dropdowns, list rows and column headers each carried their own height, corner radius and font size — four controls, four opinions. They now share a 32-pixel minimum height, a 4-pixel radius and the type ramp.
+- **The dashboard figures are evenly distributed** rather than left-packed with hand-set 28-pixel gaps. Six numbers separated by arbitrary margins read as a jumble; the same six on a shared rhythm read as a summary.
+
+---
+
+## [0.99.7] — 2026-08-01
+
+### Changed
+- **Green was doing two unrelated jobs.** It marked the primary action *and* it meant "allowed" — the same colour on a button you should press and on a verdict you should notice, which is a large part of why the interface read as noisy. Interaction now uses a blue accent, as Fluent does; green and red are reserved for what a firewall actually decides.
+- **A named type ramp replaces nine unrelated font sizes.** There were sizes of 11, 11.5, 12, 12.5, 13, 14, 16, 18 and 24 in the styles with no relationship between them, which is what makes text look placed rather than set. Body deliberately stays at 13 rather than Fluent's 14, because the lists have fixed column widths and widening the text without re-measuring every column would truncate names.
+- **The navigation rail was rebuilt on Fluent NavigationView proportions.** Hover and selected were painted with the same colour, so pointing at an item looked identical to having chosen it — the one thing a navigation list must make obvious. They are separate surfaces now, the selected label is weighted, and the indicator is a short centred pill rather than a full-height bar.
+
+---
+
+## [0.99.6] — 2026-08-01
+
+### Fixed
+- **The connection prompt appeared too high on the screen.** Its position subtracted a hardcoded 380 pixels for the window height — a guess written when the window was that tall. After the prompt was rebuilt at roughly half that, it floated well above the corner it belonged in. The height is now measured rather than assumed, which means the placement happens once the window has actually been laid out, and again whenever it resizes so that opening Details grows it upward from the corner instead of walking it down off the screen. The shadow margin is accounted for, so the visible card sits the intended distance from the edge rather than the invisible window bounds.
+- The prompt now appears on the display the pointer is on rather than always the primary one, with the placement scaled for the current DPI and clamped inside the work area.
+- The blocked-app title was too long for the title line and truncated mid-word. It is shorter now, with the explanation moved to the subtitle where there is room for it.
+
+### Changed
+- **Cards are defined by their edge instead of a glow.** Every card carried a 22-pixel drop shadow, which softens the very boundary a card exists to draw — and costs a blur pass per card on a window that shows a dozen. They are flat now, with the one-pixel stroke doing the work, as Fluent does it; shadow is reserved for things that genuinely float above the page.
+- Card radius came down from 14 to 8, completing the single radius scale started in 0.99.5.
+
+---
+
+## [0.99.5] — 2026-08-01
+
+### Changed
+- **Buttons were rebuilt to Fluent geometry.** They carried a 10-pixel corner radius on a 32-pixel body, which makes every button read as a pill — the single thing most responsible for the interface looking generic. Radius is now 4, height is fixed at 32, and padding is consistent, matching what Windows 11 itself uses.
+- **One corner-radius scale across the whole application:** 4 for controls, 8 for cards and flyouts, 12 for large surfaces. Values of 9, 10, 11 and 15 had accumulated in different places, which is what makes an interface look assembled rather than designed.
+- **Enabling and disabling the firewall is a switch.** It was a button that renamed itself between "Enable Firewall" and "Disable Firewall", which asks the reader to work out the current state from a verb. A switch shows the state instead of describing it, and it is labelled ON/OFF so it reads from across the room.
+
+---
+
 ## [0.99.4] — 2026-08-01
 
 ### Changed

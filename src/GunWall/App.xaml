@@ -2,12 +2,29 @@
     x:Class="GunWall.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     StartupUri="MainWindow.xaml">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- Index 0: the swappable theme palette (dark by default).
-                     The theme service replaces this entry at runtime. -->
+                <!-- WPF UI (lepoco/wpfui, MIT) supplies the Fluent control set.
+                     It is merged FIRST so that GunWall's own dictionaries below
+                     can override anything it defines: last writer wins for a
+                     given key, and this application has styles it needs to keep.
+
+                     The theme entry here is WPF UI's own; GunWall's palette is
+                     swapped separately and is located by name rather than by
+                     position, so the order of this list is free to change. -->
+                <ui:ThemesDictionary Theme="Dark" />
+
+                <!-- Restates WPF UI's own colour tokens in GunWall's palette,
+                     between their theme and their controls, so their templates
+                     resolve our navy and our accent rather than their greys. -->
+                <ResourceDictionary Source="Themes/WpfUiBridge.xaml" />
+
+                <ui:ControlsDictionary />
+
+                <!-- GunWall's palette (dark by default), swapped at runtime. -->
                 <ResourceDictionary Source="Themes/Theme.Dark.xaml" />
                 <ResourceDictionary Source="Themes/Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>

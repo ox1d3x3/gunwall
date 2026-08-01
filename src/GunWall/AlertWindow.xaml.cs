@@ -64,10 +64,22 @@ public partial class AlertWindow : Window
         // In Zero Trust (strict) mode the app is currently BLOCKED and stays
         // blocked unless approved; reflect that in the header.
         if (_strictMode)
-            HeaderText.Text = "App is blocked - approve to allow network access";
+            {
+            // Short enough to fit the title line without truncating; the
+            // subtitle carries the rest.
+            HeaderText.Text = "App Is Blocked";
+            if (SummaryText != null) SummaryText.Text = "Approve to allow network access";
+        }
 
         Loaded += OnLoaded;
-        PositionBottomRight();
+        PositionBottomRight();   // provisional, before layout knows the height
+
+        // Once the window has actually been laid out its height is real, so
+        // place it properly; and re-place it on every size change, because
+        // opening Details makes it taller and it should grow up from the corner
+        // rather than walk down past the bottom of the screen.
+        ContentRendered += (_, _) => PositionBottomRight();
+        SizeChanged += (_, _) => PositionBottomRight();
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -276,11 +288,62 @@ public partial class AlertWindow : Window
         if (e.ButtonState == MouseButtonState.Pressed) DragMove();
     }
 
+    // The card is inset from the window by its shadow margin, so the window has
+    // to overhang the corner by that much for the card to sit the right distance
+    // from the screen edge.
+    private const double ShadowMargin = 12;
+    private const double EdgeGap = 12;
+
+    /// <summary>
+    /// Parks the prompt in the corner of the work area, above the taskbar.
+    ///
+    /// This used to subtract a hardcoded 380 pixels for the height, which was a
+    /// guess made when the window was that tall; the prompt is now around half
+    /// that, so it floated well above where it belonged. Height is measured
+    /// rather than assumed, which means positioning has to happen once the
+    /// window has actually been laid out - and again whenever it changes size,
+    /// since opening Details makes it taller and it should grow upward from the
+    /// corner rather than walking down off the screen.
+    /// </summary>
     private void PositionBottomRight()
     {
-        var area = SystemParameters.WorkArea;
-        Left = area.Right - Width - 16;
-        Top = area.Bottom - 380; // approximate height; SizeToContent finalizes
+        var area = WorkAreaForCursor();
+
+        double h = ActualHeight > 0 ? ActualHeight : (Height > 0 ? Height : 220);
+        double w = ActualWidth > 0 ? ActualWidth : Width;
+
+        Left = area.Right - w + ShadowMargin - EdgeGap;
+        Top = area.Bottom - h + ShadowMargin - EdgeGap;
+
+        // Never let it leave the work area, however small the screen.
+        if (Left < area.Left) Left = area.Left;
+        if (Top < area.Top) Top = area.Top;
+    }
+
+    /// <summary>
+    /// The work area of the display the pointer is on, so on a multi-monitor
+    /// desk the prompt appears where the person is looking rather than always
+    /// on the primary screen. Falls back to the primary work area.
+    /// </summary>
+    private static Rect WorkAreaForCursor()
+    {
+        try
+        {
+            var p = System.Windows.Forms.Cursor.Position;
+            var screen = System.Windows.Forms.Screen.FromPoint(p);
+            var wa = screen.WorkingArea;
+
+            // Screen coordinates are physical pixels; WPF positions in device
+            // independent units, so scale by the current DPI.
+            var src = PresentationSource.FromVisual(Application.Current?.MainWindow ?? (Visual)new Window());
+            double sx = src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            double sy = src?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+            if (sx <= 0) sx = 1.0;
+            if (sy <= 0) sy = 1.0;
+
+            return new Rect(wa.Left / sx, wa.Top / sy, wa.Width / sx, wa.Height / sy);
+        }
+        catch { return SystemParameters.WorkArea; }
     }
 
     [DllImport("dwmapi.dll")]

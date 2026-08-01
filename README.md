@@ -7,10 +7,10 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/NuGet%20dependencies-0-3FB868?style=flat-square)](#-privacy--security)
-[![Status](https://img.shields.io/badge/release-v0.99.4%20(beta)-E0A53F?style=flat-square)](#roadmap)
+[![Dependencies](https://img.shields.io/badge/filtering%20path-no%20dependencies-3DA9FC?style=flat-square)](#-privacy--security)
+[![Status](https://img.shields.io/badge/release-v0.99.9%20(beta)-E0A53F?style=flat-square)](#roadmap)
 
-*Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and no third-party dependencies.*
+*Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and nothing between you and the kernel.*
 
 **[github.com/ox1d3x3/gunwall](https://github.com/ox1d3x3/gunwall)**
 
@@ -26,7 +26,7 @@ GunWall is a **zero-trust application firewall** for Windows. It talks directly 
 2. **Real visibility.** Per-app bandwidth measured from the kernel, live connection inspection, traffic broken down by app, host, protocol and country.
 3. **Expressive control.** Ordered per-app rule lists that match on country, network operator (ASN), address range, or network scope — not just "allow" and "block".
 
-It is a **single portable executable** with **zero NuGet dependencies** — the entire supply chain is the .NET base class library and Win32.
+It is a **single portable executable**. The filtering path — the WFP engine, the rule evaluator, the DNS resolver, the rule store — is the .NET base class library and Win32 and nothing else; the interface uses one MIT-licensed control library ([WPF UI](https://github.com/lepoco/wpfui)) for its Fluent controls.
 
 ---
 
@@ -148,7 +148,7 @@ GunWall is designed so that **nothing happens to your data without your say-so**
 - **Local-only storage.** Rules and settings live in a portable `GunWallData` folder beside the executable, falling back to `%ProgramData%\GunWall` if that's read-only — plain JSON you can read, back up, or delete.
 - **Explicit actions only.** Every filter corresponds to a button you pressed. A fresh install changes nothing until you enable protection.
 - **Clean removal.** Tear down every persistent filter from Settings before uninstalling.
-- **Zero third-party packages.** The whole supply chain is the .NET base class library plus Win32 — trivially auditable.
+- **Nothing third-party decides anything.** One MIT control library draws the interface; every component that inspects or blocks traffic is the .NET base class library plus Win32, and readable end to end.
 
 ---
 

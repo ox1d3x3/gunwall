@@ -313,7 +313,7 @@ public partial class MainWindow : Window
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.4 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.9 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5327,7 +5327,9 @@ public partial class MainWindow : Window
     private void SyncFirewallToggle()
     {
         if (EnableFirewallButton == null) return;
-        EnableFirewallButton.Content = _firewall.StrictMode ? "Disable Firewall" : "Enable Firewall";
+        // The switch shows the state rather than naming the next action, so it
+        // is set from the state directly instead of relabelled.
+        EnableFirewallButton.IsChecked = _firewall.StrictMode;
         // A mode change resets per-session prompt tracking, so entering Zero
         // Trust re-prompts for every undecided app.
         _promptedThisSession.Clear();
@@ -5744,15 +5746,44 @@ public partial class MainWindow : Window
         try
         {
             var dicts = Application.Current.Resources.MergedDictionaries;
-            // The palette is always the first merged dictionary (see App.xaml).
             var palette = new ResourceDictionary
             {
                 Source = new Uri(dark
                     ? "Themes/Theme.Dark.xaml"
                     : "Themes/Theme.Light.xaml", UriKind.Relative)
             };
-            if (dicts.Count > 0) dicts[0] = palette;
+
+            // Find the palette by what it is, not by where it sits. This used to
+            // assume index 0, which was true only while GunWall's own palette
+            // happened to be merged first; adding any dictionary ahead of it -
+            // a control library, for instance - would have made theme switching
+            // silently overwrite that library instead.
+            int idx = -1;
+            for (int i = 0; i < dicts.Count; i++)
+            {
+                string src = dicts[i].Source?.OriginalString ?? "";
+                if (src.Contains("Theme.Dark.xaml", StringComparison.OrdinalIgnoreCase) ||
+                    src.Contains("Theme.Light.xaml", StringComparison.OrdinalIgnoreCase))
+                { idx = i; break; }
+            }
+            if (idx >= 0) dicts[idx] = palette;
             else dicts.Insert(0, palette);
+
+            // The control library carries its own palette too, so switching only
+            // GunWall's would leave every text box and dropdown in the previous
+            // theme. Swap the bridge that restates its tokens in our colours.
+            var bridge = new ResourceDictionary
+            {
+                Source = new Uri(dark
+                    ? "Themes/WpfUiBridge.xaml"
+                    : "Themes/WpfUiBridge.Light.xaml", UriKind.Relative)
+            };
+            for (int i = 0; i < dicts.Count; i++)
+            {
+                string src = dicts[i].Source?.OriginalString ?? "";
+                if (src.Contains("WpfUiBridge", StringComparison.OrdinalIgnoreCase))
+                { dicts[i] = bridge; break; }
+            }
 
             // Match the OS title bar to the theme.
             TrySetTitleBarTheme(dark);

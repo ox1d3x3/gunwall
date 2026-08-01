@@ -56,7 +56,7 @@
                     <TextBlock Text="GunWall" Style="{StaticResource H2}" />
                     <TextBlock Text="Guard Your Network" Style="{StaticResource Muted}" Margin="0,1,0,0" />
                 </StackPanel>
-                <Border DockPanel.Dock="Top" Margin="12,0,12,12" Padding="12,11" CornerRadius="10"
+                <Border DockPanel.Dock="Top" Margin="12,0,12,12" Padding="12,11" CornerRadius="8"
                         Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1">
                     <StackPanel Orientation="Horizontal">
@@ -182,8 +182,11 @@
                     <Button x:Name="LockdownButton" Content="Engage lockdown"
                             Style="{StaticResource ActionButton}" Margin="0,0,10,0"
                             Click="LockdownButton_Click" />
-                    <Button x:Name="EnableFirewallButton" Content="Enable Firewall"
-                            Style="{StaticResource PrimaryButton}" Click="EnableFirewall_Click" />
+                    <TextBlock Text="Firewall" VerticalAlignment="Center" Margin="0,0,10,0"
+                               Foreground="{DynamicResource TextSecondary}" FontSize="12.5" />
+                    <CheckBox x:Name="EnableFirewallButton" Style="{StaticResource FirewallSwitch}"
+                              Click="EnableFirewall_Click" VerticalAlignment="Center"
+                              ToolTip="Turn protection on or off. Off leaves this PC unfiltered." />
                 </StackPanel>
             </Border>
 
@@ -236,46 +239,49 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                            <!-- Evenly distributed rather than left-packed with hand-set gaps: six
+                                 figures separated by arbitrary margins read as a jumble,
+                                 the same six on a shared rhythm read as a summary. -->
+                            <UniformGrid Grid.Column="0" Rows="1" VerticalAlignment="Center">
+                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
                                             Tag="Firewall" MouseLeftButtonUp="Stat_Click"
                                             ToolTip="Open the Apps list">
-                                    <TextBlock x:Name="StatApps" Text="0" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="StatApps" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold" />
                                     <TextBlock Text="Apps seen" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
                                             Tag="Firewall" MouseLeftButtonUp="Stat_Click"
                                             ToolTip="Open the Apps list">
-                                    <TextBlock x:Name="StatBlocked" Text="0" FontSize="20" FontWeight="SemiBold"
+                                    <TextBlock x:Name="StatBlocked" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource BlockBrush}" />
                                     <TextBlock Text="Blocked" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
                                             Tag="Firewall" MouseLeftButtonUp="Stat_Click"
                                             ToolTip="Open the Apps list">
-                                    <TextBlock x:Name="StatAllowed" Text="0" FontSize="20" FontWeight="SemiBold"
+                                    <TextBlock x:Name="StatAllowed" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource AllowBrush}" />
                                     <TextBlock Text="Allowed" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
                                             Tag="Rules" MouseLeftButtonUp="Stat_Click"
                                             ToolTip="Open Custom Rules">
-                                    <TextBlock x:Name="StatRules" Text="0" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="StatRules" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold" />
                                     <TextBlock Text="Custom rules" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,28,8" Background="Transparent" Cursor="Hand"
+                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
                                             Tag="System" MouseLeftButtonUp="Stat_Click"
                                             ToolTip="Open System Rules">
-                                    <TextBlock x:Name="StatSystem" Text="0" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="StatSystem" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold" />
                                     <TextBlock Text="System rules" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,0,8" Background="Transparent" Cursor="Hand"
+                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
                                             Tag="Rules" MouseLeftButtonUp="Stat_Click"
                                             ToolTip="Open the IP blocklist">
-                                    <TextBlock x:Name="StatBlocklist" Text="0" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="StatBlocklist" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold" />
                                     <TextBlock Text="Blocklisted" Style="{StaticResource Muted}" />
                                 </StackPanel>
-                            </WrapPanel>
+                            </UniformGrid>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock x:Name="SnoozeStatus" Style="{StaticResource Muted}"
                                            HorizontalAlignment="Right" Margin="0,0,0,6" Text="" />
@@ -537,7 +543,7 @@
                                 <GridViewColumn Header="Conns" Width="86">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Border CornerRadius="9" Padding="8,2" HorizontalAlignment="Left"
+                                            <Border CornerRadius="8" Padding="8,2" HorizontalAlignment="Left"
                                                     Background="{DynamicResource BgElevated}">
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="{Binding ActiveConnections}" FontSize="11"
@@ -1224,7 +1230,7 @@
                                 <GridViewColumn Header="Action" Width="110">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Border CornerRadius="9" Padding="9,2" HorizontalAlignment="Left"
+                                            <Border CornerRadius="8" Padding="9,2" HorizontalAlignment="Left"
                                                     Background="{Binding ActionBrush}">
                                                 <TextBlock Text="{Binding Action}" Foreground="{DynamicResource TextOnAccent}"
                                                            FontSize="11" FontWeight="SemiBold" />
