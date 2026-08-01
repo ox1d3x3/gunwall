@@ -79,7 +79,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="218" />
+            <ColumnDefinition Width="92" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
@@ -94,25 +94,20 @@
                      upper edge reads as a wall segment: the two ideas the name
                      joins. Geometry rather than a bitmap means no asset to keep
                      in step with the palette. -->
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="18,20,16,16">
-                    <Grid Width="30" Height="32" VerticalAlignment="Center" Margin="0,0,11,0">
+                <StackPanel DockPanel.Dock="Top" Margin="0,16,0,14" HorizontalAlignment="Center">
+                    <Grid Width="30" Height="32" HorizontalAlignment="Center">
                         <Path Stretch="Uniform" Width="28" Height="30"
                               Fill="{DynamicResource AccentGradient}"
                               Data="M 16,1 L 30,6 L 30,17 C 30,25 23,30 16,32 C 9,30 2,25 2,17 L 2,6 Z" />
-                        <!-- the wall course, knocked out of the shield face -->
                         <Path Stretch="Uniform" Width="15" Height="13"
                               VerticalAlignment="Center" HorizontalAlignment="Center"
                               Margin="0,-2,0,0"
                               Fill="{DynamicResource BgSecondary}"
                               Data="M 0,0 H 15 V 4 H 0 Z M 0,5.5 H 6.5 V 9.5 H 0 Z M 8.5,5.5 H 15 V 9.5 H 8.5 Z" />
                     </Grid>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="GunWall" FontSize="{StaticResource SubtitleFontSize}"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextPrimary}" />
-                        <TextBlock Text="Guard Your Network" Style="{StaticResource Muted}"
-                                   FontSize="{StaticResource CaptionFontSize}" Margin="0,-1,0,0" />
-                    </StackPanel>
+                    <TextBlock Text="GunWall" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimary}" />
                 </StackPanel>
                 <Border DockPanel.Dock="Top" Margin="12,0,12,12" Padding="12,11" CornerRadius="8"
                         Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
@@ -132,74 +127,68 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="0,2,0,12">
                         <RadioButton x:Name="NavDashboard" Style="{StaticResource SideNavButton}" IsChecked="True" Checked="Nav_Checked" Tag="Dashboard">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Board24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="Board24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Dashboard" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavFirewall" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Firewall">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="AppsList24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="AppsList24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Apps" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavConnections" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Connections">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="PlugConnected24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Connections" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="PlugConnected24" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Networks" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavTraffic" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Traffic">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="DataUsage24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="DataUsage24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Traffic" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavDns" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Dns">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Globe24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="Globe24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="DNS" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavServices" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Services">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Server24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="Server24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Services" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavNetwork" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Network">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Router24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Network" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="Router24" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Scan" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavPackets" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Packets">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="DocumentTable24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="DocumentTable24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Packets Log" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavRules" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Rules">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Wrench24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Custom Rules" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavSystem" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="System">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Options24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="System Rules" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="Wrench24" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Rules" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavSecurity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Security">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="ShieldTask24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="ShieldTask24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Security" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavActivity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Activity">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="History24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="History24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Activity" />
                             </StackPanel>
                         </RadioButton>
@@ -210,8 +199,8 @@
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavSettings" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Settings">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Settings24" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ui:SymbolIcon Symbol="Settings24" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Style="{StaticResource SideNavLabel}" Text="Settings" />
                             </StackPanel>
                         </RadioButton>
@@ -1315,7 +1304,14 @@
             </Grid>
 
             <!-- ========== Custom Rules ========== -->
-            <Grid x:Name="PanelRules" Visibility="Collapsed">
+            <!-- Custom rules and the system rule library are two halves of the
+                 same question - "what have I told the firewall to do?" - so they
+                 share one page, custom first because those are the ones a person
+                 wrote themselves. -->
+            <ScrollViewer x:Name="PanelRules" Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel>
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -1518,8 +1514,8 @@
                 </Border>
             </Grid>
 
-            <!-- ========== System Rules ========== -->
-            <Grid x:Name="PanelSystem" Visibility="Collapsed">
+            <!-- ========== System rule library, same page ========== -->
+            <Grid x:Name="PanelSystem" Margin="0,28,0,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -1540,17 +1536,17 @@
                                 ToolTip="Turn on a recommended set of hardening rules" />
                     </StackPanel>
                 </Grid>
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
-                        <TextBlock Text="HARDEN AGAINST RISKY TRAFFIC" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
-                        <StackPanel x:Name="SystemBlockList" Margin="0,0,0,8" />
-                        <TextBlock Text="ALLOW COMMON SERVICES" Style="{StaticResource SectionLabel}" Margin="0,8,0,8" />
-                        <TextBlock Text="These permit a service outbound. They matter most when you've blocked traffic by default (strict mode or block-all-inbound)."
-                                   Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
-                        <StackPanel x:Name="SystemAllowList" />
-                    </StackPanel>
-                </ScrollViewer>
+                <StackPanel Grid.Row="1">
+                    <TextBlock Text="HARDEN AGAINST RISKY TRAFFIC" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+                    <StackPanel x:Name="SystemBlockList" Margin="0,0,0,8" />
+                    <TextBlock Text="ALLOW COMMON SERVICES" Style="{StaticResource SectionLabel}" Margin="0,8,0,8" />
+                    <TextBlock Text="These permit a service outbound. They matter most when you've blocked traffic by default (strict mode or block-all-inbound)."
+                               Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
+                    <StackPanel x:Name="SystemAllowList" />
+                </StackPanel>
             </Grid>
+              </StackPanel>
+            </ScrollViewer>
 
             <!-- ========== Security & Privacy ========== -->
             <Grid x:Name="PanelSecurity" Visibility="Collapsed">

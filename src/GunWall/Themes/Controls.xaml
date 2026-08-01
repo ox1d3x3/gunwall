@@ -89,15 +89,13 @@
          columns depend on, and every keyed style (the navigation rail, cards,
          the firewall switch, the prompt buttons). -->
 
-    <!-- Panel entrance. Fluent moves things a short distance quickly rather
-         than far and slowly: 20 pixels over 220 milliseconds, on a decelerating
-         curve, so a panel appears to settle into place instead of sliding in.
-         Applied to the content host, so switching pages animates without every
-         control inside needing to know about it. -->
+    <!-- Panel entrance, matched to the library's FadeInWithSlide.
+         Its values, from TransitionAnimationProvider: translate from 30 to 0
+         with DecelerationRatio 0.7, opacity 0 to 1, same duration for both.
+         A deceleration ratio is not the same as an easing function - it front-
+         loads the movement so content arrives and settles, which is why an
+         approximation with CubicEase read differently. -->
     <Style x:Key="PanelTransition" TargetType="ContentControl">
-        <!-- All setters first, then the trigger block. XAML will not accept a
-             property element sitting between two others (MC3088), which is what
-             an interleaved Style.Triggers produced here. -->
         <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="RenderTransform">
             <Setter.Value>
@@ -109,14 +107,12 @@
                 <BeginStoryboard>
                     <Storyboard>
                         <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                         From="0" To="1" Duration="0:0:0.22" />
+                                         From="0" To="1" Duration="0:0:0.2"
+                                         DecelerationRatio="0.7" />
                         <DoubleAnimation
                             Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)"
-                            From="20" To="0" Duration="0:0:0.22">
-                            <DoubleAnimation.EasingFunction>
-                                <CubicEase EasingMode="EaseOut" />
-                            </DoubleAnimation.EasingFunction>
-                        </DoubleAnimation>
+                            From="30" To="0" Duration="0:0:0.2"
+                            DecelerationRatio="0.7" />
                     </Storyboard>
                 </BeginStoryboard>
             </EventTrigger>
@@ -397,58 +393,65 @@
     </Style>
 
     <!-- ===================== Sidebar navigation ===================== -->
-        <!-- Navigation item, matched to the library's own NavigationViewItem.
-         Geometry taken from NavigationLeftFluent.xaml rather than guessed:
-         4-pixel corner radius, 2-pixel top margin, and a 3 by 24 selection
-         indicator offset -4 to the left so it sits in the pane gutter rather
-         than inside the item.
+        <!-- Restated so they resolve at parse time no matter the merge order.
+         Values are the library's own (NavigationViewConstants.xaml). -->
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="PaneFluentButtonHeight">60</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="PaneFluentButtonWidth">60</sys:Double>
 
-         The control itself is not used because NavigationView throws unless
-         every item names a TargetPageType - it navigates a Frame between Page
-         classes, and this window keeps all fourteen panels inline and switches
-         their visibility. Adopting the control would mean splitting the window
-         into fourteen pages and re-plumbing the one-second sampling loop that
-         reaches into their elements directly. The library's state brushes are
-         used here, so this rail is drawn from exactly the same values as its
-         own, and can be swapped for the real control later without the look
-         changing. -->
+    <!-- Navigation item, on the library's LeftFluent specification.
+         Values read from NavigationLeftFluent.xaml and NavigationViewConstants
+         rather than estimated: item 60 by 60, icon 24, label beneath, selection
+         indicator 3 by 24 in the pane gutter.
+
+         The earlier version of this style used the STANDARD NavigationViewItem
+         metrics - a 36-pixel row with the icon beside the label. Both are real
+         parts of the library, but the Fluent gallery uses LeftFluent, which is
+         why matching the other one did not look like the thing being pointed
+         at. A rail of icon tiles also gives roughly 120 pixels back to the
+         content, which is what lets the window material show.
+
+         Selection is signalled twice on purpose - a filled background AND an
+         accent-coloured icon - which is how the library does it and why its
+         selected item reads instantly. -->
     <Style x:Key="SideNavButton" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource NavigationViewItemForegroundLeftFluent}" />
-        <Setter Property="FontSize" Value="{StaticResource BodyFontSize}" />
-        <Setter Property="Margin" Value="4,2,4,0" />
-        <Setter Property="Height" Value="36" />
-        <Setter Property="Padding" Value="12,0" />
-        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Width" Value="{StaticResource PaneFluentButtonWidth}" />
+        <Setter Property="Height" Value="{StaticResource PaneFluentButtonHeight}" />
+        <Setter Property="Margin" Value="0,2,0,0" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="4"
-                            Padding="{TemplateBinding Padding}"
-                            SnapsToDevicePixels="True">
-                        <Grid>
-                            <Rectangle x:Name="bar" Width="3" Height="24"
-                                       Margin="-8,0,0,0" RadiusX="1.5" RadiusY="1.5"
-                                       HorizontalAlignment="Left" VerticalAlignment="Center"
-                                       Fill="{DynamicResource NavigationViewSelectionIndicatorForeground}"
-                                       Visibility="Collapsed" />
-                            <ContentPresenter VerticalAlignment="Center"
+                    <Grid>
+                        <Rectangle x:Name="bar" Width="3" Height="24"
+                                   Margin="-6,0,0,0" RadiusX="1.5" RadiusY="1.5"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center"
+                                   Fill="{DynamicResource NavigationViewSelectionIndicatorForeground}"
+                                   Visibility="Collapsed" />
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter x:Name="cp"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
                                               SnapsToDevicePixels="True" />
-                        </Grid>
-                    </Border>
+                        </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="Background"
                                     Value="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
-                            <Setter Property="Foreground"
+                            <Setter TargetName="cp" Property="TextElement.Foreground"
                                     Value="{DynamicResource NavigationViewItemForegroundPointerOverLeftFluent}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="bd" Property="Background"
                                     Value="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
-                            <Setter Property="Foreground"
-                                    Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <Setter TargetName="cp" Property="TextElement.Foreground"
+                                    Value="{DynamicResource NavigationViewSelectionIndicatorForeground}" />
                             <Setter TargetName="bar" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -458,6 +461,17 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Label beneath the icon: small, centred, and allowed to shrink rather
+         than clip, since a 60-pixel tile is narrower than some of these words. -->
+    <Style x:Key="SideNavLabel" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Margin" Value="0,2,0,0" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="MaxWidth" Value="58" />
+        <Setter Property="TextAlignment" Value="Center" />
     </Style>
 
     <Style x:Key="SideNavIcon" TargetType="TextBlock">
@@ -470,11 +484,6 @@
         <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}" />
     </Style>
 
-    <Style x:Key="SideNavLabel" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="13" />
-        <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=RadioButton}, Path=Foreground}" />
-    </Style>
 
     <!-- ======================= Primary button ======================= -->
     

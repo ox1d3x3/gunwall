@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.15 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.16 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3789,7 +3789,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         PanelNetwork.Visibility = tag == "Network" ? Visibility.Visible : Visibility.Collapsed;
         PanelPackets.Visibility = tag == "Packets" ? Visibility.Visible : Visibility.Collapsed;
         PanelRules.Visibility = tag == "Rules" ? Visibility.Visible : Visibility.Collapsed;
-        PanelSystem.Visibility = tag == "System" ? Visibility.Visible : Visibility.Collapsed;
         PanelSecurity.Visibility = tag == "Security" ? Visibility.Visible : Visibility.Collapsed;
         PanelActivity.Visibility = tag == "Activity" ? Visibility.Visible : Visibility.Collapsed;
         PanelSettings.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
@@ -3803,7 +3802,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (tag == "Settings") UpdateHealthCard();
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
-        if (tag == "System") BuildSystemRulesUi();
+        // The system rule library shares the Rules page now, so it has to be
+        // built when that page opens - it was previously built only for a tab
+        // that no longer exists, which would have left it permanently empty.
+        if (tag == "Rules") BuildSystemRulesUi();
         if (tag == "Security") { BuildBlocklistCatUi(); RefreshDnsCombo(); }
         if (tag == "Settings") { RefreshProfilesCombo(); RefreshProfileCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
 
@@ -4083,7 +4085,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             "Firewall" => NavFirewall,
             "Rules" => NavRules,
-            "System" => NavSystem,
+            // The system rule library shares the Rules page now, so the
+            // dashboard's "System rules" figure leads there too. Left pointing
+            // at the old element this would have thrown on click.
+            "System" => NavRules,
             "Connections" => NavConnections,
             _ => null
         };

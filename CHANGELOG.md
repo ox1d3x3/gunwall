@@ -6,6 +6,17 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.16] — 2026-08-01
+
+### Changed
+- **The navigation rail was rebuilt on the library's LeftFluent specification** — the one its own gallery uses. Items are now 60 by 60 tiles with a 24-pixel icon above an 11-pixel label, and the selected item is signalled twice, by a filled background *and* an accent-coloured icon, which is how the library makes selection read instantly. The previous attempt used the *standard* NavigationViewItem metrics — a 36-pixel row with the icon beside the label. Both are real parts of the library; matching the wrong one is why it did not resemble the screenshots it was meant to.
+- **The rail narrowed from 218 to 92 pixels**, returning about 126 pixels to the content and letting the window material show across more of the window.
+- **Custom rules and the system rule library share one Rules page**, custom first. They answer the same question — what have I told the firewall to do — and separating them made the answer take two places. A defect was fixed on the way: the library was built only when its old tab opened, so on the merged page it would have stayed permanently empty. The dashboard's system-rule figure also still pointed at the removed navigation item and would have thrown when clicked.
+- **Connections is now Networks; Network is now Scan.**
+- **The panel transition matches the library's FadeInWithSlide exactly**: translate from 30 with a deceleration ratio of 0.7, rather than 20 with a cubic ease. A deceleration ratio front-loads the movement, so content arrives and settles; an easing function distributes it differently and reads as a slower slide.
+
+---
+
 ## [0.99.15] — 2026-08-01
 
 ### Changed
