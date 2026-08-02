@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="docs/logo.png" alt="GunWall" width="560"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="branding/png/lockup-horizontal-reversed.png">
+  <img src="branding/png/lockup-horizontal.png" alt="GunWall" width="520"/>
+</picture>
 
 ### A modern, open-source firewall for Windows 11, built on the Windows Filtering Platform
 
@@ -8,7 +11,7 @@
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/filtering%20path-no%20dependencies-3DA9FC?style=flat-square)](#-privacy--security)
-[![Status](https://img.shields.io/badge/release-v0.99.24%20(beta)-E0A53F?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-v0.99.27%20(beta)-E0A53F?style=flat-square)](#roadmap)
 
 *Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and nothing between you and the kernel.*
 
@@ -282,3 +285,15 @@ Then in GunWall: **Settings → Security & Privacy → GeoIP data source → Sel
 <div align="center">
 <sub>Guard your network. Bismillah.</sub>
 </div>
+
+
+## Brand
+
+The mark is a wall of sixteen stones with three that are not ordinary: one
+missing, one stopped in red, and one drawn as an outline — a barrier, a block,
+and something under watch. Source artwork and every derived size live in
+[`branding/`](branding/) (SVG, PNG, lockups and app icons).
+
+The red in the mark is deliberately *not* the interface accent. In GunWall red
+means blocked, so the logo says the same thing the application does.
+

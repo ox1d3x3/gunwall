@@ -69,7 +69,11 @@
              identity reads in the taskbar preview and the Alt-Tab card too. -->
         <ui:TitleBar Grid.Row="0" Title="GunWall" ShowMaximize="True" ShowMinimize="True">
             <ui:TitleBar.Icon>
-                <ui:SymbolIcon Symbol="ShieldTask24" />
+                <!-- The application's own icon, not a stock shield glyph. This
+                     is what appears in the taskbar preview and the Alt-Tab
+                     card, so it should be the mark people recognise rather than
+                     a symbol that happens to mean "security". -->
+                <ui:ImageIcon Source="pack://application:,,,/Assets/app.ico" Width="16" Height="16" />
             </ui:TitleBar.Icon>
         </ui:TitleBar>
 
@@ -95,15 +99,43 @@
                      joins. Geometry rather than a bitmap means no asset to keep
                      in step with the palette. -->
                 <StackPanel DockPanel.Dock="Top" Margin="0,16,0,14" HorizontalAlignment="Center">
-                    <Grid Width="30" Height="32" HorizontalAlignment="Center">
-                        <Path Stretch="Uniform" Width="28" Height="30"
-                              Fill="{DynamicResource AccentGradient}"
-                              Data="M 16,1 L 30,6 L 30,17 C 30,25 23,30 16,32 C 9,30 2,25 2,17 L 2,6 Z" />
-                        <Path Stretch="Uniform" Width="15" Height="13"
-                              VerticalAlignment="Center" HorizontalAlignment="Center"
-                              Margin="0,-2,0,0"
-                              Fill="{DynamicResource BgSecondary}"
-                              Data="M 0,0 H 15 V 4 H 0 Z M 0,5.5 H 6.5 V 9.5 H 0 Z M 8.5,5.5 H 15 V 9.5 H 8.5 Z" />
+                    <!-- The wall mark, as geometry rather than an image: it scales
+                         cleanly and takes the theme, so it reads on light and dark
+                         alike without shipping two bitmaps.
+
+                         Four courses of four, one stone missing, one stopped in
+                         the alert colour and one under watch as an outline. The
+                         red cell deliberately does NOT use the interaction accent
+                         - in this application red means blocked, and the mark says
+                         the same thing the interface does. -->
+                    <Grid Width="30" Height="30" HorizontalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" /><RowDefinition Height="*" />
+                            <RowDefinition Height="*" /><RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Rectangle Grid.Column="0" Grid.Row="0" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="1" Grid.Row="0" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="3" Grid.Row="0" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="0" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="1" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="2" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="3" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="0" Grid.Row="2" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="2" Grid.Row="2" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="3" Grid.Row="2" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="0" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="1" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="2" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <Rectangle Grid.Column="3" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
+                        <!-- the stopped stone -->
+                        <Rectangle Grid.Column="2" Grid.Row="0" Fill="#EC3013" Margin="0,0,2,2" />
+                        <!-- the one under watch -->
+                        <Rectangle Grid.Column="1" Grid.Row="2" Margin="0,0,2,2"
+                                   Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.4" />
                     </Grid>
                     <TextBlock Text="GunWall" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"
                                HorizontalAlignment="Center"
@@ -129,9 +161,8 @@
                         </ToolTip>
                     </Border.ToolTip>
                     <StackPanel HorizontalAlignment="Center">
-                        <TextBlock x:Name="SideStatusIcon" Text="&#xEA18;"
-                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20"
-                                   HorizontalAlignment="Center" />
+                        <ui:SymbolIcon x:Name="SideStatusIcon" Symbol="ShieldTask24" FontSize="19"
+                                       HorizontalAlignment="Center" />
                         <TextBlock x:Name="SideStatusWord" Text="Watching" FontSize="10"
                                    Margin="0,3,0,0" HorizontalAlignment="Center"
                                    Foreground="{DynamicResource TextSecondary}" />
@@ -184,7 +215,7 @@
                         <RadioButton x:Name="NavPackets" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Packets">
                             <StackPanel>
                                 <ui:SymbolIcon Symbol="DocumentTable24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Packets Log" />
+                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Packets" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavRules" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Rules">
@@ -1052,13 +1083,13 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
                             <StackPanel Margin="0,0,10,0">
                                 <TextBlock Text="Listen port (loopback)" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <TextBox x:Name="DnsPortBox" Width="96" Height="32" Text="53"
+                                <TextBox x:Name="DnsPortBox" Width="96" MinHeight="33" Text="53"
                                          VerticalContentAlignment="Center"
                                          ToolTip="Port on 127.0.0.1. Standard DNS is 53; use another (e.g. 5335) if 53 is taken." />
                             </StackPanel>
                             <StackPanel Margin="0,0,10,0">
                                 <TextBlock Text="Upstream DNS" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <TextBox x:Name="DnsUpstreamBox" Width="170" Height="32" Text="1.1.1.1"
+                                <TextBox x:Name="DnsUpstreamBox" Width="170" MinHeight="33" Text="1.1.1.1"
                                          VerticalContentAlignment="Center"
                                          ToolTip="Where allowed queries are forwarded (e.g. 1.1.1.1 or 8.8.8.8). Optional :port." />
                             </StackPanel>
@@ -1072,13 +1103,13 @@
                         <StackPanel Orientation="Horizontal" Margin="0,12,0,0" VerticalAlignment="Bottom">
                             <StackPanel Margin="0,0,10,0">
                                 <TextBlock Text="Secure DNS (encrypted)" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="DnsDohCombo" Width="238" Height="32"
+                                <ComboBox x:Name="DnsDohCombo" Width="238"
                                           SelectionChanged="DnsDoh_Changed"
                                           ToolTip="Forward queries over HTTPS (DNS-over-HTTPS) so nobody on the network can read or tamper with them." />
                             </StackPanel>
                             <StackPanel x:Name="DnsDohCustomPanel" Margin="0,0,10,0" Visibility="Collapsed">
                                 <TextBlock Text="Custom DoH URL" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <TextBox x:Name="DnsDohUrlBox" Width="250" Height="32"
+                                <TextBox x:Name="DnsDohUrlBox" Width="250" MinHeight="33"
                                          VerticalContentAlignment="Center"
                                          ToolTip="Must be https://  e.g. https://dns.example/dns-query" />
                             </StackPanel>
@@ -1345,21 +1376,21 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Action" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="RuleAction" MinWidth="106" Height="32">
+                                <ComboBox x:Name="RuleAction" MinWidth="106">
                                     <ComboBoxItem Content="Block" IsSelected="True" />
                                     <ComboBoxItem Content="Allow" />
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Direction" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="RuleDirection" MinWidth="132" Height="32">
+                                <ComboBox x:Name="RuleDirection" MinWidth="132">
                                     <ComboBoxItem Content="Outbound" IsSelected="True" />
                                     <ComboBoxItem Content="Inbound" />
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Protocol" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <ComboBox x:Name="RuleProtocol" MinWidth="104" Height="32">
+                                <ComboBox x:Name="RuleProtocol" MinWidth="104">
                                     <ComboBoxItem Content="Any" IsSelected="True" />
                                     <ComboBoxItem Content="TCP" />
                                     <ComboBoxItem Content="UDP" />
@@ -1367,17 +1398,17 @@
                             </StackPanel>
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Remote address" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <TextBox x:Name="RuleAddress" Width="138" Height="32"
+                                <TextBox x:Name="RuleAddress" Width="138" MinHeight="33"
                                          VerticalContentAlignment="Center" ToolTip="Remote IPv4 (blank = any)" />
                             </StackPanel>
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Port" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <TextBox x:Name="RulePort" Width="70" Height="32"
+                                <TextBox x:Name="RulePort" Width="70" MinHeight="33"
                                          VerticalContentAlignment="Center" ToolTip="Remote port (blank = any)" />
                             </StackPanel>
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Local port" Style="{StaticResource Muted}" Margin="2,0,0,3" />
-                                <TextBox x:Name="RuleLocalPort" Width="74" Height="32"
+                                <TextBox x:Name="RuleLocalPort" Width="74" MinHeight="33"
                                          VerticalContentAlignment="Center" ToolTip="Local port on this PC (blank = any)" />
                             </StackPanel>
                             <Button Content="Add rule" Style="{StaticResource PrimaryButton}"
@@ -1462,7 +1493,7 @@
                                    HorizontalAlignment="Left" Text="" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
-                        <TextBox x:Name="SystemSearch" Width="190" Height="32" VerticalContentAlignment="Center"
+                        <TextBox x:Name="SystemSearch" Width="190" MinHeight="33" VerticalContentAlignment="Center"
                                  ToolTip="Search rules" Margin="0,0,8,0" TextChanged="SystemSearch_TextChanged" />
                         <Button Content="Secure baseline" Style="{StaticResource ActionButton}"
                                 Click="SecureBaseline_Click"
@@ -1611,13 +1642,13 @@
                                 <TextBlock Text="Where country/ASN data comes from. &quot;Local database&quot; downloads the full IPv4 table into GunWall (use the Download button on the Connections tab). &quot;Self-hosted API server&quot; queries your own iptoasn-webservice instead - nothing to download, always fresh, and it resolves IPv6 too. Lookups are cached, so each address is fetched only once."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <ComboBox x:Name="GeoSourceCombo" Width="230" Height="30" SelectedIndex="0">
+                                    <ComboBox x:Name="GeoSourceCombo" Width="230" SelectedIndex="0">
                                         <ComboBoxItem Content="Local database (download)" Tag="local" />
                                         <ComboBoxItem Content="Self-hosted API server" Tag="api" />
                                     </ComboBox>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <TextBox x:Name="GeoApiUrlBox" Width="290" Height="30" Margin="0,0,8,0"
+                                    <TextBox x:Name="GeoApiUrlBox" Width="290" MinHeight="33" Margin="0,0,8,0"
                                              VerticalContentAlignment="Center"
                                              ToolTip="e.g. http://192.168.1.50:53662 or https://geoip.example.com" />
                                     <Button Content="Save" Style="{StaticResource PrimaryButton}"
@@ -1635,12 +1666,12 @@
                                 <TextBlock Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. IPv4 only. Set up a GeoIP data source above first."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <ComboBox x:Name="EntityTypeCombo" Width="120" Height="30" Margin="0,0,8,0" SelectedIndex="0">
+                                    <ComboBox x:Name="EntityTypeCombo" Width="120" Margin="0,0,8,0" SelectedIndex="0">
                                         <ComboBoxItem Content="Country" Tag="country" />
                                         <ComboBoxItem Content="Continent" Tag="continent" />
                                         <ComboBoxItem Content="ASN" Tag="asn" />
                                     </ComboBox>
-                                    <TextBox x:Name="EntityValueBox" Width="150" Height="30" Margin="0,0,8,0"
+                                    <TextBox x:Name="EntityValueBox" Width="150" MinHeight="33" Margin="0,0,8,0"
                                              VerticalContentAlignment="Center" ToolTip="e.g. RU &#xB7; EU &#xB7; AS13335" />
                                     <TextBlock Text="e.g. RU, EU, AS13335" Style="{StaticResource Muted}"
                                                VerticalAlignment="Center" />
@@ -1689,7 +1720,7 @@
                                 <TextBlock Text="Point Windows at a filtering resolver for a second blocking layer that needs no list upkeep. AdGuard blocks ads &amp; trackers; Quad9 blocks malware &amp; phishing. Applies to all active adapters."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal">
-                                    <ComboBox x:Name="DnsCombo" Width="320" Height="30" Margin="0,0,8,0" />
+                                    <ComboBox x:Name="DnsCombo" Width="320" Margin="0,0,8,0" />
                                     <Button Content="Apply DNS" Style="{StaticResource ActionButton}" Click="DnsApply_Click" />
                                 </StackPanel>
                                 <TextBlock x:Name="DnsStatus" Style="{StaticResource Muted}" Margin="0,8,0,0" Text="" TextWrapping="Wrap" />
@@ -1863,7 +1894,7 @@
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
                                 <TextBlock Text="UI size" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
-                                <ComboBox x:Name="UiZoomCombo" Width="150" Height="30"
+                                <ComboBox x:Name="UiZoomCombo" Width="150"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="Compact (90%)" Tag="90" />
                                     <ComboBoxItem Content="Normal (100%)" Tag="100" />
@@ -1900,7 +1931,7 @@
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
                                 <TextBlock Text="Popup stays open for" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
-                                <ComboBox x:Name="PopupTimeoutCombo" Width="120" Height="30"
+                                <ComboBox x:Name="PopupTimeoutCombo" Width="120"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="Never (recommended)" Tag="0" />
                                     <ComboBoxItem Content="15 seconds" Tag="15" />
@@ -1909,7 +1940,7 @@
                                 </ComboBox>
                                 <TextBlock Text="then" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="12,0,8,0" />
-                                <ComboBox x:Name="PopupDefaultCombo" MinWidth="120" Height="30"
+                                <ComboBox x:Name="PopupDefaultCombo" MinWidth="120"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="Block" Tag="block" />
                                     <ComboBoxItem Content="Allow" Tag="allow" />
@@ -1945,7 +1976,7 @@
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
                                 <TextBlock Text="Keep at most" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
-                                <ComboBox x:Name="MaxLogEntriesCombo" Width="130" Height="30"
+                                <ComboBox x:Name="MaxLogEntriesCombo" Width="130"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="500 entries" Tag="500" />
                                     <ComboBoxItem Content="1000 entries" Tag="1000" />
@@ -1954,7 +1985,7 @@
                                 </ComboBox>
                                 <TextBlock Text="live rows; rotate CSV at" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="12,0,8,0" />
-                                <ComboBox x:Name="MaxLogFileCombo" MinWidth="110" Height="30"
+                                <ComboBox x:Name="MaxLogFileCombo" MinWidth="110"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="2 MB" Tag="2" />
                                     <ComboBoxItem Content="5 MB" Tag="5" />
@@ -2071,7 +2102,7 @@
                                 <ComboBox x:Name="ProfileCombo" Width="200" Margin="0,0,8,0" />
                                 <Button x:Name="ProfileApplyBtn" Content="Apply profile" Style="{StaticResource PrimaryButton}"
                                         Click="ProfileApply_Click" Padding="14,8" Margin="0,0,24,0" />
-                                <TextBox x:Name="ProfileNameBox" Width="170" Height="32" VerticalContentAlignment="Center"
+                                <TextBox x:Name="ProfileNameBox" Width="170" MinHeight="33" VerticalContentAlignment="Center"
                                          Margin="0,0,8,0" ToolTip="Name for the new profile (e.g. Gaming)" />
                                 <Button x:Name="ProfileSaveBtn" Content="Save current as" Style="{StaticResource ActionButton}"
                                         Click="ProfileSave_Click" Padding="14,8" />
@@ -2093,7 +2124,7 @@
                                         Click="DeleteProfile_Click" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal">
-                                <TextBox x:Name="NewProfileName" Width="200" Height="30"
+                                <TextBox x:Name="NewProfileName" Width="200" MinHeight="33"
                                          VerticalContentAlignment="Center" Margin="0,0,8,0"
                                          ToolTip="New profile name" />
                                 <Button Content="Save current as profile" Style="{StaticResource PrimaryButton}"
@@ -2112,7 +2143,7 @@
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,10"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <ComboBox x:Name="BackupsCombo" Width="240" Height="30" Margin="0,0,8,0" />
+                                <ComboBox x:Name="BackupsCombo" Width="240" Margin="0,0,8,0" />
                                 <Button Content="Restore" Style="{StaticResource ActionButton}"
                                         Click="RestoreBackup_Click" Margin="0,0,8,0" />
                                 <Button Content="Back up now" Style="{StaticResource ActionButton}"

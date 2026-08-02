@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.24 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.27 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5353,7 +5353,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 Owner = this
             };
             var answer = await confirm.ShowDialogAsync();
-            if (answer != Wpf.Ui.Controls.MessageBoxResult.Primary) return;
+            if (answer != Wpf.Ui.Controls.MessageBoxResult.Primary)
+            {
+                // A ToggleSwitch has already moved by the time Click is raised,
+                // so returning here leaves it showing "on" while protection is
+                // off - the interface lying about the single state that matters
+                // most. Put it back to what the firewall actually reports.
+                SyncFirewallToggle();
+                return;
+            }
         }
 
         try

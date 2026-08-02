@@ -143,9 +143,17 @@
     </Style>
 
     <!-- ========================= Card border ========================= -->
-        <!-- Uses the control library's own card tokens rather than restating a
-         surface colour, so a card and the controls sitting on it are drawn from
-         the same source and cannot drift apart. -->
+        <!-- Cards take the library's own tokens rather than restating a surface
+         colour, so a card and the controls sitting on it are drawn from one
+         source and cannot drift apart.
+
+         The border brightens on hover with a plain trigger, not an animation.
+         An animation here would have to target the BorderBrush's opacity - but
+         that brush is a shared application resource, so animating it would move
+         every card in the window at once, and would throw outright if the brush
+         is frozen. A Border style cannot introduce an overlay layer to fade
+         instead, the way the navigation template does, so the honest answer is
+         an instant state change rather than a broken smooth one. -->
     <Style x:Key="Card" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
@@ -153,6 +161,11 @@
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="16" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorSecondaryBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ===================== Navigation button ===================== -->

@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.99.24</Version>
+    <Version>0.99.27</Version>
     <Company>GunWall</Company>
     <Product>GunWall Firewall</Product>
     <Description>A modern, open-source Windows firewall built on the Windows Filtering Platform.</Description>
@@ -45,6 +45,10 @@
   <ItemGroup>
     <None Remove="Flags\**\*.png" />
     <Resource Include="Flags\**\*.png" />
+    <!-- Also embedded as a resource, not just set as ApplicationIcon: the title
+         bar loads it through a pack URI at runtime, which needs it inside the
+         assembly rather than only stamped on the executable. -->
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
 
