@@ -267,9 +267,23 @@
                             VerticalAlignment="Center" Margin="20,12">
                     <!-- The library's switch: same control as every other toggle here,
                          so the theme control does not look like a one-off. -->
-                    <ui:ToggleSwitch x:Name="ThemeToggle"
-                                     Click="ThemeToggle_Click" Margin="0,0,16,0"
-                                     ToolTip="Switch light / dark theme" />
+                    <!-- A bare switch says nothing about what it switches. This one
+                         carries the sun and moon on either side, so the control
+                         states its own subject rather than relying on the reader
+                         remembering which way is which. -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Margin="0,0,16,0">
+                        <ui:SymbolIcon Symbol="WeatherMoon24" FontSize="14"
+                                       VerticalAlignment="Center" Margin="0,0,7,0"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                        <ui:ToggleSwitch x:Name="ThemeToggle"
+                                         Click="ThemeToggle_Click"
+                                         VerticalAlignment="Center"
+                                         ToolTip="Switch between the dark and light theme" />
+                        <ui:SymbolIcon Symbol="WeatherSunny24" FontSize="14"
+                                       VerticalAlignment="Center" Margin="7,0,0,0"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                    </StackPanel>
                     <TextBlock x:Name="EngineStatus" Text="Engine: starting"
                                Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,16,0" />
                     <Button x:Name="LockdownButton" Content="Engage lockdown"

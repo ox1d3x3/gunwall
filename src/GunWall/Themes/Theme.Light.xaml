@@ -21,25 +21,25 @@
          actually decides with, and the chart series. Those carry meaning rather
          than surface, and the library has no opinion about them. -->
 
-    <!-- Surfaces, aliased to the library -->
-    <SolidColorBrush x:Key="BgPrimary" Color="{DynamicResource ApplicationBackgroundColor}" />
-    <SolidColorBrush x:Key="BgSecondary" Color="{DynamicResource SolidBackgroundFillColorSecondary}" />
-    <SolidColorBrush x:Key="BgCard" Color="{DynamicResource CardBackgroundFillColorDefault}" />
-    <SolidColorBrush x:Key="BgElevated" Color="{DynamicResource SolidBackgroundFillColorTertiary}" />
-    <SolidColorBrush x:Key="BorderBrush" Color="{DynamicResource CardStrokeColorDefault}" />
-    <SolidColorBrush x:Key="Divider" Color="{DynamicResource DividerStrokeColorDefault}" />
+    <!-- Surfaces, matching the library's own -->
+    <SolidColorBrush x:Key="BgPrimary" Color="#FFFAFAFA" />
+    <SolidColorBrush x:Key="BgSecondary" Color="#EEEEEE" />
+    <SolidColorBrush x:Key="BgCard" Color="#B3FFFFFF" />
+    <SolidColorBrush x:Key="BgElevated" Color="#F9F9F9" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#0F000000" />
+    <SolidColorBrush x:Key="Divider" Color="#0F000000" />
 
     <!-- Interaction states -->
-    <SolidColorBrush x:Key="SurfaceHover" Color="{DynamicResource ControlFillColorSecondary}" />
-    <SolidColorBrush x:Key="SurfacePressed" Color="{DynamicResource ControlFillColorTertiary}" />
-    <SolidColorBrush x:Key="SurfaceSelected" Color="{DynamicResource SubtleFillColorSecondary}" />
-    <SolidColorBrush x:Key="FocusRing" Color="{DynamicResource SystemAccentColorSecondary}" />
+    <SolidColorBrush x:Key="SurfaceHover" Color="#80F9F9F9" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#4DF9F9F9" />
+    <SolidColorBrush x:Key="SurfaceSelected" Color="#09000000" />
+    <SolidColorBrush x:Key="FocusRing" Color="#2C6EBF" />
 
     <!-- Type -->
-    <SolidColorBrush x:Key="TextPrimary" Color="{DynamicResource TextFillColorPrimary}" />
-    <SolidColorBrush x:Key="TextSecondary" Color="{DynamicResource TextFillColorSecondary}" />
-    <SolidColorBrush x:Key="TextTertiary" Color="{DynamicResource TextFillColorTertiary}" />
-    <SolidColorBrush x:Key="TextOnAccent" Color="{DynamicResource TextOnAccentFillColorPrimary}" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#E4000000" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#9E000000" />
+    <SolidColorBrush x:Key="TextTertiary" Color="#72000000" />
+    <SolidColorBrush x:Key="TextOnAccent" Color="#FFFFFF" />
 
     <!-- ===== GunWall's own, because they carry meaning =====
          A verdict colour is not a surface: "allowed" and "blocked" have to mean

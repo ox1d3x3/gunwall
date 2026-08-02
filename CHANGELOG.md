@@ -6,6 +6,14 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.28] — 2026-08-02
+
+### Fixed
+- **The light theme rendered as light surfaces under white text.** The palette pointed each of its thirteen surface and text tokens at the control library's colour through a `DynamicResource`. That is tidier on paper and does not survive a theme change: switching replaces this project's dictionary while the library replaces its own at the same moment, so the two arrived out of step and the window was left half-converted. The values are copied concretely now — identical appearance, and nothing left to desynchronise. If the library's palette moves upstream, the thirteen keys to re-copy are named in the file.
+- **The theme switch lost its sun and moon.** Adopting the library's `ToggleSwitch` dropped the icons the previous hand-built control carried, leaving a bare switch that said nothing about what it switched. The moon and sun sit either side of it again, so the control states its own subject rather than relying on the reader remembering which way is which.
+
+---
+
 ## [0.99.27] — 2026-08-02
 
 ### Changed

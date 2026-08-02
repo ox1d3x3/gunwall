@@ -3,43 +3,37 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ===== DARK THEME =====
-         These are aliases, not a palette.
+         These are the control library's own values, copied rather than
+         referenced. An earlier version pointed each one at the library's colour
+         with a DynamicResource, which is tidier on paper and does not survive a
+         theme change: swapping this file replaces the brushes, and the library
+         swaps its dictionary at the same moment, so the two arrived out of step
+         and the window ended up with light surfaces under white text. Concrete
+         values give exactly the same appearance and cannot desynchronise.
 
-         GunWall's own surface and text tokens are referenced 115 times across
-         the window and the control styles, against 18 references to the control
-         library's. That ratio is why the interface kept reading as its old self
-         after the library was adopted: the library was styling the controls
-         while GunWall was still painting everything around them, so the two
-         never agreed. Redefining these as pointers to the library's own brushes
-         makes all 115 call sites resolve to its colours without touching any of
-         them, and means a theme change moves the whole window at once.
+         If the library's palette changes upstream, these are the thirteen keys
+         to re-copy - they are listed in its Resources/Theme/Dark.xaml and
+         Light.xaml. -->
 
-         The library's surfaces are deliberately translucent, which is what lets
-         the Mica material show through. A solid colour here would cancel that.
-
-         What stays GunWall's own is below: the status colours a firewall
-         actually decides with, and the chart series. Those carry meaning rather
-         than surface, and the library has no opinion about them. -->
-
-    <!-- Surfaces, aliased to the library -->
-    <SolidColorBrush x:Key="BgPrimary" Color="{DynamicResource ApplicationBackgroundColor}" />
-    <SolidColorBrush x:Key="BgSecondary" Color="{DynamicResource SolidBackgroundFillColorSecondary}" />
-    <SolidColorBrush x:Key="BgCard" Color="{DynamicResource CardBackgroundFillColorDefault}" />
-    <SolidColorBrush x:Key="BgElevated" Color="{DynamicResource SolidBackgroundFillColorTertiary}" />
-    <SolidColorBrush x:Key="BorderBrush" Color="{DynamicResource CardStrokeColorDefault}" />
-    <SolidColorBrush x:Key="Divider" Color="{DynamicResource DividerStrokeColorDefault}" />
+    <!-- Surfaces, matching the library's own -->
+    <SolidColorBrush x:Key="BgPrimary" Color="#FF202020" />
+    <SolidColorBrush x:Key="BgSecondary" Color="#1C1C1C" />
+    <SolidColorBrush x:Key="BgCard" Color="#0DFFFFFF" />
+    <SolidColorBrush x:Key="BgElevated" Color="#282828" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#19000000" />
+    <SolidColorBrush x:Key="Divider" Color="#15FFFFFF" />
 
     <!-- Interaction states -->
-    <SolidColorBrush x:Key="SurfaceHover" Color="{DynamicResource ControlFillColorSecondary}" />
-    <SolidColorBrush x:Key="SurfacePressed" Color="{DynamicResource ControlFillColorTertiary}" />
-    <SolidColorBrush x:Key="SurfaceSelected" Color="{DynamicResource SubtleFillColorSecondary}" />
-    <SolidColorBrush x:Key="FocusRing" Color="{DynamicResource SystemAccentColorSecondary}" />
+    <SolidColorBrush x:Key="SurfaceHover" Color="#15FFFFFF" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#08FFFFFF" />
+    <SolidColorBrush x:Key="SurfaceSelected" Color="#0FFFFFFF" />
+    <SolidColorBrush x:Key="FocusRing" Color="#4C97EE" />
 
     <!-- Type -->
-    <SolidColorBrush x:Key="TextPrimary" Color="{DynamicResource TextFillColorPrimary}" />
-    <SolidColorBrush x:Key="TextSecondary" Color="{DynamicResource TextFillColorSecondary}" />
-    <SolidColorBrush x:Key="TextTertiary" Color="{DynamicResource TextFillColorTertiary}" />
-    <SolidColorBrush x:Key="TextOnAccent" Color="{DynamicResource TextOnAccentFillColorPrimary}" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#C5FFFFFF" />
+    <SolidColorBrush x:Key="TextTertiary" Color="#87FFFFFF" />
+    <SolidColorBrush x:Key="TextOnAccent" Color="#000000" />
 
     <!-- ===== GunWall's own, because they carry meaning =====
          A verdict colour is not a surface: "allowed" and "blocked" have to mean
