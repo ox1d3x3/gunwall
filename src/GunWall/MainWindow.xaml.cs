@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.28 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.32 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5869,12 +5869,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
             // GunWall's accent, seeded once so both themes derive from the same
             // hue rather than drifting apart.
-            // #4CA0FF measured 2.7:1 against white text - well under the 4.5 needed to
-            // read - which is why white on the accent looked washed into it. This
-            // seed measures 4.4:1 against white and 4.4:1 against the dark surface,
-            // so it carries white lettering AND stands off the background. The
-            // library derives its lighter and darker variants from here.
-            var seed = System.Windows.Media.Color.FromRgb(0x3A, 0x86, 0xE0);
+            // From the console design. It is a bright blue, and it works because
+            // the foreground on it is near-black rather than white - the pairing
+            // matters more than the fill. Fluent already does this in dark mode
+            // (TextOnAccentFillColorPrimary is #000000 there), so the two agree.
+            // The design's single accent, and it is red in both themes - darker in
+            // light (#D92C11) because the dark-mode value fails on white. Red does
+            // double duty as the primary action AND the blocked verdict, which is
+            // the design's decision rather than an oversight: in a firewall the
+            // destructive action and the blocked outcome are the same idea.
+            var seed = dark
+                ? System.Windows.Media.Color.FromRgb(0xFF, 0x3B, 0x21)
+                : System.Windows.Media.Color.FromRgb(0xD9, 0x2C, 0x11);
             Wpf.Ui.Appearance.ApplicationAccentColorManager.Apply(seed, theme);
 
             // Mica is the translucent window material Windows 11 uses. It is
@@ -5896,11 +5902,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // lightened variant stays where the library intends it: text,
             // indicators and the selection accent on dark backgrounds.
             var app = System.Windows.Application.Current;
-            if (app != null && theme == Wpf.Ui.Appearance.ApplicationTheme.Dark)
+            if (app != null)
             {
                 app.Resources["AccentFillColorDefault"] = seed;
                 app.Resources["AccentFillColorDefaultBrush"] =
                     new System.Windows.Media.SolidColorBrush(seed);
+                // --on-brand is white in BOTH themes. Fluent pairs a light accent
+                // with black text in dark mode; this accent is dark enough that
+                // white is correct either way, so the library's default is wrong
+                // here and is replaced rather than worked around.
+                var onBrand = System.Windows.Media.Colors.White;
+                app.Resources["TextOnAccentFillColorPrimary"] = onBrand;
+                app.Resources["TextOnAccentFillColorPrimaryBrush"] =
+                    new System.Windows.Media.SolidColorBrush(onBrand);
             }
         }
         catch (Exception ex)

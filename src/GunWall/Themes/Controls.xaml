@@ -1,6 +1,7 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
 
     <!-- ============================ Palette ============================ -->
     <!-- Theme-VARYING surfaces/text (BgPrimary, BgSecondary, BgCard,
@@ -52,16 +53,27 @@
          interruption should not steer the answer, and a coloured button in a
          security prompt trains people to click the colour rather than read the
          label. Hover lifts slightly, pressed sinks. -->
-    <SolidColorBrush x:Key="PromptButtonBg"        Color="#7C8CA6" />
-    <SolidColorBrush x:Key="PromptButtonBgHover"   Color="#8B9BB4" />
-    <SolidColorBrush x:Key="PromptButtonBgPressed" Color="#6B7A93" />
-
         <!-- Deliberately identical to each other and quieter than the accent, so
          an interruption does not steer the answer. Fluent chrome underneath. -->
     <Style x:Key="PromptButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
         <Setter Property="MinHeight" Value="32" />
         <Setter Property="Padding" Value="12,0" />
     </Style>
+
+    <!-- Typefaces.
+
+         Referenced by pack URI with a family name after the hash, and with a
+         system fallback after a comma: if a font resource ever fails to load,
+         text renders in Segoe UI rather than in whatever WPF picks when it
+         cannot resolve a family at all.
+
+         Inter Tight carries the interface. JetBrains Mono is for data only -
+         addresses, ports, process identifiers - where a fixed advance and
+         tabular figures make columns line up and make a changed digit visible.
+         Using it for prose would be an affectation; using it for an IP address
+         is the difference between reading a column and scanning one. -->
+    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#Inter Tight, Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrains Mono, Consolas, monospace</FontFamily>
 
     <!-- Type ramp. There were nine font sizes in this file with no relationship
          to one another - 11, 11.5, 12, 12.5, 13, 14, 16, 18, 24 - which is what
@@ -108,31 +120,136 @@
          harmless - they get maintained, copied and reasoned about as if they
          were live. -->
 
+    <!-- Theme switch.
+
+         The library's ToggleSwitch has no slot for an icon, and a bare switch
+         beside two static icons only says "there are two options" - it does not
+         say which one you are in. Here the icon rides inside the knob and the
+         knob carries it across, so the control shows its current state rather
+         than its available states.
+
+         Motion follows the same convention as the rest of the interface: the
+         knob travels in 167ms on a decelerating curve, and the two icons cross
+         over it in 80ms so the swap lands before the knob settles rather than
+         after it, which would read as a lag. -->
+    <Style x:Key="ThemeSwitch" TargetType="ToggleButton">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Width" Value="52" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="track" CornerRadius="14"
+                            Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorSecondaryBrush}"
+                            BorderThickness="1">
+                        <Canvas>
+                            <Border x:Name="knob" Width="22" Height="22" CornerRadius="11"
+                                    Canvas.Top="2" Canvas.Left="2"
+                                    Background="{DynamicResource TextFillColorPrimaryBrush}">
+                                <Grid>
+                                    <!-- Both icons live in the knob; only one is
+                                         ever visible, so the swap is a crossfade
+                                         rather than two elements moving. -->
+                                    <ui:SymbolIcon x:Name="moon" Symbol="WeatherMoon24"
+                                                   FontSize="13" Opacity="1"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource ApplicationBackgroundBrush}" />
+                                    <ui:SymbolIcon x:Name="sun" Symbol="WeatherSunny24"
+                                                   FontSize="13" Opacity="0"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource ApplicationBackgroundBrush}" />
+                                </Grid>
+                            </Border>
+                        </Canvas>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="knob"
+                                                         Storyboard.TargetProperty="(Canvas.Left)"
+                                                         To="26" Duration="0:0:0.167"
+                                                         DecelerationRatio="0.7" />
+                                        <DoubleAnimation Storyboard.TargetName="sun"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="moon"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="knob"
+                                                         Storyboard.TargetProperty="(Canvas.Left)"
+                                                         To="2" Duration="0:0:0.167"
+                                                         DecelerationRatio="0.7" />
+                                        <DoubleAnimation Storyboard.TargetName="sun"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="moon"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="track" Property="Background"
+                                    Value="{DynamicResource ControlFillColorDefaultBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Data cells: addresses, ports, process identifiers, byte counts.
+         Tabular figures are the point - every digit takes the same width, so a
+         column of addresses lines up and a number that changes does not make the
+         row jump. -->
+    <Style x:Key="DataCell" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+        <Setter Property="FontSize" Value="{StaticResource CaptionFontSize}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+    </Style>
+
     <!-- ======================= Base TextBlock ======================= -->
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="{StaticResource BodyFontSize}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
     </Style>
 
     <Style x:Key="H1" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="{StaticResource TitleFontSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="H2" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="{StaticResource SubtitleFontSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="SectionLabel" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>

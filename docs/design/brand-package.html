@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/modernist-ff8532d0-ff6a-4263-a3c7-22ae96cc220b/styles.css">
+<script src="_ds/modernist-ff8532d0-ff6a-4263-a3c7-22ae96cc220b/_ds_bundle.js"></script>
+<style>
+  body { margin: 0; background: var(--color-bg); }
+  a { color: var(--color-accent-700); text-decoration: none; border-bottom: 2px solid var(--color-accent); }
+  a:hover { color: var(--color-accent); }
+</style>
+</helmet>
+
+<div style="font-family: var(--font-body); color: var(--color-text); background: var(--color-bg); max-width: 1240px; margin: 0 auto; padding: 0 56px 120px;">
+
+  <div style="display: flex; align-items: flex-end; gap: 28px; padding: 56px 0 20px; border-bottom: 2px solid var(--color-divider);">
+    <svg width="72" height="72" viewBox="0 0 96 96" fill="none">
+      <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+      <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+      <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+    </svg>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="font-size: 12px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--color-neutral-600);">Identity specification · v1.0</div>
+      <div style="font-family: var(--font-heading); font-weight: 800; font-size: 52px; letter-spacing: -0.04em; line-height: 0.95;">GunWall — Null Cell</div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 32px; padding: 28px 0 56px; border-bottom: 2px solid var(--color-divider);">
+    <div style="font-size: 15px; line-height: 1.6; color: var(--color-neutral-700);">A 4×4 modular grid — the firewall as a built surface. Fifteen cells are filled. One is held blank: the data the system never holds. One is red: the packet under inspection.</div>
+    <div style="font-size: 15px; line-height: 1.6; color: var(--color-neutral-700);">Zero Trust reads in the red cell — every unit is examined, none is assumed. Zero Knowledge reads in the outlined void — the wall stands complete around something it cannot see.</div>
+    <div style="font-size: 15px; line-height: 1.6; color: var(--color-neutral-700);">Geometry only: no gradients, no radius, no bevels. The mark is legible at 16px and reproduces in a single ink.</div>
+  </div>
+
+  <div style="padding: 56px 0 20px; font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--color-accent-700);">01 — Primary mark</div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--color-divider); border: 2px solid var(--color-divider);">
+    <div id="cap-mark" style="background: #f3f2f2; padding: 72px; min-width: 0; display: flex; align-items: center; justify-content: center;">
+      <svg width="260" height="260" viewBox="0 0 96 96" fill="none" style="width: 100%; max-width: 260px; height: auto;">
+        <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+        <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+        <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+      </svg>
+    </div>
+    <div style="background: #201e1d; padding: 72px; min-width: 0; display: flex; align-items: center; justify-content: center;">
+      <svg width="260" height="260" viewBox="0 0 96 96" fill="none" style="width: 100%; max-width: 260px; height: auto;">
+        <g fill="#f3f2f2"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+        <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+        <rect x="26" y="51" width="19" height="19" stroke="#f3f2f2" stroke-width="2"></rect>
+      </svg>
+    </div>
+  </div>
+
+  <div style="padding: 56px 0 20px; font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--color-accent-700);">02 — Construction &amp; clear space</div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--color-divider); border: 2px solid var(--color-divider);">
+    <div style="background: #f3f2f2; padding: 56px; min-width: 0; display: flex; align-items: center; justify-content: center;">
+      <svg width="300" height="300" viewBox="-8 -8 112 112" fill="none" style="width: 100%; max-width: 300px; height: auto;">
+        <g stroke="#ec3013" stroke-width="0.5" opacity="0.55">
+          <line x1="-8" y1="0" x2="104" y2="0"></line><line x1="-8" y1="21" x2="104" y2="21"></line><line x1="-8" y1="25" x2="104" y2="25"></line><line x1="-8" y1="46" x2="104" y2="46"></line><line x1="-8" y1="50" x2="104" y2="50"></line><line x1="-8" y1="71" x2="104" y2="71"></line><line x1="-8" y1="75" x2="104" y2="75"></line><line x1="-8" y1="96" x2="104" y2="96"></line>
+          <line y1="-8" x1="0" y2="104" x2="0"></line><line y1="-8" x1="21" y2="104" x2="21"></line><line y1="-8" x1="25" y2="104" x2="25"></line><line y1="-8" x1="46" y2="104" x2="46"></line><line y1="-8" x1="50" y2="104" x2="50"></line><line y1="-8" x1="71" y2="104" x2="71"></line><line y1="-8" x1="75" y2="104" x2="75"></line><line y1="-8" x1="96" y2="104" x2="96"></line>
+        </g>
+        <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+        <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+        <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+      </svg>
+    </div>
+    <div style="background: #f3f2f2; padding: 56px; min-width: 0; display: flex; flex-direction: column; gap: 24px; justify-content: center;">
+      <div style="display: flex; align-items: center; justify-content: center;">
+        <div style="border: 2px dashed var(--color-accent); padding: 42px; min-width: 0;">
+          <svg width="168" height="168" viewBox="0 0 96 96" fill="none" style="width: 100%; max-width: 168px; height: auto;">
+            <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+            <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+            <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+          </svg>
+        </div>
+      </div>
+      <div style="font-size: 14px; line-height: 1.6; color: var(--color-neutral-700);">The mark is drawn on a 96-unit square: cells of 21, gutters of 4. Clear space on all four sides equals one cell (21 units / 22% of the mark's width). Nothing — type, rule, or edge — enters it.</div>
+    </div>
+  </div>
+
+  <div style="padding: 56px 0 20px; font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--color-accent-700);">03 — Lockups</div>
+  <div style="display: flex; flex-direction: column; gap: 2px; background: var(--color-divider); border: 2px solid var(--color-divider);">
+    <div id="cap-lockup-h" style="background: #f3f2f2; padding: 56px 64px; display: flex; align-items: center; gap: 26px;">
+      <svg width="88" height="88" viewBox="0 0 96 96" fill="none">
+        <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+        <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+        <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+      </svg>
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <div style="font-family: var(--font-heading); font-weight: 800; font-size: 56px; letter-spacing: -0.045em; line-height: 0.86;">GUNWALL</div>
+        <div style="font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--color-neutral-600);">Nothing trusted · Nothing known</div>
+      </div>
+    </div>
+    <div id="cap-lockup-stack" style="background: #f3f2f2; padding: 56px 64px; display: flex; flex-direction: column; align-items: flex-start; gap: 20px;">
+      <svg width="76" height="76" viewBox="0 0 96 96" fill="none">
+        <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+        <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+        <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+      </svg>
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <div style="font-family: var(--font-heading); font-weight: 800; font-size: 52px; letter-spacing: -0.045em; line-height: 0.86;">GUNWALL</div>
+        <div style="font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--color-neutral-600);">Nothing trusted · Nothing known</div>
+      </div>
+    </div>
+    <div id="cap-lockup-rev" style="background: #201e1d; padding: 56px 64px; display: flex; align-items: center; gap: 26px;">
+      <svg width="88" height="88" viewBox="0 0 96 96" fill="none">
+        <g fill="#f3f2f2"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+        <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+        <rect x="26" y="51" width="19" height="19" stroke="#f3f2f2" stroke-width="2"></rect>
+      </svg>
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <div style="font-family: var(--font-heading); font-weight: 800; font-size: 56px; letter-spacing: -0.045em; line-height: 0.86; color: #f3f2f2;">GUNWALL</div>
+        <div style="font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: #9b9694;">Nothing trusted · Nothing known</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding: 56px 0 20px; font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--color-accent-700);">04 — Small sizes &amp; the compact mark</div>
+  <div style="border: 2px solid var(--color-divider); background: #f3f2f2; padding: 48px 64px; display: flex; align-items: flex-end; gap: 64px; flex-wrap: wrap;">
+    <div style="display: flex; flex-direction: column; gap: 14px; align-items: flex-start;">
+      <svg width="64" height="64" viewBox="0 0 96 96" fill="none">
+        <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+        <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+        <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+      </svg>
+      <div style="font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-neutral-600);">64px — full mark</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 14px; align-items: flex-start;">
+      <svg width="32" height="32" viewBox="0 0 96 96" fill="none">
+        <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+        <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+        <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+      </svg>
+      <div style="font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-neutral-600);">32px — limit</div>
+    </div>
+    <div id="cap-compact" style="display: flex; flex-direction: column; gap: 14px; align-items: flex-start;">
+      <svg width="96" height="96" viewBox="0 0 96 96" fill="none">
+        <g fill="#201e1d"><rect x="0" y="0" width="30" height="30"></rect><rect x="33" y="0" width="30" height="30"></rect><rect x="0" y="33" width="30" height="30"></rect><rect x="66" y="33" width="30" height="30"></rect><rect x="0" y="66" width="30" height="30"></rect><rect x="33" y="66" width="30" height="30"></rect><rect x="66" y="66" width="30" height="30"></rect></g>
+        <rect x="66" y="0" width="30" height="30" fill="#ec3013"></rect>
+        <rect x="34" y="34" width="28" height="28" stroke="#201e1d" stroke-width="2.5"></rect>
+      </svg>
+      <div style="font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-neutral-600);">Compact 3×3</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 14px; align-items: flex-start;">
+      <svg width="16" height="16" viewBox="0 0 96 96" fill="none">
+        <g fill="#201e1d"><rect x="0" y="0" width="30" height="30"></rect><rect x="33" y="0" width="30" height="30"></rect><rect x="0" y="33" width="30" height="30"></rect><rect x="66" y="33" width="30" height="30"></rect><rect x="0" y="66" width="30" height="30"></rect><rect x="33" y="66" width="30" height="30"></rect><rect x="66" y="66" width="30" height="30"></rect></g>
+        <rect x="66" y="0" width="30" height="30" fill="#ec3013"></rect>
+        <rect x="34" y="34" width="28" height="28" stroke="#201e1d" stroke-width="2.5"></rect>
+      </svg>
+      <div style="font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-neutral-600);">16px favicon</div>
+    </div>
+    <div style="max-width: 300px; font-size: 14px; line-height: 1.6; color: var(--color-neutral-700);">Below 32px the 4×4 grid closes up. Switch to the compact 3×3 mark — same logic, one red cell and one void, drawn at half the cell count.</div>
+  </div>
+
+  <div style="padding: 56px 0 20px; font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--color-accent-700);">05 — App icon &amp; in situ</div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--color-divider); border: 2px solid var(--color-divider);">
+    <div style="background: #f3f2f2; padding: 56px; min-width: 0; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 32px;">
+      <div id="cap-appicon" style="width: 200px; height: 200px; background: #201e1d; display: flex; align-items: center; justify-content: center;">
+        <svg width="128" height="128" viewBox="0 0 96 96" fill="none">
+          <g fill="#f3f2f2"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+          <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+          <rect x="26" y="51" width="19" height="19" stroke="#f3f2f2" stroke-width="2"></rect>
+        </svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="width: 72px; height: 72px; background: #201e1d; display: flex; align-items: center; justify-content: center;">
+          <svg width="46" height="46" viewBox="0 0 96 96" fill="none">
+            <g fill="#f3f2f2"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+            <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+            <rect x="26" y="51" width="19" height="19" stroke="#f3f2f2" stroke-width="2"></rect>
+          </svg>
+        </div>
+        <div style="font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-neutral-600);">512 / 128 / 64</div>
+      </div>
+    </div>
+    <div style="background: #f3f2f2; padding: 0; min-width: 0; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; gap: 14px; padding: 18px 24px; border-bottom: 2px solid var(--color-divider); background: #fff;">
+        <svg width="26" height="26" viewBox="0 0 96 96" fill="none">
+          <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+          <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+          <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+        </svg>
+        <div style="font-family: var(--font-heading); font-weight: 800; font-size: 17px; letter-spacing: -0.03em;">GUNWALL</div>
+        <div style="margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 16px; font-size: 13px; color: var(--color-neutral-700);">
+          <span>Policies</span><span>Traffic</span><span>Identity</span><span style="color: var(--color-accent-700);">Console</span>
+        </div>
+      </div>
+      <div style="padding: 28px 24px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-neutral-600);">Product header, 26px mark</div>
+        <div style="height: 2px; background: var(--color-divider);"></div>
+        <div style="font-size: 14px; line-height: 1.6; color: var(--color-neutral-700);">In interface chrome the mark sits at cap height of the wordmark, with one cell of clear space to the left edge of the bar. Never pair the mark with a second logo inside the same rule.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding: 56px 0 20px; font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--color-accent-700);">06 — Color &amp; type</div>
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; background: var(--color-divider); border: 2px solid var(--color-divider);">
+    <div style="background: #ec3013; padding: 28px 20px; min-height: 132px; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; color: #fff;">
+      <div style="font-family: var(--font-heading); font-weight: 800; font-size: 15px;">Signal Red</div>
+      <div style="font-size: 13px; opacity: 0.85;">#EC3013 — the inspected cell, primary action</div>
+    </div>
+    <div style="background: #201e1d; padding: 28px 20px; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; color: #f3f2f2;">
+      <div style="font-family: var(--font-heading); font-weight: 800; font-size: 15px;">Ink</div>
+      <div style="font-size: 13px; opacity: 0.75;">#201E1D — the wall, all type</div>
+    </div>
+    <div style="background: #f3f2f2; padding: 28px 20px; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px;">
+      <div style="font-family: var(--font-heading); font-weight: 800; font-size: 15px;">Ground</div>
+      <div style="font-size: 13px; color: var(--color-neutral-700);">#F3F2F2 — page and light lockups</div>
+    </div>
+    <div style="background: #fff; padding: 28px 20px; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px;">
+      <div style="font-family: var(--font-heading); font-weight: 800; font-size: 15px;">Archivo</div>
+      <div style="font-size: 13px; color: var(--color-neutral-700);">Wordmark: 800, tracking −0.045em, all caps</div>
+    </div>
+  </div>
+
+  <div style="padding: 56px 0 20px; font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--color-accent-700);">07 — Misuse</div>
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; background: var(--color-divider); border: 2px solid var(--color-divider);">
+    <div style="background: #f3f2f2; padding: 32px 24px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start;">
+      <svg width="76" height="76" viewBox="0 0 96 96" fill="none">
+        <g fill="#201e1d"><rect x="0" y="0" width="21" height="21" rx="6"></rect><rect x="25" y="0" width="21" height="21" rx="6"></rect><rect x="75" y="0" width="21" height="21" rx="6"></rect><rect x="0" y="25" width="21" height="21" rx="6"></rect><rect x="25" y="25" width="21" height="21" rx="6"></rect><rect x="50" y="25" width="21" height="21" rx="6"></rect><rect x="75" y="25" width="21" height="21" rx="6"></rect><rect x="0" y="50" width="21" height="21" rx="6"></rect><rect x="50" y="50" width="21" height="21" rx="6"></rect><rect x="75" y="50" width="21" height="21" rx="6"></rect><rect x="0" y="75" width="21" height="21" rx="6"></rect><rect x="25" y="75" width="21" height="21" rx="6"></rect><rect x="50" y="75" width="21" height="21" rx="6"></rect><rect x="75" y="75" width="21" height="21" rx="6"></rect></g>
+        <rect x="50" y="0" width="21" height="21" rx="6" fill="#ec3013"></rect>
+      </svg>
+      <div style="font-size: 13px; line-height: 1.55; color: var(--color-neutral-700);"><span style="color: var(--color-accent-700); font-weight: 700;">No.</span> Never round the cells.</div>
+    </div>
+    <div style="background: #f3f2f2; padding: 32px 24px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start;">
+      <svg width="76" height="76" viewBox="0 0 96 96" fill="none">
+        <defs><linearGradient id="misuseGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ec3013"></stop><stop offset="1" stop-color="#7a2bd6"></stop></linearGradient></defs>
+        <g fill="url(#misuseGrad)"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+      </svg>
+      <div style="font-size: 13px; line-height: 1.55; color: var(--color-neutral-700);"><span style="color: var(--color-accent-700); font-weight: 700;">No.</span> No gradients or extra colors.</div>
+    </div>
+    <div style="background: #f3f2f2; padding: 32px 24px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start;">
+      <svg width="76" height="76" viewBox="0 0 96 96" fill="none">
+        <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="50" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="25" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+      </svg>
+      <div style="font-size: 13px; line-height: 1.55; color: var(--color-neutral-700);"><span style="color: var(--color-accent-700); font-weight: 700;">No.</span> Never fill the void or drop the red cell — that is the idea.</div>
+    </div>
+    <div style="background: #f3f2f2; padding: 32px 24px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        <svg width="46" height="46" viewBox="0 0 96 96" fill="none">
+          <g fill="#201e1d"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+          <rect x="50" y="0" width="21" height="21" fill="#ec3013"></rect>
+          <rect x="26" y="51" width="19" height="19" stroke="#201e1d" stroke-width="2"></rect>
+        </svg>
+        <div style="font-family: var(--font-heading); font-weight: 300; font-size: 18px; letter-spacing: 0.1em; font-style: italic;">GunWall</div>
+      </div>
+      <div style="font-size: 13px; line-height: 1.55; color: var(--color-neutral-700);"><span style="color: var(--color-accent-700); font-weight: 700;">No.</span> Never center, letterspace loose, or italicise the wordmark.</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

@@ -6,6 +6,50 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.32] — 2026-08-03
+
+### Changed
+- **Both palettes rewritten from the design handoff** (`docs/design/handoff/SPEC.md` section 2), which now lives in the repository alongside 32 rendered screens and a state gallery.
+  - **The accent is red.** `#FF3B21` in dark, `#D92C11` in light. It is the only decoratively used hue: green and amber are *state* and never decoration, so a screen with nothing allowed, blocked or warning is red-and-ink only. Red doing double duty as the primary action *and* the blocked verdict is the design's decision rather than an oversight — in a firewall, the destructive action and the blocked outcome are the same idea.
+  - **The window ground is `#0A0B0D`**, and the sidebar and content share it. Separation comes from hairlines (`#17191D`), not from stacked surfaces — the opposite of what the previous palette assumed. Panels are used only where a boundary is load-bearing.
+  - The two themes are written out **separately, on the design's explicit instruction**: light is not an inversion, because the accent darkens and the status hues darken hard — the saturated dark-mode green and amber fail on white.
+  - White is the foreground on the accent in **both** themes. Fluent pairs a light accent with black text in dark mode, so the library's derived value is wrong here and is replaced rather than worked around.
+
+### Note
+This supersedes much of the Fluent visual work. The library still supplies control behaviour — the window, Mica, the switch, the chrome — but the design is its own system and says so: 7px control radius rather than Fluent's 4, Lucide icon geometry rather than Segoe Fluent Icons, and no derivation of light from dark. Three of those are mistakes this project already made once and the spec names explicitly.
+
+---
+
+## [0.99.31] — 2026-08-03
+
+### Added
+- **The design's typefaces, embedded.** Inter Tight carries the interface and JetBrains Mono the data. Neither ships with Windows, so referencing them by name would have fallen back to Segoe UI on every machine except a designer's — they are resources in the assembly, with a system fallback after the comma so a failure to load degrades to Segoe rather than to whatever WPF picks when it cannot resolve a family at all.
+  - Shipped as **static weight instances** rather than the variable files. WPF's variable-font support renders the default instance only: a SemiBold request against a variable file comes back Regular, with no error to notice. The 500 and 600 weights were instanced from the variable source and renamed into a single family so `FontWeight` resolves within it.
+  - Both are OFL; the licences are in `third-party-licenses/`.
+- **Monospace for machine data.** Addresses, MAC addresses and endpoints now render in JetBrains Mono with tabular figures across five columns. Every digit takes the same width, so a column of addresses lines up and a number that changes does not make the row jump. Names and descriptions stay in the interface face — monospace for prose would be an affectation, but for an IP address it is the difference between reading a column and scanning one.
+
+---
+
+## [0.99.30] — 2026-08-02
+
+### Changed
+- **The palette now comes from the console design, and it is a structural change rather than a recolour.** The interface previously drew the rail, the window and the content area from one value, so the whole window read as a single flat sheet no matter what else was adjusted. There are five distinct surface levels now — rail `#131417`, window `#16171A`, content `#1A1B1F`, card `#202227`, elevated `#24272D` — because depth in a dark interface comes from separating surfaces, not from adding shadows. The content column previously had no surface of its own at all; it showed whatever was behind it.
+- The light theme was rebuilt on the same five-level structure inverted, so switching changes the brightness without changing how depth is expressed.
+- **The accent is `#3B9DFF`**, a brighter blue than before, paired with a near-black foreground. That pairing is what makes it work: measured 6.71:1 against its own text and 6.11:1 against the content surface. Fluent already pairs a light accent with black text in dark mode, so the design and the library agree rather than fighting.
+- Verdict and status colours were taken from the same specification, so allow, block and warning sit correctly on the new surfaces instead of being tuned for the old ones.
+
+---
+
+## [0.99.29] — 2026-08-02
+
+### Changed
+- **The theme switch carries its icon inside the knob, and animates.** A bare switch flanked by two static icons only says that two options exist; it does not say which one you are in. The moon and sun now ride inside the knob and cross over as it travels, so the control shows its current state rather than its available states. The library's `ToggleSwitch` has no slot for an icon, so this is a purpose-built template — but it follows the same motion convention as everything else: the knob travels in 167ms on a decelerating curve, and the icons swap in 80ms so the change lands *before* the knob settles rather than after, which would read as lag.
+
+### Removed
+- Three orphaned prompt-button colours. They were the muted fills of the hand-built prompt buttons; those derive from the library's template now and take its brushes, leaving the colours unreferenced — exactly the kind of leftover that gets copied later by someone assuming it is live. Every remaining literal colour in the styles is semantic: the verdict colours and the chart series, which must mean the same thing in both themes.
+
+---
+
 ## [0.99.28] — 2026-08-02
 
 ### Fixed

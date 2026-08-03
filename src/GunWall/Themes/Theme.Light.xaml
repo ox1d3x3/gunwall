@@ -3,62 +3,51 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ===== LIGHT THEME =====
-         These are aliases, not a palette.
+         Token names and values from handoff/SPEC.md section 2. The two themes
+         are written out separately on the design's own instruction: light is not
+         an inversion of dark, because the accent darkens and the status hues
+         darken hard - the saturated dark-mode green and amber fail on white.
 
-         GunWall's own surface and text tokens are referenced 115 times across
-         the window and the control styles, against 18 references to the control
-         library's. That ratio is why the interface kept reading as its old self
-         after the library was adopted: the library was styling the controls
-         while GunWall was still painting everything around them, so the two
-         never agreed. Redefining these as pointers to the library's own brushes
-         makes all 115 call sites resolve to its colours without touching any of
-         them, and means a theme change moves the whole window at once.
+         One accent. Red is the only hue used decoratively; green and amber are
+         STATE and never decoration, so a screen with nothing allowed, blocked
+         or warning is red-and-ink only. Red doing double duty as both the primary
+         action and "blocked" is the design's decision, not an oversight - in a
+         firewall the destructive action and the blocked verdict are the same
+         idea.
 
-         The library's surfaces are deliberately translucent, which is what lets
-         the Mica material show through. A solid colour here would cancel that.
+         The GunWall names on the left are kept so the existing markup resolves;
+         the design token name is given beside each.
+         ==================================================================== -->
 
-         What stays GunWall's own is below: the status colours a firewall
-         actually decides with, and the chart series. Those carry meaning rather
-         than surface, and the library has no opinion about them. -->
-
-    <!-- Surfaces, matching the library's own -->
-    <SolidColorBrush x:Key="BgPrimary" Color="#FFFAFAFA" />
-    <SolidColorBrush x:Key="BgSecondary" Color="#EEEEEE" />
-    <SolidColorBrush x:Key="BgCard" Color="#B3FFFFFF" />
-    <SolidColorBrush x:Key="BgElevated" Color="#F9F9F9" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#0F000000" />
-    <SolidColorBrush x:Key="Divider" Color="#0F000000" />
-
-    <!-- Interaction states -->
-    <SolidColorBrush x:Key="SurfaceHover" Color="#80F9F9F9" />
-    <SolidColorBrush x:Key="SurfacePressed" Color="#4DF9F9F9" />
+    <SolidColorBrush x:Key="BgPrimary" Color="#FFFFFF" />        <!-- 'bg': window ground -->
+    <SolidColorBrush x:Key="BgContent" Color="#FFFFFF" />      <!-- content sits on 'bg'; hairlines separate, not surfaces -->
+    <SolidColorBrush x:Key="BgSecondary" Color="#FFFFFF" />    <!-- sidebar shares 'bg', divided by 'line' -->
+    <SolidColorBrush x:Key="BgCard" Color="#FAFBFC" />         <!-- 'panel': chart card, inspector, posture, inputs -->
+    <SolidColorBrush x:Key="BgElevated" Color="#F4F5F7" />     <!-- 'panel2': overlays, fields inside a panel -->
+    <SolidColorBrush x:Key="Divider" Color="#EBEDF0" />        <!-- 'line': row rules, chrome dividers -->
+    <SolidColorBrush x:Key="BorderBrush" Color="#DCDFE4" />    <!-- 'line2': control borders, header rule -->
+    <SolidColorBrush x:Key="SurfaceHover" Color="#09000000" />   <!-- 'hover': 5% white -->
     <SolidColorBrush x:Key="SurfaceSelected" Color="#09000000" />
-    <SolidColorBrush x:Key="FocusRing" Color="#2C6EBF" />
-
-    <!-- Type -->
-    <SolidColorBrush x:Key="TextPrimary" Color="#E4000000" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#9E000000" />
-    <SolidColorBrush x:Key="TextTertiary" Color="#72000000" />
-    <SolidColorBrush x:Key="TextOnAccent" Color="#FFFFFF" />
-
-    <!-- ===== GunWall's own, because they carry meaning =====
-         A verdict colour is not a surface: "allowed" and "blocked" have to mean
-         the same thing in either theme, and no control library can decide that. -->
-    <SolidColorBrush x:Key="AllowFill" Color="#E6F5DC" />
-    <SolidColorBrush x:Key="AllowText" Color="#3D7A19" />
-    <SolidColorBrush x:Key="BlockFill" Color="#FCE8E7" />
-    <SolidColorBrush x:Key="BlockText" Color="#B5342B" />
-    <SolidColorBrush x:Key="WarnFill"  Color="#FDF2DA" />
-    <SolidColorBrush x:Key="WarnText"  Color="#87590A" />
-    <SolidColorBrush x:Key="InfoFill"  Color="#E5EEFC" />
-    <SolidColorBrush x:Key="InfoText"  Color="#12509E" />
-    <SolidColorBrush x:Key="AccentSoft" Color="#E9F5DE" />
-
-    <!-- Charts and the world map -->
-    <SolidColorBrush x:Key="GraphCursor"   Color="#66000000" />
-    <SolidColorBrush x:Key="SelectionFill" Color="#302F6FE0" />
-    <SolidColorBrush x:Key="MapLand"       Color="#AEC0E8" />
-    <SolidColorBrush x:Key="MapBorder"     Color="#8FA3D2" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#06000000" />  <!-- 'row-hover': 3% white -->
+    <SolidColorBrush x:Key="RowHover" Color="#08FFFFFF" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#0D0F12" />     <!-- 't1' -->
+    <SolidColorBrush x:Key="TextSecondary" Color="#5A626D" />   <!-- 't2' -->
+    <SolidColorBrush x:Key="TextTertiary" Color="#858D99" />    <!-- 't3': metadata only; never load-bearing -->
+    <SolidColorBrush x:Key="TextOnAccent" Color="#FFFFFF" />    <!-- 'on-brand' -->
+    <SolidColorBrush x:Key="FocusRing" Color="#D92C11" />
+    <SolidColorBrush x:Key="AllowText" Color="#0F8A4D" />       <!-- 'ok' -->
+    <SolidColorBrush x:Key="AllowFill" Color="#1C0F8A4D" />     <!-- 'ok-bg' -->
+    <SolidColorBrush x:Key="BlockText" Color="#D92C11" />       <!-- 'brand' -->
+    <SolidColorBrush x:Key="BlockFill" Color="#1AD92C11" />     <!-- 'brand-bg' -->
+    <SolidColorBrush x:Key="WarnText" Color="#9A6100" />        <!-- 'warn' -->
+    <SolidColorBrush x:Key="WarnFill" Color="#1C9A6100" />      <!-- 'warn-bg' -->
+    <SolidColorBrush x:Key="InfoText" Color="#858D99" />        <!-- neutral pill uses 't3' -->
+    <SolidColorBrush x:Key="InfoFill" Color="#0D000000" />      <!-- 'neutral-bg' -->
+    <SolidColorBrush x:Key="AccentSoft" Color="#1AD92C11" />
+    <SolidColorBrush x:Key="GraphCursor" Color="#660D0F12" />
+    <SolidColorBrush x:Key="SelectionFill" Color="#1AD92C11" />
+    <SolidColorBrush x:Key="MapLand" Color="#F4F5F7" />
+    <SolidColorBrush x:Key="MapBorder" Color="#DCDFE4" />
 
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">False</sys:Boolean>
 </ResourceDictionary>

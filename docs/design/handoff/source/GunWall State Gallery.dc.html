@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #0a0b0d; }
+  * { box-sizing: border-box; }
+  a { color: var(--brand, #ff3b21); text-decoration: none; }
+  a:hover { color: var(--brand-hi, #ff6a55); }
+  @keyframes gwshimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+  @keyframes gwspin { to { transform: rotate(360deg); } }
+</style>
+</helmet>
+
+<div data-gw-desk="true" style="min-height: 100vh; padding: 0; background: var(--bg, #0a0b0d); font-family: 'Instrument Sans', system-ui, sans-serif;">
+  <div data-gw-window="true" style="width: 1440px; padding: 40px 44px 60px; display: flex; flex-direction: column; gap: 40px;">
+
+    <div style="display: flex; align-items: flex-end; gap: 24px; padding-bottom: 26px; border-bottom: 1px solid var(--line2, #26292f);">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <svg width="18" height="18" viewBox="0 0 96 96" fill="none">
+            <g fill="var(--t1, #f5f6f7)"><rect x="0" y="0" width="21" height="21"></rect><rect x="25" y="0" width="21" height="21"></rect><rect x="75" y="0" width="21" height="21"></rect><rect x="0" y="25" width="21" height="21"></rect><rect x="25" y="25" width="21" height="21"></rect><rect x="50" y="25" width="21" height="21"></rect><rect x="75" y="25" width="21" height="21"></rect><rect x="0" y="50" width="21" height="21"></rect><rect x="50" y="50" width="21" height="21"></rect><rect x="75" y="50" width="21" height="21"></rect><rect x="0" y="75" width="21" height="21"></rect><rect x="25" y="75" width="21" height="21"></rect><rect x="50" y="75" width="21" height="21"></rect><rect x="75" y="75" width="21" height="21"></rect></g>
+            <rect x="50" y="0" width="21" height="21" fill="var(--brand, #ff3b21)"></rect>
+          </svg>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--t3, #646b75);">GunWall · implementation reference</span>
+        </div>
+        <div style="font-size: 40px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.02; color: var(--t1, #f5f6f7);">State gallery</div>
+        <div style="font-size: 13.5px; line-height: 1.55; color: var(--t2, #9aa1ab); max-width: 640px;">Every interactive control in every state, at 1× scale. Values are the literal ones in the console source — measure from here, don't eyeball the screenshots.</div>
+      </div>
+      <div onClick="{{ toggleTheme }}" style="margin-left: auto; height: 34px; padding: 0 15px; display: flex; align-items: center; gap: 8px; border-radius: 7px; font-size: 12.5px; font-weight: 500; cursor: pointer; color: var(--t1, #f5f6f7); border: 1px solid var(--line2, #26292f);" style-hover="background: var(--hover, rgba(255,255,255,0.05))">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"></circle><line x1="12" y1="2.4" x2="12" y2="4.2"></line><line x1="12" y1="19.8" x2="12" y2="21.6"></line><line x1="2.4" y1="12" x2="4.2" y2="12"></line><line x1="19.8" y1="12" x2="21.6" y2="12"></line><line x1="5.4" y1="5.4" x2="6.7" y2="6.7"></line><line x1="17.3" y1="17.3" x2="18.6" y2="18.6"></line><line x1="18.6" y1="5.4" x2="17.3" y2="6.7"></line><line x1="6.7" y1="17.3" x2="5.4" y2="18.6"></line></svg>
+        {{ themeLabel }}
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 18px;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--t3, #646b75);">01 — Buttons</div>
+        <div style="font-size: 12.5px; color: var(--t3, #646b75);">Hover = brightness(1.12) on filled, --hover tint on outlined · pressed = brightness(0.92) + translateY(0.5px) · focus = 2px --brand ring, offset 2px</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 176px repeat(5, minmax(0, 1fr)); gap: 0 18px; align-items: center;">
+        <div style="{{ colHead }}">Variant</div>
+        <div style="{{ colHead }}">Default</div>
+        <div style="{{ colHead }}">Hover</div>
+        <div style="{{ colHead }}">Pressed</div>
+        <div style="{{ colHead }}">Focus</div>
+        <div style="{{ colHead }}">Disabled</div>
+        <sc-for list="{{ btnRows }}" as="row" hint-placeholder-count="5">
+          <div style="{{ rowHead }}">
+            <span style="font-size: 12.5px; font-weight: 500; color: var(--t1, #f5f6f7);">{{ row.name }}</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--t3, #646b75);">{{ row.metrics }}</span>
+          </div>
+          <sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="5">
+            <div style="{{ row.cellWrap }}"><div style="{{ c.style }}">{{ c.label }}</div></div>
+          </sc-for>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 18px; padding-top: 8px; border-top: 1px solid var(--line, #17191d);">
+      <div style="display: flex; align-items: baseline; gap: 14px; padding-top: 16px;">
+        <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--t3, #646b75);">02 — Selection controls</div>
+        <div style="font-size: 12.5px; color: var(--t3, #646b75);">Switch 38×21, knob 15px travel 17px · checkbox 17×17 r5 · radio 17px 2px ring, dot 8px</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 176px repeat(5, minmax(0, 1fr)); gap: 0 18px; align-items: center;">
+        <div style="{{ colHead }}">Control</div>
+        <div style="{{ colHead }}">Off</div>
+        <div style="{{ colHead }}">Off · hover</div>
+        <div style="{{ colHead }}">On</div>
+        <div style="{{ colHead }}">On · focus</div>
+        <div style="{{ colHead }}">Disabled</div>
+
+        <div style="{{ rowHead }}"><span style="font-size: 12.5px; font-weight: 500; color: var(--t1, #f5f6f7);">Switch</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--t3, #646b75);">h21 r11 · 160ms</span></div>
+        <sc-for list="{{ switches }}" as="s" hint-placeholder-count="5">
+          <div style="padding: 12px 0;"><div style="{{ s.track }}"><div style="{{ s.knob }}"></div></div></div>
+        </sc-for>
+
+        <div style="{{ rowHead }}"><span style="font-size: 12.5px; font-weight: 500; color: var(--t1, #f5f6f7);">Checkbox</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--t3, #646b75);">17px r5 · 120ms</span></div>
+        <sc-for list="{{ boxes }}" as="b" hint-placeholder-count="5">
+          <div style="padding: 12px 0;"><div style="{{ b.box }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--on-brand, #fff)" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" style="{{ b.tick }}"><polyline points="4 12.5 9.5 18 20 6.5"></polyline></svg></div></div>
+        </sc-for>
+
+        <div style="{{ rowHead }}"><span style="font-size: 12.5px; font-weight: 500; color: var(--t1, #f5f6f7);">Radio</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--t3, #646b75);">17px · dot 8px</span></div>
+        <sc-for list="{{ radios }}" as="r" hint-placeholder-count="5">
+          <div style="padding: 12px 0;"><div style="{{ r.ring }}"><div style="{{ r.dot }}"></div></div></div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 18px; padding-top: 8px; border-top: 1px solid var(--line, #17191d);">
+      <div style="display: flex; align-items: baseline; gap: 14px; padding-top: 16px;">
+        <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--t3, #646b75);">03 — Text inputs &amp; dropdowns</div>
+        <div style="font-size: 12.5px; color: var(--t3, #646b75);">h36 · r7 · 1px --line2 · 13px body, 12.5px mono for addresses · label 11px/600 uppercase 0.09em</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 20px;">
+        <sc-for list="{{ inputs }}" as="f" hint-placeholder-count="6">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span style="{{ colHead }}">{{ f.state }}</span>
+            <div style="{{ f.style }}">{{ f.value }}</div>
+            <span style="{{ f.hintStyle }}">{{ f.hint }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 18px; padding-top: 8px; border-top: 1px solid var(--line, #17191d);">
+      <div style="display: flex; align-items: baseline; gap: 14px; padding-top: 16px;">
+        <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--t3, #646b75);">04 — Status pills, nav rows, table rows</div>
+        <div style="font-size: 12.5px; color: var(--t3, #646b75);">Pill 2.5/8 r5 11px/600 · nav h34 r7 with 2×16 --brand marker at x−12 · row pad 10–12px, 1px --line rule</div>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.6fr); gap: 34px; align-items: start;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="{{ colHead }}">Status pills</div>
+          <sc-for list="{{ pills }}" as="p" hint-placeholder-count="6">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="{{ p.style }}">{{ p.label }}</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--t3, #646b75);">{{ p.token }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="{{ colHead }}">Nav rows</div>
+          <sc-for list="{{ navs }}" as="n" hint-placeholder-count="3">
+            <div style="padding-left: 12px;">
+              <div style="{{ n.style }}">
+                <div style="{{ n.bar }}"></div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="9" y1="11" x2="21" y2="11"></line></svg>
+                <span>Overview</span>
+                <span style="{{ n.tag }}">{{ n.tagText }}</span>
+              </div>
+              <div style="padding: 5px 0 0 2px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--t3, #646b75);">{{ n.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="{{ colHead }}">Table rows</div>
+          <div style="display: grid; grid-template-columns: 80px minmax(0, 1.2fr) minmax(0, 1.2fr) 84px; gap: 14px; padding-bottom: 10px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--t3, #646b75); border-bottom: 1px solid var(--line2, #23262b);">
+            <div>Time</div><div>Application</div><div>Remote</div><div style="text-align: right;">Action</div>
+          </div>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+            <div style="{{ r.style }}">
+              <div style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--t3, #646b75);">19:20:3{{ r.n }}</div>
+              <div style="color: var(--t1, #f5f6f7);">{{ r.app }}</div>
+              <div style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px;">{{ r.remote }}</div>
+              <div style="display: flex; justify-content: flex-end;"><span style="{{ r.pill }}">{{ r.action }}</span></div>
+            </div>
+          </sc-for>
+          <div style="padding-top: 4px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.7; color: var(--t3, #646b75);">default · hover --row-hover · selected --brand-bg + inset 2px --brand · focus-visible 2px --brand ring</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 18px; padding-top: 8px; border-top: 1px solid var(--line, #17191d);">
+      <div style="display: flex; align-items: baseline; gap: 14px; padding-top: 16px;">
+        <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--t3, #646b75);">05 — Table lifecycle states</div>
+        <div style="font-size: 12.5px; color: var(--t3, #646b75);">Header rule always renders — the table never collapses. Content region min-height 260px.</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 30px;">
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="{{ colHead }}">Loading · skeleton, 8 rows</div>
+          <div style="display: grid; grid-template-columns: 80px minmax(0, 1.2fr) minmax(0, 1.2fr) 84px; gap: 14px; padding-bottom: 10px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--t3, #646b75); border-bottom: 1px solid var(--line2, #23262b);">
+            <div>Time</div><div>Application</div><div>Remote</div><div style="text-align: right;">Action</div>
+          </div>
+          <sc-for list="{{ skeleton }}" as="s" hint-placeholder-count="6">
+            <div style="display: grid; grid-template-columns: 80px minmax(0, 1.2fr) minmax(0, 1.2fr) 84px; gap: 14px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line, #17191d);">
+              <div style="{{ s.a }}"></div><div style="{{ s.b }}"></div><div style="{{ s.c }}"></div><div style="{{ s.d }}"></div>
+            </div>
+          </sc-for>
+          <div style="display: flex; align-items: center; gap: 10px; padding-top: 6px; font-size: 12px; color: var(--t3, #646b75);">
+            <div style="{{ spinner }}"></div>Reading kernel event buffer…
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 24px;">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="{{ colHead }}">Empty · nothing has happened yet</div>
+            <div style="border: 1px dashed var(--line2, #26292f); border-radius: 12px; padding: 34px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;">
+              <svg width="30" height="30" viewBox="0 0 96 96" fill="none" style="opacity: 0.35;">
+                <g fill="var(--t3, #646b75)"><rect x="0" y="0" width="30" height="30"></rect><rect x="33" y="0" width="30" height="30"></rect><rect x="0" y="33" width="30" height="30"></rect><rect x="66" y="33" width="30" height="30"></rect><rect x="0" y="66" width="30" height="30"></rect><rect x="33" y="66" width="30" height="30"></rect><rect x="66" y="66" width="30" height="30"></rect></g>
+                <rect x="34" y="34" width="28" height="28" stroke="var(--t3, #646b75)" stroke-width="2.5"></rect>
+              </svg>
+              <div style="font-size: 15px; font-weight: 600; letter-spacing: -0.015em; color: var(--t1, #f5f6f7);">No connections logged yet</div>
+              <div style="font-size: 12.5px; line-height: 1.55; color: var(--t3, #646b75); max-width: 320px;">Events appear here the moment an application opens a socket. Nothing is sent anywhere — the log is local.</div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="{{ colHead }}">No results · filter matched nothing</div>
+            <div style="padding: 26px 4px; display: flex; flex-direction: column; gap: 10px;">
+              <div style="font-size: 14px; font-weight: 600; color: var(--t1, #f5f6f7);">No matches for “svchost telemetry”</div>
+              <div style="font-size: 12.5px; color: var(--t3, #646b75);">Filters stay applied. Clearing them restores 1,284 events.</div>
+              <div style="align-self: flex-start; height: 30px; padding: 0 13px; display: flex; align-items: center; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--t1, #f5f6f7); border: 1px solid var(--line2, #26292f);" style-hover="background: var(--hover, rgba(255,255,255,0.05))">Clear filters</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="{{ colHead }}">Error · the source failed</div>
+          <div style="border: 1px solid var(--brand, #ff3b21); border-radius: 12px; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; background: var(--brand-bg, rgba(255,59,33,0.14));">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand, #ff3b21)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="7.5" x2="12" y2="13"></line><line x1="12" y1="16.5" x2="12" y2="16.6"></line></svg>
+              <div style="font-size: 14px; font-weight: 600; color: var(--t1, #f5f6f7);">Can't reach the GunWall service</div>
+            </div>
+            <div style="font-size: 12.5px; line-height: 1.6; color: var(--t2, #9aa1ab);">The UI lost its named-pipe connection to <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px;">GunWallSvc</span>. Filters stay loaded in the kernel — you are still protected — but this list is stale and no rule change will apply until the service is back.</div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--t3, #646b75);">ERR_PIPE_BROKEN · 19:24:06 · retrying in 5s</div>
+            <div style="display: flex; gap: 8px; padding-top: 2px;">
+              <div style="height: 30px; padding: 0 13px; display: flex; align-items: center; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--on-brand, #fff); background: var(--brand, #ff3b21);" style-hover="filter: brightness(1.1)">Retry now</div>
+              <div style="height: 30px; padding: 0 13px; display: flex; align-items: center; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--t1, #f5f6f7); border: 1px solid var(--line2, #26292f);" style-hover="background: var(--hover, rgba(255,255,255,0.05))">Open service log</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="{{ colHead }}">Degraded · stale data, inline banner</div>
+          <div style="display: flex; flex-direction: column; gap: 0;">
+            <div style="display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 8px; background: var(--warn-bg, rgba(255,176,32,0.13)); border: 1px solid var(--warn, #ffb020);">
+              <span style="width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--warn, #ffb020);"></span>
+              <span style="font-size: 12.5px; color: var(--t1, #f5f6f7);">GeoIP database is 41 days old — locations may be wrong.</span>
+              <span style="margin-left: auto; font-size: 12px; font-weight: 600; color: var(--warn, #ffb020); cursor: pointer;">Update</span>
+            </div>
+            <div style="padding: 16px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--t3, #646b75);">Banners sit inside the content column, above the table header rule, and never cover chrome. One banner maximum; a second condition replaces the first by severity — error over warning over info.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 18px; padding-top: 8px; border-top: 1px solid var(--line, #17191d);">
+      <div style="display: flex; align-items: baseline; gap: 14px; padding-top: 16px;">
+        <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--t3, #646b75);">06 — Motion</div>
+        <div style="font-size: 12.5px; color: var(--t3, #646b75);">Nothing animates longer than 200ms. No easing bounces. Respect prefers-reduced-motion by dropping to 0ms.</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 24px;">
+        <div style="{{ colHead }}">Transition</div>
+        <div style="{{ colHead }}">Duration</div>
+        <div style="{{ colHead }}">Easing</div>
+        <div style="{{ colHead }}">Property</div>
+        <sc-for list="{{ motion }}" as="m" hint-placeholder-count="7">
+          <div style="padding: 11px 0; font-size: 12.5px; color: var(--t1, #f5f6f7); border-bottom: 1px solid var(--line, #17191d);">{{ m.what }}</div>
+          <div style="padding: 11px 0; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--t2, #9aa1ab); border-bottom: 1px solid var(--line, #17191d);">{{ m.dur }}</div>
+          <div style="padding: 11px 0; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--t2, #9aa1ab); border-bottom: 1px solid var(--line, #17191d);">{{ m.ease }}</div>
+          <div style="padding: 11px 0; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--t3, #646b75); border-bottom: 1px solid var(--line, #17191d);">{{ m.prop }}</div>
+        </sc-for>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1600},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const DARK = {
+  '--bg': '#0a0b0d', '--panel': '#101215', '--panel2': '#171a1e',
+  '--line': '#17191d', '--line2': '#26292f', '--hover': 'rgba(255,255,255,0.05)', '--row-hover': 'rgba(255,255,255,0.03)',
+  '--t1': '#f5f6f7', '--t2': '#9aa1ab', '--t3': '#646b75',
+  '--brand': '#ff3b21', '--brand-hi': '#ff6a55', '--on-brand': '#ffffff',
+  '--brand-bg': 'rgba(255,59,33,0.14)',
+  '--ok': '#35d07f', '--ok-bg': 'rgba(53,208,127,0.13)',
+  '--warn': '#ffb020', '--warn-bg': 'rgba(255,176,32,0.13)',
+  '--neutral-bg': 'rgba(255,255,255,0.06)', '--skel': 'rgba(255,255,255,0.06)'
+};
+const LIGHT = {
+  '--bg': '#ffffff', '--panel': '#fafbfc', '--panel2': '#f4f5f7',
+  '--line': '#ebedf0', '--line2': '#dcdfe4', '--hover': 'rgba(0,0,0,0.035)', '--row-hover': 'rgba(0,0,0,0.025)',
+  '--t1': '#0d0f12', '--t2': '#5a626d', '--t3': '#858d99',
+  '--brand': '#d92c11', '--brand-hi': '#b32410', '--on-brand': '#ffffff',
+  '--brand-bg': 'rgba(217,44,17,0.10)',
+  '--ok': '#0f8a4d', '--ok-bg': 'rgba(15,138,77,0.11)',
+  '--warn': '#9a6100', '--warn-bg': 'rgba(154,97,0,0.11)',
+  '--neutral-bg': 'rgba(0,0,0,0.05)', '--skel': 'rgba(0,0,0,0.055)'
+};
+
+const MOTION = [
+  ['Hover tint (rows, nav, ghost buttons)', '120ms', 'ease', 'background-color'],
+  ['Filled button hover / press', '120ms', 'ease', 'filter, transform'],
+  ['Switch knob travel', '160ms', 'cubic-bezier(0.2, 0, 0, 1)', 'transform'],
+  ['Switch track colour', '160ms', 'ease', 'background-color'],
+  ['Checkbox fill + tick', '120ms', 'ease', 'background-color, opacity'],
+  ['Nav selection marker grow', '150ms', 'ease', 'height'],
+  ['Input border on focus', '140ms', 'ease', 'border-color'],
+  ['Page / section change', '140ms', 'cubic-bezier(0.2, 0, 0, 1)', 'opacity + translateY(4px)'],
+  ['Overlay in (palette, prompt)', '180ms', 'cubic-bezier(0.2, 0, 0, 1)', 'opacity + scale(0.98→1)'],
+  ['Overlay out', '90ms', 'cubic-bezier(0.4, 0, 1, 1)', 'opacity'],
+  ['Skeleton shimmer', '1100ms', 'linear, infinite', 'transform: translateX'],
+  ['Live chart advance', '1000ms', 'linear', 'one sample per tick, no tween']
+];
+
+class Component extends DCLogic {
+  state = { theme: null };
+  get theme() { return this.state.theme || this.props.theme || 'dark'; }
+  applyTheme() {
+    const vars = this.theme === 'light' ? LIGHT : DARK;
+    const root = document.documentElement.style;
+    Object.entries(vars).forEach(([k, v]) => root.setProperty(k, v));
+  }
+  componentDidMount() {
+    this.applyTheme();
+    window.__gwgallery = { theme: (t) => this.setState({ theme: t }) };
+  }
+  componentDidUpdate() { this.applyTheme(); }
+
+  renderVals() {
+    const v = {};
+    v.themeLabel = this.theme === 'light' ? 'Light theme' : 'Dark theme';
+    v.toggleTheme = () => this.setState({ theme: this.theme === 'light' ? 'dark' : 'light' });
+
+    v.colHead = { fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
+      color: 'var(--t3)', paddingBottom: '4px' };
+    v.rowHead = { display: 'flex', flexDirection: 'column', gap: '2px', padding: '12px 0',
+      borderTop: '1px solid var(--line)' };
+
+    const btn = (h, pad, fs, fw, r) => ({ height: h + 'px', padding: '0 ' + pad + 'px', display: 'inline-flex',
+      alignItems: 'center', borderRadius: r + 'px', fontSize: fs + 'px', fontWeight: fw, cursor: 'pointer', whiteSpace: 'nowrap' });
+    const fill = (s, mods) => Object.assign({}, s, { color: 'var(--on-brand)', background: 'var(--brand)' }, mods || {});
+    const out = (s, mods) => Object.assign({}, s, { color: 'var(--t1)', background: 'transparent', border: '1px solid var(--line2)' }, mods || {});
+    const focusRing = { outline: '2px solid var(--brand)', outlineOffset: '2px' };
+    const press = { filter: 'brightness(0.92)', transform: 'translateY(0.5px)' };
+    const cellWrap = { padding: '12px 0', borderTop: '1px solid var(--line)' };
+
+    const primary = btn(36, 18, 13, 600, 7);
+    const secondary = btn(36, 15, 13, 500, 7);
+    const small = btn(34, 14, 12.5, 500, 7);
+    const rowBtn = btn(27, 13, 12, 600, 6);
+
+    v.btnRows = [
+      { name: 'Primary', metrics: 'h36 · 0 18 · r7 · 13/600', cellWrap, cells: [
+        { label: 'Turn firewall on', style: fill(primary) },
+        { label: 'Turn firewall on', style: fill(primary, { filter: 'brightness(1.12)' }) },
+        { label: 'Turn firewall on', style: fill(primary, press) },
+        { label: 'Turn firewall on', style: fill(primary, focusRing) },
+        { label: 'Turn firewall on', style: fill(primary, { opacity: 0.4, cursor: 'not-allowed' }) } ] },
+      { name: 'Secondary', metrics: 'h36 · 0 15 · r7 · 13/500', cellWrap, cells: [
+        { label: 'Check for updates', style: out(secondary) },
+        { label: 'Check for updates', style: out(secondary, { background: 'var(--hover)' }) },
+        { label: 'Check for updates', style: out(secondary, Object.assign({ background: 'var(--hover)' }, press)) },
+        { label: 'Check for updates', style: out(secondary, focusRing) },
+        { label: 'Check for updates', style: out(secondary, { opacity: 0.4, cursor: 'not-allowed' }) } ] },
+      { name: 'Toolbar / small', metrics: 'h34 · 0 14 · r7 · 12.5/500', cellWrap, cells: [
+        { label: 'Update GeoIP', style: out(small) },
+        { label: 'Update GeoIP', style: out(small, { background: 'var(--hover)' }) },
+        { label: 'Update GeoIP', style: out(small, Object.assign({ background: 'var(--hover)' }, press)) },
+        { label: 'Update GeoIP', style: out(small, focusRing) },
+        { label: 'Update GeoIP', style: out(small, { opacity: 0.4, cursor: 'not-allowed' }) } ] },
+      { name: 'Row action', metrics: 'h27 · 0 13 · r6 · 12/600', cellWrap, cells: [
+        { label: 'Block', style: out(rowBtn) },
+        { label: 'Block', style: out(rowBtn, { background: 'var(--hover)' }) },
+        { label: 'Block', style: out(rowBtn, Object.assign({ background: 'var(--hover)' }, press)) },
+        { label: 'Block', style: out(rowBtn, focusRing) },
+        { label: 'Block', style: out(rowBtn, { opacity: 0.4, cursor: 'not-allowed' }) } ] },
+      { name: 'Row action · engaged', metrics: 'same, brand fill', cellWrap, cells: [
+        { label: 'Unblock', style: fill(rowBtn) },
+        { label: 'Unblock', style: fill(rowBtn, { filter: 'brightness(1.18)' }) },
+        { label: 'Unblock', style: fill(rowBtn, press) },
+        { label: 'Unblock', style: fill(rowBtn, focusRing) },
+        { label: 'Unblock', style: fill(rowBtn, { opacity: 0.4, cursor: 'not-allowed' }) } ] }
+    ];
+
+    const track = (on, mods) => Object.assign({ width: '38px', height: '21px', borderRadius: '11px', display: 'flex',
+      alignItems: 'center', padding: '2px', cursor: 'pointer',
+      background: on ? 'var(--ok)' : 'var(--neutral-bg)',
+      border: '1px solid ' + (on ? 'transparent' : 'var(--line2)') }, mods || {});
+    const knob = (on) => ({ width: '15px', height: '15px', borderRadius: '50%',
+      transform: on ? 'translateX(17px)' : 'translateX(1px)', background: on ? '#08130d' : 'var(--t3)' });
+    v.switches = [
+      { track: track(false), knob: knob(false) },
+      { track: track(false, { borderColor: 'var(--t3)' }), knob: knob(false) },
+      { track: track(true), knob: knob(true) },
+      { track: track(true, { outline: '2px solid var(--brand)', outlineOffset: '2px' }), knob: knob(true) },
+      { track: track(false, { opacity: 0.4 }), knob: knob(false) }
+    ];
+
+    const box = (on, mods) => Object.assign({ width: '17px', height: '17px', borderRadius: '5px', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      background: on ? 'var(--brand)' : 'transparent',
+      border: '1px solid ' + (on ? 'transparent' : 'var(--line2)') }, mods || {});
+    v.boxes = [
+      { box: box(false), tick: { opacity: 0 } },
+      { box: box(false, { borderColor: 'var(--t3)' }), tick: { opacity: 0 } },
+      { box: box(true), tick: { opacity: 1 } },
+      { box: box(true, { outline: '2px solid var(--brand)', outlineOffset: '2px' }), tick: { opacity: 1 } },
+      { box: box(false, { opacity: 0.4 }), tick: { opacity: 0 } }
+    ];
+
+    const ring = (on, mods) => Object.assign({ width: '17px', height: '17px', borderRadius: '50%', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      border: '2px solid ' + (on ? 'var(--brand)' : 'var(--line2)') }, mods || {});
+    const dot = (on) => ({ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--brand)', opacity: on ? 1 : 0 });
+    v.radios = [
+      { ring: ring(false), dot: dot(false) },
+      { ring: ring(false, { borderColor: 'var(--t3)' }), dot: dot(false) },
+      { ring: ring(true), dot: dot(true) },
+      { ring: ring(true, { outline: '2px solid var(--brand)', outlineOffset: '2px' }), dot: dot(true) },
+      { ring: ring(false, { opacity: 0.4 }), dot: dot(false) }
+    ];
+
+    const field = (mods, mono) => Object.assign({ height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center',
+      borderRadius: '7px', fontSize: mono ? '12.5px' : '13px',
+      fontFamily: mono ? "'JetBrains Mono', monospace" : 'inherit',
+      background: 'var(--panel)', border: '1px solid var(--line2)', color: 'var(--t1)' }, mods || {});
+    const hint = (c) => ({ fontSize: '11px', color: 'var(' + c + ')' });
+    v.inputs = [
+      { state: 'Empty', value: '1.2.3.4', style: field({ color: 'var(--t3)' }, true), hint: 'placeholder = --t3', hintStyle: hint('--t3') },
+      { state: 'Hover', value: '1.2.3.4', style: field({ color: 'var(--t3)', borderColor: 'var(--t3)' }, true), hint: 'border → --t3', hintStyle: hint('--t3') },
+      { state: 'Focus', value: '185.220.101.0/24', style: field({ borderColor: 'var(--brand)', outline: '2px solid var(--brand)', outlineOffset: '-3px' }, true), hint: 'border --brand + inner ring', hintStyle: hint('--t3') },
+      { state: 'Filled', value: '185.220.101.0/24', style: field({}, true), hint: 'value = --t1', hintStyle: hint('--t3') },
+      { state: 'Invalid', value: '185.220.101.0/99', style: field({ borderColor: 'var(--brand)' }, true), hint: 'Not a valid CIDR mask', hintStyle: hint('--brand') },
+      { state: 'Disabled', value: 'Managed by policy', style: field({ opacity: 0.4 }), hint: 'opacity 0.4, no pointer', hintStyle: hint('--t3') }
+    ];
+
+    const pill = (fg, bg, w) => ({ display: 'inline-flex', alignItems: 'center', padding: '2.5px 8px', borderRadius: '5px',
+      fontSize: '11px', fontWeight: w || 600, color: 'var(' + fg + ')', background: 'var(' + bg + ')' });
+    v.pills = [
+      { label: 'Allowed', token: '--ok on --ok-bg', style: pill('--ok', '--ok-bg') },
+      { label: 'Blocked', token: '--brand on --brand-bg', style: pill('--brand', '--brand-bg') },
+      { label: 'Cloaked', token: '--warn on --warn-bg', style: pill('--warn', '--warn-bg') },
+      { label: 'Stopped', token: '--t3 on --neutral-bg', style: pill('--t3', '--neutral-bg', 500) },
+      { label: 'ON', token: 'posture · 10px/700 0.09em', style: Object.assign(pill('--ok', '--ok-bg'), { fontSize: '10px', fontWeight: 700, letterSpacing: '0.09em', padding: '2px 7px' }) },
+      { label: 'OFF', token: 'posture · off state', style: Object.assign(pill('--t3', '--neutral-bg'), { fontSize: '10px', fontWeight: 700, letterSpacing: '0.09em', padding: '2px 7px' }) }
+    ];
+
+    const nav = (mods, weight, color) => Object.assign({ position: 'relative', display: 'flex', alignItems: 'center',
+      gap: '11px', height: '34px', padding: '0 10px 0 12px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px',
+      fontWeight: weight, color: 'var(' + color + ')' }, mods || {});
+    const bar = (h) => ({ position: 'absolute', left: '-12px', top: '50%', transform: 'translateY(-50%)', width: '2px',
+      height: h + 'px', borderRadius: '1px', background: 'var(--brand)' });
+    const navTag = { marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: '10.5px', color: 'var(--t3)' };
+    v.navs = [
+      { label: 'default · 450 · --t2', style: nav({ background: 'transparent' }, 450, '--t2'), bar: bar(0), tag: navTag, tagText: '344' },
+      { label: 'hover · --hover tint', style: nav({ background: 'var(--hover)' }, 450, '--t2'), bar: bar(0), tag: navTag, tagText: '344' },
+      { label: 'active · 600 · --t1 · marker 2×16', style: nav({ background: 'var(--hover)' }, 600, '--t1'), bar: bar(16), tag: navTag, tagText: '344' }
+    ];
+
+    const rowBase = { display: 'grid', gridTemplateColumns: '80px minmax(0, 1.2fr) minmax(0, 1.2fr) 84px', gap: '14px',
+      alignItems: 'center', padding: '11px 0', fontSize: '12.5px', color: 'var(--t2)', borderBottom: '1px solid var(--line)' };
+    v.rows = [
+      { n: 1, app: 'msedge', remote: '34.224.247.227:443', action: 'Allowed', pill: pill('--ok', '--ok-bg'), style: Object.assign({}, rowBase) },
+      { n: 2, app: 'brave', remote: '79.133.168.79:443', action: 'Allowed', pill: pill('--ok', '--ok-bg'), style: Object.assign({}, rowBase, { background: 'var(--row-hover)' }) },
+      { n: 3, app: 'lsass', remote: '91.198.230.102:443', action: 'Blocked', pill: pill('--brand', '--brand-bg'), style: Object.assign({}, rowBase, { background: 'var(--brand-bg)', boxShadow: 'inset 2px 0 0 var(--brand)' }) },
+      { n: 4, app: 'svchost', remote: '8.252.215.253:53', action: 'Allowed', pill: pill('--ok', '--ok-bg'), style: Object.assign({}, rowBase, { outline: '2px solid var(--brand)', outlineOffset: '-2px' }) }
+    ];
+
+    const skel = (w) => ({ width: w, height: '9px', borderRadius: '4px', background: 'var(--skel)' });
+    v.skeleton = [
+      { a: skel('58px'), b: skel('70%'), c: skel('84%'), d: skel('52px') },
+      { a: skel('58px'), b: skel('54%'), c: skel('72%'), d: skel('52px') },
+      { a: skel('58px'), b: skel('82%'), c: skel('64%'), d: skel('52px') },
+      { a: skel('58px'), b: skel('61%'), c: skel('88%'), d: skel('52px') },
+      { a: skel('58px'), b: skel('74%'), c: skel('58%'), d: skel('52px') },
+      { a: skel('58px'), b: skel('48%'), c: skel('79%'), d: skel('52px') },
+      { a: skel('58px'), b: skel('66%'), c: skel('69%'), d: skel('52px') },
+      { a: skel('58px'), b: skel('57%'), c: skel('83%'), d: skel('52px') }
+    ];
+    v.spinner = { width: '13px', height: '13px', borderRadius: '50%', border: '2px solid var(--line2)',
+      borderTopColor: 'var(--brand)', animation: 'gwspin 700ms linear infinite' };
+
+    v.motion = MOTION.map(([what, dur, ease, prop]) => ({ what, dur, ease, prop }));
+    return v;
+  }
+}
+</script>
+</body>
+</html>

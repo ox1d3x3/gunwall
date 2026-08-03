@@ -3,56 +3,51 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ===== DARK THEME =====
-         These are the control library's own values, copied rather than
-         referenced. An earlier version pointed each one at the library's colour
-         with a DynamicResource, which is tidier on paper and does not survive a
-         theme change: swapping this file replaces the brushes, and the library
-         swaps its dictionary at the same moment, so the two arrived out of step
-         and the window ended up with light surfaces under white text. Concrete
-         values give exactly the same appearance and cannot desynchronise.
+         Token names and values from handoff/SPEC.md section 2. The two themes
+         are written out separately on the design's own instruction: light is not
+         an inversion of dark, because the accent darkens and the status hues
+         darken hard - the saturated dark-mode green and amber fail on white.
 
-         If the library's palette changes upstream, these are the thirteen keys
-         to re-copy - they are listed in its Resources/Theme/Dark.xaml and
-         Light.xaml. -->
+         One accent. Red is the only hue used decoratively; green and amber are
+         STATE and never decoration, so a screen with nothing allowed, blocked
+         or warning is red-and-ink only. Red doing double duty as both the primary
+         action and "blocked" is the design's decision, not an oversight - in a
+         firewall the destructive action and the blocked verdict are the same
+         idea.
 
-    <!-- Surfaces, matching the library's own -->
-    <SolidColorBrush x:Key="BgPrimary" Color="#FF202020" />
-    <SolidColorBrush x:Key="BgSecondary" Color="#1C1C1C" />
-    <SolidColorBrush x:Key="BgCard" Color="#0DFFFFFF" />
-    <SolidColorBrush x:Key="BgElevated" Color="#282828" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#19000000" />
-    <SolidColorBrush x:Key="Divider" Color="#15FFFFFF" />
+         The GunWall names on the left are kept so the existing markup resolves;
+         the design token name is given beside each.
+         ==================================================================== -->
 
-    <!-- Interaction states -->
-    <SolidColorBrush x:Key="SurfaceHover" Color="#15FFFFFF" />
-    <SolidColorBrush x:Key="SurfacePressed" Color="#08FFFFFF" />
-    <SolidColorBrush x:Key="SurfaceSelected" Color="#0FFFFFFF" />
-    <SolidColorBrush x:Key="FocusRing" Color="#4C97EE" />
-
-    <!-- Type -->
-    <SolidColorBrush x:Key="TextPrimary" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#C5FFFFFF" />
-    <SolidColorBrush x:Key="TextTertiary" Color="#87FFFFFF" />
-    <SolidColorBrush x:Key="TextOnAccent" Color="#000000" />
-
-    <!-- ===== GunWall's own, because they carry meaning =====
-         A verdict colour is not a surface: "allowed" and "blocked" have to mean
-         the same thing in either theme, and no control library can decide that. -->
-    <SolidColorBrush x:Key="AllowFill" Color="#1E3325" />
-    <SolidColorBrush x:Key="AllowText" Color="#6CCB5F" />
-    <SolidColorBrush x:Key="BlockFill" Color="#3A2226" />
-    <SolidColorBrush x:Key="BlockText" Color="#FF7B72" />
-    <SolidColorBrush x:Key="WarnFill"  Color="#3A2F1C" />
-    <SolidColorBrush x:Key="WarnText"  Color="#F2B23C" />
-    <SolidColorBrush x:Key="InfoFill"  Color="#22314F" />
-    <SolidColorBrush x:Key="InfoText"  Color="#6FA8FF" />
-    <SolidColorBrush x:Key="AccentSoft" Color="#22331F" />
-
-    <!-- Charts and the world map -->
-    <SolidColorBrush x:Key="GraphCursor"   Color="#66FFFFFF" />
-    <SolidColorBrush x:Key="SelectionFill" Color="#385B8DEF" />
-    <SolidColorBrush x:Key="MapLand"       Color="#8E9BC4" />
-    <SolidColorBrush x:Key="MapBorder"     Color="#4A5578" />
+    <SolidColorBrush x:Key="BgPrimary" Color="#0A0B0D" />        <!-- 'bg': window ground -->
+    <SolidColorBrush x:Key="BgContent" Color="#0A0B0D" />      <!-- content sits on 'bg'; hairlines separate, not surfaces -->
+    <SolidColorBrush x:Key="BgSecondary" Color="#0A0B0D" />    <!-- sidebar shares 'bg', divided by 'line' -->
+    <SolidColorBrush x:Key="BgCard" Color="#101215" />         <!-- 'panel': chart card, inspector, posture, inputs -->
+    <SolidColorBrush x:Key="BgElevated" Color="#171A1E" />     <!-- 'panel2': overlays, fields inside a panel -->
+    <SolidColorBrush x:Key="Divider" Color="#17191D" />        <!-- 'line': row rules, chrome dividers -->
+    <SolidColorBrush x:Key="BorderBrush" Color="#26292F" />    <!-- 'line2': control borders, header rule -->
+    <SolidColorBrush x:Key="SurfaceHover" Color="#0DFFFFFF" />   <!-- 'hover': 5% white -->
+    <SolidColorBrush x:Key="SurfaceSelected" Color="#0DFFFFFF" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#08FFFFFF" />  <!-- 'row-hover': 3% white -->
+    <SolidColorBrush x:Key="RowHover" Color="#08FFFFFF" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#F5F6F7" />     <!-- 't1' -->
+    <SolidColorBrush x:Key="TextSecondary" Color="#9AA1AB" />   <!-- 't2' -->
+    <SolidColorBrush x:Key="TextTertiary" Color="#646B75" />    <!-- 't3': metadata only; never load-bearing -->
+    <SolidColorBrush x:Key="TextOnAccent" Color="#FFFFFF" />    <!-- 'on-brand' -->
+    <SolidColorBrush x:Key="FocusRing" Color="#FF3B21" />
+    <SolidColorBrush x:Key="AllowText" Color="#35D07F" />       <!-- 'ok' -->
+    <SolidColorBrush x:Key="AllowFill" Color="#2135D07F" />     <!-- 'ok-bg' -->
+    <SolidColorBrush x:Key="BlockText" Color="#FF3B21" />       <!-- 'brand' -->
+    <SolidColorBrush x:Key="BlockFill" Color="#24FF3B21" />     <!-- 'brand-bg' -->
+    <SolidColorBrush x:Key="WarnText" Color="#FFB020" />        <!-- 'warn' -->
+    <SolidColorBrush x:Key="WarnFill" Color="#21FFB020" />      <!-- 'warn-bg' -->
+    <SolidColorBrush x:Key="InfoText" Color="#646B75" />        <!-- neutral pill uses 't3' -->
+    <SolidColorBrush x:Key="InfoFill" Color="#0FFFFFFF" />      <!-- 'neutral-bg' -->
+    <SolidColorBrush x:Key="AccentSoft" Color="#24FF3B21" />
+    <SolidColorBrush x:Key="GraphCursor" Color="#66F5F6F7" />
+    <SolidColorBrush x:Key="SelectionFill" Color="#24FF3B21" />
+    <SolidColorBrush x:Key="MapLand" Color="#171A1E" />
+    <SolidColorBrush x:Key="MapBorder" Color="#26292F" />
 
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">True</sys:Boolean>
 </ResourceDictionary>

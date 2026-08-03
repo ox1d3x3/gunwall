@@ -253,8 +253,13 @@
             </DockPanel>
         </Border>
 
-        <!-- ===================== Main column ===================== -->
-        <Grid Grid.Column="1">
+        <!-- ===================== Main column =====================
+             Given its own surface, one step lighter than the window and two
+             lighter than the rail. Depth in a dark interface comes from
+             separating surfaces rather than from shadows, and this column
+             previously had none of its own - it showed whatever was behind it,
+             which is what made the window read as one flat sheet. -->
+        <Grid Grid.Column="1" Background="{DynamicResource BgContent}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -267,23 +272,12 @@
                             VerticalAlignment="Center" Margin="20,12">
                     <!-- The library's switch: same control as every other toggle here,
                          so the theme control does not look like a one-off. -->
-                    <!-- A bare switch says nothing about what it switches. This one
-                         carries the sun and moon on either side, so the control
-                         states its own subject rather than relying on the reader
-                         remembering which way is which. -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                Margin="0,0,16,0">
-                        <ui:SymbolIcon Symbol="WeatherMoon24" FontSize="14"
-                                       VerticalAlignment="Center" Margin="0,0,7,0"
-                                       Foreground="{DynamicResource TextSecondary}" />
-                        <ui:ToggleSwitch x:Name="ThemeToggle"
-                                         Click="ThemeToggle_Click"
-                                         VerticalAlignment="Center"
-                                         ToolTip="Switch between the dark and light theme" />
-                        <ui:SymbolIcon Symbol="WeatherSunny24" FontSize="14"
-                                       VerticalAlignment="Center" Margin="7,0,0,0"
-                                       Foreground="{DynamicResource TextSecondary}" />
-                    </StackPanel>
+                    <!-- The icon rides inside the knob, so the switch shows which
+                         theme you are in rather than that two exist. -->
+                    <ToggleButton x:Name="ThemeToggle" Style="{StaticResource ThemeSwitch}"
+                                  Click="ThemeToggle_Click" Margin="0,0,16,0"
+                                  VerticalAlignment="Center"
+                                  ToolTip="Switch between the dark and light theme" />
                     <TextBlock x:Name="EngineStatus" Text="Engine: starting"
                                Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,16,0" />
                     <Button x:Name="LockdownButton" Content="Engage lockdown"
@@ -767,10 +761,20 @@
                                                 DisplayMemberBinding="{Binding ProcessId}" />
                                 <GridViewColumn Header="Proto" Width="56"
                                                 DisplayMemberBinding="{Binding Protocol}" />
-                                <GridViewColumn Header="Local" Width="190"
-                                                DisplayMemberBinding="{Binding LocalEndpoint}" />
-                                <GridViewColumn Header="Remote" Width="220"
-                                                DisplayMemberBinding="{Binding RemoteEndpoint}" />
+                                <GridViewColumn Header="Local" Width="190">
+                                                <GridViewColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding LocalEndpoint}" Style="{StaticResource DataCell}" />
+                                                    </DataTemplate>
+                                                </GridViewColumn.CellTemplate>
+                                            </GridViewColumn>
+                                <GridViewColumn Header="Remote" Width="220">
+                                                <GridViewColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding RemoteEndpoint}" Style="{StaticResource DataCell}" />
+                                                    </DataTemplate>
+                                                </GridViewColumn.CellTemplate>
+                                            </GridViewColumn>
                                 <GridViewColumn Header="Location" Width="210">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
@@ -1335,8 +1339,13 @@
                                                 DisplayMemberBinding="{Binding Protocol}" />
                                 <GridViewColumn Header="Direction" Width="80"
                                                 DisplayMemberBinding="{Binding Direction}" />
-                                <GridViewColumn Header="Remote" Width="200"
-                                                DisplayMemberBinding="{Binding RemoteEndpoint}" />
+                                <GridViewColumn Header="Remote" Width="200">
+                                                <GridViewColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding RemoteEndpoint}" Style="{StaticResource DataCell}" />
+                                                    </DataTemplate>
+                                                </GridViewColumn.CellTemplate>
+                                            </GridViewColumn>
                                 <GridViewColumn Header="Action" Width="110">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
@@ -1599,8 +1608,20 @@
                     <ListView x:Name="DevicesList" VirtualizingPanel.IsVirtualizing="True">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="IP address" Width="160" DisplayMemberBinding="{Binding Ip}" />
-                                <GridViewColumn Header="MAC address" Width="180" DisplayMemberBinding="{Binding Mac}" />
+                                <GridViewColumn Header="IP address" Width="160">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Ip}" Style="{StaticResource DataCell}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="MAC address" Width="180">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Mac}" Style="{StaticResource DataCell}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="Host" Width="280" DisplayMemberBinding="{Binding Host}" />
                             </GridView>
                         </ListView.View>

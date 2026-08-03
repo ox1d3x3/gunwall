@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.99.28</Version>
+    <Version>0.99.32</Version>
     <Company>GunWall</Company>
     <Product>GunWall Firewall</Product>
     <Description>A modern, open-source Windows firewall built on the Windows Filtering Platform.</Description>
@@ -49,6 +49,13 @@
          bar loads it through a pack URI at runtime, which needs it inside the
          assembly rather than only stamped on the executable. -->
     <Resource Include="Assets\app.ico" />
+    <!-- Embedded rather than relied upon: Inter Tight and JetBrains Mono are not
+         Windows fonts, so the design would fall back to Segoe UI on every machine
+         but a designer's. Static weight instances, because WPF's variable-font
+         support renders the default instance only - a SemiBold request against a
+         variable file comes back Regular with no error. OFL licences are in
+         third-party-licenses/. -->
+    <Resource Include="Fonts\*.ttf" />
   </ItemGroup>
 
 
