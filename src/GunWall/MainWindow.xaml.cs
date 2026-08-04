@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.32 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.33 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1286,8 +1286,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void RefreshAlertsBadge()
     {
-        if (AlertsNavLabel == null) return;
-        AlertsNavLabel.Text = _unreadNotifications > 0 ? $"Alerts ({_unreadNotifications})" : "Alerts";
+        // The count is a badge now rather than text appended to the label. The
+        // old form made the row's width jump as the number changed, and in a
+        // narrow rail that pushed the label into an ellipsis; the design puts it
+        // in a fixed-width pill on the right instead.
+        if (AlertsBadge == null || AlertsBadgeText == null) return;
+        if (_unreadNotifications > 0)
+        {
+            AlertsBadgeText.Text = _unreadNotifications > 99 ? "99+" : _unreadNotifications.ToString();
+            AlertsBadge.Visibility = Visibility.Visible;
+        }
+        else AlertsBadge.Visibility = Visibility.Collapsed;
         if (FooterAlerts != null)
             FooterAlerts.Text = _unreadNotifications > 0
                 ? $"{_unreadNotifications} new alert{(_unreadNotifications == 1 ? "" : "s")}"

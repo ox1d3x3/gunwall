@@ -83,7 +83,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="92" />
+            <ColumnDefinition Width="238" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
@@ -98,17 +98,10 @@
                      upper edge reads as a wall segment: the two ideas the name
                      joins. Geometry rather than a bitmap means no asset to keep
                      in step with the palette. -->
-                <StackPanel DockPanel.Dock="Top" Margin="0,16,0,14" HorizontalAlignment="Center">
-                    <!-- The wall mark, as geometry rather than an image: it scales
-                         cleanly and takes the theme, so it reads on light and dark
-                         alike without shipping two bitmaps.
-
-                         Four courses of four, one stone missing, one stopped in
-                         the alert colour and one under watch as an outline. The
-                         red cell deliberately does NOT use the interaction accent
-                         - in this application red means blocked, and the mark says
-                         the same thing the interface does. -->
-                    <Grid Width="30" Height="30" HorizontalAlignment="Center">
+                <!-- Sidebar header, SPEC.md section 1: padding 20/20/18, logo 24,
+                     wordmark 14.5 at 600, kicker 10.5 uppercase and tracked. -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="20,20,20,18">
+                    <Grid Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,11,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
@@ -117,29 +110,31 @@
                             <RowDefinition Height="*" /><RowDefinition Height="*" />
                             <RowDefinition Height="*" /><RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <Rectangle Grid.Column="0" Grid.Row="0" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="1" Grid.Row="0" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="3" Grid.Row="0" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="0" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="1" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="2" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="3" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="0" Grid.Row="2" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="2" Grid.Row="2" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="3" Grid.Row="2" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="0" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="1" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="2" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <Rectangle Grid.Column="3" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,2,2" />
-                        <!-- the stopped stone -->
-                        <Rectangle Grid.Column="2" Grid.Row="0" Fill="#EC3013" Margin="0,0,2,2" />
-                        <!-- the one under watch -->
-                        <Rectangle Grid.Column="1" Grid.Row="2" Margin="0,0,2,2"
-                                   Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.4" />
+                            <Rectangle Grid.Column="0" Grid.Row="0" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="1" Grid.Row="0" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="3" Grid.Row="0" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="0" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="1" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="2" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="3" Grid.Row="1" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="0" Grid.Row="2" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="2" Grid.Row="2" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="3" Grid.Row="2" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="0" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="1" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="2" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                            <Rectangle Grid.Column="3" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
+                        <Rectangle Grid.Column="2" Grid.Row="0"
+                                   Fill="{DynamicResource BlockText}" Margin="0,0,1.5,1.5" />
+                        <Rectangle Grid.Column="1" Grid.Row="2" Margin="0,0,1.5,1.5"
+                                   Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.2" />
                     </Grid>
-                    <TextBlock Text="GunWall" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"
-                               HorizontalAlignment="Center"
-                               Foreground="{DynamicResource TextPrimary}" />
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="GunWall" FontSize="14.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimary}" />
+                        <TextBlock Text="ZERO TRUST EDGE" FontSize="10.5" Margin="0,2,0,0"
+                                   Foreground="{DynamicResource TextTertiary}" />
+                    </StackPanel>
                 </StackPanel>
                 <!-- Protection state. The rail is 92 pixels wide, so a card with an
                      icon and two lines of text beside it could only ever clip -
@@ -169,84 +164,108 @@
                     </StackPanel>
                 </Border>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel Margin="0,2,0,12">
-                        <RadioButton x:Name="NavDashboard" Style="{StaticResource SideNavButton}" IsChecked="True" Checked="Nav_Checked" Tag="Dashboard">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="Board24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Dashboard" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavFirewall" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Firewall">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="AppsList24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Apps" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavConnections" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Connections">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="PlugConnected24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Networks" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavTraffic" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Traffic">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="DataUsage24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Traffic" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavDns" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Dns">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="Globe24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="DNS" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavServices" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Services">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="Server24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Services" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavNetwork" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Network">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="Router24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Scan" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavPackets" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Packets">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="DocumentTable24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Packets" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavRules" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Rules">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="Wrench24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Rules" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavSecurity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Security">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="ShieldTask24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Security" />
-                            </StackPanel>
+                    <StackPanel Margin="12,0,12,12">
+                        <TextBlock Text="MONITOR" Style="{StaticResource NavGroupHeading}" Margin="8,12,8,7" />
+                        <RadioButton x:Name="NavDashboard" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Dashboard">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="Board24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavDashboardLabel" Style="{StaticResource SideNavLabel}" Text="Overview" />
+                            </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavActivity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Activity">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="History24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Activity" />
-                            </StackPanel>
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="History24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavActivityLabel" Style="{StaticResource SideNavLabel}" Text="Activity" />
+                            </DockPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavPackets" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Packets">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="DocumentTable24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavPacketsLabel" Style="{StaticResource SideNavLabel}" Text="Packet log" />
+                            </DockPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavConnections" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Connections">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="PlugConnected24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavConnectionsLabel" Style="{StaticResource SideNavLabel}" Text="Connections" />
+                            </DockPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavTraffic" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Traffic">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="DataUsage24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavTrafficLabel" Style="{StaticResource SideNavLabel}" Text="Traffic" />
+                            </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavAlerts" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Alerts">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="Alert24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock x:Name="AlertsNavLabel" Style="{StaticResource SideNavLabel}" Text="Alerts" />
-                            </StackPanel>
+                            <DockPanel LastChildFill="True">
+                                <Border x:Name="AlertsBadge" Background="{DynamicResource BlockText}"
+                                        CornerRadius="9" MinWidth="17" Height="17" Padding="5,0"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Visibility="Collapsed">
+                                    <TextBlock x:Name="AlertsBadgeText" Text="0" FontSize="10.5"
+                                               FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccent}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <ui:SymbolIcon Symbol="Alert24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavAlertsLabel" Style="{StaticResource SideNavLabel}" Text="Alerts" />
+                            </DockPanel>
+                        </RadioButton>
+                        <TextBlock Text="ENFORCE" Style="{StaticResource NavGroupHeading}" Margin="8,16,8,7" />
+                        <RadioButton x:Name="NavFirewall" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Firewall">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="AppsList24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavFirewallLabel" Style="{StaticResource SideNavLabel}" Text="Applications" />
+                            </DockPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavRules" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Rules">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="Wrench24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavRulesLabel" Style="{StaticResource SideNavLabel}" Text="Rules" />
+                            </DockPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavSecurity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Security">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="ShieldTask24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavSecurityLabel" Style="{StaticResource SideNavLabel}" Text="Security" />
+                            </DockPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavDns" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Dns">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="Globe24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavDnsLabel" Style="{StaticResource SideNavLabel}" Text="DNS resolver" />
+                            </DockPanel>
+                        </RadioButton>
+                        <TextBlock Text="SYSTEM" Style="{StaticResource NavGroupHeading}" Margin="8,16,8,7" />
+                        <RadioButton x:Name="NavServices" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Services">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="Server24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavServicesLabel" Style="{StaticResource SideNavLabel}" Text="Windows services" />
+                            </DockPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="NavNetwork" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Network">
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="Router24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavNetworkLabel" Style="{StaticResource SideNavLabel}" Text="Network scan" />
+                            </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavSettings" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Settings">
-                            <StackPanel>
-                                <ui:SymbolIcon Symbol="Settings24" FontSize="17" HorizontalAlignment="Center" />
-                                <TextBlock Style="{StaticResource SideNavLabel}" Text="Settings" />
-                            </StackPanel>
+                            <DockPanel LastChildFill="True">
+                                <ui:SymbolIcon Symbol="Settings24" FontSize="16" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <TextBlock x:Name="NavSettingsLabel" Style="{StaticResource SideNavLabel}" Text="Settings" />
+                            </DockPanel>
                         </RadioButton>
                     </StackPanel>
                 </ScrollViewer>

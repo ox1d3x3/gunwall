@@ -6,6 +6,16 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.33] — 2026-08-03
+
+### Changed
+- **The sidebar is rebuilt to the handoff: 238 pixels, grouped, horizontal rows.** It had been a 92-pixel strip of icon tiles, taken from an earlier reading of the design; the spec is explicit that the rail is wide, that rows read icon-then-label, and that they sit under three headings — MONITOR, ENFORCE and SYSTEM. The thirteen pages map onto those groups exactly, and the fuller names the design uses fit at this width: "Packet log", "DNS resolver", "Windows services", "Network scan".
+- **The selection marker is a 2 × 16 rectangle in the gutter**, at −12, outside the row's padding box. The spec calls this out specifically: it is not a left border on the row, and drawing it as one would place it inside the rounded corner and clip. It grows from nothing over 150ms, with the hover tint at 120ms — both the spec's values.
+- **The alert count is a badge rather than text.** It was being appended to the label as "Alerts (3)", which made the row's width change as the number did; in a narrow rail that pushed the label into an ellipsis. It is a fixed pill on the right now, capped at "99+".
+- The sidebar header follows section 1: 20/20/18 padding, 24px mark, 14.5/600 wordmark, and the "ZERO TRUST EDGE" kicker.
+
+---
+
 ## [0.99.32] — 2026-08-03
 
 ### Changed

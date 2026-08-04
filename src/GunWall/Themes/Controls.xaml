@@ -372,104 +372,96 @@
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="PaneFluentButtonHeight">48</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="PaneFluentButtonWidth">60</sys:Double>
 
-    <!-- Navigation item, on the library's LeftFluent specification.
-         Geometry from NavigationLeftFluent.xaml and NavigationViewConstants:
-         60 by 60, 24-pixel icon above the label, indicator 3 by 24.
+    <!-- Navigation row, from SPEC.md section 5.
 
-         Motion follows the library's own convention, which is worth stating
-         because it is not symmetric: states fade IN over 167 milliseconds and
-         OUT over 80. Arriving gently and leaving quickly is what makes a
-         surface feel responsive rather than laggy - an equal fade in both
-         directions reads as hesitation. The library animates Opacity and the
-         indicator's Height rather than colours, which is both cheaper and
-         smoother than interpolating brushes, so this does the same. -->
+         The rail is 238px and the rows are horizontal: icon, label, and an
+         optional count on the right. The tile arrangement this replaced came
+         from an earlier reading of the design; the handoff is explicit that the
+         sidebar is wide and grouped under headings.
+
+         The selection marker is a 2 by 16 rounded rect at x -12, which puts it
+         OUTSIDE the row's padding box, in the sidebar gutter. The spec calls
+         that out specifically - it is not a left border on the row, and drawing
+         it as one would sit it inside the rounded corner and clip.
+
+         Motion is the spec's: 120ms for the hover tint, 150ms for the marker
+         growing from nothing to its full height. -->
     <Style x:Key="SideNavButton" TargetType="RadioButton">
-        <Setter Property="Foreground" Value="{DynamicResource NavigationViewItemForegroundLeftFluent}" />
-        <Setter Property="FontSize" Value="11" />
-        <Setter Property="Width" Value="{StaticResource PaneFluentButtonWidth}" />
-        <Setter Property="Height" Value="{StaticResource PaneFluentButtonHeight}" />
-        <Setter Property="Margin" Value="0,1,0,0" />
-        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="Normal" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Margin" Value="0,0,0,2" />
+        <Setter Property="Padding" Value="12,0,10,0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="UseLayoutRounding" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
                     <Grid>
-                        <!-- Hover and selection are separate layers so each can
-                             fade on its own; a single background could only jump
-                             between states. -->
-                        <Border x:Name="hoverLayer" CornerRadius="4" Opacity="0"
-                                Background="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
-                        <Border x:Name="selLayer" CornerRadius="4" Opacity="0"
-                                Background="{DynamicResource NavigationViewItemBackgroundSelectedLeftFluent}" />
-                        <Rectangle x:Name="bar" Width="3" Height="0"
-                                   Margin="-6,0,0,0" RadiusX="1.5" RadiusY="1.5"
+                        <Border x:Name="tint" CornerRadius="7" Opacity="0"
+                                Background="{DynamicResource SurfaceHover}" />
+                        <Rectangle x:Name="marker" Width="2" Height="0"
+                                   RadiusX="1" RadiusY="1"
                                    HorizontalAlignment="Left" VerticalAlignment="Center"
-                                   Fill="{DynamicResource NavigationViewSelectionIndicatorForeground}" />
-                        <ContentPresenter x:Name="cp"
-                                          HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          TextElement.Foreground="{TemplateBinding Foreground}"
-                                          SnapsToDevicePixels="True" />
+                                   Margin="-12,0,0,0"
+                                   Fill="{DynamicResource BlockText}" />
+                        <Border Padding="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="cp" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              SnapsToDevicePixels="True" />
+                        </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="hoverLayer"
+                                        <DoubleAnimation Storyboard.TargetName="tint"
                                                          Storyboard.TargetProperty="Opacity"
-                                                         To="1" Duration="0:0:0.167" />
+                                                         To="1" Duration="0:0:0.12" />
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                             <Trigger.ExitActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="hoverLayer"
+                                        <DoubleAnimation Storyboard.TargetName="tint"
                                                          Storyboard.TargetProperty="Opacity"
-                                                         To="0" Duration="0:0:0.08" />
+                                                         To="0" Duration="0:0:0.12" />
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
-                            <Setter TargetName="cp" Property="TextElement.Foreground"
-                                    Value="{DynamicResource NavigationViewItemForegroundPointerOverLeftFluent}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="selLayer"
+                                        <DoubleAnimation Storyboard.TargetName="tint"
                                                          Storyboard.TargetProperty="Opacity"
-                                                         To="1" Duration="0:0:0.167" />
-                                        <!-- The indicator grows from nothing to
-                                             its full 24 pixels, as the library
-                                             does it, so selection reads as a
-                                             movement and not a flash. -->
-                                        <DoubleAnimation Storyboard.TargetName="bar"
+                                                         To="1" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="marker"
                                                          Storyboard.TargetProperty="Height"
-                                                         To="24" Duration="0:0:0.167">
-                                            <DoubleAnimation.EasingFunction>
-                                                <CubicEase EasingMode="EaseOut" />
-                                            </DoubleAnimation.EasingFunction>
-                                        </DoubleAnimation>
+                                                         To="16" Duration="0:0:0.15" />
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                             <Trigger.ExitActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="selLayer"
+                                        <DoubleAnimation Storyboard.TargetName="tint"
                                                          Storyboard.TargetProperty="Opacity"
-                                                         To="0" Duration="0:0:0.08" />
-                                        <DoubleAnimation Storyboard.TargetName="bar"
+                                                         To="0" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="marker"
                                                          Storyboard.TargetProperty="Height"
-                                                         To="0" Duration="0:0:0.08" />
+                                                         To="0" Duration="0:0:0.12" />
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
-                            <Setter TargetName="cp" Property="TextElement.Foreground"
-                                    Value="{DynamicResource NavigationViewSelectionIndicatorForeground}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
@@ -480,15 +472,20 @@
         </Setter>
     </Style>
 
-    <!-- Label beneath the icon: small, centred, and allowed to shrink rather
-         than clip, since a 60-pixel tile is narrower than some of these words. -->
+    <!-- Group heading above each run of nav rows. Uppercase, widely tracked and
+         in metadata grey, so it separates without competing. -->
+    <Style x:Key="NavGroupHeading" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextTertiary}" />
+        <Setter Property="Margin" Value="8,16,8,7" />
+    </Style>
+
+    <!-- Row label. No trimming cap: at 238px wide these fit, which is most of
+         the reason the design uses a wide rail. -->
     <Style x:Key="SideNavLabel" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="11" />
-        <Setter Property="Margin" Value="0,2,0,0" />
-        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-        <Setter Property="MaxWidth" Value="56" />
-        <Setter Property="TextAlignment" Value="Center" />
     </Style>
 
 
