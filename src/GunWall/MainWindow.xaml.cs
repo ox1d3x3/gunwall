@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.38 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.39 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3232,8 +3232,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _graphStepX = w / (GraphFinePoints - 1);
         DrawBaseline(canvas, w, h); // static, not scrolled
         // Download: blue gradient area. Upload: thin magenta line.
-        AddSmoothSeries(canvas, _gDown, max, w, h, Color.FromRgb(0x3D, 0xA9, 0xFC), fillArea: true, _graphScroll);
-        AddSmoothSeries(canvas, _gUp, max, w, h, Color.FromRgb(0xE0, 0x66, 0xA6), fillArea: false, _graphScroll);
+        // Series colours come from the theme, not from literals. They were
+        // hardcoded blue and pink here, which is why changing the palette had no
+        // effect on the chart and why it stayed the one place in the interface
+        // using hues that mean nothing. SPEC.md section 9: download is the brand
+        // and is drawn FIRST so it sits underneath, upload is the text colour on
+        // top - the brand area should read as the larger mass.
+        Color Series(string key) =>
+            ((SolidColorBrush)FindResource(key)).Color;
+
+        AddSmoothSeries(canvas, _gDown, max, w, h, Series("InboundBrush"), fillArea: true, _graphScroll);
+        AddSmoothSeries(canvas, _gUp, max, w, h, Series("OutboundBrush"), fillArea: false, _graphScroll);
 
         var now = DateTime.UtcNow;
         if (_lastGraphSample != DateTime.MinValue)
@@ -3245,7 +3254,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _graphScroll.X = 0; // new data appended at the right; restart the slide
 
         // Time axis: subtle relative labels along the bottom (static, cheap).
-        var axisBrush = new SolidColorBrush(Color.FromArgb(0x9A, 0x96, 0x99, 0x9E));
+        var axisBrush = (Brush)FindResource("TextTertiary");
         foreach (var (frac, label) in new[] { (0.0, "-60s"), (0.25, "-45s"), (0.5, "-30s"), (0.75, "-15s"), (1.0, "now") })
         {
             var tb = new TextBlock
@@ -3265,7 +3274,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         canvas.Children.Add(new Line
         {
             X1 = 0, Y1 = h - 1, X2 = w, Y2 = h - 1,
-            Stroke = new SolidColorBrush(Color.FromRgb(0x26, 0x28, 0x2B)),
+            Stroke = (Brush)FindResource("BorderBrush"),
             StrokeThickness = 1
         });
     }

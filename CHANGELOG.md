@@ -6,6 +6,14 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.39] — 2026-08-04
+
+### Fixed
+- **The traffic chart was still blue and pink after being told not to be.** The previous release changed the series *resources*, which had no effect: the graph builds its brushes from colour literals in the redraw path, so the palette never reached it. That is why a change that verified clean still looked wrong on screen — the check confirmed the resource had changed, not that anything read it. The series, the baseline rule and the axis labels now resolve from the theme, and download is drawn first so it sits beneath upload as section 9 requires.
+- **The update message overlapped the statistics labels.** It had been pinned to a row edge, and each time it was moved it simply collided with whatever that row held next — first the chart card, now the labels. It sits directly beneath the actions it reports on, which is the only place it has no neighbour to fight.
+
+---
+
 ## [0.99.38] — 2026-08-04
 
 ### Fixed

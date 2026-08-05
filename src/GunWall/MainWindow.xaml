@@ -365,6 +365,19 @@
                             <Button Style="{StaticResource ActionButton}"
                                     Click="CheckUpdate_Click" Content="Check for updates" />
                         </StackPanel>
+
+                        <!-- Directly beneath the actions it reports on. Pinned to
+                             a row edge it collided with whatever that row held -
+                             first the chart card, then the statistics labels. -->
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <TextBlock x:Name="SnoozeStatus" Style="{StaticResource Muted}"
+                                       VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <Button x:Name="ResumeButton" Style="{StaticResource ActionButton}"
+                                    Click="Resume_Click" Content="Resume now"
+                                    Visibility="Collapsed" Margin="0,0,10,0" />
+                            <TextBlock x:Name="UpdateStatus" Style="{StaticResource Muted}"
+                                       VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="560" />
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- Meta column: facts that answer "since when, and which
@@ -574,18 +587,6 @@
 
                 <!-- Status lines that lived in the block the hero replaced. They
                      are surfaced only when they have something to say. -->
-                <!-- Sits inside the hero's own row rather than being pinned with
-                     a negative margin, which floated it over the card below. -->
-                <StackPanel Grid.Row="0" VerticalAlignment="Bottom" HorizontalAlignment="Right"
-                            Orientation="Horizontal" Margin="0,0,0,0">
-                    <TextBlock x:Name="SnoozeStatus" Style="{StaticResource Muted}"
-                               VerticalAlignment="Center" Margin="0,0,10,0" />
-                    <Button x:Name="ResumeButton" Style="{StaticResource ActionButton}"
-                            Click="Resume_Click" Content="Resume now"
-                            Visibility="Collapsed" Margin="0,0,10,0" />
-                    <TextBlock x:Name="UpdateStatus" Style="{StaticResource Muted}"
-                               VerticalAlignment="Center" />
-                </StackPanel>
 
                 <!-- Top talkers and recent decisions, side by side. The design
                      puts them here because a posture claim invites two
