@@ -6,6 +6,22 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.35] — 2026-08-04
+
+### Changed
+- **The dashboard leads with posture rather than a title.** It had a generic "Dashboard" heading above a card restating the same thing in smaller type — two rows spent saying it twice. The page now opens with a kicker naming where the rules live, the state at 46px, one sentence of consequence, the actions that state is missing, and a meta column answering the questions a posture claim invites.
+- **Every part of the hero is driven from real state.** The kicker, sentence and primary action differ across five conditions — no engine, lockdown, snoozed, protected, monitoring — because a hero reading "Protected" while the engine is idle would be worse than no hero at all.
+
+### Added
+- **A ruleset fingerprint**, and a real one: a SHA-256 over the things that actually change what the firewall does — mode, per-app verdicts, custom and system rules, blocked services — shown head-and-tail. Two machines showing the same fingerprint are enforcing the same policy, and one that changes when you changed nothing is worth investigating.
+- **Uptime measured from when protection began**, not from process start. Those diverge the moment anyone toggles, and the honest number is the one answering "how long have I actually been covered?".
+- **Top talkers and recent decisions**, side by side beneath the chart, from data the application already had: `TopAppBytes` and the packet log. The share bar turns red only when a row passes 60% of the largest, so it marks the outlier in whatever is actually happening — on a quiet machine nothing is red, on a busy one only the genuinely dominant application is. A fixed threshold would either shout constantly or never.
+
+### Fixed
+- The packet log's verdict colours were built from hardcoded literals predating the palette, so they did not follow a theme change and had drifted from the verdict colours used everywhere else. They resolve from the theme now.
+
+---
+
 ## [0.99.34] — 2026-08-03
 
 ### Changed

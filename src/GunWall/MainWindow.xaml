@@ -323,108 +323,82 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0" Margin="0,0,0,16">
-                    <TextBlock Text="Dashboard" Style="{StaticResource H1}" Margin="0,0,0,12" />
-                    <Border x:Name="StatusBanner" Style="{StaticResource Card}" Padding="24,20">
-                        <StackPanel Orientation="Horizontal">
-                            <Grid Width="72" Height="72" VerticalAlignment="Center">
-                                <Ellipse x:Name="ShieldGlow" Fill="{StaticResource AllowFill}" />
-                                <Viewbox Width="46" Height="46" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <Grid Width="48" Height="48">
-                                        <Path x:Name="ShieldPath"
-                                              Data="M24,3 L42,10 L42,24 C42,34.5 34.5,43 24,46 C13.5,43 6,34.5 6,24 L6,10 Z"
-                                              Fill="{StaticResource AllowBrush}" />
-                                        <Path x:Name="ShieldCheck" Data="M16,24.5 L21.5,30 L32.5,18"
-                                              Stroke="White" StrokeThickness="3.6"
-                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                                        <Path x:Name="ShieldAlert" Data="M18.5,18.5 L29.5,29.5 M29.5,18.5 L18.5,29.5"
-                                              Stroke="White" StrokeThickness="3.6"
-                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                              Visibility="Collapsed" />
-                                    </Grid>
-                                </Viewbox>
-                            </Grid>
-                            <StackPanel Margin="20,0,0,0" VerticalAlignment="Center">
-                                <TextBlock x:Name="StatusTitle" Text="Protected"
-                                           FontWeight="Bold" FontSize="22" />
-                                <TextBlock x:Name="StatusSub" Style="{StaticResource Muted}" FontSize="13"
-                                           Margin="0,3,0,0" TextWrapping="Wrap" MaxWidth="560"
-                                           Text="Alert mode - new apps are allowed and you get notified" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
+                <!-- Dashboard hero, SPEC.md. The page leads with a statement of
+                     posture rather than a title: a kicker naming where the rules
+                     live, the state at 46px, one sentence of consequence, the
+                     actions, and a meta column on the right. The old form put a
+                     generic "Dashboard" heading above a card that said the same
+                     thing in smaller type - two rows spent saying it twice. -->
+                <Grid Grid.Row="0" Margin="0,0,0,26">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                    <Border Style="{StaticResource Card}" Padding="14,12" Margin="0,12,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <!-- Evenly distributed rather than left-packed with hand-set gaps: six
-                                 figures separated by arbitrary margins read as a jumble,
-                                 the same six on a shared rhythm read as a summary. -->
-                            <UniformGrid Grid.Column="0" Rows="1" VerticalAlignment="Center">
-                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
-                                            Tag="Firewall" MouseLeftButtonUp="Stat_Click"
-                                            ToolTip="Open the Apps list">
-                                    <TextBlock x:Name="StatApps" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold" />
-                                    <TextBlock Text="Apps seen" Style="{StaticResource Muted}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
-                                            Tag="Firewall" MouseLeftButtonUp="Stat_Click"
-                                            ToolTip="Open the Apps list">
-                                    <TextBlock x:Name="StatBlocked" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold"
-                                               Foreground="{StaticResource BlockBrush}" />
-                                    <TextBlock Text="Blocked" Style="{StaticResource Muted}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
-                                            Tag="Firewall" MouseLeftButtonUp="Stat_Click"
-                                            ToolTip="Open the Apps list">
-                                    <TextBlock x:Name="StatAllowed" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold"
-                                               Foreground="{StaticResource AllowBrush}" />
-                                    <TextBlock Text="Allowed" Style="{StaticResource Muted}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
-                                            Tag="Rules" MouseLeftButtonUp="Stat_Click"
-                                            ToolTip="Open Custom Rules">
-                                    <TextBlock x:Name="StatRules" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold" />
-                                    <TextBlock Text="Custom rules" Style="{StaticResource Muted}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
-                                            Tag="System" MouseLeftButtonUp="Stat_Click"
-                                            ToolTip="Open System Rules">
-                                    <TextBlock x:Name="StatSystem" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold" />
-                                    <TextBlock Text="System rules" Style="{StaticResource Muted}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,16,0" Background="Transparent" Cursor="Hand"
-                                            Tag="Rules" MouseLeftButtonUp="Stat_Click"
-                                            ToolTip="Open the IP blocklist">
-                                    <TextBlock x:Name="StatBlocklist" Text="0" FontSize="{StaticResource SubtitleFontSize}" FontWeight="SemiBold" />
-                                    <TextBlock Text="Blocklisted" Style="{StaticResource Muted}" />
-                                </StackPanel>
-                            </UniformGrid>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock x:Name="SnoozeStatus" Style="{StaticResource Muted}"
-                                           HorizontalAlignment="Right" Margin="0,0,0,6" Text="" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Content="Snooze 15 min" Style="{StaticResource ActionButton}"
-                                            Click="Snooze_Click" Tag="15" Margin="0,0,8,0" />
-                                    <Button Content="Snooze 1 hr" Style="{StaticResource ActionButton}"
-                                            Click="Snooze_Click" Tag="60" Margin="0,0,8,0" />
-                                    <Button x:Name="ResumeButton" Content="Resume" Style="{StaticResource ActionButton}"
-                                            Click="Resume_Click" Visibility="Collapsed" />
-                                </StackPanel>
-                                <Button Content="Check for updates" Style="{StaticResource ActionButton}"
-                                        Click="CheckUpdate_Click" HorizontalAlignment="Right" Margin="0,8,0,0" />
-                                <TextBlock x:Name="UpdateStatus" Style="{StaticResource Muted}"
-                                           HorizontalAlignment="Right" Margin="0,6,0,0"
-                                           TextWrapping="Wrap" MaxWidth="280" TextAlignment="Right" Text="" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </StackPanel>
+                    <StackPanel Grid.Column="0" MaxWidth="620" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <Ellipse x:Name="HeroDot" Width="7" Height="7" VerticalAlignment="Center"
+                                     Margin="0,0,9,0" Fill="{DynamicResource AllowText}" />
+                            <TextBlock x:Name="HeroKicker" Text="RULES ENFORCED IN KERNEL"
+                                       FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AllowText}" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="HeroTitle" Text="Protected" FontSize="46"
+                                   FontWeight="SemiBold" Margin="0,0,0,10"
+                                   Foreground="{DynamicResource TextPrimary}" />
+
+                        <TextBlock x:Name="HeroBody" TextWrapping="Wrap" FontSize="14"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   Text="Your ruleset is live in the kernel. New applications raise a prompt before their first connection is allowed through." />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                            <Button x:Name="HeroPrimary" Style="{StaticResource PrimaryButton}"
+                                    Click="EnableFirewall_Click" Content="Turn firewall on"
+                                    Margin="0,0,10,0" />
+                            <Button x:Name="HeroSnooze" Style="{StaticResource ActionButton}"
+                                    Click="Snooze_Click" Tag="15" Content="Snooze 15 min" Margin="0,0,10,0" />
+                            <Button Style="{StaticResource ActionButton}"
+                                    Click="CheckUpdate_Click" Content="Check for updates" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Meta column: facts that answer "since when, and which
+                         ruleset?" - the questions a posture claim invites. -->
+                    <Grid Grid.Column="1" VerticalAlignment="Top" Margin="32,4,0,0" MinWidth="210">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Since" FontSize="12.5"
+                                   Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="MetaSince" Text="—"
+                                   Style="{StaticResource DataCell}"
+                                   Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,9" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Uptime" FontSize="12.5"
+                                   Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="MetaUptime" Text="—"
+                                   Style="{StaticResource DataCell}"
+                                   Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,9" />
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Ruleset" FontSize="12.5"
+                                   Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="MetaRuleset" Text="—"
+                                   Style="{StaticResource DataCell}"
+                                   Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,9" />
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Mode" FontSize="12.5"
+                                   Foreground="{DynamicResource TextTertiary}" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="MetaMode" Text="—"
+                                   FontSize="12.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimary}" />
+                    </Grid>
+                </Grid>
 
                 <Grid Grid.Row="1" Margin="0,0,0,16">
                     <Grid.ColumnDefinitions>
@@ -505,6 +479,99 @@
                         </Grid>
                     </Grid>
                 </Border>
+                <!-- Top talkers and recent decisions, side by side. The design
+                     puts them here because a posture claim invites two
+                     questions - what is using the network, and what has GunWall
+                     just done about it - and both should be answerable without
+                     leaving the page. -->
+                <Grid Grid.Row="3" Margin="0,26,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="1.35*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="TOP TALKERS" Style="{StaticResource SectionLabel}"
+                                   Margin="0,0,0,14" />
+                        <ItemsControl x:Name="TopTalkersList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,15">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Text="{Binding Name}" FontSize="12.5"
+                                                   Foreground="{DynamicResource TextPrimary}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Row="0" Text="{Binding SizeText}"
+                                                   Style="{StaticResource DataCell}"
+                                                   HorizontalAlignment="Right" />
+                                        <!-- Share bar: 3px, no radius, no gradient. Red once a
+                                             row passes 60% of the largest, grey below - so the
+                                             colour marks the outlier rather than decorating
+                                             every row. -->
+                                        <Grid Grid.Row="1" Height="3" Margin="0,7,0,0">
+                                            <Rectangle Fill="{DynamicResource BorderBrush}" />
+                                            <Rectangle Fill="{Binding BarBrush}"
+                                                       HorizontalAlignment="Left"
+                                                       Width="{Binding BarWidth}" />
+                                        </Grid>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="TopTalkersEmpty" Text="Nothing measured yet."
+                                   Style="{StaticResource Muted}" Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <DockPanel Margin="0,0,0,14" LastChildFill="False">
+                            <TextBlock Text="RECENT DECISIONS" Style="{StaticResource SectionLabel}"
+                                       DockPanel.Dock="Left" />
+                            <Button DockPanel.Dock="Right" Style="{StaticResource ActionButton}"
+                                    Click="OpenPacketLog_Click" Content="Open packet log"
+                                    MinHeight="0" Padding="0" BorderThickness="0"
+                                    Background="Transparent" FontSize="12.5"
+                                    Foreground="{DynamicResource TextSecondary}" />
+                        </DockPanel>
+                        <ItemsControl x:Name="RecentDecisionsList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,11">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding TimeText}"
+                                                   Style="{StaticResource DataCell}"
+                                                   Foreground="{DynamicResource TextTertiary}"
+                                                   Margin="0,0,16,0" />
+                                        <TextBlock Grid.Column="1" Text="{Binding AppName}"
+                                                   FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource TextPrimary}"
+                                                   Margin="0,0,16,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding RemoteEndpoint}"
+                                                   Style="{StaticResource DataCell}"
+                                                   Margin="0,0,16,0" />
+                                        <Border Grid.Column="3" CornerRadius="5" Padding="8,2.5"
+                                                Background="{Binding ActionFill}">
+                                            <TextBlock Text="{Binding Action}" FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{Binding ActionBrush}" />
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="RecentDecisionsEmpty" Text="No decisions yet this session."
+                                   Style="{StaticResource Muted}" Visibility="Collapsed" />
+                    </StackPanel>
+                </Grid>
+
             </Grid>
 
             <!-- ========== Firewall ========== -->

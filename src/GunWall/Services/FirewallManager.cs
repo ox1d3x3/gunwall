@@ -792,6 +792,42 @@ public sealed class FirewallManager : IDisposable
     /// Windows networking services are auto-allowed so DNS/DHCP keep working —
     /// without this, strict mode would appear to "break the internet".
     /// </summary>
+    /// <summary>
+    /// A short fingerprint of the ruleset currently in force.
+    ///
+    /// Real, not decorative: it hashes the things that actually change what the
+    /// firewall does - mode, the per-app verdicts, custom and system rules,
+    /// blocked services. Two machines showing the same fingerprint are enforcing
+    /// the same policy, and a fingerprint that changes when you did not change
+    /// anything is worth investigating.
+    /// </summary>
+    public string RulesetFingerprint
+    {
+        get
+        {
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.Append(_data.StrictMode ? 'S' : 'a').Append(_data.LockdownEngaged ? 'L' : '-');
+                foreach (var r in _data.Rules.OrderBy(r => r.ExecutablePath, StringComparer.OrdinalIgnoreCase))
+                    sb.Append(r.ExecutablePath).Append('=').Append((int)r.Status).Append(';');
+                foreach (var c in _data.CustomRules.OrderBy(c => c.Id, StringComparer.Ordinal))
+                    sb.Append(c.Block ? 'B' : 'A').Append(c.Outbound ? 'O' : 'I')
+                      .Append(c.Protocol).Append(c.RemoteAddress).Append(';');
+                foreach (var k in _data.SystemRules.Keys.OrderBy(k => k)) sb.Append(k).Append(';');
+                foreach (var k in _data.BlockedServices.Keys.OrderBy(k => k)) sb.Append(k).Append(';');
+
+                byte[] h = System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(sb.ToString()));
+                string hex = Convert.ToHexString(h).ToLowerInvariant();
+                // Head and tail, as the design shows it: enough to compare by eye
+                // without pretending the whole digest is readable.
+                return $"{hex[..4]}\u2026{hex[^4..]}";
+            }
+            catch { return "\u2014"; }
+        }
+    }
+
     /// <summary>Whether the WFP engine is open and usable.</summary>
     public bool EngineStarted => EngineHandle != IntPtr.Zero;
 

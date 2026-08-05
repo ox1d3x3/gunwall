@@ -190,11 +190,18 @@ public sealed class PacketLogEntry
     public string Reason { get; set; } = "";
 
     /// <summary>Green for allowed, red for blocked — bound by the action pill.</summary>
-    public System.Windows.Media.Brush ActionBrush => Blocked
-        ? new System.Windows.Media.SolidColorBrush(
-            System.Windows.Media.Color.FromRgb(0xFF, 0x6B, 0x6B))
-        : new System.Windows.Media.SolidColorBrush(
-            System.Windows.Media.Color.FromRgb(0x3D, 0xD6, 0x8C));
+    /// <summary>Pill background behind the verdict. Paired with ActionBrush so
+    /// the fill and the text always come from the same verdict.</summary>
+    public System.Windows.Media.Brush ActionFill =>
+        (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource(
+            Blocked ? "BlockFill" : "AllowFill");
+
+    // Resolved from the theme rather than constructed from literals: these were
+    // hardcoded before the palette existed, so they did not follow a theme change
+    // and had drifted from the verdict colours the rest of the interface uses.
+    public System.Windows.Media.Brush ActionBrush =>
+        (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource(
+            Blocked ? "BlockText" : "AllowText");
 }
 
 /// <summary>
@@ -319,4 +326,32 @@ public sealed class AppNotification
     public string Title { get; set; } = "";
     public string Detail { get; set; } = "";
     public string TimeText => Time.ToString("HH:mm:ss");
+}
+
+
+/// <summary>
+/// One row of the dashboard's top-talkers list.
+///
+/// The bar's colour is decided against the largest row rather than a fixed
+/// threshold, so it marks the outlier in whatever is actually happening: on a
+/// quiet machine nothing is red, and on a busy one only the genuinely dominant
+/// application is. A fixed threshold would either shout constantly or never.
+/// </summary>
+public sealed class TopTalker
+{
+    public string Name { get; set; } = "";
+    public long Bytes { get; set; }
+    public double BarWidth { get; set; }
+    public string SizeText => FormatBytes(Bytes);
+    public bool Dominant { get; set; }
+
+    public System.Windows.Media.Brush BarBrush =>
+        (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource(
+            Dominant ? "BlockText" : "TextTertiary");
+
+    private static string FormatBytes(long b) =>
+        b >= 1073741824 ? $"{b / 1073741824.0:0.0} GB"
+        : b >= 1048576  ? $"{b / 1048576.0:0.0} MB"
+        : b >= 1024     ? $"{b / 1024.0:0.0} KB"
+        : $"{b} B";
 }

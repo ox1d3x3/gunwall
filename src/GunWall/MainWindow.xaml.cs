@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.34 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.35 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -517,6 +517,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             EnforceP2pBlocks(snap.Conns, snap.Procs);
             EnforceBlockedDomains(snap.Conns);
             TamperWatchTick();
+            // Uptime is a clock, so it has to be repainted rather than only set
+            // when the state changes.
+            if (PanelDashboard.Visibility == Visibility.Visible)
+            {
+                UpdateHero();
+                RefreshDashboardLists();
+            }
             EnforceAccessPolicies(snap.Conns, snap.Procs);
 
             var nowUtc = DateTime.UtcNow;
@@ -5425,6 +5432,137 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch { /* motion is cosmetic - it must never block protection */ }
     }
 
+    /// <summary>
+    /// Drives the dashboard hero from real state.
+    ///
+    /// The design leads the page with a claim about posture, so every part of it
+    /// has to be true: the kicker names where the rules actually live, the
+    /// sentence states the consequence of the current mode, and the primary
+    /// button offers the action that mode is missing. A hero that says
+    /// "Protected" while the engine is idle would be worse than no hero.
+    /// </summary>
+    /// <summary>Fills the dashboard's two lists. Cheap enough to run on the
+    /// dashboard tick; both are capped at what the design shows.</summary>
+    private void RefreshDashboardLists()
+    {
+        try
+        {
+            if (TopTalkersList != null)
+            {
+                var top = _stats.TopAppBytes(5);
+                long max = top.Count > 0 ? top[0].Bytes : 0;
+                var rows = new List<Models.TopTalker>();
+                foreach (var (app, bytes) in top)
+                    rows.Add(new Models.TopTalker
+                    {
+                        Name = app,
+                        Bytes = bytes,
+                        // Width in pixels against the widest row; the template
+                        // draws it over a full-width track.
+                        BarWidth = max > 0 ? Math.Max(2, 300.0 * bytes / max) : 0,
+                        Dominant = max > 0 && bytes >= max * 0.6
+                    });
+                TopTalkersList.ItemsSource = rows;
+                if (TopTalkersEmpty != null)
+                    TopTalkersEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (RecentDecisionsList != null)
+            {
+                var recent = new List<PacketLogEntry>();
+                foreach (var p in _packets) { recent.Add(p); if (recent.Count == 6) break; }
+                RecentDecisionsList.ItemsSource = recent;
+                if (RecentDecisionsEmpty != null)
+                    RecentDecisionsEmpty.Visibility = recent.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("RefreshDashboardLists", ex); }
+    }
+
+    /// <summary>Opens the packet log from the dashboard's decisions block.</summary>
+    private void OpenPacketLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (NavPackets != null) NavPackets.IsChecked = true;
+    }
+
+    private void UpdateHero()
+    {
+        try
+        {
+            if (HeroTitle == null) return;
+
+            bool admin = _engineReady;
+            bool snoozed = _firewall.IsSnoozed;
+            bool lockdown = _firewall.LockdownEngaged;
+            bool strict = _firewall.StrictMode;
+
+            string kicker, title, body, primary;
+            System.Windows.Media.Brush tone;
+
+            if (!admin)
+            {
+                kicker = "ENGINE NOT RUNNING"; title = "No control";
+                body = "GunWall could not open the filtering engine. Restart it as administrator to enforce anything.";
+                primary = "Retry"; tone = (System.Windows.Media.Brush)FindResource("BlockText");
+            }
+            else if (lockdown)
+            {
+                kicker = "ALL TRAFFIC BLOCKED"; title = "Lockdown";
+                body = "Nothing reaches the network, including this PC's own services. Lift lockdown to return to your ruleset.";
+                primary = "Lift lockdown"; tone = (System.Windows.Media.Brush)FindResource("BlockText");
+            }
+            else if (snoozed)
+            {
+                kicker = "FILTERING PAUSED"; title = "Snoozed";
+                body = "Your rules are still saved but nothing is being enforced. Protection returns automatically when the timer ends.";
+                primary = "Resume now"; tone = (System.Windows.Media.Brush)FindResource("WarnText");
+            }
+            else if (strict)
+            {
+                kicker = "RULES ENFORCED IN KERNEL"; title = "Protected";
+                body = "Your ruleset is live in the kernel. New applications raise a prompt before their first connection is allowed through.";
+                primary = "Turn firewall off"; tone = (System.Windows.Media.Brush)FindResource("AllowText");
+            }
+            else
+            {
+                kicker = "WATCHING, NOT BLOCKING"; title = "Monitoring only";
+                body = "GunWall is recording what connects but stopping nothing. Turn the firewall on to deny by default and decide app by app.";
+                primary = "Turn firewall on"; tone = (System.Windows.Media.Brush)FindResource("WarnText");
+            }
+
+            HeroKicker.Text = kicker; HeroTitle.Text = title; HeroBody.Text = body;
+            HeroKicker.Foreground = tone; HeroDot.Fill = tone;
+            if (HeroPrimary != null) HeroPrimary.Content = primary;
+            if (HeroSnooze != null)
+                HeroSnooze.Visibility = strict && !snoozed && !lockdown ? Visibility.Visible : Visibility.Collapsed;
+
+            // Meta column. Uptime is measured from when this session began
+            // filtering, not from process start - they differ whenever the user
+            // toggles protection, and the honest number is the one that answers
+            // "how long have I actually been covered?".
+            if (MetaSince != null)
+                MetaSince.Text = _protectionSince == null ? "\u2014" : _protectionSince.Value.ToString("HH:mm:ss");
+            if (MetaUptime != null)
+            {
+                if (_protectionSince == null) MetaUptime.Text = "\u2014";
+                else
+                {
+                    var d = DateTime.Now - _protectionSince.Value;
+                    MetaUptime.Text = d.TotalHours >= 1
+                        ? $"{(int)d.TotalHours}h {d.Minutes:00}m"
+                        : $"{d.Minutes}m {d.Seconds:00}s";
+                }
+            }
+            if (MetaRuleset != null) MetaRuleset.Text = _firewall.RulesetFingerprint;
+            if (MetaMode != null)
+                MetaMode.Text = lockdown ? "Lockdown" : snoozed ? "Snoozed" : strict ? "Zero Trust" : "Alert";
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("UpdateHero", ex); }
+    }
+
+    /// <summary>When the current protection state began, or null if not protecting.</summary>
+    private DateTime? _protectionSince;
+
     private void SyncFirewallToggle()
     {
         if (EnableFirewallButton == null) return;
@@ -5673,6 +5811,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             : _firewall.LockdownEngaged ? "Lockdown"
             : _firewall.StrictMode ? "Protected"
             : "Watching";
+        // Track when the current protected stretch began, so Uptime answers
+        // "how long have I actually been covered?" rather than how long the
+        // process has been running - they diverge the moment anyone toggles.
+        bool coveredNow = _engineReady && _firewall.StrictMode
+                          && !_firewall.IsSnoozed && !_firewall.LockdownEngaged;
+        if (coveredNow && _protectionSince == null) _protectionSince = DateTime.Now;
+        else if (!coveredNow) _protectionSince = null;
+        UpdateHero();
+
         if (SideStatusIcon != null) SideStatusIcon.Foreground = fill;
         if (SideStatusWord != null)
         {
