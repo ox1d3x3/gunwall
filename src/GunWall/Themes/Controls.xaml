@@ -56,39 +56,39 @@
         <!-- Deliberately identical to each other and quieter than the accent, so
          an interruption does not steer the answer. Fluent chrome underneath. -->
     <Style x:Key="PromptButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-        <Setter Property="MinHeight" Value="32" />
-        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="15,0" />
+        <Setter Property="FontSize" Value="13" />
     </Style>
 
-    <!-- Typefaces.
+    <!-- Typefaces, SPEC.md section 3.
 
-         Referenced by pack URI with a family name after the hash, and with a
-         system fallback after a comma: if a font resource ever fails to load,
-         text renders in Segoe UI rather than in whatever WPF picks when it
-         cannot resolve a family at all.
+         Instrument Sans for everything, JetBrains Mono for every machine value -
+         address, port, PID, MAC, hash, path, byte count, timestamp. Four weights
+         and two respectively, shipped as static instances because WPF renders a
+         variable font's default instance only: a SemiBold request against a
+         variable file comes back Regular with no error to notice.
 
-         Inter Tight carries the interface. JetBrains Mono is for data only -
-         addresses, ports, process identifiers - where a fixed advance and
-         tabular figures make columns line up and make a changed digit visible.
-         Using it for prose would be an affectation; using it for an IP address
-         is the difference between reading a column and scanning one. -->
-    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#Inter Tight, Segoe UI Variable Text, Segoe UI</FontFamily>
-    <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrains Mono, Consolas, monospace</FontFamily>
+         The spec says no system fallback in shipping builds, and that is what is
+         written here. The reasoning is that a silent fallback to Segoe UI is
+         worse than a visible failure - the design's tight negative tracking at
+         display sizes is set for these faces, and Segoe at the same values looks
+         wrong rather than merely different. If a face fails to load it should be
+         obvious, not quietly absorbed. -->
+    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#Instrument Sans</FontFamily>
+    <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrains Mono</FontFamily>
 
-    <!-- Type ramp. There were nine font sizes in this file with no relationship
-         to one another - 11, 11.5, 12, 12.5, 13, 14, 16, 18, 24 - which is what
-         makes text look placed rather than set. These are Fluent's steps, named
-         so a new control picks one instead of inventing another.
-
-         Body stays at 13 rather than Fluent's 14 on purpose: the lists here have
-         fixed column widths, and widening the text without re-measuring every
-         column would truncate names. That is a deliberate deviation, not an
-         oversight. -->
-    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="CaptionFontSize">12</sys:Double>
+    <!-- Type ramp, SPEC.md section 3. Body is 13 and table cells 12.5; the
+         design never uppercases anything above 12px, and its tracking widens as
+         the size drops - 0.09em at 11, 0.10em at 10.5, 0.12em for nav groups. -->
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="CaptionFontSize">11.5</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="BodyFontSize">13</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="BodyStrongFontSize">13</sys:Double>
-    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="SubtitleFontSize">20</sys:Double>
-    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="TitleFontSize">28</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="TableFontSize">12.5</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="SubtitleFontSize">19</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="TitleFontSize">34</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="StatFontSize">30</sys:Double>
+
 
     <!-- Handed over to WPF UI: ComboBox, ComboBoxItem, PasswordBox, TextBox,
          ContextMenu, MenuItem and Separator no longer have styles here.
@@ -275,8 +275,8 @@
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="Padding" Value="16" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="22" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Style.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
@@ -308,7 +308,7 @@
                     <Grid>
                         <Border x:Name="bd"
                                 Background="Transparent"
-                                CornerRadius="4"
+                                CornerRadius="7"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter VerticalAlignment="Center" Margin="8,0,0,0" />
                         </Border>
@@ -507,8 +507,9 @@
         <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
         <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="MinHeight" Value="32" />
-        <Setter Property="Padding" Value="16,0" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="18,0" />
+        <Setter Property="FontSize" Value="13" />
         <Style.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
@@ -529,8 +530,9 @@
         <!-- The standard Fluent button, unaltered apart from a shared height so
          rows of controls line up. -->
     <Style x:Key="ActionButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-        <Setter Property="MinHeight" Value="32" />
-        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="15,0" />
+        <Setter Property="FontSize" Value="13" />
     </Style>
 
     <!-- ===================== List view styling ===================== -->

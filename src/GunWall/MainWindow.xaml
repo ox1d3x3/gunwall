@@ -616,7 +616,7 @@
                                                          Fill="{Binding Category, Converter={StaticResource CategoryToBrush}}"
                                                          ToolTip="{Binding Category, Converter={StaticResource CategoryToText}}" />
                                                 <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                                                <Border CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
+                                                <Border CornerRadius="7" Padding="5,1" Margin="8,0,0,0"
                                                         VerticalAlignment="Center"
                                                         Background="{DynamicResource BgElevated}"
                                                         ToolTip="{Binding ServicesDetail}"
@@ -624,7 +624,7 @@
                                                     <TextBlock Text="{Binding ServicesSummary}" FontSize="10"
                                                                Foreground="{DynamicResource TextSecondary}" />
                                                 </Border>
-                                                <Border CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
+                                                <Border CornerRadius="7" Padding="5,1" Margin="8,0,0,0"
                                                         VerticalAlignment="Center"
                                                         Background="{DynamicResource AccentSoft}"
                                                         Visibility="{Binding IsStoreApp, Converter={StaticResource BoolToVis}}"
@@ -666,7 +666,7 @@
                                 <GridViewColumn Header="Conns" Width="86">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Border CornerRadius="8" Padding="8,2" HorizontalAlignment="Left"
+                                            <Border CornerRadius="12" Padding="8,2" HorizontalAlignment="Left"
                                                     Background="{DynamicResource BgElevated}">
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="{Binding ActiveConnections}" FontSize="11"
@@ -1368,7 +1368,7 @@
                                 <GridViewColumn Header="Action" Width="110">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Border CornerRadius="8" Padding="9,2" HorizontalAlignment="Left"
+                                            <Border CornerRadius="12" Padding="9,2" HorizontalAlignment="Left"
                                                     Background="{Binding ActionBrush}">
                                                 <TextBlock Text="{Binding Action}" Foreground="{DynamicResource TextOnAccent}"
                                                            FontSize="11" FontWeight="SemiBold" />

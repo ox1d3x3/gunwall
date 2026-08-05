@@ -6,6 +6,16 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.34] — 2026-08-03
+
+### Changed
+- **Instrument Sans replaces Inter Tight**, in the four weights the design uses, alongside JetBrains Mono in two. Inter Tight was chosen from the earlier HTML export; the handoff names Instrument Sans and says plainly that Segoe UI is not a substitute. All six faces are static instances, because WPF renders a variable font's default instance only — a SemiBold request against a variable file returns Regular with no error to notice.
+- **No system fallback**, on the spec's instruction. The reasoning is worth recording: a silent fall back to Segoe is worse than a visible failure, because the design's negative tracking at display sizes is set for these faces and Segoe at the same values looks wrong rather than merely different. A missing face should be obvious, not quietly absorbed.
+- **Corner radii follow the design, not Fluent.** Controls are 7 and panels 12, where the Fluent default is 4 and 8. The spec calls this out by name, and it is one of three things it corrects that this project had already got wrong once.
+- Component metrics from section 5: buttons 36 high with 18 or 15 of horizontal padding at 13/600 and 13/500, inputs 36, panel padding 22, body 13 and table cells 12.5.
+
+---
+
 ## [0.99.33] — 2026-08-03
 
 ### Changed
