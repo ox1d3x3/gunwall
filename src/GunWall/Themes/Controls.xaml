@@ -503,25 +503,30 @@
          wrong half of the pair. Taking both from the library keeps them in step
          in either theme. -->
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-        <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
-        <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrush}" />
+        <!-- Painted from GunWall's own brand token rather than the library's
+             accent chain. That chain derives a lighter, desaturated variant for
+             dark themes, which is right for chrome and wrong for a filled
+             button - it was rendering the primary action as pale salmon. The
+             design specifies one accent with white on it, so this states both
+             rather than hoping the derivation lands there. -->
+        <Setter Property="Background" Value="{DynamicResource BlockText}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BlockText}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="Padding" Value="18,0" />
         <Setter Property="FontSize" Value="13" />
         <Style.Triggers>
+            <!-- The spec's hover and pressed are brightness shifts on the same
+                 fill, not different colours. -->
             <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
-                <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPointerOver}" />
+                <Setter Property="Opacity" Value="0.88" />
             </Trigger>
             <Trigger Property="IsPressed" Value="True">
-                <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
-                <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPressed}" />
+                <Setter Property="Opacity" Value="0.76" />
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
-                <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundDisabled}" />
-                <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundDisabled}" />
+                <Setter Property="Opacity" Value="0.4" />
             </Trigger>
         </Style.Triggers>
     </Style>

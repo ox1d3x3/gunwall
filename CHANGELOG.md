@@ -6,6 +6,25 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.37] — 2026-08-04
+
+### Fixed
+- **The download, upload and connection cards were drawing on top of the statistics row.** Both occupied row 1 of the dashboard grid, so they overlapped rather than stacked. The design has no separate rate cards at all: those figures belong in the chart's header, because they are the chart's values — as cards above it they repeated what the graph already showed and cost a whole row to do it. They sit in the header now, each with the 8 × 2 colour tick the design uses in place of a legend box.
+- **The primary action rendered as pale salmon.** It drew from the control library's accent chain, which derives a lighter, desaturated variant for dark themes — correct for chrome, wrong for a filled button. It is painted from GunWall's own brand token with white on it, which is what the design specifies, rather than hoping a derivation lands there.
+- Removed a variable that was assigned five times and read never — it fed the status banner the hero replaced. The compiler had been saying so.
+
+---
+
+## [0.99.36] — 2026-08-04
+
+### Fixed
+- **The dashboard rebuild removed sixteen named elements the code still used**, which is twenty-eight compile errors. The replacement matched a larger block than intended and took the statistics row and status lines with the banner it was meant to replace.
+  - The six figures are restored in the design's own arrangement — a divided row directly beneath the hero, separated by hairlines rather than sitting in a card, because they are a readout and not an object.
+  - The shield graphic is *not* restored. The hero replaced what it did, so the code that painted it was removed rather than given elements to paint; keeping both would have meant two things claiming to state the posture.
+- **The verification that missed this has been replaced.** It compared the code's references against a list of name prefixes — `Hero*`, `Nav*`, `Meta*` — so it could only find the classes of element already thought of, and sixteen names outside that list passed unnoticed. It now derives the set from the XAML itself and looks for any identifier the code accesses as an element, with no prefix assumptions.
+
+---
+
 ## [0.99.35] — 2026-08-04
 
 ### Changed

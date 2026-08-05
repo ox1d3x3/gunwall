@@ -400,43 +400,6 @@
                     </Grid>
                 </Grid>
 
-                <Grid Grid.Row="1" Margin="0,0,0,16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,8,0">
-                        <StackPanel>
-                            <TextBlock Text="Download" Style="{StaticResource Muted}" />
-                            <TextBlock x:Name="DownSpeed" Text="0 KB/s"
-                                       FontSize="24" FontWeight="SemiBold"
-                                       Foreground="{StaticResource InboundBrush}" Margin="0,4,0,0" />
-                            <TextBlock x:Name="SessionDown" Text="Session: 0 B"
-                                       Style="{StaticResource Muted}" Margin="0,4,0,0" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0,8,0">
-                        <StackPanel>
-                            <TextBlock Text="Upload" Style="{StaticResource Muted}" />
-                            <TextBlock x:Name="UpSpeed" Text="0 KB/s"
-                                       FontSize="24" FontWeight="SemiBold"
-                                       Foreground="{StaticResource OutboundBrush}" Margin="0,4,0,0" />
-                            <TextBlock x:Name="SessionUp" Text="Session: 0 B"
-                                       Style="{StaticResource Muted}" Margin="0,4,0,0" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Grid.Column="2" Style="{StaticResource Card}" Margin="8,0,0,0">
-                        <StackPanel>
-                            <TextBlock Text="Active connections" Style="{StaticResource Muted}" />
-                            <TextBlock x:Name="ConnCount" Text="0"
-                                       FontSize="24" FontWeight="SemiBold" Margin="0,4,0,0" />
-                        </StackPanel>
-                    </Border>
-                </Grid>
 
                 <Border Grid.Row="2" Style="{StaticResource Card}">
                     <Grid>
@@ -444,7 +407,65 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                        <!-- The rate figures live in the chart's header, which is
+                             where the design puts them: they are the chart's
+                             values, and as separate cards above it they repeated
+                             what the graph already shows while costing a whole
+                             row. The 8x2 colour tick sits above each label
+                             instead of a legend box. -->
+                        <Grid Grid.Row="0" Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Margin="0,0,42,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+                                    <Rectangle Width="8" Height="2" VerticalAlignment="Center"
+                                               Margin="0,0,7,0" Fill="{DynamicResource TextPrimary}" />
+                                    <TextBlock Text="UPLOAD" FontSize="10.5" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextTertiary}" />
+                                </StackPanel>
+                                <TextBlock x:Name="UpSpeed" Text="0 B/s" FontSize="26"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock x:Name="SessionUp" Text="" FontSize="11.5" Margin="0,5,0,0"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Margin="0,0,42,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+                                    <Rectangle Width="8" Height="2" VerticalAlignment="Center"
+                                               Margin="0,0,7,0" Fill="{DynamicResource BlockText}" />
+                                    <TextBlock Text="DOWNLOAD" FontSize="10.5" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextTertiary}" />
+                                </StackPanel>
+                                <TextBlock x:Name="DownSpeed" Text="0 B/s" FontSize="26"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock x:Name="SessionDown" Text="" FontSize="11.5" Margin="0,5,0,0"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="ACTIVE CONNECTIONS" FontSize="10.5"
+                                           FontWeight="SemiBold" Margin="0,0,0,7"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                                <TextBlock x:Name="ConnCount" Text="0" FontSize="26"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Column="3" Text="LAST 60 SECONDS" FontSize="10.5"
+                                       FontWeight="SemiBold" VerticalAlignment="Top"
+                                       HorizontalAlignment="Right"
+                                       Foreground="{DynamicResource TextTertiary}" />
+                        </Grid>
+
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10"
+                                    Visibility="Collapsed">
                             <TextBlock Text="THROUGHPUT (LAST 60S)" Style="{StaticResource SectionLabel}" />
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
                                 <Ellipse Width="10" Height="10" Fill="{StaticResource InboundBrush}"
@@ -479,6 +500,90 @@
                         </Grid>
                     </Grid>
                 </Border>
+                <!-- The six figures, as a divided row directly under the hero.
+                     The design separates them with hairlines rather than putting
+                     them in a card: they are a readout, not an object. -->
+                <Grid Grid.Row="1" Margin="0,0,0,26">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Padding="0,0,0,0"
+                            Background="Transparent" Cursor="Hand"
+                            MouseLeftButtonUp="Stat_Click" Tag="Firewall">
+                        <StackPanel>
+                            <TextBlock Text="APPS SEEN" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                            <TextBlock x:Name="StatApps" Text="0" FontSize="30" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource Divider}" Padding="22,0,0,0"
+                            Background="Transparent" Cursor="Hand"
+                            MouseLeftButtonUp="Stat_Click" Tag="Firewall">
+                        <StackPanel>
+                            <TextBlock Text="BLOCKED" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                            <TextBlock x:Name="StatBlocked" Text="0" FontSize="30" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource BlockText}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource Divider}" Padding="22,0,0,0"
+                            Background="Transparent" Cursor="Hand"
+                            MouseLeftButtonUp="Stat_Click" Tag="Firewall">
+                        <StackPanel>
+                            <TextBlock Text="ALLOWED" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                            <TextBlock x:Name="StatAllowed" Text="0" FontSize="30" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AllowText}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="3" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource Divider}" Padding="22,0,0,0"
+                            Background="Transparent" Cursor="Hand"
+                            MouseLeftButtonUp="Stat_Click" Tag="Rules">
+                        <StackPanel>
+                            <TextBlock Text="CUSTOM RULES" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                            <TextBlock x:Name="StatRules" Text="0" FontSize="30" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="4" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource Divider}" Padding="22,0,0,0"
+                            Background="Transparent" Cursor="Hand"
+                            MouseLeftButtonUp="Stat_Click" Tag="Rules">
+                        <StackPanel>
+                            <TextBlock Text="SYSTEM RULES" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                            <TextBlock x:Name="StatSystem" Text="0" FontSize="30" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="5" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource Divider}" Padding="22,0,0,0"
+                            Background="Transparent" Cursor="Hand"
+                            MouseLeftButtonUp="Stat_Click" Tag="Dns">
+                        <StackPanel>
+                            <TextBlock Text="BLOCKLISTED" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                            <TextBlock x:Name="StatBlocklist" Text="0" FontSize="30" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Status lines that lived in the block the hero replaced. They
+                     are surfaced only when they have something to say. -->
+                <StackPanel Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                            Orientation="Horizontal" Margin="0,0,0,-18">
+                    <TextBlock x:Name="SnoozeStatus" Style="{StaticResource Muted}"
+                               VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <Button x:Name="ResumeButton" Style="{StaticResource ActionButton}"
+                            Click="Resume_Click" Content="Resume now"
+                            Visibility="Collapsed" Margin="0,0,10,0" />
+                    <TextBlock x:Name="UpdateStatus" Style="{StaticResource Muted}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
                 <!-- Top talkers and recent decisions, side by side. The design
                      puts them here because a posture claim invites two
                      questions - what is using the network, and what has GunWall

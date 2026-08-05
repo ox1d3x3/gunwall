@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.35 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.37 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5754,49 +5754,40 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void UpdateStatusBanner()
     {
-        if (ShieldPath == null) return;
+        // The hero replaced the shield-and-banner block; this method now only
+        // paints the sidebar indicator and drives the hero, so it must not bail
+        // out on an element that no longer exists.
 
         bool protectedNow;
-        string title, sub;
+        string title;
         if (!_engineReady)
         {
             protectedNow = false;
             title = "Not Protected";
-            sub = "Run GunWall as administrator to enable filtering";
         }
         else if (_firewall.IsSnoozed)
         {
             protectedNow = false;
             title = "Paused";
-            sub = "Filtering is snoozed - resume to protect your network";
         }
         else if (_firewall.LockdownEngaged)
         {
             protectedNow = true;
             title = "Locked Down";
-            sub = "All network traffic is blocked";
         }
         else if (_firewall.StrictMode)
         {
             protectedNow = true;
             title = "Protected";
-            sub = "Full control - only the apps you allow can connect";
         }
         else
         {
             protectedNow = false;
             title = "Monitoring Only";
-            sub = "GunWall is watching quietly - no blocking, no prompts. Click Enable Firewall to actively protect.";
         }
 
         var fill = (Brush)FindResource(protectedNow ? "AllowBrush" : "BlockBrush");
         var glow = (Brush)FindResource(protectedNow ? "AllowFill" : "BlockFill");
-        ShieldPath.Fill = fill;
-        if (ShieldGlow != null) ShieldGlow.Fill = glow;
-        if (ShieldCheck != null) ShieldCheck.Visibility = protectedNow ? Visibility.Visible : Visibility.Collapsed;
-        if (ShieldAlert != null) ShieldAlert.Visibility = protectedNow ? Visibility.Collapsed : Visibility.Visible;
-        StatusTitle.Text = title;
-        StatusSub.Text = sub;
 
         // Always-visible status in the sidebar (mirrors the dashboard shield).
         string sideSub = !_engineReady ? "Run as administrator"
