@@ -30,8 +30,13 @@
 
     <SolidColorBrush x:Key="AllowBrush" Color="#34D164" />
     <SolidColorBrush x:Key="BlockBrush" Color="#FF453A" />
-    <SolidColorBrush x:Key="InboundBrush" Color="#4DA3FF" />
-    <SolidColorBrush x:Key="OutboundBrush" Color="#E066A6" />
+    <!-- SPEC.md section 9: upload is the text colour, download is the brand.
+         The blue-and-pink pair predates the design and made the chart the only
+         place in the interface using hues that mean nothing - the spec is
+         explicit that red is the sole decorative hue, and that download draws
+         under upload so the brand area reads as the larger mass. -->
+    <SolidColorBrush x:Key="InboundBrush" Color="#FF3B21" />
+    <SolidColorBrush x:Key="OutboundBrush" Color="#F5F6F7" />
 
     <!-- Data series. Charts and legend dots draw from these rather than
          restating hex values, so the palette is one place and a series can be

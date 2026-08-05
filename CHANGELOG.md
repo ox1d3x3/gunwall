@@ -6,6 +6,15 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.38] — 2026-08-04
+
+### Fixed
+- **The alert badge sat to the left of the bell.** It was the dock panel's first child with no dock set, so it took the default and docked left, appearing before the icon rather than at the end of the row. It docks right now.
+- **The update message floated over the chart card.** It was pinned to the bottom of the statistics row with a negative margin; it belongs in the hero's own row, which is where it now sits.
+- **The traffic chart used blue and pink**, a pair that predates the design and made the chart the only place in the interface using hues that mean nothing. Section 9 is explicit: upload is drawn in the text colour, download in the brand, and download draws underneath so the brand area reads as the larger mass. Red is the only decorative hue in this design, and the chart was the last thing disagreeing with that.
+
+---
+
 ## [0.99.37] — 2026-08-04
 
 ### Fixed

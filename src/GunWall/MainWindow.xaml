@@ -203,7 +203,8 @@
                         </RadioButton>
                         <RadioButton x:Name="NavAlerts" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Alerts">
                             <DockPanel LastChildFill="True">
-                                <Border x:Name="AlertsBadge" Background="{DynamicResource BlockText}"
+                                <Border x:Name="AlertsBadge" DockPanel.Dock="Right"
+                                        Background="{DynamicResource BlockText}"
                                         CornerRadius="9" MinWidth="17" Height="17" Padding="5,0"
                                         HorizontalAlignment="Right" VerticalAlignment="Center"
                                         Visibility="Collapsed">
@@ -573,8 +574,10 @@
 
                 <!-- Status lines that lived in the block the hero replaced. They
                      are surfaced only when they have something to say. -->
-                <StackPanel Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Right"
-                            Orientation="Horizontal" Margin="0,0,0,-18">
+                <!-- Sits inside the hero's own row rather than being pinned with
+                     a negative margin, which floated it over the card below. -->
+                <StackPanel Grid.Row="0" VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                            Orientation="Horizontal" Margin="0,0,0,0">
                     <TextBlock x:Name="SnoozeStatus" Style="{StaticResource Muted}"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <Button x:Name="ResumeButton" Style="{StaticResource ActionButton}"
