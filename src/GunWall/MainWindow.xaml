@@ -984,7 +984,7 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="State" Width="100"
+                                <GridViewColumn Header="State" Width="124"
                                                 DisplayMemberBinding="{Binding State}" />
                             </GridView>
                         </ListView.View>
@@ -1507,7 +1507,7 @@
 
                 <Grid Grid.Row="0" Margin="0,0,0,16">
                     <StackPanel>
-                        <TextBlock Text="Packets Log" Style="{StaticResource H1}" />
+                        <TextBlock Text="Packet log" Style="{StaticResource H1}" />
                         <TextBlock x:Name="PacketsSubtitle"
                                    Text="Live connection events from the kernel - allowed and blocked."
                                    Style="{StaticResource Muted}" Margin="0,4,0,0" />

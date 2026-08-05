@@ -6,6 +6,15 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.41] — 2026-08-04
+
+### Fixed
+- **The upload line was invisible in the light theme.** Section 9 draws upload in the *text* colour, which inverts between themes — near-white on dark, near-black on light. The series had been placed in the shared dictionary, so it stayed near-white in both and vanished against a white card. Both series now live in the palettes, where a value that must invert belongs.
+- **The connection state column clipped "Established"** at 100 pixels. Widened to fit the longest value it can hold rather than the shortest.
+- The packet log page called itself "Packets Log" while the sidebar called it "Packet log" — the same page under two names. It uses the sidebar's.
+
+---
+
 ## [0.99.40] — 2026-08-04
 
 ### Fixed

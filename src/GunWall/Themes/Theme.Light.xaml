@@ -49,5 +49,12 @@
     <SolidColorBrush x:Key="MapLand" Color="#F4F5F7" />
     <SolidColorBrush x:Key="MapBorder" Color="#DCDFE4" />
 
+    <!-- Chart series, SPEC.md section 9: download is the brand, upload is the
+         TEXT colour - which is why these live here and not in the shared
+         dictionary. Upload near-white is correct on a dark card and invisible
+         on a light one. -->
+    <SolidColorBrush x:Key="InboundBrush" Color="#D92C11" />
+    <SolidColorBrush x:Key="OutboundBrush" Color="#0D0F12" />
+
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">False</sys:Boolean>
 </ResourceDictionary>
