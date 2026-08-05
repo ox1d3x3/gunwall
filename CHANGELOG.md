@@ -6,6 +6,13 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.40] — 2026-08-04
+
+### Fixed
+- **A resource lookup was placed in a static helper.** `FindResource` is an instance member of `FrameworkElement`, so it cannot be called from one. All twenty-one lookups now go through `Application.Current`, which reaches the same application-scoped dictionaries from anywhere — none of them was ever looking for an element-local resource, so nothing is lost and the rest can no longer break the same way if they move. A check for the pattern in static context runs alongside the others.
+
+---
+
 ## [0.99.39] — 2026-08-04
 
 ### Fixed

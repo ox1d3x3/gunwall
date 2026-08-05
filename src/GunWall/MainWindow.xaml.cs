@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.39 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.40 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1492,7 +1492,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 var r = work.Rules[idx];
                 var row = new Border
                 {
-                    Background = (Brush)FindResource("BgElevated"),
+                    Background = (Brush)System.Windows.Application.Current.FindResource("BgElevated"),
                     CornerRadius = new CornerRadius(6),
                     Padding = new Thickness(8, 5, 8, 5),
                     Margin = new Thickness(0, 0, 0, 4)
@@ -1515,7 +1515,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     Text = r.Summary,
                     VerticalAlignment = VerticalAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
-                    Foreground = (Brush)FindResource(r.Action == "block" ? "BlockText" : "AllowText")
+                    Foreground = (Brush)System.Windows.Application.Current.FindResource(r.Action == "block" ? "BlockText" : "AllowText")
                 };
                 Grid.SetColumn(txt, 1); g.Children.Add(txt);
 
@@ -1536,7 +1536,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 panels.Add(new TextBlock
                 {
                     Text = "No rules yet. Connections are allowed unless you add block rules or set the default to block.",
-                    Foreground = (Brush)FindResource("TextSecondary"),
+                    Foreground = (Brush)System.Windows.Application.Current.FindResource("TextSecondary"),
                     TextWrapping = TextWrapping.Wrap, Margin = new Thickness(2, 2, 2, 2)
                 });
             list.ItemsSource = panels;
@@ -1604,33 +1604,33 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             Text = $"Access rules for {app.Name}",
             FontSize = 15, FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)FindResource("TextPrimary"), Margin = new Thickness(0, 0, 0, 2)
+            Foreground = (Brush)System.Windows.Application.Current.FindResource("TextPrimary"), Margin = new Thickness(0, 0, 0, 2)
         });
         content.Children.Add(new TextBlock
         {
             Text = "Rules are checked top to bottom; the first match decides. Enforcement is reactive (GunWall blocks a remote when it sees traffic to it) and IPv4-only for geo rules. " +
                    "Domain rules need GunWall's DNS resolver running, since that is what links an address back to the name it came from.",
-            Foreground = (Brush)FindResource("TextSecondary"),
+            Foreground = (Brush)System.Windows.Application.Current.FindResource("TextSecondary"),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10)
         });
-        content.Children.Add(new TextBlock { Text = "PRESETS", FontSize = 11, Foreground = (Brush)FindResource("TextSecondary"), Margin = new Thickness(0, 0, 0, 4) });
+        content.Children.Add(new TextBlock { Text = "PRESETS", FontSize = 11, Foreground = (Brush)System.Windows.Application.Current.FindResource("TextSecondary"), Margin = new Thickness(0, 0, 0, 4) });
         content.Children.Add(presetRow);
-        content.Children.Add(new TextBlock { Text = "RULES", FontSize = 11, Foreground = (Brush)FindResource("TextSecondary"), Margin = new Thickness(0, 4, 0, 2) });
+        content.Children.Add(new TextBlock { Text = "RULES", FontSize = 11, Foreground = (Brush)System.Windows.Application.Current.FindResource("TextSecondary"), Margin = new Thickness(0, 4, 0, 2) });
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 240, Content = list };
         content.Children.Add(scroll);
-        content.Children.Add(new TextBlock { Text = "ADD RULE", FontSize = 11, Foreground = (Brush)FindResource("TextSecondary"), Margin = new Thickness(0, 6, 0, 2) });
+        content.Children.Add(new TextBlock { Text = "ADD RULE", FontSize = 11, Foreground = (Brush)System.Windows.Application.Current.FindResource("TextSecondary"), Margin = new Thickness(0, 6, 0, 2) });
         content.Children.Add(new TextBlock
         {
             Text = "Value examples:  domain doubleclick.net (covers subdomains)  \u00B7  country RU / AU  \u00B7  " +
                    "continent EU / AS  \u00B7  ASN AS13335  \u00B7  IP 1.2.3.4  \u00B7  range 10.0.0.0/8  \u00B7  " +
                    "scope internet / lan / local",
-            FontSize = 10.5, Foreground = (Brush)FindResource("TextSecondary"),
+            FontSize = 10.5, Foreground = (Brush)System.Windows.Application.Current.FindResource("TextSecondary"),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4)
         });
         content.Children.Add(addRow);
 
         var defRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 4) };
-        defRow.Children.Add(new TextBlock { Text = "If nothing matches: ", VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextPrimary"), Margin = new Thickness(0, 0, 8, 0) });
+        defRow.Children.Add(new TextBlock { Text = "If nothing matches: ", VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)System.Windows.Application.Current.FindResource("TextPrimary"), Margin = new Thickness(0, 0, 8, 0) });
         defRow.Children.Add(defaultCombo);
         content.Children.Add(defRow);
 
@@ -2940,7 +2940,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             var status = _firewall.EffectiveStatus(c.ExePath);
             bool blocked = status == AppStatus.Blocked;
             InspStatus.Text = blocked ? "Blocked" : "Allowed";
-            InspStatus.Foreground = (Brush)FindResource(blocked ? "BlockText" : "AllowText");
+            InspStatus.Foreground = (Brush)System.Windows.Application.Current.FindResource(blocked ? "BlockText" : "AllowText");
 
             InspScopeRow.Visibility = Visibility.Visible;
             if (_firewall.IsKnownApp(c.ExePath))
@@ -2961,7 +2961,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             InspPath.Text = "\u2014";
             InspStatus.Text = "No owning process";
-            InspStatus.Foreground = (Brush)FindResource("TextSecondary");
+            InspStatus.Foreground = (Brush)System.Windows.Application.Current.FindResource("TextSecondary");
             InspScopeRow.Visibility = Visibility.Collapsed;
             InspVerdict.Text = "\u2014";
         }
@@ -3239,7 +3239,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // and is drawn FIRST so it sits underneath, upload is the text colour on
         // top - the brand area should read as the larger mass.
         Color Series(string key) =>
-            ((SolidColorBrush)FindResource(key)).Color;
+            ((SolidColorBrush)System.Windows.Application.Current.FindResource(key)).Color;
 
         AddSmoothSeries(canvas, _gDown, max, w, h, Series("InboundBrush"), fillArea: true, _graphScroll);
         AddSmoothSeries(canvas, _gUp, max, w, h, Series("OutboundBrush"), fillArea: false, _graphScroll);
@@ -3254,7 +3254,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _graphScroll.X = 0; // new data appended at the right; restart the slide
 
         // Time axis: subtle relative labels along the bottom (static, cheap).
-        var axisBrush = (Brush)FindResource("TextTertiary");
+        var axisBrush = (Brush)System.Windows.Application.Current.FindResource("TextTertiary");
         foreach (var (frac, label) in new[] { (0.0, "-60s"), (0.25, "-45s"), (0.5, "-30s"), (0.75, "-15s"), (1.0, "now") })
         {
             var tb = new TextBlock
@@ -3274,7 +3274,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         canvas.Children.Add(new Line
         {
             X1 = 0, Y1 = h - 1, X2 = w, Y2 = h - 1,
-            Stroke = (Brush)FindResource("BorderBrush"),
+            Stroke = (Brush)System.Windows.Application.Current.FindResource("BorderBrush"),
             StrokeThickness = 1
         });
     }
@@ -3557,7 +3557,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 Text = $"{ok} of {results.Count} kernel layers accepted",
                 FontSize = 15,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = (Brush)FindResource("TextPrimary"),
+                Foreground = (Brush)System.Windows.Application.Current.FindResource("TextPrimary"),
                 Margin = new Thickness(0, 0, 0, 2)
             });
             panel.Children.Add(new TextBlock
@@ -3565,7 +3565,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 Text = ok == results.Count
                     ? "Every filtering layer GunWall uses is available on this system. A test filter was added and immediately removed on each; nothing was changed."
                     : "Some layers were rejected by this build of Windows. Features relying on them will silently do nothing - the details are in the diagnostics log.",
-                Foreground = (Brush)FindResource("TextSecondary"),
+                Foreground = (Brush)System.Windows.Application.Current.FindResource("TextSecondary"),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12)
             });
@@ -3588,7 +3588,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 {
                     Text = r.Detail,
                     FontSize = 11,
-                    Foreground = (Brush)FindResource("TextSecondary"),
+                    Foreground = (Brush)System.Windows.Application.Current.FindResource("TextSecondary"),
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(10, 0, 0, 0)
                 };
@@ -3597,7 +3597,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 row.Children.Add(new TextBlock
                 {
                     Text = r.Name,
-                    Foreground = (Brush)FindResource("TextPrimary"),
+                    Foreground = (Brush)System.Windows.Application.Current.FindResource("TextPrimary"),
                     VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis
                 });
@@ -5795,8 +5795,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             title = "Monitoring Only";
         }
 
-        var fill = (Brush)FindResource(protectedNow ? "AllowBrush" : "BlockBrush");
-        var glow = (Brush)FindResource(protectedNow ? "AllowFill" : "BlockFill");
+        var fill = (Brush)System.Windows.Application.Current.FindResource(protectedNow ? "AllowBrush" : "BlockBrush");
+        var glow = (Brush)System.Windows.Application.Current.FindResource(protectedNow ? "AllowFill" : "BlockFill");
 
         // Always-visible status in the sidebar (mirrors the dashboard shield).
         string sideSub = !_engineReady ? "Run as administrator"
