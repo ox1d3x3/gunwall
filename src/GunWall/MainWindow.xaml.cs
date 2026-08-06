@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.41 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.42 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1800,7 +1800,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 foreach (var r in src)
                     rows.Add(new GunWall.Models.BreakRow(
                         r.Name, AppUsageService.FormatBytes(r.Bytes),
-                        Math.Max(2, maxBar * r.Bytes / max), r.Tip));
+                        Math.Max(2, maxBar * r.Bytes / max), r.Tip,
+                        r.Bytes >= max * 0.6));
                 return rows;
             }
 
@@ -3735,10 +3736,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             bool lockdown = _firewall.LockdownEngaged;
             bool prot = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
             FooterProtText.Text = SideStatusTitle?.Text ?? (prot ? "Protected" : "Monitoring");
-            FooterProtDot.Fill = new SolidColorBrush(
-                lockdown ? Color.FromRgb(0xFF, 0x45, 0x3A)
-                : prot ? Color.FromRgb(0x30, 0xD1, 0x58)
-                : Color.FromRgb(0xFF, 0x9F, 0x0A));
+            // These were three raw RGB literals - and not arbitrary ones: they
+            // were #FF453A / #30D158 / #FF9F0A, which are the *category* colours
+            // for invalid, valid and unsigned signatures. Section 2 says those
+            // are user data and must not be reused in the interface, and being
+            // user-editable they could drift to anything. The role tokens are
+            // the same three states this line already understood, and being
+            // resources they follow a theme change, which a brush built in code
+            // never did.
+            FooterProtDot.Fill = (Brush)System.Windows.Application.Current.FindResource(
+                lockdown ? "BlockText" : prot ? "AllowText" : "WarnText");
 
             bool measured = _etwMeter is { SessionActive: true } && !_etwDegraded;
             FooterMeter.Text = measured ? "Measured metering (ETW)" : "Estimated metering";
@@ -4060,11 +4067,32 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void RefreshSwatches()
     {
+        // The Settings swatches preview what is TYPED, so they read the boxes.
         SetSwatch(ColorSignedSwatch, ColorSignedBox.Text);
         SetSwatch(ColorUnsignedSwatch, ColorUnsignedBox.Text);
         SetSwatch(ColorSystemSwatch, ColorSystemBox.Text);
         SetSwatch(ColorInvalidSwatch, ColorInvalidBox.Text);
         SetSwatch(ColorUnknownSwatch, ColorUnknownBox.Text);
+
+        // The Applications legend explains the dots in that table, so it reads
+        // what is APPLIED - deliberately a different source from the boxes above.
+        // A half-typed hex should not repaint a legend on another page.
+        SetLegendDot(LegendSignedDot, "Signed");
+        SetLegendDot(LegendUnsignedDot, "Unsigned");
+        SetLegendDot(LegendSystemDot, "System");
+        SetLegendDot(LegendInvalidDot, "Invalid");
+    }
+
+    private static void SetLegendDot(System.Windows.Shapes.Ellipse? dot, string key)
+    {
+        if (dot == null) return;
+        try
+        {
+            dot.Fill = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(
+                    Services.CategoryPalette.Get(key)));
+        }
+        catch { dot.Fill = System.Windows.Media.Brushes.Gray; }
     }
 
     private static void SetSwatch(System.Windows.Controls.Border swatch, string hex)
@@ -5767,36 +5795,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // paints the sidebar indicator and drives the hero, so it must not bail
         // out on an element that no longer exists.
 
-        bool protectedNow;
-        string title;
-        if (!_engineReady)
-        {
-            protectedNow = false;
-            title = "Not Protected";
-        }
-        else if (_firewall.IsSnoozed)
-        {
-            protectedNow = false;
-            title = "Paused";
-        }
-        else if (_firewall.LockdownEngaged)
-        {
-            protectedNow = true;
-            title = "Locked Down";
-        }
-        else if (_firewall.StrictMode)
-        {
-            protectedNow = true;
-            title = "Protected";
-        }
-        else
-        {
-            protectedNow = false;
-            title = "Monitoring Only";
-        }
+        // The role colour, which is a THREE-state idea and was being answered by
+        // a boolean. The design states it plainly: lockdown is 'brand',
+        // protected is 'ok', anything else is 'warn'. Collapsing that to
+        // protected/not-protected painted "Monitoring Only" in the blocked
+        // colour - claiming a state that blocks nothing looks like the state
+        // that blocks everything - and painted lockdown green, which is worse.
+        // UpdateHero has carried the correct five-condition mapping since
+        // 0.99.35; this now agrees with it instead of contradicting it two
+        // inches away on the same screen.
+        string title, role;
+        if (!_engineReady)                    { title = "Not Protected";   role = "Block"; }
+        else if (_firewall.IsSnoozed)         { title = "Paused";          role = "Warn";  }
+        else if (_firewall.LockdownEngaged)   { title = "Locked Down";     role = "Block"; }
+        else if (_firewall.StrictMode)        { title = "Protected";       role = "Allow"; }
+        else                                  { title = "Monitoring Only"; role = "Warn";  }
 
-        var fill = (Brush)System.Windows.Application.Current.FindResource(protectedNow ? "AllowBrush" : "BlockBrush");
-        var glow = (Brush)System.Windows.Application.Current.FindResource(protectedNow ? "AllowFill" : "BlockFill");
+        var fill = (Brush)System.Windows.Application.Current.FindResource(role + "Text");
 
         // Always-visible status in the sidebar (mirrors the dashboard shield).
         string sideSub = !_engineReady ? "Run as administrator"

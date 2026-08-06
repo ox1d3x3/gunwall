@@ -12,6 +12,7 @@
     ExtendsContentIntoTitleBar="True"
     WindowBackdropType="Mica"
     WindowCornerPreference="Round"
+    Typography.NumeralAlignment="Tabular"
     ui:Design.Background="{DynamicResource BgPrimary}">
     <!-- No runtime Background is set on purpose.
 
@@ -47,9 +48,26 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="10,7" />
             <Setter Property="FontSize" Value="13" />
-            <Setter Property="CaretBrush" Value="{StaticResource Accent}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource BlockText}" />
             <Setter Property="Width" Value="220" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- The one sanctioned use of 'brand-hi'. Section 2 gives that token a
+             single job - link hover - so it is defined here and nowhere else.
+             Note it DARKENS in the light theme where it lightens in dark, which
+             is why it is a palette value rather than a brightness filter over
+             the accent. Setters before triggers, deliberately: a property
+             element ahead of further content inside a Style is MC3088. -->
+        <Style x:Key="RepoLink" TargetType="Hyperlink">
+            <Setter Property="Foreground" Value="{DynamicResource BlockText}" />
+            <Setter Property="TextDecorations" Value="{x:Null}" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource BrandHi}" />
+                    <Setter Property="TextDecorations" Value="Underline" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
     </ui:FluentWindow.Resources>
 
@@ -482,10 +500,10 @@
                                     Visibility="Collapsed">
                             <TextBlock Text="THROUGHPUT (LAST 60S)" Style="{StaticResource SectionLabel}" />
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
-                                <Ellipse Width="10" Height="10" Fill="{StaticResource InboundBrush}"
+                                <Ellipse Width="10" Height="10" Fill="{DynamicResource InboundBrush}"
                                          VerticalAlignment="Center" />
                                 <TextBlock Text="Down" Style="{StaticResource Muted}" Margin="6,0,16,0" />
-                                <Ellipse Width="10" Height="10" Fill="{StaticResource OutboundBrush}"
+                                <Ellipse Width="10" Height="10" Fill="{DynamicResource OutboundBrush}"
                                          VerticalAlignment="Center" />
                                 <TextBlock Text="Up" Style="{StaticResource Muted}" Margin="6,0,0,0" />
                             </StackPanel>
@@ -505,9 +523,9 @@
                                         <TextBlock x:Name="GraphTooltipTime" FontSize="10"
                                                    Foreground="{DynamicResource TextSecondary}" />
                                         <TextBlock x:Name="GraphTooltipDown" FontSize="11.5" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource InboundBrush}" />
+                                                   Foreground="{DynamicResource InboundBrush}" />
                                         <TextBlock x:Name="GraphTooltipUp" FontSize="11.5"
-                                                   Foreground="{StaticResource OutboundBrush}" />
+                                                   Foreground="{DynamicResource OutboundBrush}" />
                                     </StackPanel>
                                 </Border>
                             </Canvas>
@@ -719,14 +737,23 @@
                                     Click="RefreshApps_Click" />
                         </StackPanel>
                     </Grid>
+                    <!-- The signature legend. These four are the CATEGORY colours,
+                         which SPEC section 2 calls out as user data rather than
+                         chrome: they are configurable on Settings, and they are the
+                         one place a hue outside the palette is legitimate. They were
+                         drawing from a generic four-colour chart series instead, so
+                         the legend and the dots it explains could disagree - and did,
+                         the moment anyone edited a colour. Both now read
+                         CategoryPalette, and RefreshSwatches repaints all three
+                         places at once. -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,12,0,0">
-                        <Ellipse Width="9" Height="9" Fill="{DynamicResource Series1}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse x:Name="LegendSignedDot" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Signed" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                        <Ellipse Width="9" Height="9" Fill="{DynamicResource Series2}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse x:Name="LegendUnsignedDot" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Unsigned" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                        <Ellipse Width="9" Height="9" Fill="{DynamicResource Series3}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse x:Name="LegendSystemDot" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="System" Style="{StaticResource Muted}" Margin="0,0,12,0" />
-                        <Ellipse Width="9" Height="9" Fill="{DynamicResource Series4}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Ellipse x:Name="LegendInvalidDot" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Invalid sig" Style="{StaticResource Muted}" />
                     </StackPanel>
                 </StackPanel>
@@ -872,7 +899,10 @@
                                 <GridViewColumn Header="Activity" Width="106">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Polyline Points="{Binding Spark}" Stroke="{DynamicResource Series3}"
+                                            <!-- Section 9: sparkline is stroke 1.3 in 't3', no fill.
+                                                 It is a shape hint, not a value - anything louder
+                                                 would compete with the row's own data. -->
+                                            <Polyline Points="{Binding Spark}" Stroke="{DynamicResource TextTertiary}"
                                                       StrokeThickness="1.3" StrokeLineJoin="Round"
                                                       Width="90" Height="20" Stretch="None"
                                                       VerticalAlignment="Center"
@@ -1184,8 +1214,11 @@
                                         MouseLeftButtonUp="UsageStrip_MouseUp" />
                                 <Canvas x:Name="UsageStripOverlay" IsHitTestVisible="False" ClipToBounds="True">
                                     <Rectangle x:Name="UsageSelRect" Fill="{DynamicResource SelectionFill}" Visibility="Collapsed" />
-                                    <Rectangle x:Name="UsageSelHandleL" Width="2.5" Fill="{DynamicResource Series3}" Visibility="Collapsed" />
-                                    <Rectangle x:Name="UsageSelHandleR" Width="2.5" Fill="{DynamicResource Series3}" Visibility="Collapsed" />
+                                    <!-- The handles bracket a selection filled with 'brand-bg', so
+                                         they are 'brand'. They were a blue that matched nothing on
+                                         either side of them. -->
+                                    <Rectangle x:Name="UsageSelHandleL" Width="2.5" Fill="{DynamicResource BlockText}" Visibility="Collapsed" />
+                                    <Rectangle x:Name="UsageSelHandleR" Width="2.5" Fill="{DynamicResource BlockText}" Visibility="Collapsed" />
                                 </Canvas>
                             </Grid>
                         </Border>
@@ -1237,9 +1270,17 @@
                                                        Foreground="{DynamicResource TextPrimary}"
                                                        TextTrimming="CharacterEllipsis" />
                                         </DockPanel>
-                                        <Border Height="3" CornerRadius="1.5" Background="{DynamicResource Series3}"
-                                                Width="{Binding BarWidth}" HorizontalAlignment="Left"
-                                                Margin="0,3,0,0" />
+                                        <!-- Section 9: 3px track in 'line2', no radius, no
+                                             gradient, fill in 'brand' once a row passes 60% of
+                                             the column's largest. Identical treatment to the
+                                             dashboard's top talkers - the two were the same
+                                             component drawn two different ways, one of them
+                                             a rounded blue bar with no track at all. -->
+                                        <Grid Height="3" Margin="0,3,0,0">
+                                            <Rectangle Fill="{DynamicResource BorderBrush}" />
+                                            <Rectangle Fill="{Binding BarBrush}" HorizontalAlignment="Left"
+                                                       Width="{Binding BarWidth}" />
+                                        </Grid>
                                     </StackPanel>
                                 </DataTemplate>
                             </Grid.Resources>
@@ -2434,7 +2475,7 @@
                             <TextBlock Margin="0,6,0,0">
                                 <Hyperlink NavigateUri="https://github.com/ox1d3x3/gunwall"
                                            RequestNavigate="Repo_RequestNavigate"
-                                           Foreground="{StaticResource Accent}">github.com/ox1d3x3/gunwall</Hyperlink>
+                                           Style="{StaticResource RepoLink}">github.com/ox1d3x3/gunwall</Hyperlink>
                             </TextBlock>
                         </StackPanel>
                     </Border>
@@ -2450,17 +2491,20 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,7">
             <DockPanel LastChildFill="False">
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                    <Ellipse x:Name="FooterProtDot" Width="8" Height="8" Fill="{DynamicResource Series2}"
+                    <!-- Declared in the 'warn' role because the text beside it reads
+                         "Starting..." until the first sample arrives, and not-yet-known
+                         is a warning state rather than a protected one. -->
+                    <Ellipse x:Name="FooterProtDot" Width="8" Height="8" Fill="{DynamicResource WarnText}"
                              VerticalAlignment="Center" Margin="0,0,7,0" />
                     <TextBlock x:Name="FooterProtText" Text="Starting..." FontSize="11.5"
                                Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
                                Margin="0,0,22,0" />
-                    <Ellipse Width="8" Height="8" Fill="{StaticResource InboundBrush}"
+                    <Ellipse Width="8" Height="8" Fill="{DynamicResource InboundBrush}"
                              VerticalAlignment="Center" Margin="0,0,6,0" />
                     <TextBlock x:Name="FooterDown" Text="0 B/s" FontSize="11.5"
                                Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"
                                Margin="0,0,18,0" />
-                    <Ellipse Width="8" Height="8" Fill="{StaticResource OutboundBrush}"
+                    <Ellipse Width="8" Height="8" Fill="{DynamicResource OutboundBrush}"
                              VerticalAlignment="Center" Margin="0,0,6,0" />
                     <TextBlock x:Name="FooterUp" Text="0 B/s" FontSize="11.5"
                                Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />

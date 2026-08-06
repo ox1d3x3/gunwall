@@ -14,38 +14,26 @@
          action is "allow", and the colour should agree with the verdict it
          produces. Hover and pressed are steps of the same hue rather than
          opacity changes, which stay legible on both themes. -->
-    <!-- Green was doing two unrelated jobs: it marked the primary action AND it
-         meant "allowed". That is why the interface reads as noisy - the same
-         colour appears on a button you should press and on a verdict you should
-         notice, and neither is clearly either. Fluent separates them, and so do
-         we now: blue carries interaction (selection, focus, the primary action),
-         green and red stay reserved for what a firewall actually decides. -->
-    <Color x:Key="AccentColor">#3A86E0</Color>
-    <Color x:Key="Accent2Color">#3A86E0</Color>
+    <!-- ===== No colour is defined in this file =====
+         Eleven colours used to live here: a blue accent chain (#3A86E0 and its
+         hover, pressed, second and gradient forms), two verdict literals, and a
+         four-colour data series. All eleven predate the design handoff, none of
+         them appears in either palette, and blue appears nowhere in this design
+         at all - section 2 is explicit that red is the only decoratively used
+         hue.
 
-    <SolidColorBrush x:Key="Accent"         Color="{StaticResource AccentColor}" />
-    <SolidColorBrush x:Key="Accent2"        Color="{StaticResource Accent2Color}" />
-    <SolidColorBrush x:Key="AccentHover"    Color="#4C97EE" />
-    <SolidColorBrush x:Key="AccentPressed"  Color="#2C6EBF" />
+         They survived the palette rewrite in 0.99.32 for a simple reason: that
+         release changed the palettes, and these were never IN the palettes. They
+         sat in the shared dictionary keeping their old values while everything
+         reading them carried on working. This is the same shape as the chart
+         that stayed blue in 0.99.39 - a check confirming the palette changed
+         says nothing about what is still reading somewhere else.
 
-    <SolidColorBrush x:Key="AllowBrush" Color="#34D164" />
-    <SolidColorBrush x:Key="BlockBrush" Color="#FF453A" />
-
-    <!-- Data series. Charts and legend dots draw from these rather than
-         restating hex values, so the palette is one place and a series can be
-         retuned without hunting through the window. Ordered by how often a
-         reading eye meets them: allowed, warning, information, blocked. -->
-    <SolidColorBrush x:Key="Series1" Color="#34D164" />
-    <SolidColorBrush x:Key="Series2" Color="#FFB020" />
-    <SolidColorBrush x:Key="Series3" Color="#4DA3FF" />
-    <SolidColorBrush x:Key="Series4" Color="#FF453A" />
-
-    <!-- Flat accent (kept as a 'gradient' key name for compatibility, but solid
-         for a clean, professional, non-AI look). -->
-    <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#3A86E0" Offset="0" />
-        <GradientStop Color="#2C6EBF" Offset="1" />
-    </LinearGradientBrush>
+         Colour now has exactly one home: Theme.Dark.xaml and Theme.Light.xaml.
+         A literal in this file is a defect by definition, and a check enforces
+         that. If a value must invert between themes it belongs in the palettes;
+         if it does not invert, it is not a colour.
+         ============================================================== -->
 
     <!-- Prompt buttons. Muted and identical to each other on purpose: an
          interruption should not steer the answer, and a coloured button in a
@@ -81,7 +69,6 @@
          the size drops - 0.09em at 11, 0.10em at 10.5, 0.12em for nav groups. -->
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="CaptionFontSize">11.5</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="BodyFontSize">13</sys:Double>
-    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="BodyStrongFontSize">13</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="TableFontSize">12.5</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="SubtitleFontSize">19</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="TitleFontSize">34</sys:Double>
@@ -283,55 +270,13 @@
         </Style.Triggers>
     </Style>
 
-    <!-- ===================== Navigation button ===================== -->
-    <!-- Navigation rail, on Fluent NavigationView proportions.
+    <!-- The NavButton style was removed in 0.99.42. It styled the old Fluent
+         navigation rail, which the 238px grouped sidebar replaced in 0.99.33;
+         nothing has referenced it since. It is called out here rather than
+         deleted silently because it is what the blue accent chain was still
+         being kept alive for - a dead style holding a dead colour, each
+         justifying the other. -->
 
-         Selected and hover both painted themselves with the card colour, so
-         pointing at an item looked exactly like having chosen it - the one
-         thing a navigation list has to make obvious. They are now distinct
-         surfaces, and the selected indicator is a short centred pill rather
-         than a full-height bar, which is what stops the rail reading as a
-         stack of tabs. -->
-    <Style x:Key="NavButton" TargetType="RadioButton">
-        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="FontSize" Value="{StaticResource BodyFontSize}" />
-        <Setter Property="Margin" Value="8,1" />
-        <Setter Property="Height" Value="38" />
-        <Setter Property="Padding" Value="14,0" />
-        <Setter Property="HorizontalContentAlignment" Value="Left" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="RadioButton">
-                    <Grid>
-                        <Border x:Name="bd"
-                                Background="Transparent"
-                                CornerRadius="7"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter VerticalAlignment="Center" Margin="8,0,0,0" />
-                        </Border>
-                        <!-- A short pill, vertically centred, as Fluent draws it -->
-                        <Rectangle x:Name="bar" Width="3" Height="16"
-                                   HorizontalAlignment="Left" VerticalAlignment="Center"
-                                   Margin="0" RadiusX="1.5" RadiusY="1.5"
-                                   Fill="{StaticResource Accent}" Visibility="Collapsed" />
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceHover}" />
-                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-                        </Trigger>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSelected}" />
-                            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-                            <Setter Property="FontWeight" Value="SemiBold" />
-                            <Setter TargetName="bar" Property="Visibility" Value="Visible" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
 
     <!-- ===================== Slide on/off toggle ===================== -->
     <!-- A CheckBox rendered as an animated pill switch: gray when off, green

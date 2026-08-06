@@ -28,8 +28,8 @@
     <SolidColorBrush x:Key="BorderBrush" Color="#26292F" />    <!-- 'line2': control borders, header rule -->
     <SolidColorBrush x:Key="SurfaceHover" Color="#0DFFFFFF" />   <!-- 'hover': 5% white -->
     <SolidColorBrush x:Key="SurfaceSelected" Color="#0DFFFFFF" />
-    <SolidColorBrush x:Key="SurfacePressed" Color="#08FFFFFF" />  <!-- 'row-hover': 3% white -->
-    <SolidColorBrush x:Key="RowHover" Color="#08FFFFFF" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#08FFFFFF" />
+    <SolidColorBrush x:Key="RowHover" Color="#08FFFFFF" />       <!-- 'row-hover': 3% white, half 'hover' -->
     <SolidColorBrush x:Key="TextPrimary" Color="#F5F6F7" />     <!-- 't1' -->
     <SolidColorBrush x:Key="TextSecondary" Color="#9AA1AB" />   <!-- 't2' -->
     <SolidColorBrush x:Key="TextTertiary" Color="#646B75" />    <!-- 't3': metadata only; never load-bearing -->
@@ -39,6 +39,7 @@
     <SolidColorBrush x:Key="AllowFill" Color="#2135D07F" />     <!-- 'ok-bg' -->
     <SolidColorBrush x:Key="BlockText" Color="#FF3B21" />       <!-- 'brand' -->
     <SolidColorBrush x:Key="BlockFill" Color="#24FF3B21" />     <!-- 'brand-bg' -->
+    <SolidColorBrush x:Key="BrandHi" Color="#FF6A55" />         <!-- 'brand-hi': link hover ONLY -->
     <SolidColorBrush x:Key="WarnText" Color="#FFB020" />        <!-- 'warn' -->
     <SolidColorBrush x:Key="WarnFill" Color="#21FFB020" />      <!-- 'warn-bg' -->
     <SolidColorBrush x:Key="InfoText" Color="#646B75" />        <!-- neutral pill uses 't3' -->
@@ -55,6 +56,15 @@
          on a light one. -->
     <SolidColorBrush x:Key="InboundBrush" Color="#FF3B21" />
     <SolidColorBrush x:Key="OutboundBrush" Color="#F5F6F7" />
+
+    <!-- The area beneath each series, section 9. Same argument as the strokes
+         above: these are tints OF the stroke colour, so they invert with it and
+         belong in the palette rather than the shared dictionary. -->
+    <SolidColorBrush x:Key="FillDown" Color="#1AFF3B21" />      <!-- 'fill-down': brand at 10% -->
+    <SolidColorBrush x:Key="FillUp" Color="#12F5F6F7" />        <!-- 'fill-up': t1 at 7% -->
+
+    <!-- Loading bars, section 10. Consumed by the table lifecycle states. -->
+    <SolidColorBrush x:Key="Skeleton" Color="#0FFFFFFF" />      <!-- 'skeleton': 6% white -->
 
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">True</sys:Boolean>
 </ResourceDictionary>

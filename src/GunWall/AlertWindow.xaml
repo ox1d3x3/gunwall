@@ -8,6 +8,7 @@
     WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
     ShowInTaskbar="False" Topmost="True"
     WindowStartupLocation="Manual"
+    Typography.NumeralAlignment="Tabular"
     Background="Transparent"
     MouseLeftButtonDown="Window_MouseLeftButtonDown">
 

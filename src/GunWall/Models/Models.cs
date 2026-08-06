@@ -1,8 +1,16 @@
 namespace GunWall.Models;
 
 /// <summary>One row of the Traffic Breakdown card (Phase 5). BarWidth is the
-/// pre-computed pixel width of the mini bar, relative to the column's max.</summary>
-public sealed record BreakRow(string Name, string Value, double BarWidth, string Tip);
+/// pre-computed pixel width of the mini bar, relative to the column's max.
+/// Dominant follows the same 60%-of-largest rule as the dashboard's top
+/// talkers, so the accent marks the outlier in whatever is actually happening
+/// rather than decorating every row.</summary>
+public sealed record BreakRow(string Name, string Value, double BarWidth, string Tip, bool Dominant = false)
+{
+    public System.Windows.Media.Brush BarBrush =>
+        (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource(
+            Dominant ? "BlockText" : "TextTertiary");
+}
 
 /// <summary>A single live network connection observed on the machine.</summary>
 public sealed class ConnectionInfo

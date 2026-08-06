@@ -6,7 +6,38 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
-## [0.99.41] — 2026-08-04
+## [0.99.42] — 2026-08-06
+
+First of eight releases migrating the interface to the Claude Design handoff.
+This one paints nothing new. It removes every colour that predates the design
+and gives colour a single home, because each of the seven stages after it lands
+on top of these tokens — fixing them afterwards would mean repainting whatever
+had already been built.
+
+### Fixed
+- **The light-theme chart fix from 0.99.41 was still broken, in the elements that release did not look at.** Moving the series into the palettes was right. But six consumers referenced them with `StaticResource`, and `ApplyTheme` *replaces* the palette dictionary rather than editing it — so a static reference resolves once against whatever `App.xaml` merged, which is always the dark palette, and never moves again. The upload tick stayed near-white on a white card: the exact bug 0.99.41 was written to fix, surviving three feet away. All six bind late now. Worth stating plainly: the check that passed confirmed the palette had changed, which says nothing about what is still reading from somewhere else. That is the same shape as the chart that stayed blue in 0.99.39, and it is now a check rather than a lesson.
+- **Eleven pre-design colours were still live in the shared dictionary.** A blue accent chain (`#3A86E0` with its hover, pressed, second and gradient forms), two verdict literals, and a four-colour data series — fourteen call sites between them. They survived the palette rewrite in 0.99.32 for a simple reason: that release changed the *palettes*, and these were never in the palettes. Blue appears nowhere in this design; section 2 is explicit that red is the only decoratively used hue.
+- **The protection indicator was painted from three raw RGB literals — and not arbitrary ones.** They were `#FF453A`, `#30D158` and `#FF9F0A`: the *category* colours for invalid, valid and unsigned signatures. Section 2 names those specifically and says not to reuse them in the interface, and being user-editable they could have drifted to anything. Built with `new SolidColorBrush` in code, they never followed a theme change either.
+- **"Monitoring Only" was painted in the blocked colour, and lockdown in the allowed one.** Five conditions were being collapsed into one boolean, so a state that blocks *nothing* wore the colour of the state that blocks *everything*, and the most restrictive state in the application read as green. The role is a three-state idea — lockdown is brand, protected is ok, anything else is warn — and `UpdateHero` has carried that mapping correctly since 0.99.35. The sidebar was contradicting it a few inches away on the same screen.
+- **The light theme's row-hover value was the dark theme's**, white at 3% on a white ground. Nothing reads it yet, so nothing showed it; the table system in 0.99.45 would have. The parity check passed it because parity compares key *names* — both palettes defined the key, and only one of them defined it correctly.
+- The Applications signature legend drew from a generic chart series while the dots it explains drew from `CategoryPalette`, so the legend and the table could disagree the moment anyone edited a colour. Both read the palette now. The Settings swatches deliberately still read the *typed* value and the legend the *applied* one — a half-finished hex should not repaint a legend on another page.
+- The Traffic breakdown's share bar was a rounded blue bar with no track; the dashboard's was already correct. They were the same component drawn two different ways. Traffic now takes the dashboard's treatment, including the 60%-of-largest rule, so the accent marks the outlier rather than decorating every row.
+- The Applications sparkline was blue; section 9 makes it `t3`. It is a shape hint, not a value.
+
+### Added
+- **The four design tokens no palette carried**: `brand-hi`, `fill-up`, `fill-down` and `skeleton`. `brand-hi` is worth noting — it *darkens* in the light theme where it lightens in dark, so a derived "hover = brighten" would invert it wrongly. It has exactly one sanctioned use, link hover, and exactly one consumer.
+- **Tabular figures, which the specification calls mandatory and which appeared nowhere.** All four Instrument Sans faces carry the `tnum` feature, so the request resolves rather than silently doing nothing — verified against the font binaries rather than assumed. Set once per window root, since `Typography` attached properties inherit; the two secondary windows are separate trees and need it stated separately.
+- **`tools/checks/` — the checks now live in the repository.** They have been written into `/tmp` and lost to a container reset before, taking with them the tests that caught the WFP struct offsets and the wrong layer GUIDs. A check that does not survive the session gets rewritten from memory, which is how it quietly stops testing what it was written for. Two are new: one for late binding against a swapped dictionary, one forbidding colour outside the palettes. Each exists because of a specific defect a passing check failed to catch.
+- The dead-key check now carries an explicit allow-list of design tokens no stage has wired up yet, each naming the release that will consume it. Without it the check cannot tell "stale, delete it" from "not built yet", and a check that cries wolf is a check that gets ignored.
+
+### Removed
+- The `NavButton` style, which styled the Fluent rail replaced in 0.99.33 and has been referenced by nothing since. It is what the blue accent chain was still being kept alive for — a dead style holding a dead colour, each justifying the other.
+- `BodyStrongFontSize`, a duplicate of `BodyFontSize`; both were 13.
+- A `glow` brush assigned on every status update and never read, and the boolean the role logic replaced.
+
+### Note
+An element-reference check was written for this release and removed before it shipped. Its "looks locally declared" exclusion was wide enough to exclude everything, so it reported success by finding nothing at all — in a 6,200 line file, which should have been the tell. That is the 0.99.36 failure one level up: not a check scoped to the wrong names, but a check that could not fail. Doing it properly needs a parser rather than a regex, and the Roslyn pass already answers it, since a missing element is `CS0103`. The gap is marked in the file rather than papered over.
+
 
 ### Fixed
 - **The upload line was invisible in the light theme.** Section 9 draws upload in the *text* colour, which inverts between themes — near-white on dark, near-black on light. The series had been placed in the shared dictionary, so it stayed near-white in both and vanished against a white card. Both series now live in the palettes, where a value that must invert belongs.

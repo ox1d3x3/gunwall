@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.99.41. It
+This document describes how GunWall is **actually built** as of v0.99.42. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -268,6 +268,50 @@ dictionary writes across sampling loops.
 
 Charts are drawn by hand onto a canvas rather than with a charting library, in
 keeping with the zero-dependency rule.
+
+### Theming, and the one rule that keeps being broken
+
+Colour has exactly one home: `Themes/Theme.Dark.xaml` and `Themes/Theme.Light.xaml`.
+A colour defined anywhere else is a defect, and `tools/checks/check_theme.py`
+enforces it. `Themes/Controls.xaml` holds styles, metrics and type sizes — no
+brushes, no `Color` resources.
+
+The two palettes are written out separately on the design's explicit
+instruction. Light is **not** an inversion of dark: the accent darkens, the
+status hues darken hard because the saturated dark-mode green and amber fail on
+white, and `brand-hi` darkens in light where it lightens in dark. Nothing is
+derived programmatically from the other theme.
+
+`ApplyTheme` switches themes by **replacing** the palette dictionary in
+`Application.Current.Resources.MergedDictionaries` — it finds the existing one
+by source name rather than by index, so merging another dictionary ahead of it
+cannot make theme switching overwrite the wrong thing.
+
+That replacement is the source of a defect this project has now shipped twice:
+
+> **A `StaticResource` reference to a palette key freezes at load.** It resolves
+> once against whatever `App.xaml` merged, which is always the dark palette, and
+> never moves again. The element keeps the dark value for the life of the
+> process, in both themes.
+
+Every reference to a palette key must be `DynamicResource`, or a runtime lookup
+through `Application.Current.FindResource` from code. The check named
+`late-binding` fails the build on any static reference to a palette-only key.
+
+Two related rules, both learned the same way:
+
+- A value that must **invert between themes** belongs in the palettes, not the
+  shared dictionary. The chart series were in the shared dictionary until
+  0.99.41 and the upload line was invisible on light.
+- **Theme parity compares key names, not values.** Both palettes defining a key
+  proves nothing about either value being right; the light row-hover carried the
+  dark value through several releases with parity passing.
+
+The five category colours (signature status) are the deliberate exception. They
+are **user data**, not chrome: they live in `Services/CategoryPalette`, are
+editable on Settings, and appear only as the swatch in that list, the dot in the
+Applications table, and the legend above it. They are not used anywhere else in
+the interface, and the interface's own colours are never used for them.
 
 ---
 
