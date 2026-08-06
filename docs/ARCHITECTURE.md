@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.99.47. It
+This document describes how GunWall is **actually built** as of v0.99.49. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -312,6 +312,30 @@ geometry does not invert with theme — only the ink flowing through it does. Th
 ink is inherited from `Foreground` rather than assigned, so an icon in a nav row
 takes that row's colour without anything repainting it, which also keeps it clear
 of the binding-override rule below.
+
+### Tables
+
+Ten screens are `ListView` + `GridView`, and all of them draw from three styles in
+`Themes/Controls.xaml`. Retemplated rather than replaced with `ItemsControl`:
+that keeps selection, sorting, virtualisation and the fit-columns menu item,
+and the visual delta at the end is small.
+
+Each table carries its empty message in `Tag`, shown on `HasItems=False`. On
+several screens an empty table is the good outcome, so it says so rather than
+looking broken.
+
+One trap is worth stating because it is invisible until it bites: overriding the
+`ListView` template **must** keep
+`Style="{DynamicResource {x:Static GridView.GridViewScrollViewerStyleKey}}"` on
+the inner `ScrollViewer`. The column header row lives in that ScrollViewer's
+template. Drop it and every table renders its rows correctly with no headers at
+all, which looks like a layout fault rather than a missing style.
+
+Rows sit on the background separated by hairlines — no card, no radius, no gap.
+**Hover and selection must not look alike**: hover is `row-hover`, half the
+strength of `hover`, because it only says where the pointer is. Selection is
+`brand-bg` with a 2px `brand` inset, because it says which row a rule is about
+to change. Both live in `BorderThickness` so selection does not alter row height.
 
 ### Theming, and the one rule that keeps being broken
 

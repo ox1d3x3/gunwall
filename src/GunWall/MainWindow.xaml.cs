@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.47 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.49 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5898,11 +5898,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // 0.99.35; this now agrees with it instead of contradicting it two
         // inches away on the same screen.
         string title, role;
-        if (!_engineReady)                    { title = "Not Protected";   role = "Block"; }
+        if (!_engineReady)                    { title = "Not protected";   role = "Block"; }
         else if (_firewall.IsSnoozed)         { title = "Paused";          role = "Warn";  }
-        else if (_firewall.LockdownEngaged)   { title = "Locked Down";     role = "Block"; }
+        else if (_firewall.LockdownEngaged)   { title = "Locked down";     role = "Block"; }
         else if (_firewall.StrictMode)        { title = "Protected";       role = "Allow"; }
-        else                                  { title = "Monitoring Only"; role = "Warn";  }
+        else                                  { title = "Monitoring only"; role = "Warn";  }
 
         var fill = (Brush)System.Windows.Application.Current.FindResource(role + "Text");
 

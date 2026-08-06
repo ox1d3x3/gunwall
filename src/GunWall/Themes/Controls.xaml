@@ -651,18 +651,103 @@
         </Setter>
     </Style>
 
-    <!-- ===================== List view styling ===================== -->
+    <!-- =====================================================================
+         Tables, SPEC.md sections 6 and 12.
+
+         Ten screens share these three styles, so the whole table language lives
+         here rather than being restated per panel.
+
+         WHAT CHANGED AND WHY
+
+         The old rows were rounded cards with a one pixel gap between them, hover
+         from a control-library brush, and a selection tint that was the SAME
+         value as nav hover. The design is flatter and quieter than that: rows
+         are separated by a hairline, not by air; they have no radius; and
+         selection is a brand tint with a two pixel bar on the leading edge.
+
+         The distinction the old version lost is worth naming. Hover is where the
+         pointer happens to be. Selection is a decision. When both are the same
+         value you cannot tell, in a screenshot or at a glance, which row you
+         chose - and on a firewall the selected row is the one whose rule you are
+         about to change. 'row-hover' is deliberately half the strength of
+         'hover' so the pointer is felt rather than announced, and selection is
+         the only one of the two that gets colour.
+
+         Two pixels on the leading edge is a reserved measure in this design -
+         focus ring, nav marker, radio ring, selected row. Nothing else is 2px,
+         which is what makes it read as "this one" rather than as decoration.
+         ===================================================================== -->
+    <!-- The empty state, SPEC.md section 10.
+
+         A table with nothing in it used to render as a header rule over blank
+         space, which reads as "still loading" or "something broke" rather than
+         "there is nothing here yet" - and on several of these screens an empty
+         table is the NORMAL, good condition. No rules is what a fresh install
+         looks like. No alerts is what a quiet day looks like.
+
+         The message comes from the ListView's Tag so one template serves all ten
+         tables without a per-screen subclass, and it is driven by HasItems
+         rather than by a count kept in code, which cannot drift out of step with
+         what is actually on screen.
+
+         Skeleton and error states are not here yet. They need to distinguish
+         "loading", "failed" and "genuinely empty", which is a state machine
+         rather than a trigger, and guessing wrong shows "nothing here" over a
+         table that simply has not finished loading. -->
     <Style TargetType="ListView">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListView">
+                    <Grid>
+                        <!-- This ScrollViewer style is NOT optional and NOT cosmetic.
+                             When a ListView has a GridView, the column header row is
+                             drawn by a GridViewHeaderRowPresenter that lives inside
+                             the ScrollViewer's template, supplied by this key.
+                             Replacing the ListView template without it produces a
+                             table that renders its rows perfectly and has no headers
+                             at all - which looks like a layout bug rather than a
+                             missing style, and would be hunted for in the wrong
+                             place entirely. -->
+                        <ScrollViewer Focusable="False" Padding="{TemplateBinding Padding}"
+                                      Style="{DynamicResource {x:Static GridView.GridViewScrollViewerStyleKey}}">
+                            <ItemsPresenter SnapsToDevicePixels="True" />
+                        </ScrollViewer>
+                        <TextBlock x:Name="empty" Text="{TemplateBinding Tag}"
+                                   Visibility="Collapsed" FontSize="13" Margin="0,42,0,0"
+                                   TextWrapping="Wrap" TextAlignment="Center" MaxWidth="380"
+                                   HorizontalAlignment="Center" VerticalAlignment="Top"
+                                   Foreground="{DynamicResource TextTertiary}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="HasItems" Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="empty" Property="Visibility" Value="Visible" />
+                        </MultiTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
+    <!-- Column headers: 10.5/600 in 't3', on a 'line2' rule.
+
+         No hover state. The old one lit the header background on pointer-over,
+         which promises sorting - and most of these columns do not sort. An
+         affordance that does nothing is worse than no affordance.
+
+         't3' is correct here specifically BECAUSE the design says nothing needed
+         to make a decision may be 't3': a column header names the data, it is
+         not the data. The values below it carry the weight. -->
     <Style TargetType="GridViewColumnHeader">
         <Setter Property="OverridesDefaultStyle" Value="True" />
-        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="FontSize" Value="{StaticResource CaptionFontSize}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextTertiary}" />
+        <Setter Property="FontSize" Value="10.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Template">
@@ -670,13 +755,49 @@
                 <ControlTemplate TargetType="GridViewColumnHeader">
                     <Border x:Name="hb" Background="Transparent"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
-                            Padding="10,8">
-                        <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"
-                                          TextElement.Foreground="{DynamicResource TextSecondary}" />
+                            Padding="10,0,10,10" SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                          TextElement.Foreground="{DynamicResource TextTertiary}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Rows: hairline-separated, square, 'row-hover' on pointer, 'brand-bg'
+         with a 2px 'brand' inset when selected.
+
+         BorderThickness carries both the separator and the selection bar, so a
+         selected row does not change height - a row that grows on selection
+         shifts every row beneath it, which on a live table that is also
+         inserting rows reads as the list jumping. -->
+    <Style TargetType="ListViewItem">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="FontSize" Value="{StaticResource TableFontSize}" />
+        <Setter Property="Padding" Value="8,10" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListViewItem">
+                    <Border x:Name="bd" Background="Transparent"
+                            BorderBrush="{DynamicResource Divider}" BorderThickness="0,0,0,1"
+                            SnapsToDevicePixels="True">
+                        <Border x:Name="sel" BorderBrush="Transparent" BorderThickness="2,0,0,0"
+                                Padding="{TemplateBinding Padding}">
+                            <GridViewRowPresenter Content="{TemplateBinding Content}"
+                                                  Columns="{TemplateBinding GridView.ColumnCollection}" />
+                        </Border>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="hb" Property="Background" Value="{DynamicResource BgElevated}" />
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource RowHover}" />
+                        </Trigger>
+                        <!-- Selection is a decision; hover is where the pointer is.
+                             They must not look alike. -->
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource BlockFill}" />
+                            <Setter TargetName="sel" Property="BorderBrush" Value="{DynamicResource BlockText}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -684,34 +805,6 @@
         </Setter>
     </Style>
 
-    <!-- Premium list rows: rounded, hover highlight, accent selection bar. -->
-    <Style TargetType="ListViewItem">
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="Padding" Value="8,8" />
-        <Setter Property="Margin" Value="0,1" />
-        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ListViewItem">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="{DynamicResource ControlCornerRadius}"
-                            Padding="{TemplateBinding Padding}">
-                        <GridViewRowPresenter Content="{TemplateBinding Content}"
-                                              Columns="{TemplateBinding GridView.ColumnCollection}" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource ListViewItemBackgroundPointerOver}" />
-                        </Trigger>
-                        <!-- Selection is a different surface from hover: a row you are
-                             pointing at and a row you have chosen must not look alike. -->
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSelected}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
     <!-- ===================== Themed ComboBox ===================== -->
     
     

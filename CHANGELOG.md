@@ -6,6 +6,49 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.49] — 2026-08-06
+
+### Added
+- **Empty states on all twelve tables.** A table with nothing in it rendered as a header rule over blank space, which reads as "still loading" or "something broke" — and on several of these screens an empty table is the *normal, good* condition. No rules is what a fresh install looks like. No alerts is what a quiet day looks like. The message comes from each table's `Tag`, so one template serves all twelve, and it is driven by `HasItems` rather than a count kept in code, which cannot drift out of step with what is on screen.
+- **Placeholders on the four filter fields.** They were bare rectangles: a border, no label, no placeholder, no clue what typing into one would do. WPF has no placeholder property, so the template carries one, hidden by a trigger on the first keystroke. One of the four was not even using the shared style.
+
+### Changed
+- **Column headers are uppercase**, as the design has them. The source uses CSS `text-transform`, which WPF has no equivalent for, so the fifty-one strings themselves changed. They still lack the design's 0.10em tracking — WPF has no character spacing, and that remains the open typography question.
+
+### Note — two mistakes worth recording
+Both were caught before packaging, but only because of what they would have done:
+
+- The empty-state template replaced the `ListView` template without the `GridViewScrollViewerStyleKey` style. When a `ListView` has a `GridView`, the column header row is drawn by a `GridViewHeaderRowPresenter` that lives inside *that* ScrollViewer template. Without it, every table would have rendered its rows perfectly and had **no headers at all** — which looks like a layout bug, and would have been hunted for in the layout.
+- The script that applied the empty messages used `if not m: continue`, so three tables whose names I had guessed wrong were skipped in silence and reported success for the nine that matched. Rewritten to assert. A helper that quietly does less than asked is the same defect this project keeps finding in the product.
+
+The placeholder also shipped, briefly, defaulting to visible with only a "show when empty" trigger — so it would have sat under the typed text forever, since nothing would ever have hidden it again.
+
+### Still outstanding
+Skeleton and error states are not in. They need to distinguish loading, failed and genuinely empty, which is a state machine rather than a trigger — and guessing wrong shows "nothing here" over a table that simply has not finished loading.
+
+---
+
+## [0.99.48] — 2026-08-06
+
+The table system. Ten screens share three styles, so this is one change with a
+wide blast radius rather than ten changes.
+
+### Changed
+- **Table rows are hairline-separated, square, and quiet.** They were rounded cards with a pixel of air between them, hover from a control-library brush, and a selection tint that was *the same value as nav hover*.
+
+  That last part is the one that mattered. Hover is where the pointer happens to be; selection is a decision. When both are the same value you cannot tell — in a screenshot or at a glance — which row you chose, and on a firewall the selected row is the one whose rule you are about to change. Hover is now `row-hover`, deliberately half the strength of `hover`, and selection is `brand-bg` with a 2px `brand` bar on the leading edge. Two pixels is a reserved measure in this design — focus ring, nav marker, radio ring, selected row — which is what makes it read as *this one* rather than as decoration.
+
+  The separator and the selection bar both live in `BorderThickness`, so a selected row does not change height. A row that grows on selection shifts every row beneath it, and on a live table that is also inserting rows that reads as the list jumping.
+- **Column headers are 10.5/600 in `t3` on a `line2` rule, and no longer light up on hover.** The hover state promised sorting, and most of these columns do not sort — an affordance that does nothing is worse than none. `t3` is right here precisely *because* the design forbids `t3` for anything needed to make a decision: a header names the data, it is not the data.
+- **Eleven tables came out of their card containers.** Tables sit on the background, separated by hairlines; cards are reserved for boundaries that are load-bearing — the chart, the posture module, the prompt. Thirty legitimate cards remain.
+- Table cells take the design's 12.5px size, which the token for it had been declared for and never applied to anything.
+- The posture module's state names are sentence case, matching the hero. The dashboard was showing "Monitoring only" and "Monitoring Only" simultaneously, six inches apart, for the same state.
+
+### Removed
+- `SurfaceSelected` and `SurfacePressed` from both palettes. Neither is a design token — there is no "selected surface" in section 2, selection is `brand-bg` — and both were invented aliases that the old row style was the only consumer of.
+
+---
+
 ## [0.99.47] — 2026-08-06
 
 ### Added

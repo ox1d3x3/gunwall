@@ -52,12 +52,10 @@ PENDING_TOKENS = {
     "Skeleton":       "0.99.46 table lifecycle states",
     "FillUp":         "0.99.47 chart area fills",
     "FillDown":       "0.99.47 chart area fills",
-    "SurfacePressed": "0.99.45 table row states",
     "FocusRing":      "0.99.49 focus rings",
     "InfoText":       "0.99.45 neutral pill text",
     "StatFontSize":   "0.99.47 primary stat, 30px",
     "IconCheck":      "0.99.48 verdict rows in the table system",
-    "TableFontSize":  "0.99.45 table cell, 12.5px",
     "IsDarkTheme":    "read by future theme-dependent drawing",
 }
 

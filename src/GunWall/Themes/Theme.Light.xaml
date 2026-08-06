@@ -27,8 +27,6 @@
     <SolidColorBrush x:Key="Divider" Color="#EBEDF0" />        <!-- 'line': row rules, chrome dividers -->
     <SolidColorBrush x:Key="BorderBrush" Color="#DCDFE4" />    <!-- 'line2': control borders, header rule -->
     <SolidColorBrush x:Key="SurfaceHover" Color="#09000000" />   <!-- 'hover': 5% white -->
-    <SolidColorBrush x:Key="SurfaceSelected" Color="#09000000" />
-    <SolidColorBrush x:Key="SurfacePressed" Color="#06000000" />
     <SolidColorBrush x:Key="RowHover" Color="#06000000" />       <!-- 'row-hover': 2.5% black, half 'hover' -->
     <SolidColorBrush x:Key="TextPrimary" Color="#0D0F12" />     <!-- 't1' -->
     <SolidColorBrush x:Key="TextSecondary" Color="#5A626D" />   <!-- 't2' -->

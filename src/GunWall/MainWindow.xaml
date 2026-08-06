@@ -42,16 +42,62 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <conv:NotEmptyToVisConverter x:Key="NotEmptyToVis" />
 
+        <!-- Filter fields. These rendered as bare empty rectangles: a box with a
+             border, no label, no placeholder, no clue what typing into it would
+             do. Four of them, on four different screens.
+
+             WPF has no placeholder property, so the template carries one. The
+             text comes from Tag, which keeps the style reusable without a
+             per-screen subclass, and it hides on the first keystroke via a
+             trigger on Text="" - an empty string does match that trigger, which
+             is the one thing about this that is not obvious.
+
+             Same reasoning as the top bar field in 0.99.47: the library's own
+             focus underline is not wanted under a box that already has a
+             border, so the template is replaced rather than patched.
+             PART_ContentHost is required by the TextBox contract - omit it and
+             typing silently stops working while the control still draws. -->
         <Style x:Key="SearchBox" TargetType="TextBox">
-            <Setter Property="Background" Value="{DynamicResource BgSecondary}" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10,7" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="CaretBrush" Value="{DynamicResource BlockText}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource BlockFill}" />
             <Setter Property="Width" Value="220" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="33" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="fb" CornerRadius="7" Padding="10,0"
+                                Background="{DynamicResource BgCard}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                SnapsToDevicePixels="True">
+                            <Grid>
+                                <!-- Collapsed by default and revealed by the Text=""
+                                     trigger below. The other way round it would show
+                                     the placeholder UNDER the typed text forever,
+                                     since nothing would ever hide it again. -->
+                                <TextBlock x:Name="ph" Text="{TemplateBinding Tag}" FontSize="12.5"
+                                           VerticalAlignment="Center" IsHitTestVisible="False"
+                                           Visibility="Collapsed"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                                <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"
+                                              Background="Transparent"
+                                              HorizontalScrollBarVisibility="Hidden"
+                                              VerticalScrollBarVisibility="Hidden" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="ph" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="fb" Property="BorderBrush" Value="{DynamicResource TextTertiary}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- The one sanctioned use of 'brand-hi'. Section 2 gives that token a
@@ -869,7 +915,7 @@
                                       Checked="ShowAllApps_Changed" Unchecked="ShowAllApps_Changed" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <TextBox x:Name="AppSearch" Style="{StaticResource SearchBox}"
+                            <TextBox x:Name="AppSearch" Tag="Filter applications..." Style="{StaticResource SearchBox}"
                                      TextChanged="AppSearch_TextChanged" Margin="0,0,8,0"
                                      ToolTip="Search applications" />
                             <Button Content="Block an app" Style="{StaticResource ActionButton}"
@@ -905,8 +951,8 @@
                     </StackPanel>
                 </StackPanel>
 
-                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
-                    <ListView x:Name="AppsList" VirtualizingPanel.IsVirtualizing="True"
+                <Border Grid.Row="1" Padding="0">
+                    <ListView x:Name="AppsList" Tag="No applications seen yet. They appear here the first time each one tries to connect." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling"
                               PreviewMouseRightButtonDown="Row_RightClickSelect">
                         <ListView.ContextMenu>
@@ -947,7 +993,7 @@
                         </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Application" Width="220">
+                                <GridViewColumn Header="APPLICATION" Width="220">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
@@ -986,9 +1032,9 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Publisher" Width="190"
+                                <GridViewColumn Header="PUBLISHER" Width="190"
                                                 DisplayMemberBinding="{Binding Publisher}" />
-                                <GridViewColumn Header="VirusTotal" Width="130">
+                                <GridViewColumn Header="VIRUSTOTAL" Width="130">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding VtText}" FontSize="12"
@@ -1011,9 +1057,9 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Path" Width="300"
+                                <GridViewColumn Header="PATH" Width="300"
                                                 DisplayMemberBinding="{Binding ExecutablePath}" />
-                                <GridViewColumn Header="Conns" Width="86">
+                                <GridViewColumn Header="CONNS" Width="86">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border CornerRadius="12" Padding="8,2" HorizontalAlignment="Left"
@@ -1030,7 +1076,7 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Status" Width="90">
+                                <GridViewColumn Header="STATUS" Width="90">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border CornerRadius="6" Padding="10,3"
@@ -1043,7 +1089,7 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Activity" Width="106">
+                                <GridViewColumn Header="ACTIVITY" Width="106">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <!-- Section 9: sparkline is stroke 1.3 in 't3', no fill.
@@ -1057,7 +1103,7 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Action" Width="100">
+                                <GridViewColumn Header="ACTION" Width="100">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <Button Content="{Binding Status, Converter={StaticResource StatusToAction}}"
@@ -1089,7 +1135,7 @@
                                 Style="{StaticResource ActionButton}" Click="GeoDownload_Click"
                                 Margin="0,0,8,0"
                                 ToolTip="Fetch the free country/ASN database so each connection shows its location" />
-                        <TextBox x:Name="ConnSearch" Style="{StaticResource SearchBox}"
+                        <TextBox x:Name="ConnSearch" Tag="Filter connections..." Style="{StaticResource SearchBox}"
                                  TextChanged="ConnSearch_TextChanged" ToolTip="Search connections" />
                     </StackPanel>
                 </Grid>
@@ -1100,8 +1146,8 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Style="{StaticResource Card}" Padding="8">
-                    <ListView x:Name="ConnList" VirtualizingPanel.IsVirtualizing="True"
+                <Border Grid.Column="0" Padding="0">
+                    <ListView x:Name="ConnList" Tag="No active connections right now." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling"
                               SelectionChanged="ConnSelected"
                               PreviewMouseRightButtonDown="Row_RightClickSelect">
@@ -1120,7 +1166,7 @@
                         </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Process" Width="230">
+                                <GridViewColumn Header="PROCESS" Width="230">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding ProcessDisplay}"
@@ -1131,23 +1177,23 @@
                                 </GridViewColumn>
                                 <GridViewColumn Header="PID" Width="64"
                                                 DisplayMemberBinding="{Binding ProcessId}" />
-                                <GridViewColumn Header="Proto" Width="56"
+                                <GridViewColumn Header="PROTO" Width="56"
                                                 DisplayMemberBinding="{Binding Protocol}" />
-                                <GridViewColumn Header="Local" Width="190">
+                                <GridViewColumn Header="LOCAL" Width="190">
                                                 <GridViewColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Text="{Binding LocalEndpoint}" Style="{StaticResource DataCell}" />
                                                     </DataTemplate>
                                                 </GridViewColumn.CellTemplate>
                                             </GridViewColumn>
-                                <GridViewColumn Header="Remote" Width="220">
+                                <GridViewColumn Header="REMOTE" Width="220">
                                                 <GridViewColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Text="{Binding RemoteEndpoint}" Style="{StaticResource DataCell}" />
                                                     </DataTemplate>
                                                 </GridViewColumn.CellTemplate>
                                             </GridViewColumn>
-                                <GridViewColumn Header="Location" Width="210">
+                                <GridViewColumn Header="LOCATION" Width="210">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
@@ -1161,7 +1207,7 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="State" Width="124"
+                                <GridViewColumn Header="STATE" Width="124"
                                                 DisplayMemberBinding="{Binding State}" />
                             </GridView>
                         </ListView.View>
@@ -1311,14 +1357,14 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Style="{StaticResource Card}" Padding="14" Margin="0,0,8,0">
+                    <Border Grid.Column="0" Padding="0" Margin="0,0,18,0">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="TOP COUNTRIES" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
-                            <ListView x:Name="TrafficCountries" BorderThickness="0" Background="Transparent"
+                            <ListView x:Name="TrafficCountries" Tag="No traffic attributed to a country yet." BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True">
                                 <ListView.View>
                                     <GridView>
-                                        <GridViewColumn Header="Country" Width="240">
+                                        <GridViewColumn Header="COUNTRY" Width="240">
                                             <GridViewColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal">
@@ -1330,23 +1376,23 @@
                                                 </DataTemplate>
                                             </GridViewColumn.CellTemplate>
                                         </GridViewColumn>
-                                        <GridViewColumn Header="Destinations" Width="120" DisplayMemberBinding="{Binding Count}" />
+                                        <GridViewColumn Header="DESTINATIONS" Width="120" DisplayMemberBinding="{Binding Count}" />
                                     </GridView>
                                 </ListView.View>
                             </ListView>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Column="1" Style="{StaticResource Card}" Padding="14" Margin="8,0,0,0">
+                    <Border Grid.Column="1" Padding="0" Margin="18,0,0,0">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="MOST ACTIVE APPS" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
-                            <ListView x:Name="TrafficApps" BorderThickness="0" Background="Transparent"
+                            <ListView x:Name="TrafficApps" Tag="No per-app traffic recorded yet." BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True">
                                 <ListView.View>
                                     <GridView>
-                                        <GridViewColumn Header="Application" Width="210" DisplayMemberBinding="{Binding Name}" />
-                                        <GridViewColumn Header="Destinations" Width="110" DisplayMemberBinding="{Binding Count}" />
-                                        <GridViewColumn Header="Countries" Width="90" DisplayMemberBinding="{Binding Countries}" />
+                                        <GridViewColumn Header="APPLICATION" Width="210" DisplayMemberBinding="{Binding Name}" />
+                                        <GridViewColumn Header="DESTINATIONS" Width="110" DisplayMemberBinding="{Binding Count}" />
+                                        <GridViewColumn Header="COUNTRIES" Width="90" DisplayMemberBinding="{Binding Countries}" />
                                     </GridView>
                                 </ListView.View>
                             </ListView>
@@ -1398,14 +1444,14 @@
                                        VerticalAlignment="Center" TextWrapping="Wrap"
                                        Text="Drag from point A to point B on the timeline to see which apps were active then, busiest first." />
                         </DockPanel>
-                        <ListView x:Name="UsageList" BorderThickness="0" Background="Transparent" MaxHeight="260"
+                        <ListView x:Name="UsageList" Tag="No per-app usage recorded yet." BorderThickness="0" Background="Transparent" MaxHeight="260"
                                   VirtualizingPanel.IsVirtualizing="True">
                             <ListView.View>
                                 <GridView>
-                                    <GridViewColumn Header="Application" Width="280" DisplayMemberBinding="{Binding App}" />
-                                    <GridViewColumn Header="Down" Width="110" DisplayMemberBinding="{Binding DownText}" />
-                                    <GridViewColumn Header="Up" Width="110" DisplayMemberBinding="{Binding UpText}" />
-                                    <GridViewColumn Header="Total" Width="120" DisplayMemberBinding="{Binding TotalText}" />
+                                    <GridViewColumn Header="APPLICATION" Width="280" DisplayMemberBinding="{Binding App}" />
+                                    <GridViewColumn Header="DOWN" Width="110" DisplayMemberBinding="{Binding DownText}" />
+                                    <GridViewColumn Header="UP" Width="110" DisplayMemberBinding="{Binding UpText}" />
+                                    <GridViewColumn Header="TOTAL" Width="120" DisplayMemberBinding="{Binding TotalText}" />
                                 </GridView>
                             </ListView.View>
                         </ListView>
@@ -1590,17 +1636,17 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Style="{StaticResource Card}" Padding="8" Margin="0,0,8,0">
+                    <Border Grid.Column="0" Padding="0" Margin="0,0,8,0">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="QUERY LOG" Style="{StaticResource SectionLabel}" Margin="4,2,0,8" />
-                            <ListView x:Name="DnsLog" BorderThickness="0" Background="Transparent"
+                            <ListView x:Name="DnsLog" Tag="No DNS queries observed yet." BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                                 <ListView.View>
                                     <GridView>
-                                        <GridViewColumn Header="Time" Width="84" DisplayMemberBinding="{Binding TimeText}" />
-                                        <GridViewColumn Header="Domain" Width="320" DisplayMemberBinding="{Binding Domain}" />
-                                        <GridViewColumn Header="Type" Width="64" DisplayMemberBinding="{Binding Type}" />
-                                        <GridViewColumn Header="Action" Width="110">
+                                        <GridViewColumn Header="TIME" Width="84" DisplayMemberBinding="{Binding TimeText}" />
+                                        <GridViewColumn Header="DOMAIN" Width="320" DisplayMemberBinding="{Binding Domain}" />
+                                        <GridViewColumn Header="TYPE" Width="64" DisplayMemberBinding="{Binding Type}" />
+                                        <GridViewColumn Header="ACTION" Width="110">
                                             <GridViewColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding ActionText}" FontWeight="SemiBold">
@@ -1669,16 +1715,16 @@
                     <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                Text="Notable events in one place: protection turned on or off, lockdown engaged or lifted, and VirusTotal detections. Opening this page marks everything as read. Kept for this session (up to 200 entries)." />
                 </StackPanel>
-                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
+                <Border Grid.Row="1" Padding="0">
                     <Grid>
                         <TextBlock x:Name="AlertsEmpty" Text="Nothing yet - GunWall will note important events here."
                                    Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        <ListView x:Name="AlertsList" BorderThickness="0" Background="Transparent"
+                        <ListView x:Name="AlertsList" Tag="No alerts. That is the good outcome." BorderThickness="0" Background="Transparent"
                                   VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                             <ListView.View>
                                 <GridView>
-                                    <GridViewColumn Header="Time" Width="84" DisplayMemberBinding="{Binding TimeText}" />
-                                    <GridViewColumn Header="Event" Width="240">
+                                    <GridViewColumn Header="TIME" Width="84" DisplayMemberBinding="{Binding TimeText}" />
+                                    <GridViewColumn Header="EVENT" Width="240">
                                         <GridViewColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding Title}" FontWeight="SemiBold">
@@ -1699,7 +1745,7 @@
                                             </DataTemplate>
                                         </GridViewColumn.CellTemplate>
                                     </GridViewColumn>
-                                    <GridViewColumn Header="Detail" Width="520" DisplayMemberBinding="{Binding Detail}" />
+                                    <GridViewColumn Header="DETAIL" Width="520" DisplayMemberBinding="{Binding Detail}" />
                                 </GridView>
                             </ListView.View>
                         </ListView>
@@ -1722,7 +1768,7 @@
                                    Style="{StaticResource Muted}" Margin="0,4,0,0" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
-                        <TextBox x:Name="PacketsSearch" Style="{StaticResource SearchBox}"
+                        <TextBox x:Name="PacketsSearch" Tag="Filter packets..." Style="{StaticResource SearchBox}"
                                  TextChanged="PacketsSearch_TextChanged"
                                  ToolTip="Search packets" Margin="0,0,8,0" />
                         <Button Content="Clear" Style="{StaticResource ActionButton}"
@@ -1730,27 +1776,27 @@
                     </StackPanel>
                 </Grid>
 
-                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
-                    <ListView x:Name="PacketsList" VirtualizingPanel.IsVirtualizing="True"
+                <Border Grid.Row="1" Padding="0">
+                    <ListView x:Name="PacketsList" Tag="No packets logged yet. Decisions appear here as they happen." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Time" Width="84"
+                                <GridViewColumn Header="TIME" Width="84"
                                                 DisplayMemberBinding="{Binding TimeText}" />
-                                <GridViewColumn Header="Application" Width="150"
+                                <GridViewColumn Header="APPLICATION" Width="150"
                                                 DisplayMemberBinding="{Binding AppName}" />
-                                <GridViewColumn Header="Proto" Width="56"
+                                <GridViewColumn Header="PROTO" Width="56"
                                                 DisplayMemberBinding="{Binding Protocol}" />
-                                <GridViewColumn Header="Direction" Width="80"
+                                <GridViewColumn Header="DIRECTION" Width="80"
                                                 DisplayMemberBinding="{Binding Direction}" />
-                                <GridViewColumn Header="Remote" Width="200">
+                                <GridViewColumn Header="REMOTE" Width="200">
                                                 <GridViewColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Text="{Binding RemoteEndpoint}" Style="{StaticResource DataCell}" />
                                                     </DataTemplate>
                                                 </GridViewColumn.CellTemplate>
                                             </GridViewColumn>
-                                <GridViewColumn Header="Action" Width="110">
+                                <GridViewColumn Header="ACTION" Width="110">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <Border CornerRadius="12" Padding="9,2" HorizontalAlignment="Left"
@@ -1761,7 +1807,7 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Reason" Width="250">
+                                <GridViewColumn Header="REASON" Width="250">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Reason}" FontSize="12"
@@ -1848,17 +1894,17 @@
                 </Border>
 
                 <!-- Rules list -->
-                <Border Grid.Row="2" Style="{StaticResource Card}" Padding="8">
-                    <ListView x:Name="RulesList" VirtualizingPanel.IsVirtualizing="True">
+                <Border Grid.Row="2" Padding="0">
+                    <ListView x:Name="RulesList" Tag="No custom rules yet. Rules you add from a prompt or from Applications appear here." VirtualizingPanel.IsVirtualizing="True">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Action" Width="80"
+                                <GridViewColumn Header="ACTION" Width="80"
                                                 DisplayMemberBinding="{Binding ActionText}" />
-                                <GridViewColumn Header="Direction" Width="100"
+                                <GridViewColumn Header="DIRECTION" Width="100"
                                                 DisplayMemberBinding="{Binding DirectionText}" />
-                                <GridViewColumn Header="Match" Width="280"
+                                <GridViewColumn Header="MATCH" Width="280"
                                                 DisplayMemberBinding="{Binding TargetText}" />
-                                <GridViewColumn Header="Status" Width="120"
+                                <GridViewColumn Header="STATUS" Width="120"
                                                 DisplayMemberBinding="{Binding StatusText}" />
                                 <GridViewColumn Header="" Width="100">
                                     <GridViewColumn.CellTemplate>
@@ -1920,7 +1966,7 @@
                                    HorizontalAlignment="Left" Text="" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
-                        <TextBox x:Name="SystemSearch" Width="190" MinHeight="33" VerticalContentAlignment="Center"
+                        <TextBox x:Name="SystemSearch" Tag="Filter services..." Style="{StaticResource SearchBox}" Width="190"
                                  ToolTip="Search rules" Margin="0,0,8,0" TextChanged="SystemSearch_TextChanged" />
                         <Button Content="Secure baseline" Style="{StaticResource ActionButton}"
                                 Click="SecureBaseline_Click"
@@ -1958,15 +2004,15 @@
                                 Click="RefreshServices_Click" />
                     </StackPanel>
                 </Grid>
-                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
-                    <ListView x:Name="ServicesList" VirtualizingPanel.IsVirtualizing="True"
+                <Border Grid.Row="1" Padding="0">
+                    <ListView x:Name="ServicesList" Tag="No Windows services loaded yet." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Service" Width="220" DisplayMemberBinding="{Binding Display}" />
-                                <GridViewColumn Header="Status" Width="90" DisplayMemberBinding="{Binding Status}" />
-                                <GridViewColumn Header="Name" Width="160" DisplayMemberBinding="{Binding Name}" />
-                                <GridViewColumn Header="Rule" Width="90"
+                                <GridViewColumn Header="SERVICE" Width="220" DisplayMemberBinding="{Binding Display}" />
+                                <GridViewColumn Header="STATUS" Width="90" DisplayMemberBinding="{Binding Status}" />
+                                <GridViewColumn Header="NAME" Width="160" DisplayMemberBinding="{Binding Name}" />
+                                <GridViewColumn Header="RULE" Width="90"
                                                 DisplayMemberBinding="{Binding BlockedText}" />
                                 <GridViewColumn Header="" Width="130">
                                     <GridViewColumn.CellTemplate>
@@ -2008,25 +2054,25 @@
                             HorizontalAlignment="Right" VerticalAlignment="Top" Padding="16,8"
                             Click="ScanNetwork_Click" />
                 </Grid>
-                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
-                    <ListView x:Name="DevicesList" VirtualizingPanel.IsVirtualizing="True">
+                <Border Grid.Row="1" Padding="0">
+                    <ListView x:Name="DevicesList" Tag="No devices found yet. Run a scan to look for hosts on your network." VirtualizingPanel.IsVirtualizing="True">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="IP address" Width="160">
+                                <GridViewColumn Header="IP ADDRESS" Width="160">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Ip}" Style="{StaticResource DataCell}" />
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="MAC address" Width="180">
+                                <GridViewColumn Header="MAC ADDRESS" Width="180">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Mac}" Style="{StaticResource DataCell}" />
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Host" Width="280" DisplayMemberBinding="{Binding Host}" />
+                                <GridViewColumn Header="HOST" Width="280" DisplayMemberBinding="{Binding Host}" />
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -2187,16 +2233,16 @@
                             Click="ClearActivity_Click" />
                 </Grid>
 
-                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
-                    <ListView x:Name="ActivityList" VirtualizingPanel.IsVirtualizing="True"
+                <Border Grid.Row="1" Padding="0">
+                    <ListView x:Name="ActivityList" Tag="No activity recorded yet." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Time" Width="90"
+                                <GridViewColumn Header="TIME" Width="90"
                                                 DisplayMemberBinding="{Binding TimeText}" />
-                                <GridViewColumn Header="Process" Width="200"
+                                <GridViewColumn Header="PROCESS" Width="200"
                                                 DisplayMemberBinding="{Binding ProcessName}" />
-                                <GridViewColumn Header="Event" Width="460"
+                                <GridViewColumn Header="EVENT" Width="460"
                                                 DisplayMemberBinding="{Binding Detail}" />
                             </GridView>
                         </ListView.View>
