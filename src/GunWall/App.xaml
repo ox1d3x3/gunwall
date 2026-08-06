@@ -23,6 +23,11 @@
                 <!-- GunWall's palette (dark by default), swapped at runtime. -->
                 <ResourceDictionary Source="Themes/Theme.Dark.xaml" />
                 <ResourceDictionary Source="Themes/Controls.xaml" />
+                <!-- Icon geometry. After Controls.xaml because NavIcon references
+                     palette brushes, and merged into the shared set rather than
+                     either palette because geometry does not invert with theme -
+                     only the ink flowing through it does. -->
+                <ResourceDictionary Source="Themes/Icons.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

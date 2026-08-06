@@ -56,7 +56,7 @@ public partial class AlertWindow : Window
         PortText.Text = info.RemotePort == 0 ? "\u2014" : PortLabel(info.RemotePort);
         PathText.Text = info.ExePath;
         DateText.Text = info.Time.ToString("g");
-        SignatureText.Text = "Info";
+        SignatureText.Text = "Checking...";
         SignatureText.ToolTip = "Checking the digital signature...";
         HostText.Text = "Resolving...";
         UpdateSummary();
@@ -67,8 +67,9 @@ public partial class AlertWindow : Window
             {
             // Short enough to fit the title line without truncating; the
             // subtitle carries the rest.
-            HeaderText.Text = "App is blocked";
-            if (SummaryText != null) SummaryText.Text = "Approve to allow network access";
+            // HeaderText is the state strip now, so it is the uppercase kicker;
+            // SummaryText is the 22px question and keeps naming the app.
+            HeaderText.Text = "BLOCKED - AWAITING APPROVAL";
         }
 
         Loaded += OnLoaded;
@@ -109,13 +110,18 @@ public partial class AlertWindow : Window
             SignatureStatus.Invalid  => $"INVALID signature - {sig.Detail}",
             _                        => "The digital signature could not be checked."
         };
-        SignatureText.Foreground = new SolidColorBrush(sig.Status switch
-        {
-            SignatureStatus.Valid    => Color.FromRgb(0x3F, 0xB8, 0x68), // green
-            SignatureStatus.Unsigned => Color.FromRgb(0xE0, 0xA5, 0x3F), // amber
-            SignatureStatus.Invalid  => Color.FromRgb(0xE2, 0x5C, 0x5C), // red
-            _                        => Color.FromRgb(0x7A, 0x82, 0x8C)  // gray
-        });
+        // Four more raw literals, same family as the footer dot in 0.99.42:
+        // built with new SolidColorBrush, so they never followed a theme, and
+        // none of them was a palette value - the "green" was #3FB868, which is
+        // not --ok in either theme. Role tokens now, resolved at use.
+        SignatureText.Foreground = (Brush)System.Windows.Application.Current.FindResource(
+            sig.Status switch
+            {
+                SignatureStatus.Valid    => "AllowText",
+                SignatureStatus.Unsigned => "WarnText",
+                SignatureStatus.Invalid  => "BlockText",
+                _                        => "TextTertiary"
+            });
 
         if (string.IsNullOrEmpty(ip)) { HostText.Text = "\u2014"; return; }
         string host = await NetInfoService.ResolveHostAsync(ip);
@@ -169,42 +175,35 @@ public partial class AlertWindow : Window
     // grant network access.
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    /// <summary>
-    /// Folds the endpoint detail out and back. The prompt opens compact
-    /// deliberately: it interrupts whatever the person was doing, so it should
-    /// ask one short question. Everything needed to answer it properly is one
-    /// click away rather than absent - and the countdown, if one is running, is
-    /// stopped on the way, since someone reading the detail is deciding rather
-    /// than ignoring it.
-    /// </summary>
+    /// <summary>Expands the detail panel. The chevron flips to point up, and a
+    /// running countdown is stopped on the way: someone reading the detail is
+    /// deciding rather than ignoring it, and the fail-closed timer should not
+    /// answer the question out from under them.</summary>
     private void Details_Click(object sender, RoutedEventArgs e)
     {
         if (DetailsPanel == null) return;
         bool showing = DetailsPanel.Visibility == Visibility.Visible;
 
         DetailsPanel.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
-        if (DetailsLabel != null) DetailsLabel.Text = showing ? "Hide details" : "Details";
-        // A SymbolIcon carries a Symbol, not a character - setting Text on it
-        // would compile and then quietly do nothing.
+
+        // A Path carries geometry, not a glyph. The previous version set Symbol
+        // on a SymbolIcon, which was correct for that control; this one has to
+        // swap Data, and setting Text on either would compile and quietly do
+        // nothing.
         if (DetailsChevron != null)
-            DetailsChevron.Symbol = showing
-                ? Wpf.Ui.Controls.SymbolRegular.ChevronDown24
-                : Wpf.Ui.Controls.SymbolRegular.ChevronUp24;
+            DetailsChevron.Data = (System.Windows.Media.Geometry)
+                System.Windows.Application.Current.FindResource(
+                    showing ? "IconChevronDown" : "IconChevronUp");
+
         if (!showing)
         {
             StopCountdown();
             if (CountdownHint != null)
-                CountdownHint.Text = "Waiting for your choice \u2014 closing this window blocks the app";
+                CountdownHint.Text = "Closing blocks the app";
         }
         SizeToContent = SizeToContent.Height;
     }
 
-    /// <summary>
-    /// Keeps the endpoint line reading as a destination rather than an address.
-    /// A hostname is something a person can recognise or distrust; a bare
-    /// address is not, so the name replaces it as soon as one resolves, with
-    /// the port appended because "which service" is part of the question.
-    /// </summary>
     private void UpdateSummary()
     {
         if (HostText == null) return;
@@ -244,7 +243,7 @@ public partial class AlertWindow : Window
         if (_timeoutSeconds <= 0)
         {
             if (CountdownHint != null)
-                CountdownHint.Text = "Waiting for your choice \u2014 closing this window blocks the app";
+                CountdownHint.Text = "Closing blocks the app";
             return;
         }
 

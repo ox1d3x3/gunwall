@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.43 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.47 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3798,6 +3798,104 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ================================================================ nav
+    // ============================================================== search
+    /// <summary>One destination the top bar search can jump to.</summary>
+    private sealed record SearchHit(string Label, string Group, RadioButton Target);
+
+    private List<SearchHit> BuildSearchIndex() => new()
+    {
+        new("Overview",         "Monitor", NavDashboard),
+        new("Activity",         "Monitor", NavActivity),
+        new("Packet log",       "Monitor", NavPackets),
+        new("Connections",      "Monitor", NavConnections),
+        new("Traffic",          "Monitor", NavTraffic),
+        new("Alerts",           "Monitor", NavAlerts),
+        new("Applications",     "Enforce", NavFirewall),
+        new("Rules",            "Enforce", NavRules),
+        new("Security",         "Enforce", NavSecurity),
+        new("DNS resolver",     "Enforce", NavDns),
+        new("Windows services", "System",  NavServices),
+        new("Network scan",     "System",  NavNetwork),
+        new("Settings",         "System",  NavSettings),
+    };
+
+    /// <summary>Ctrl+K focuses the search box, per the chip it advertises. A
+    /// shortcut shown on a control that does not respond to it is worse than no
+    /// shortcut at all.</summary>
+    private void Window_PreviewKeyDown_Search(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.K &&
+            (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
+        {
+            SearchInput?.Focus();
+            SearchInput?.SelectAll();
+            e.Handled = true;
+        }
+    }
+
+    private void SearchInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (SearchResults == null || SearchPopup == null) return;
+        string q = (SearchInput.Text ?? "").Trim();
+        if (SearchPlaceholder != null)
+            SearchPlaceholder.Visibility = q.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (q.Length == 0) { SearchPopup.IsOpen = false; return; }
+
+        var hits = BuildSearchIndex()
+            .Where(h => h.Label.Contains(q, StringComparison.OrdinalIgnoreCase)
+                     || h.Group.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        SearchResults.ItemsSource = hits;
+        if (hits.Count > 0) SearchResults.SelectedIndex = 0;
+        SearchPopup.IsOpen = hits.Count > 0;
+    }
+
+    private void SearchInput_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (SearchResults == null || SearchPopup == null) return;
+        int n = SearchResults.Items.Count;
+        switch (e.Key)
+        {
+            case System.Windows.Input.Key.Down when n > 0:
+                SearchResults.SelectedIndex = (SearchResults.SelectedIndex + 1) % n;
+                e.Handled = true; break;
+            case System.Windows.Input.Key.Up when n > 0:
+                SearchResults.SelectedIndex = (SearchResults.SelectedIndex - 1 + n) % n;
+                e.Handled = true; break;
+            case System.Windows.Input.Key.Enter:
+                ActivateSearchHit(); e.Handled = true; break;
+            case System.Windows.Input.Key.Escape:
+                ClearSearch(); e.Handled = true; break;
+        }
+    }
+
+    private void SearchResults_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => ActivateSearchHit();
+
+    private void SearchInput_LostFocus(object sender, RoutedEventArgs e)
+    {
+        // Closing the popup here would race the click that is selecting from it,
+        // so only the text is left alone; StaysOpen="False" dismisses it.
+        if (SearchPopup != null && !SearchResults.IsMouseOver) SearchPopup.IsOpen = false;
+    }
+
+    private void ActivateSearchHit()
+    {
+        if (SearchResults?.SelectedItem is not SearchHit hit) return;
+        hit.Target.IsChecked = true;   // raises Nav_Checked, which does the work
+        ClearSearch();
+    }
+
+    private void ClearSearch()
+    {
+        if (SearchPopup != null) SearchPopup.IsOpen = false;
+        if (SearchInput != null) SearchInput.Text = "";
+        if (SearchPlaceholder != null) SearchPlaceholder.Visibility = Visibility.Visible;
+        System.Windows.Input.Keyboard.ClearFocus();
+    }
+
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (PanelDashboard == null) return; // during init
@@ -5527,43 +5625,44 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             bool lockdown = _firewall.LockdownEngaged;
             bool strict = _firewall.StrictMode;
 
-            string kicker, title, body, primary;
+            string kicker, title, body;
             System.Windows.Media.Brush tone;
 
             if (!admin)
             {
                 kicker = "ENGINE NOT RUNNING"; title = "No control";
-                body = "GunWall could not open the filtering engine. Restart it as administrator to enforce anything.";
-                primary = "Retry"; tone = (System.Windows.Media.Brush)FindResource("BlockText");
+                body = "GunWall could not open the filtering engine. Restart it as administrator to enforce anything."; tone = (System.Windows.Media.Brush)FindResource("BlockText");
             }
             else if (lockdown)
             {
                 kicker = "ALL TRAFFIC BLOCKED"; title = "Lockdown";
-                body = "Nothing reaches the network, including this PC's own services. Lift lockdown to return to your ruleset.";
-                primary = "Lift lockdown"; tone = (System.Windows.Media.Brush)FindResource("BlockText");
+                body = "Nothing reaches the network, including this PC's own services. Lift lockdown to return to your ruleset."; tone = (System.Windows.Media.Brush)FindResource("BlockText");
             }
             else if (snoozed)
             {
                 kicker = "FILTERING PAUSED"; title = "Snoozed";
-                body = "Your rules are still saved but nothing is being enforced. Protection returns automatically when the timer ends.";
-                primary = "Resume now"; tone = (System.Windows.Media.Brush)FindResource("WarnText");
+                body = "Your rules are still saved but nothing is being enforced. Protection returns automatically when the timer ends."; tone = (System.Windows.Media.Brush)FindResource("WarnText");
             }
             else if (strict)
             {
                 kicker = "RULES ENFORCED IN KERNEL"; title = "Protected";
-                body = "Your ruleset is live in the kernel. New applications raise a prompt before their first connection is allowed through.";
-                primary = "Turn firewall off"; tone = (System.Windows.Media.Brush)FindResource("AllowText");
+                body = "Your ruleset is live in the kernel. New applications raise a prompt before their first connection is allowed through."; tone = (System.Windows.Media.Brush)FindResource("AllowText");
             }
             else
             {
                 kicker = "WATCHING, NOT BLOCKING"; title = "Monitoring only";
-                body = "GunWall is recording what connects but stopping nothing. Turn the firewall on to deny by default and decide app by app.";
-                primary = "Turn firewall on"; tone = (System.Windows.Media.Brush)FindResource("WarnText");
+                body = "GunWall is recording what connects but stopping nothing. Turn the firewall on to deny by default and decide app by app."; tone = (System.Windows.Media.Brush)FindResource("WarnText");
             }
 
             HeroKicker.Text = kicker; HeroTitle.Text = title; HeroBody.Text = body;
             HeroKicker.Foreground = tone; HeroDot.Fill = tone;
-            if (HeroPrimary != null) HeroPrimary.Content = primary;
+            // HeroPrimary is Resume only, shown only while snoozed. Its other
+            // three labels moved to the posture module in 0.99.46, so the local
+            // that carried them is gone too - assigned in four branches and read
+            // nowhere is CS0219, and a variable kept "in case" is how dead state
+            // survives a refactor.
+            if (HeroPrimary != null)
+                HeroPrimary.Visibility = snoozed ? Visibility.Visible : Visibility.Collapsed;
             if (HeroSnooze != null)
                 HeroSnooze.Visibility = strict && !snoozed && !lockdown ? Visibility.Visible : Visibility.Collapsed;
 
@@ -5833,29 +5932,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // in a tooltip because 92 pixels allowed nothing else; at 238 both fit,
         // so 'sideWord' is gone and the full title and sentence are on screen.
         if (PostureDot != null) PostureDot.Fill = fill;
-        if (PostureName != null)
-        {
-            PostureName.Text = title;
-            PostureName.Foreground = (Brush)System.Windows.Application.Current.FindResource("TextPrimary");
-        }
+        if (PostureName != null) PostureName.Text = title;
         if (PostureLine != null) PostureLine.Text = sideSub;
-
-        // The ON/OFF pill states whether filtering is on, which is not the same
-        // question as the role colour above it: lockdown is ON and coloured
-        // 'brand', monitoring is OFF and coloured 'warn'.
-        bool filtering = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
-        if (PosturePillText != null)
-        {
-            PosturePillText.Text = filtering ? "ON" : "OFF";
-            PosturePillText.Foreground = fill;
-        }
-        if (PosturePill != null)
-            PosturePill.Background = (Brush)System.Windows.Application.Current.FindResource(role + "Fill");
-
-        // The switch label says what pressing it DOES, per section 11 - not what
-        // state the machine is in, which the line above already answers.
-        if (FirewallLabel != null)
-            FirewallLabel.Text = _firewall.StrictMode ? "Turn firewall off" : "Turn firewall on";
 
         // §13: notify on real state transitions (never on the initial paint).
         bool protNow = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
@@ -6149,6 +6227,27 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             else dicts.Insert(0, palette);
 
             ApplyControlLibraryTheme(dark);
+
+            // Repaint everything whose brush was resolved in code. A DynamicResource
+            // in markup re-resolves itself when this dictionary is replaced; a brush
+            // fetched with FindResource and assigned to a property does not - it is a
+            // concrete object from the palette that was in force at the time, and it
+            // keeps the colour that palette had forever.
+            //
+            // This is the same freeze the 'late-binding' check was written for in
+            // 0.99.42, in its code-behind form, and 0.99.43 shipped one: the posture
+            // state name was assigned TextPrimary here, which both froze it AND
+            // overrode the DynamicResource the markup already had, so it rendered in
+            // the previous theme's ink and vanished against the card. The check only
+            // reads XAML, so it passed.
+            //
+            // Role colours have to be assigned in code because they depend on state
+            // rather than theme. So they are re-resolved on every swap instead.
+            if (IsLoaded)
+            {
+                UpdateStatusBanner();
+                SyncLockdownButton();
+            }
 
             // Match the OS title bar to the theme.
             TrySetTitleBarTheme(dark);

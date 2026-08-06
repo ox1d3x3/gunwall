@@ -13,6 +13,7 @@
     WindowBackdropType="Mica"
     WindowCornerPreference="Round"
     Typography.NumeralAlignment="Tabular"
+    PreviewKeyDown="Window_PreviewKeyDown_Search"
     ui:Design.Background="{DynamicResource BgPrimary}">
     <!-- No runtime Background is set on purpose.
 
@@ -174,7 +175,14 @@
                         Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1">
                     <StackPanel>
-                        <!-- State line: 7px role dot, name, ON/OFF pill hard right. -->
+                        <!-- State and control on one line. This was three lines: a
+                             role dot with the state name, an ON/OFF pill, and a
+                             separate field below carrying the word "Firewall" and
+                             the switch. All three answered the same question. The
+                             switch position IS the pill, and the state name above
+                             it is what the pill was abbreviating, so there is one
+                             row now: what the posture is, and the control that
+                             changes it. -->
                         <Grid>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <Ellipse x:Name="PostureDot" Width="7" Height="7" VerticalAlignment="Center"
@@ -183,41 +191,23 @@
                                            FontWeight="SemiBold" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" />
                             </StackPanel>
-                            <Border x:Name="PosturePill" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                    CornerRadius="4" Padding="6,2"
-                                    Background="{DynamicResource WarnFill}">
-                                <TextBlock x:Name="PosturePillText" Text="OFF" FontSize="10"
-                                           FontWeight="Bold" Foreground="{DynamicResource WarnText}" />
-                            </Border>
+                            <ui:ToggleSwitch x:Name="EnableFirewallButton"
+                                             HorizontalAlignment="Right" VerticalAlignment="Center"
+                                             Click="EnableFirewall_Click"
+                                             ToolTip="Turn protection on or off. Off leaves this PC unfiltered." />
                         </Grid>
 
                         <!-- What the state actually means, in a sentence. This is the
                              text that used to be reachable only by hovering. -->
                         <TextBlock x:Name="PostureLine" Text="Waiting for the engine"
                                    FontSize="11.5" LineHeight="17" TextWrapping="Wrap"
-                                   Margin="0,10,0,0"
+                                   Margin="0,9,0,0"
                                    Foreground="{DynamicResource TextTertiary}" />
-
-                        <!-- Firewall control: label left, switch right, inside its own
-                             field. 38 high, radius 8, 'panel2' on 'line2'. -->
-                        <Border Height="38" CornerRadius="8" Margin="0,10,0,0" Padding="12,0"
-                                Background="{DynamicResource BgElevated}"
-                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                            <Grid>
-                                <TextBlock x:Name="FirewallLabel" Text="Turn firewall on" FontSize="12.5"
-                                           FontWeight="SemiBold" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextPrimary}" />
-                                <ui:ToggleSwitch x:Name="EnableFirewallButton"
-                                                 HorizontalAlignment="Right" VerticalAlignment="Center"
-                                                 Click="EnableFirewall_Click"
-                                                 ToolTip="Turn protection on or off. Off leaves this PC unfiltered." />
-                            </Grid>
-                        </Border>
 
                         <!-- Lockdown. Filled with the brand while engaged, because
                              the most restrictive state in the application should be
                              the one that looks it. -->
-                        <Button x:Name="LockdownButton" Height="30" Margin="0,8,0,0"
+                        <Button x:Name="LockdownButton" Height="30" Margin="0,12,0,0"
                                 Style="{StaticResource PostureButton}"
                                 Click="LockdownButton_Click"
                                 ToolTip="Block all network traffic until released.">
@@ -227,7 +217,7 @@
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                       StrokeThickness="2" StrokeLineJoin="Round"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                      Data="M6.5,10.5 L17.5,10.5 A2,2 0 0 1 19.5,12.5 L19.5,18.5 A2,2 0 0 1 17.5,20.5 L6.5,20.5 A2,2 0 0 1 4.5,18.5 L4.5,12.5 A2,2 0 0 1 6.5,10.5 Z M8,10.5 V7.8 a4,4 0 0 1 8,0 v2.7" />
+                                      Data="{StaticResource IconLock}" Fill="{x:Null}" />
                                 <TextBlock x:Name="LockdownLabel" Text="Engage lockdown" FontSize="12"
                                            FontWeight="SemiBold" VerticalAlignment="Center" />
                             </StackPanel>
@@ -239,36 +229,36 @@
                         <TextBlock Text="MONITOR" Style="{StaticResource NavGroupHeading}" Margin="8,12,8,7" />
                         <RadioButton x:Name="NavDashboard" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Dashboard">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="Board24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconOverview}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavDashboardLabel" Style="{StaticResource SideNavLabel}" Text="Overview" />
                             </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavActivity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Activity">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="History24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconActivity}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavActivityLabel" Style="{StaticResource SideNavLabel}" Text="Activity" />
                             </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavPackets" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Packets">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="DocumentTable24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconPackets}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavPacketsLabel" Style="{StaticResource SideNavLabel}" Text="Packet log" />
                             </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavConnections" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Connections">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="PlugConnected24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconConnections}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavConnectionsLabel" Style="{StaticResource SideNavLabel}" Text="Connections" />
                             </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavTraffic" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Traffic">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="DataUsage24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconTraffic}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavTrafficLabel" Style="{StaticResource SideNavLabel}" Text="Traffic" />
                             </DockPanel>
                         </RadioButton>
@@ -283,59 +273,59 @@
                                                FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccent}"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
-                                <ui:SymbolIcon Symbol="Alert24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconAlerts}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavAlertsLabel" Style="{StaticResource SideNavLabel}" Text="Alerts" />
                             </DockPanel>
                         </RadioButton>
                         <TextBlock Text="ENFORCE" Style="{StaticResource NavGroupHeading}" Margin="8,16,8,7" />
                         <RadioButton x:Name="NavFirewall" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Firewall">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="AppsList24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconApplications}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavFirewallLabel" Style="{StaticResource SideNavLabel}" Text="Applications" />
                             </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavRules" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Rules">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="Wrench24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconRules}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavRulesLabel" Style="{StaticResource SideNavLabel}" Text="Rules" />
                             </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavSecurity" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Security">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="ShieldTask24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconSecurity}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavSecurityLabel" Style="{StaticResource SideNavLabel}" Text="Security" />
                             </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavDns" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Dns">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="Globe24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconDns}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavDnsLabel" Style="{StaticResource SideNavLabel}" Text="DNS resolver" />
                             </DockPanel>
                         </RadioButton>
                         <TextBlock Text="SYSTEM" Style="{StaticResource NavGroupHeading}" Margin="8,16,8,7" />
                         <RadioButton x:Name="NavServices" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Services">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="Server24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconServices}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavServicesLabel" Style="{StaticResource SideNavLabel}" Text="Windows services" />
                             </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavNetwork" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Network">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="Router24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconNetwork}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavNetworkLabel" Style="{StaticResource SideNavLabel}" Text="Network scan" />
                             </DockPanel>
                         </RadioButton>
                         <RadioButton x:Name="NavSettings" Style="{StaticResource SideNavButton}" Checked="Nav_Checked" Tag="Settings">
                             <DockPanel LastChildFill="True">
-                                <ui:SymbolIcon Symbol="Settings24" FontSize="16" VerticalAlignment="Center"
-                                               Margin="0,0,11,0" DockPanel.Dock="Left" />
+                                <Path Style="{StaticResource NavIcon}" Data="{StaticResource IconSettings}" VerticalAlignment="Center"
+                                               Margin="0,0,11,0" DockPanel.Dock="Left"/>
                                 <TextBlock x:Name="NavSettingsLabel" Style="{StaticResource SideNavLabel}" Text="Settings" />
                             </DockPanel>
                         </RadioButton>
@@ -369,28 +359,31 @@
             <Border Grid.Row="0" Height="54" Background="{DynamicResource BgSecondary}"
                     BorderBrush="{DynamicResource Divider}" BorderThickness="0,0,0,1">
                 <Grid Margin="28,0,24,0">
-                    <!-- Search. Not yet wired to anything: the command palette it
-                         opens is 0.99.48. It is placed and styled now so the top
-                         bar is not rebuilt twice, and it is deliberately disabled
-                         rather than silently inert - a search box that swallows
-                         typing and does nothing is worse than one that says it is
-                         not ready. -->
+                    <!-- Search. A real input, not a picture of one: 0.99.43 placed
+                         a styled Border with a tooltip explaining it was not ready
+                         yet, which is dead chrome pretending to be a control. It
+                         navigates now; the fuller palette with actions is still
+                         0.99.48. -->
                     <Border x:Name="SearchBox" Width="300" Height="32" HorizontalAlignment="Left"
                             VerticalAlignment="Center" CornerRadius="7" Padding="11,0"
                             Background="{DynamicResource BgCard}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                            ToolTip="Search is arriving with the command palette in a later build.">
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                         <Grid>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Path Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"
-                                      Margin="0,0,9,0" Stroke="{DynamicResource TextTertiary}"
-                                      StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                      Data="M18,11 A7,7 0 1 1 4,11 A7,7 0 1 1 18,11 M16,16 L21,21" />
-                                <TextBlock Text="Search apps, rules, addresses..." FontSize="12.5"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextTertiary}" />
-                            </StackPanel>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Center"
+                            <Path Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"
+                                  HorizontalAlignment="Left" Fill="{x:Null}"
+                                  Stroke="{DynamicResource TextTertiary}" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Data="{StaticResource IconSearch}" />
+                            <TextBox x:Name="SearchInput" Margin="23,0,42,0" FontSize="12.5"
+                                     Style="{StaticResource SearchField}"
+                                     TextChanged="SearchInput_TextChanged"
+                                     PreviewKeyDown="SearchInput_PreviewKeyDown"
+                                     LostKeyboardFocus="SearchInput_LostFocus" />
+                            <TextBlock x:Name="SearchPlaceholder" Margin="23,0,0,0" FontSize="12.5"
+                                       VerticalAlignment="Center" IsHitTestVisible="False"
+                                       Text="Search apps, rules, addresses..."
+                                       Foreground="{DynamicResource TextTertiary}" />
+                            <Border x:Name="SearchChip" HorizontalAlignment="Right" VerticalAlignment="Center"
                                     CornerRadius="4" Padding="5,2"
                                     Background="{DynamicResource BgElevated}">
                                 <TextBlock Text="Ctrl K" FontSize="10.5"
@@ -399,6 +392,32 @@
                             </Border>
                         </Grid>
                     </Border>
+
+                    <Popup x:Name="SearchPopup" PlacementTarget="{Binding ElementName=SearchBox}"
+                           Placement="Bottom" VerticalOffset="6" AllowsTransparency="True"
+                           StaysOpen="False" Focusable="False">
+                        <Border Width="300" CornerRadius="10" Padding="6"
+                                Background="{DynamicResource BgElevated}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                            <ListBox x:Name="SearchResults" MaxHeight="320" BorderThickness="0"
+                                     Background="Transparent"
+                                     ItemContainerStyle="{StaticResource SearchResultRow}"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     MouseLeftButtonUp="SearchResults_Click">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="10,7">
+                                            <TextBlock Text="{Binding Label}" FontSize="12.5"
+                                                       Foreground="{DynamicResource TextPrimary}" />
+                                            <TextBlock Text="{Binding Group}" FontSize="10"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextTertiary}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Border>
+                    </Popup>
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                                 VerticalAlignment="Center">
@@ -419,7 +438,7 @@
                               Margin="0,0,5,0" Stroke="{DynamicResource TextPrimary}"
                               StrokeThickness="2.6" StrokeLineJoin="Round"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                              Data="M6,10 L12,4 L18,10 M12,4 L12,20" />
+                              Data="{StaticResource IconArrowUp}" Fill="{x:Null}" />
                         <TextBlock x:Name="TopUp" Text="0 B/s" FontSize="11.5"
                                    FontFamily="{StaticResource MonoFont}" VerticalAlignment="Center"
                                    Margin="0,0,14,0" Foreground="{DynamicResource TextSecondary}" />
@@ -428,7 +447,7 @@
                               Margin="0,0,5,0" Stroke="{DynamicResource BlockText}"
                               StrokeThickness="2.6" StrokeLineJoin="Round"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                              Data="M6,14 L12,20 L18,14 M12,20 L12,4" />
+                              Data="{StaticResource IconArrowDown}" Fill="{x:Null}" />
                         <TextBlock x:Name="TopDown" Text="0 B/s" FontSize="11.5"
                                    FontFamily="{StaticResource MonoFont}" VerticalAlignment="Center"
                                    Margin="0,0,14,0" Foreground="{DynamicResource TextSecondary}" />
@@ -488,9 +507,20 @@
                                    Text="Your ruleset is live in the kernel. New applications raise a prompt before their first connection is allowed through." />
 
                         <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                            <!-- The hero used to carry a primary button that turned
+                                 the firewall on and off, and lifted lockdown. Both
+                                 of those are the posture module's job now, and a
+                                 control offered twice on one screen is a control
+                                 you have to check the state of twice.
+
+                                 What survives is Resume, because a snooze is the
+                                 one state with no other way out: the switch would
+                                 read as already on, and lockdown is not engaged.
+                                 It is hidden in every other state rather than
+                                 relabelled, so this button means one thing. -->
                             <Button x:Name="HeroPrimary" Style="{StaticResource PrimaryButton}"
-                                    Click="EnableFirewall_Click" Content="Turn firewall on"
-                                    Margin="0,0,10,0" />
+                                    Click="Snooze_Click" Tag="0" Content="Resume now"
+                                    Visibility="Collapsed" Margin="0,0,10,0" />
                             <Button x:Name="HeroSnooze" Style="{StaticResource ActionButton}"
                                     Click="Snooze_Click" Tag="15" Content="Snooze 15 min" Margin="0,0,10,0" />
                             <Button Style="{StaticResource ActionButton}"

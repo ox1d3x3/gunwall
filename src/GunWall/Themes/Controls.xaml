@@ -41,10 +41,166 @@
          label. Hover lifts slightly, pressed sinks. -->
         <!-- Deliberately identical to each other and quieter than the accent, so
          an interruption does not steer the answer. Fluent chrome underneath. -->
-    <Style x:Key="PromptButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-        <Setter Property="MinHeight" Value="36" />
-        <Setter Property="Padding" Value="15,0" />
-        <Setter Property="FontSize" Value="13" />
+    <!-- PromptButton was removed in 0.99.44. It carried Padding="15,0" and was
+         the reason a 34px details button clipped to a dot; its two consumers are
+         now PromptSecondary and PromptPrimary, which state their own padding. -->
+
+    <!-- Prompt actions, SPEC.md section 5: 36 high, radius 7, 12.5.
+         Block is 'secondary' and Allow is 'primary' by weight only - both are
+         ink on a quiet field, and neither is green or red. A green Allow beside
+         a red Block turns a security decision into a reflex, and the reflex
+         people learn is to press the coloured one. Closing the window blocks,
+         so the safe answer is also the free one. -->
+    <Style x:Key="PromptSecondary" TargetType="Button">
+        <Setter Property="Height" Value="36" />
+        <Setter Property="MinWidth" Value="92" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="7" Padding="15,0"
+                            Background="Transparent"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- The prompt's detail chevron. Square, and its padding is stated here
+         rather than inherited: the previous version was 34 wide against a shared
+         style carrying Padding="15,0", which left four pixels for a twelve pixel
+         glyph and rendered as a bare dot for several releases. -->
+    <!-- Search result rows.
+
+         With no style, ListBoxItem takes the control library's selection brush,
+         which derives from our accent - so the highlighted row came out as a
+         solid brand-red block with white text across it. That is the loudest
+         thing the palette can produce, spent on "which row is the keyboard on".
+
+         SPEC.md section 6 gives the answer for a selected row: 'brand-bg' fill
+         with a 2px 'brand' inset on the leading edge. The tint carries the
+         state and the bar carries the position, and 2px is reserved for exactly
+         this family of markers. -->
+    <!-- The search field.
+
+         Setting BorderThickness="0" on the TextBox did not remove the red line
+         under it: that line is not the TextBox's border. The control library's
+         template draws its own focus underline as a separate element in the
+         accent colour, and BorderThickness does not reach it - so the field
+         showed a brand-red bar across the bottom, inside a box that already had
+         a border of its own.
+
+         The answer is not to fight the template but to replace it. A text field
+         is a host for text; everything else here is drawn by the Border that
+         wraps it. PART_ContentHost is the one name the TextBox contract
+         requires - omit it and editing silently stops working while the control
+         still renders.
+
+         Scoped to this field rather than applied to every TextBox, because
+         focus treatment across the app is 0.99.49's job and one field is not
+         the place to decide it. -->
+    <Style x:Key="SearchField" TargetType="TextBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource BlockText}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource BlockFill}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <ScrollViewer x:Name="PART_ContentHost" Background="Transparent"
+                                  VerticalAlignment="Center"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Hidden" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SearchResultRow" TargetType="ListBoxItem">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Bd" CornerRadius="6" Background="Transparent"
+                            BorderBrush="Transparent" BorderThickness="2,0,0,0"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource RowHover}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BlockFill}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BlockText}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="PromptChevron" TargetType="Button">
+        <Setter Property="Width" Value="30" />
+        <Setter Property="Height" Value="30" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="7" Background="Transparent"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="PromptPrimary" TargetType="Button" BasedOn="{StaticResource PromptSecondary}">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="7" Padding="17,0"
+                            Background="{DynamicResource BlockText}"
+                            BorderBrush="{DynamicResource BlockText}" BorderThickness="1"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrandHi}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BrandHi}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- Typefaces, SPEC.md section 3.
@@ -117,78 +273,53 @@
          knob travels in 167ms on a decelerating curve, and the two icons cross
          over it in 80ms so the swap lands before the knob settles rather than
          after it, which would read as a lag. -->
+    <!-- Theme control, SPEC.md section 1: a 30x30 icon button, not a switch.
+
+         It was a 52x28 sliding pill with the sun/moon riding inside the knob.
+         That reads as a setting with two equal states, which is what a switch
+         means - but a theme is not on-or-off, and the pill was the widest object
+         in a 54px bar built around quiet readouts. A round button showing the
+         theme you would GET on pressing it says the same thing in a third of the
+         width and stops competing with the throughput figures beside it.
+
+         Still a ToggleButton so IsChecked keeps its meaning for the handler:
+         checked = light. -->
     <Style x:Key="ThemeSwitch" TargetType="ToggleButton">
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
-        <Setter Property="Width" Value="52" />
-        <Setter Property="Height" Value="28" />
+        <Setter Property="Width" Value="30" />
+        <Setter Property="Height" Value="30" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="track" CornerRadius="14"
-                            Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                            BorderBrush="{DynamicResource ControlStrokeColorSecondaryBrush}"
-                            BorderThickness="1">
-                        <Canvas>
-                            <Border x:Name="knob" Width="22" Height="22" CornerRadius="11"
-                                    Canvas.Top="2" Canvas.Left="2"
-                                    Background="{DynamicResource TextFillColorPrimaryBrush}">
-                                <Grid>
-                                    <!-- Both icons live in the knob; only one is
-                                         ever visible, so the swap is a crossfade
-                                         rather than two elements moving. -->
-                                    <ui:SymbolIcon x:Name="moon" Symbol="WeatherMoon24"
-                                                   FontSize="13" Opacity="1"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource ApplicationBackgroundBrush}" />
-                                    <ui:SymbolIcon x:Name="sun" Symbol="WeatherSunny24"
-                                                   FontSize="13" Opacity="0"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource ApplicationBackgroundBrush}" />
-                                </Grid>
-                            </Border>
-                        </Canvas>
-                    </Border>
+                    <Grid>
+                        <Ellipse x:Name="Ring" Fill="Transparent" />
+                        <!-- Moon: a disc with a second disc punched out of it, so
+                             the crescent is geometry rather than a glyph and takes
+                             the theme ink like everything else. Shown while dark
+                             is active, since pressing gives you light. -->
+                        <Path x:Name="MoonIcon" Width="15" Height="15" Stretch="Uniform"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Fill="{DynamicResource TextSecondary}"
+                              Data="M12,3 A9,9 0 1 0 21,12 A7,7 0 1 1 12,3 Z" />
+                        <!-- Sun: disc plus eight rays. -->
+                        <Path x:Name="SunIcon" Width="15" Height="15" Stretch="Uniform"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Visibility="Collapsed"
+                              Stroke="{DynamicResource TextSecondary}" StrokeThickness="2"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Data="M12,7 A5,5 0 1 1 12,17 A5,5 0 1 1 12,7 M12,1 L12,3.5
+                                    M12,20.5 L12,23 M4.2,4.2 L6,6 M18,18 L19.8,19.8
+                                    M1,12 L3.5,12 M20.5,12 L23,12 M4.2,19.8 L6,18
+                                    M18,6 L19.8,4.2" />
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="knob"
-                                                         Storyboard.TargetProperty="(Canvas.Left)"
-                                                         To="26" Duration="0:0:0.167"
-                                                         DecelerationRatio="0.7" />
-                                        <DoubleAnimation Storyboard.TargetName="sun"
-                                                         Storyboard.TargetProperty="Opacity"
-                                                         To="1" Duration="0:0:0.08" />
-                                        <DoubleAnimation Storyboard.TargetName="moon"
-                                                         Storyboard.TargetProperty="Opacity"
-                                                         To="0" Duration="0:0:0.08" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                            <Trigger.ExitActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="knob"
-                                                         Storyboard.TargetProperty="(Canvas.Left)"
-                                                         To="2" Duration="0:0:0.167"
-                                                         DecelerationRatio="0.7" />
-                                        <DoubleAnimation Storyboard.TargetName="sun"
-                                                         Storyboard.TargetProperty="Opacity"
-                                                         To="0" Duration="0:0:0.08" />
-                                        <DoubleAnimation Storyboard.TargetName="moon"
-                                                         Storyboard.TargetProperty="Opacity"
-                                                         To="1" Duration="0:0:0.08" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.ExitActions>
+                            <Setter TargetName="MoonIcon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="SunIcon" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="track" Property="Background"
-                                    Value="{DynamicResource ControlFillColorDefaultBrush}" />
+                            <Setter TargetName="Ring" Property="Fill" Value="{DynamicResource SurfaceHover}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

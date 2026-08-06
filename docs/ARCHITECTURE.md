@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.99.43. It
+This document describes how GunWall is **actually built** as of v0.99.47. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -282,7 +282,14 @@ Declared after, the nav would take the remaining space and push it out of view.
 
 The content column is a 54px top bar over the panel host. The top bar answers
 what the machine is doing — engine state, throughput — not what the operator
-wants done, which is the sidebar's question.
+wants done, which is the sidebar's question. Search sits at its left: Ctrl+K
+focuses it, typing filters the thirteen destinations, Enter navigates.
+
+**Each control appears once.** The firewall toggle lives in the posture module
+and nowhere else; lockdown likewise. The hero keeps only Resume, because a
+snooze is the one state the posture module cannot exit. This is not tidiness —
+a control offered twice is a state you have to verify twice, and when the two
+copies were labelled differently they read as disagreeing.
 
 There is **no footer**. One existed until 0.99.43 and was removed when the
 posture module and top bar made three of its five readouts duplicates. Its two
@@ -291,6 +298,20 @@ and metering mode to a degraded banner on Traffic shown only while metering is
 estimated. The rule that produced that split is worth keeping: a caveat about
 how to read a figure belongs on the screen with the figure, and only while it
 applies.
+
+### Icons
+
+`Themes/Icons.xaml` holds every icon as a `Geometry`, converted from the design
+source. Icons are **stroked, never filled** — `Fill="{x:Null}"` is required, not
+stylistic; a Lucide glyph left to fill renders as a blob. They are authored on a
+24-unit canvas and drawn smaller through a `Viewbox`, which scales the stroke
+with the shape exactly as SVG does.
+
+The dictionary is merged into the shared set rather than either palette, because
+geometry does not invert with theme — only the ink flowing through it does. That
+ink is inherited from `Foreground` rather than assigned, so an icon in a nav row
+takes that row's colour without anything repainting it, which also keeps it clear
+of the binding-override rule below.
 
 ### Theming, and the one rule that keeps being broken
 
@@ -318,7 +339,18 @@ That replacement is the source of a defect this project has now shipped twice:
 > process, in both themes.
 
 Every reference to a palette key must be `DynamicResource`, or a runtime lookup
-through `Application.Current.FindResource` from code. The check named
+through `Application.Current.FindResource` from code. There is a second half to
+that rule, learned the hard way in 0.99.43:
+
+> **Code must not assign a brush property that markup already bound.** A local
+> value does not bypass a DynamicResource for one assignment — it destroys the
+> binding. The element keeps that colour in every theme thereafter.
+
+Properties that vary with *state* rather than theme — a role dot, a status pill —
+have to be painted in code. Those are allow-listed in the check, and the
+allow-list is only safe because `ApplyTheme` re-runs the painters after every
+swap. That repaint is itself asserted; without it, every allow-listed element
+freezes. The check named
 `late-binding` fails the build on any static reference to a palette-only key.
 
 Two related rules, both learned the same way:

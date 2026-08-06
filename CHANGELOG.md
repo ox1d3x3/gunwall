@@ -6,6 +6,87 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.47] — 2026-08-06
+
+### Added
+- **The Lucide icon system.** Twenty geometries in `Themes/Icons.xaml`, and all thirteen sidebar icons now draw from it instead of Segoe Fluent Icons. Section 12 asks for this specifically and says not to substitute — the two families have different optical weight and a different corner language, and side by side the difference is immediate.
+
+  Every path was taken from the rendered design source rather than recalled, for the same reason a WFP GUID is never recalled from memory: geometry that is almost right produces a picture that looks almost right, and nothing fails loudly enough to notice.
+
+  The conversion was not one mechanical substitution. The set uses `circle`, `ellipse`, `rect` with a corner radius, `line`, `polyline` and `path`, and each maps differently: a circle needs two 180° arcs because a single arc cannot close one (start and end coincide and the sweep is undefined), and a polyline must stay **open** — closing the tick geometry would draw a triangle. All of them are stroked with `Fill="{x:Null}"`; an unfilled Lucide glyph left to fill renders as a solid blob.
+
+  On sizing: the icons are authored on a 24-unit canvas and drawn at 17, and the `Viewbox` scales the stroke down with the shape. That is correct and worth stating because it reads as a bug — SVG does exactly the same thing, since `stroke-width` is in user units. Scaling the stroke is what matches the design; holding it constant would not.
+
+- Six geometries that existed as inline strings — the throughput arrows, the posture padlock, the prompt chevrons — now reference the dictionary. The same shape written in two places is the same shape until someone edits one of them.
+
+### Fixed
+- **The red line under the search field.** Setting `BorderThickness="0"` did not remove it because that line is not the TextBox's border: the control library's template draws its own focus underline as a separate element in the accent colour, and `BorderThickness` does not reach it. So the field showed a brand-red bar across the bottom, inside a box that already had a border of its own — and unlike a focus ring, it was there whether focused or not.
+
+  Replaced rather than fought: a text field is a host for text, and everything else is drawn by the `Border` wrapping it. `PART_ContentHost` is the one name the `TextBox` contract requires; omit it and editing silently stops working while the control still renders. Scoped to this one field, because focus treatment across the app is a later decision and one search box is not the place to make it.
+- The search glyph was a hand-written approximation of the design's. It is the design's now.
+
+---
+
+## [0.99.46] — 2026-08-06
+
+Duplication removal, mostly. Three controls were offering the same decision in
+three places, and a screen where you have to check the same state twice is a
+screen you stop trusting.
+
+### Changed
+- **The posture module is one row shorter and says the same thing.** It carried a role dot with the state name, an ON/OFF pill, and a separate field below holding the word "Firewall" and the switch. All three answered one question. The switch position *is* the pill, and the state name is what the pill was abbreviating — so state and control now share a line, and the sentence explaining the state sits under them.
+- **The dashboard hero no longer turns the firewall on and off.** It was a second control for something the posture module already owns, three feet away, with its own label — and 0.99.45's label change made the two disagree in wording while agreeing in function, which is worse than either. What survives is Resume, shown only while snoozed, because a snooze is the one state with no other way out: the switch reads as already on and lockdown is not engaged. It is hidden in every other state rather than relabelled, so the button means one thing.
+- **The theme control is the 30×30 icon button the design asked for.** The 52×28 sliding pill read as a setting with two equal states, which is what a switch means — but a theme is not on-or-off, and the pill was the widest object in a bar built around quiet readouts. The moon is drawn as a disc with a second disc punched out of it, so the crescent is geometry and takes the theme ink like everything else.
+
+### Fixed
+- **The search results were a solid brand-red block.** `ListBoxItem` had no style, so it took the control library's selection brush, which derives from our accent — the loudest thing the palette can produce, spent on showing which row the keyboard is on. Section 6 gives the answer: `brand-bg` fill with a 2px `brand` inset on the leading edge. The tint carries the state, the bar carries the position.
+- **A red underline across the search field.** The library's TextBox template paints its own focus line in the accent, under a field that already has a border. A second border in the loudest available colour is not a focus ring.
+
+### Note
+`UpdateHero` built a four-way string for the button that is now Resume-only. I left the variable in place with a comment claiming the tray menu read it — it does not, and I had not checked before writing that. Assigned in four branches and read nowhere is `CS0219`, so it is gone. A variable kept "in case" is how dead state survives a refactor.
+
+---
+
+## [0.99.45] — 2026-08-06
+
+### Changed
+- **The firewall switch label states the status rather than the action**: "Firewall on" / "Firewall off". Section 11 asks for the action, and that is right for a standalone button — but this label sits beside a switch, and a switch already shows the action by which way it is thrown. "Turn firewall off" beside a switch in the on position gives two readings of one control that appear to contradict, and the reading people take is the label. Deliberate deviation, recorded.
+- **The connection prompt is compact again**, 430 wide: the question, the app with its signature pill, where it is going, and two buttons. Port, reverse DNS, time and full path are behind a chevron.
+
+  0.99.44 went the other way — the design's 580px dialog with every fact laid out — reasoning that a security question answered from a summary is answered badly. The reasoning was sound and the result was still wrong. A modal that large, arriving unannounced over whatever you were doing, does not get read more carefully; it gets dismissed faster. The detail is one press away rather than absent, which is the balance the original had.
+- The chevron is a real 30×30 button whose padding is stated on its own style. The version that clipped to a dot was 34 wide against a shared style carrying thirty pixels of padding — the same trap, avoided this time by not inheriting the padding at all. It drives `Path` geometry rather than a glyph, so the flip swaps `Data`; setting `Text` on either a `Path` or a `SymbolIcon` compiles and quietly does nothing.
+
+### Added
+- **The top bar search works.** Typing filters the thirteen destinations, arrow keys move, Enter navigates, Escape clears. **Ctrl+K** focuses it, which is what the chip beside it has been advertising.
+
+  What shipped in 0.99.43 was a styled `Border` with a tooltip explaining that search was not ready — dead chrome shaped like a control, with a keyboard shortcut printed on it that did nothing. That is the failure this project keeps naming in other people's code: a thing that looks like it works and silently does not. Actions and app/address search are still 0.99.48; navigation is what exists now, and it exists rather than being promised.
+
+---
+
+## [0.99.44] — 2026-08-06
+
+### Fixed
+- **The posture state name was invisible in the dark theme, and 0.99.43 caused it.** `PostureName` carried `Foreground="{DynamicResource TextPrimary}"` in markup, and `UpdateStatusBanner` *also* assigned it from `FindResource`. A locally set value does not merely bypass a DynamicResource for that assignment — it destroys the binding permanently. On a machine whose saved theme was light, the assignment resolved to near-black ink and stayed near-black forever, so switching to dark left the state name unreadable against its own card. What remained legible in that module was "Turn firewall off", which reads exactly like a firewall that *is* off. The assignment is gone; the markup binding was always sufficient.
+
+  This deserves naming plainly: 0.99.42 added a check for precisely this freeze, and 0.99.43 then shipped it in code-behind form. The check reads XAML. This was a line of C#, so it passed.
+- **Four raw colour literals in the connection prompt.** The signature verdict built brushes with `new SolidColorBrush` from `#3FB868`, `#E0A53F`, `#E25C5C` and `#7A828C` — none of them a palette value in either theme, and none following a theme change. Same family as the footer dot in 0.99.42, found because the rewrite went through the file.
+
+### Added
+- **A `binding-override` check**: code must not assign a brush property that markup already bound. It found seven, two of them in the hero and predating this migration entirely. Properties that vary with *state* rather than theme are allow-listed, and the allow-list is backed by a second assertion — that `ApplyTheme` calls the painters — because without that repaint every allow-listed element freezes at whatever theme was in force when it last ran.
+- `ApplyTheme` now re-runs `UpdateStatusBanner` and `SyncLockdownButton` after swapping the palette. Role colours have to be assigned in code because they depend on state, so they are re-resolved on every swap instead of being made static.
+
+### Changed
+- **The connection prompt is rebuilt to the design's dialog.** 580 wide, radius 14, `panel2` on a `line2` hairline, a state strip carrying the kind of moment and the countdown in mono, the question at 22px, and the facts in a two-column ledger of hairline-separated rows. Machine values are JetBrains Mono and prose is Instrument Sans throughout, which is what stops a full executable path reading as a wall of text.
+
+  It stays a separate always-on-top window rather than the design's in-window modal. That is a functional decision: GunWall lives in the tray, so a prompt has to be answerable when the main window is hidden. An overlay inside an invisible window is a prompt nobody can answer, and the fail-closed timeout would then block traffic the person was never asked about.
+- **The Details toggle is gone, along with everything it hid.** It existed because a 386px window could not show address, port, path and time at once. At 580 they fit, so they are simply shown — a security question answered from a summary is a question answered badly. The button it was wired to had been clipping to a bare dot since it was written.
+- Prompt actions are `PromptSecondary` and `PromptPrimary`: 36 high, radius 7, differing by weight only. Neither is green or red. A green Allow beside a red Block turns a security decision into a reflex, and the reflex people learn is to press the coloured one.
+
+### Removed
+- The `PromptButton` style. Its `Padding="15,0"` was the reason a 34px button had four pixels for a twelve-pixel glyph.
+
+---
+
 ## [0.99.43] — 2026-08-06
 
 Second of eight design-migration releases. The chrome: sidebar posture module,

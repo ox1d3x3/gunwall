@@ -41,6 +41,7 @@ APP = ROOT / "src" / "GunWall"
 DARK = APP / "Themes" / "Theme.Dark.xaml"
 LIGHT = APP / "Themes" / "Theme.Light.xaml"
 SHARED = APP / "Themes" / "Controls.xaml"
+ICONS = APP / "Themes" / "Icons.xaml"
 
 # Tokens the design defines that no phase has wired up yet. Each names the
 # release that will consume it. Without this list the dead-key check cannot tell
@@ -51,11 +52,11 @@ PENDING_TOKENS = {
     "Skeleton":       "0.99.46 table lifecycle states",
     "FillUp":         "0.99.47 chart area fills",
     "FillDown":       "0.99.47 chart area fills",
-    "RowHover":       "0.99.45 table row hover",
     "SurfacePressed": "0.99.45 table row states",
     "FocusRing":      "0.99.49 focus rings",
-    "InfoFill":       "0.99.45 neutral pill (neutral-bg)",
+    "InfoText":       "0.99.45 neutral pill text",
     "StatFontSize":   "0.99.47 primary stat, 30px",
+    "IconCheck":      "0.99.48 verdict rows in the table system",
     "TableFontSize":  "0.99.45 table cell, 12.5px",
     "IsDarkTheme":    "read by future theme-dependent drawing",
 }
@@ -172,6 +173,80 @@ def check_element_references():
     notes.append("element-ref: not checked here - covered by the Roslyn pass (CS0103)")
 
 
+def check_binding_override():
+    """Code must not assign a brush property that markup already bound.
+
+    A DynamicResource in markup re-resolves when ApplyTheme replaces the palette.
+    A local value assigned in code outranks it permanently: the binding is not
+    merely bypassed for that assignment, it is gone. The element keeps whatever
+    colour the palette held at that instant, in every theme thereafter.
+
+    0.99.43 shipped exactly this. PostureName had Foreground="{DynamicResource
+    TextPrimary}" in markup, and UpdateStatusBanner also assigned it from
+    FindResource. On a machine whose saved theme was light, the assignment
+    resolved to near-black ink, the binding died, and switching to dark left the
+    posture state name invisible against its own card - so the module read as
+    nothing but "Turn firewall off", which looks exactly like a firewall that is
+    off. The late-binding check passed the whole time: it reads XAML, and this
+    was a line of C#.
+
+    Properties that legitimately vary with STATE rather than theme - a role dot,
+    a status pill - must be assigned in code. Those must not carry a
+    DynamicResource for the same property in markup, or the two fight and the
+    code always wins. Give them a plain literal default instead, and re-resolve
+    them on theme change.
+    """
+    # Properties that vary with STATE, not theme, so they must be painted in
+    # code. They keep their markup DynamicResource for the first paint, and the
+    # repaint invariant below is what stops them freezing: ApplyTheme re-runs the
+    # painters after every swap. Adding to this list is a promise that the
+    # element's painter is on that path - check before you add.
+    STATE_PAINTED = {
+        ("MainWindow", "PostureDot", "Fill"),
+        ("MainWindow", "EngineDot", "Fill"),
+        ("MainWindow", "HeroDot", "Fill"),
+        ("MainWindow", "HeroKicker", "Foreground"),
+        # AlertWindow is constructed per prompt, so it always resolves at the
+        # current theme. A swap while a prompt is open would still freeze it.
+        ("AlertWindow", "SignatureText", "Foreground"),
+    }
+    BRUSH_PROPS = ("Foreground", "Background", "Fill", "Stroke", "BorderBrush")
+    for xaml in APP.glob("*.xaml"):
+        cs = xaml.with_suffix(".xaml.cs")
+        if not cs.exists():
+            continue
+        text = xaml.read_text(encoding="utf-8")
+        src = cs.read_text(encoding="utf-8")
+        # element -> properties bound with DynamicResource in markup
+        bound = {}
+        for m in re.finditer(r'x:Name="([^"]+)"([^>]*)>', text, re.S):
+            name, attrs = m.group(1), m.group(2)
+            for p in BRUSH_PROPS:
+                if re.search(p + r'="\{DynamicResource', attrs):
+                    bound.setdefault(name, set()).add(p)
+        for name, props in bound.items():
+            for p in sorted(props):
+                if (xaml.stem, name, p) in STATE_PAINTED:
+                    continue
+                if re.search(r"\b" + re.escape(name) + r"\s*(?:\?)?\.\s*" + p + r"\s*=[^=]", src):
+                    fail("binding-override",
+                         f"{cs.name}: assigns {name}.{p}, which {xaml.name} binds with "
+                         "DynamicResource - the local value kills the binding and freezes "
+                         "the colour at the theme in force when it runs")
+    # The repaint invariant the allow-list depends on. Without this, every
+    # state-painted element above freezes at the theme in force when it last ran.
+    src = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    body = src[src.find("private void ApplyTheme"):]
+    body = body[:body.find("\n    private ", 10)]
+    for painter in ("UpdateStatusBanner", "SyncLockdownButton"):
+        if painter + "()" not in body:
+            fail("binding-override",
+                 f"ApplyTheme does not call {painter}() - the state-painted elements "
+                 "it repaints will freeze at the previous theme")
+    if not any(f.startswith("[binding-override]") for f in failures):
+        notes.append(f"binding-override: clean ({len(STATE_PAINTED)} state-painted, repaint invariant holds)")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -199,6 +274,7 @@ def main():
     check_colour_home()
     check_dead_keys()
     check_element_references()
+    check_binding_override()
     check_version_consistency()
 
     for n in notes:
