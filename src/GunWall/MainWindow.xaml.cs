@@ -71,7 +71,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     // Phase 4: footer session counters + graph hover state
     private double _sessionDownBytes, _sessionUpBytes;
-    private DateTime _lastFooterSample;
+    private DateTime _lastThroughputSample;
     private double _lastTickDt = 1.0; // real spacing of the last sample tick
     private readonly Dictionary<string, string> _hostDisplayNames = new(StringComparer.OrdinalIgnoreCase);
     private double? _graphHoverX;
@@ -237,7 +237,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 Dispatcher.Invoke(() => { try { RebuildConnList(); RebuildAppsList(); } catch { } });
             System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += (_, _) =>
                 Dispatcher.Invoke(() => { try { RebuildConnList(); } catch { } });
-            EngineStatus.Text = "Engine: active";
+            SetEngineStatus("Engine: active");
             SyncLockdownButton();
             _suppressModeEvent = true;
             AlertsCheck.IsChecked = _firewall.AlertsEnabled;
@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.42 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.43 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -342,7 +342,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex)
         {
             _engineReady = false;
-            EngineStatus.Text = "Engine: unavailable";
+            SetEngineStatus("Engine: unavailable");
             MessageBox.Show(
                 "GunWall could not initialise the Windows Filtering Platform.\n\n" +
                 "Make sure you are running as administrator.\n\nDetails: " + ex.Message,
@@ -527,13 +527,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             EnforceAccessPolicies(snap.Conns, snap.Procs);
 
             var nowUtc = DateTime.UtcNow;
-            double dt = _lastFooterSample == default
-                ? 1.0 : Math.Clamp((nowUtc - _lastFooterSample).TotalSeconds, 0.2, 5.0);
-            _lastFooterSample = nowUtc;
+            double dt = _lastThroughputSample == default
+                ? 1.0 : Math.Clamp((nowUtc - _lastThroughputSample).TotalSeconds, 0.2, 5.0);
+            _lastThroughputSample = nowUtc;
             _lastTickDt = dt;
             _sessionDownBytes += snap.DownRate * dt;
             _sessionUpBytes += snap.UpRate * dt;
-            UpdateFooter(snap.DownRate, snap.UpRate);
+            UpdateThroughput(snap.DownRate, snap.UpRate);
         }
         catch (Exception ex) { SampleStepError("dashboard-speeds", ex); }
 
@@ -1304,10 +1304,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             AlertsBadge.Visibility = Visibility.Visible;
         }
         else AlertsBadge.Visibility = Visibility.Collapsed;
-        if (FooterAlerts != null)
-            FooterAlerts.Text = _unreadNotifications > 0
-                ? $"{_unreadNotifications} new alert{(_unreadNotifications == 1 ? "" : "s")}"
-                : "No new alerts";
+        // The unread count is the nav badge on Alerts; the footer line that
+        // also stated it went with the footer in 0.99.43.
         if (AlertsEmpty != null)
             AlertsEmpty.Visibility = _notifications.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -3722,35 +3720,31 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex) { Services.DiagnosticLog.LogException("ErrorLog", ex); ShowError(ex); }
     }
 
-    // ------------------------------------------ Phase 4: footer status bar
-    private void UpdateFooter(double downRate, double upRate)
+    // --------------------------------------- top bar throughput and metering
+    /// <summary>Paints the two rate readouts in the top bar. The session totals
+    /// the footer used to show are tooltips here: the rate is the number you
+    /// glance at, the total is the one you go looking for, and the design's
+    /// 54px bar has room for one line rather than two.</summary>
+    private void UpdateThroughput(double downRate, double upRate)
     {
         try
         {
-            if (FooterDown == null) return;
-            FooterDown.Text =
-                $"{FormatRate(downRate)}  \u00B7  {AppUsageService.FormatBytes((long)_sessionDownBytes)} this session";
-            FooterUp.Text =
-                $"{FormatRate(upRate)}  \u00B7  {AppUsageService.FormatBytes((long)_sessionUpBytes)}";
+            if (TopDown == null) return;
+            TopDown.Text = FormatRate(downRate);
+            TopUp.Text = FormatRate(upRate);
+            TopDown.ToolTip = $"Downloaded {AppUsageService.FormatBytes((long)_sessionDownBytes)} this session";
+            TopUp.ToolTip = $"Uploaded {AppUsageService.FormatBytes((long)_sessionUpBytes)} this session";
 
-            bool lockdown = _firewall.LockdownEngaged;
-            bool prot = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
-            FooterProtText.Text = SideStatusTitle?.Text ?? (prot ? "Protected" : "Monitoring");
-            // These were three raw RGB literals - and not arbitrary ones: they
-            // were #FF453A / #30D158 / #FF9F0A, which are the *category* colours
-            // for invalid, valid and unsigned signatures. Section 2 says those
-            // are user data and must not be reused in the interface, and being
-            // user-editable they could drift to anything. The role tokens are
-            // the same three states this line already understood, and being
-            // resources they follow a theme change, which a brush built in code
-            // never did.
-            FooterProtDot.Fill = (Brush)System.Windows.Application.Current.FindResource(
-                lockdown ? "BlockText" : prot ? "AllowText" : "WarnText");
-
+            // Metering mode. Estimated numbers are a caveat on how a figure
+            // should be read, so it is surfaced on Traffic, where the figures
+            // are, and only when it is actually estimated. Carrying it on every
+            // screen at all times made a permanent label out of an occasional
+            // condition.
             bool measured = _etwMeter is { SessionActive: true } && !_etwDegraded;
-            FooterMeter.Text = measured ? "Measured metering (ETW)" : "Estimated metering";
+            if (MeteringBanner != null)
+                MeteringBanner.Visibility = measured ? Visibility.Collapsed : Visibility.Visible;
         }
-        catch (Exception ex) { SampleStepError("footer", ex); }
+        catch (Exception ex) { SampleStepError("throughput", ex); }
     }
 
     // ------------------------------------------ Phase 4: graph hover readout
@@ -5445,11 +5439,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         try
         {
-            if (SideStatusIcon == null) return;
+            if (PostureDot == null) return;
 
             var scale = new System.Windows.Media.ScaleTransform(1, 1);
-            SideStatusIcon.RenderTransformOrigin = new Point(0.5, 0.5);
-            SideStatusIcon.RenderTransform = scale;
+            PostureDot.RenderTransformOrigin = new Point(0.5, 0.5);
+            PostureDot.RenderTransform = scale;
 
             // A single animation that reverses, rather than a key-frame
             // sequence: 1 -> 1.35 -> 1 in 360ms, expressed in one object with
@@ -5835,14 +5829,33 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         else if (!coveredNow) _protectionSince = null;
         UpdateHero();
 
-        if (SideStatusIcon != null) SideStatusIcon.Foreground = fill;
-        if (SideStatusWord != null)
+        // The posture module. The old rail carried one word and hid the sentence
+        // in a tooltip because 92 pixels allowed nothing else; at 238 both fit,
+        // so 'sideWord' is gone and the full title and sentence are on screen.
+        if (PostureDot != null) PostureDot.Fill = fill;
+        if (PostureName != null)
         {
-            SideStatusWord.Text = sideWord;
-            SideStatusWord.Foreground = fill;
+            PostureName.Text = title;
+            PostureName.Foreground = (Brush)System.Windows.Application.Current.FindResource("TextPrimary");
         }
-        if (SideStatusTitle != null) SideStatusTitle.Text = title;
-        if (SideStatusSub != null) SideStatusSub.Text = sideSub;
+        if (PostureLine != null) PostureLine.Text = sideSub;
+
+        // The ON/OFF pill states whether filtering is on, which is not the same
+        // question as the role colour above it: lockdown is ON and coloured
+        // 'brand', monitoring is OFF and coloured 'warn'.
+        bool filtering = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
+        if (PosturePillText != null)
+        {
+            PosturePillText.Text = filtering ? "ON" : "OFF";
+            PosturePillText.Foreground = fill;
+        }
+        if (PosturePill != null)
+            PosturePill.Background = (Brush)System.Windows.Application.Current.FindResource(role + "Fill");
+
+        // The switch label says what pressing it DOES, per section 11 - not what
+        // state the machine is in, which the line above already answers.
+        if (FirewallLabel != null)
+            FirewallLabel.Text = _firewall.StrictMode ? "Turn firewall off" : "Turn firewall on";
 
         // §13: notify on real state transitions (never on the initial paint).
         bool protNow = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
@@ -5877,16 +5890,28 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void SyncLockdownButton()
     {
         UpdateStatusBanner();
-        if (_firewall.LockdownEngaged)
-        {
-            LockdownButton.Content = "Release lockdown";
-            EngineStatus.Text = "Engine: LOCKDOWN";
-        }
-        else
-        {
-            LockdownButton.Content = "Engage lockdown";
-            EngineStatus.Text = _engineReady ? "Engine: active" : "Engine: unavailable";
-        }
+        bool ld = _firewall.LockdownEngaged;
+
+        // Tag drives the template trigger that fills the button with the brand
+        // while lockdown holds. Setting Content directly would replace the icon
+        // and label with a bare string, which is what an earlier version did.
+        if (LockdownButton != null) LockdownButton.Tag = ld ? "Engaged" : null;
+        if (LockdownLabel != null) LockdownLabel.Text = ld ? "Release lockdown" : "Engage lockdown";
+        SetEngineStatus(ld ? "Engine: lockdown" : _engineReady ? "Engine: active" : "Engine: unavailable");
+    }
+
+    /// <summary>Sets the top bar engine line and the 6px dot beside it together.
+    /// They were separate before and could disagree; a dot that says one thing
+    /// next to text that says another is worse than either alone.</summary>
+    private void SetEngineStatus(string text)
+    {
+        if (EngineStatus != null) EngineStatus.Text = text;
+        if (EngineDot == null) return;
+        string token = text.Contains("lockdown", StringComparison.OrdinalIgnoreCase) ? "BlockText"
+            : text.Contains("active", StringComparison.OrdinalIgnoreCase) ? "AllowText"
+            : text.Contains("unavailable", StringComparison.OrdinalIgnoreCase) ? "BlockText"
+            : "WarnText";
+        EngineDot.Fill = (Brush)System.Windows.Application.Current.FindResource(token);
     }
 
     // ================================================================ tray

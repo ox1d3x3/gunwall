@@ -182,8 +182,13 @@
                             <TextBlock Text="Block" />
                         </StackPanel>
                     </Button>
+                    <!-- 66, not 34. PromptButton carries Padding="15,0" - thirty
+                         pixels of it - so a 34-wide button left four pixels for a
+                         twelve pixel chevron and clipped it to a dot. It has been
+                         rendering as a bare "." next to Allow and Block, on the one
+                         window where a misclick has consequences. -->
                     <Button x:Name="DetailsButton" Style="{StaticResource PromptButton}"
-                            Width="34" Click="Details_Click"
+                            Width="66" Click="Details_Click"
                             ToolTip="Show everything known about this connection.">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                             <ui:SymbolIcon x:Name="DetailsChevron" Symbol="ChevronDown24"

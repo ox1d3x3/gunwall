@@ -483,6 +483,43 @@
         <Setter Property="FontSize" Value="13" />
     </Style>
 
+    <!-- The lockdown button in the posture module. Templated rather than derived
+         from the library button because it has to invert completely when engaged:
+         quiet field at rest, solid brand while lockdown holds. Setters first,
+         triggers last - MC3088.
+
+         Note IsHitTestVisible is left alone. An earlier version of this control
+         disabled itself while engaged, which meant the only way out of lockdown
+         was the tray menu. A button that gets you into a state must get you out
+         of it. -->
+    <Style x:Key="PostureButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="8" Background="{DynamicResource BgElevated}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                        </Trigger>
+                        <Trigger Property="Tag" Value="Engaged">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BlockText}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BlockText}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===================== List view styling ===================== -->
     <Style TargetType="ListView">
         <Setter Property="Background" Value="Transparent" />

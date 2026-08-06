@@ -54,12 +54,18 @@ PENDING_TOKENS = {
     "RowHover":       "0.99.45 table row hover",
     "SurfacePressed": "0.99.45 table row states",
     "FocusRing":      "0.99.49 focus rings",
-    "WarnFill":       "0.99.46 degraded banner (warn-bg)",
     "InfoFill":       "0.99.45 neutral pill (neutral-bg)",
     "StatFontSize":   "0.99.47 primary stat, 30px",
     "TableFontSize":  "0.99.45 table cell, 12.5px",
     "IsDarkTheme":    "read by future theme-dependent drawing",
 }
+
+# KNOWN LIMITATION: the dead-key search looks for the literal key name. Code that
+# builds a key at runtime - UpdateStatusBanner does role + "Text" and role + "Fill"
+# - is invisible to it, so AllowText/WarnText/BlockText and their Fill partners can
+# look dead while being read every second. They are kept honest by being referenced
+# in XAML as well. If a token is ever consumed ONLY through a constructed name, add
+# it here with that noted, or the check will tell you to delete something live.
 
 # Keys GunWall defines FOR the control library rather than for itself. Nothing in
 # this repository references them by design.

@@ -96,10 +96,9 @@
         </ui:TitleBar>
 
         <Grid x:Name="RootGrid" Grid.Row="1">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        <!-- One row now. The second was Auto-height for the footer, and an empty
+             Auto row is not visually harmless: it is a row that anything given
+             Grid.Row="1" lands in silently. -->
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="238" />
             <ColumnDefinition Width="*" />
@@ -154,31 +153,85 @@
                                    Foreground="{DynamicResource TextTertiary}" />
                     </StackPanel>
                 </StackPanel>
-                <!-- Protection state. The rail is 92 pixels wide, so a card with an
-                     icon and two lines of text beside it could only ever clip -
-                     which is what it was doing. It reads as a shield with a short
-                     word under it, and the full sentence is on hover, since the
-                     state itself is what needs to be glanceable, not the
-                     explanation of it. -->
-                <Border DockPanel.Dock="Top" Margin="8,0,8,10" Padding="0,8" CornerRadius="6"
+                <!-- ===================== Posture module =====================
+                     SPEC.md section 1. Docked to the BOTTOM of the sidebar, below
+                     the nav, which is where the design puts it: the state you are
+                     in and the two controls that change it, together, one place.
+
+                     This replaces a card that described a rail 92 pixels wide - a
+                     shield glyph with one word under it and the real sentence
+                     hidden in a tooltip, because at 92 pixels nothing else fit.
+                     The rail has been 238 pixels since 0.99.33. The card outlived
+                     the constraint that shaped it by ten releases, and its own
+                     comment still explained the reasoning.
+
+                     Docking order matters in a DockPanel: this is declared before
+                     the nav ScrollViewer so it claims the bottom edge first and
+                     the nav takes what is left. Declared after, the nav would take
+                     the remaining space first and this would be pushed out of
+                     view entirely. -->
+                <Border DockPanel.Dock="Bottom" Margin="12,0,12,14" Padding="14" CornerRadius="10"
                         Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1">
-                    <Border.ToolTip>
-                        <ToolTip>
-                            <StackPanel>
-                                <TextBlock x:Name="SideStatusTitle" Text="Monitoring Only"
-                                           FontWeight="SemiBold" />
-                                <TextBlock x:Name="SideStatusSub" Text="Watching, not blocking"
-                                           Margin="0,2,0,0" />
+                    <StackPanel>
+                        <!-- State line: 7px role dot, name, ON/OFF pill hard right. -->
+                        <Grid>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Ellipse x:Name="PostureDot" Width="7" Height="7" VerticalAlignment="Center"
+                                         Margin="0,0,8,0" Fill="{DynamicResource WarnText}" />
+                                <TextBlock x:Name="PostureName" Text="Starting..." FontSize="12.5"
+                                           FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimary}" />
                             </StackPanel>
-                        </ToolTip>
-                    </Border.ToolTip>
-                    <StackPanel HorizontalAlignment="Center">
-                        <ui:SymbolIcon x:Name="SideStatusIcon" Symbol="ShieldTask24" FontSize="19"
-                                       HorizontalAlignment="Center" />
-                        <TextBlock x:Name="SideStatusWord" Text="Watching" FontSize="10"
-                                   Margin="0,3,0,0" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource TextSecondary}" />
+                            <Border x:Name="PosturePill" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    CornerRadius="4" Padding="6,2"
+                                    Background="{DynamicResource WarnFill}">
+                                <TextBlock x:Name="PosturePillText" Text="OFF" FontSize="10"
+                                           FontWeight="Bold" Foreground="{DynamicResource WarnText}" />
+                            </Border>
+                        </Grid>
+
+                        <!-- What the state actually means, in a sentence. This is the
+                             text that used to be reachable only by hovering. -->
+                        <TextBlock x:Name="PostureLine" Text="Waiting for the engine"
+                                   FontSize="11.5" LineHeight="17" TextWrapping="Wrap"
+                                   Margin="0,10,0,0"
+                                   Foreground="{DynamicResource TextTertiary}" />
+
+                        <!-- Firewall control: label left, switch right, inside its own
+                             field. 38 high, radius 8, 'panel2' on 'line2'. -->
+                        <Border Height="38" CornerRadius="8" Margin="0,10,0,0" Padding="12,0"
+                                Background="{DynamicResource BgElevated}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                            <Grid>
+                                <TextBlock x:Name="FirewallLabel" Text="Turn firewall on" FontSize="12.5"
+                                           FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <ui:ToggleSwitch x:Name="EnableFirewallButton"
+                                                 HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                 Click="EnableFirewall_Click"
+                                                 ToolTip="Turn protection on or off. Off leaves this PC unfiltered." />
+                            </Grid>
+                        </Border>
+
+                        <!-- Lockdown. Filled with the brand while engaged, because
+                             the most restrictive state in the application should be
+                             the one that looks it. -->
+                        <Button x:Name="LockdownButton" Height="30" Margin="0,8,0,0"
+                                Style="{StaticResource PostureButton}"
+                                Click="LockdownButton_Click"
+                                ToolTip="Block all network traffic until released.">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Path x:Name="LockdownIcon" Width="13" Height="13" Stretch="Uniform"
+                                      VerticalAlignment="Center" Margin="0,0,7,0"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="2" StrokeLineJoin="Round"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M6.5,10.5 L17.5,10.5 A2,2 0 0 1 19.5,12.5 L19.5,18.5 A2,2 0 0 1 17.5,20.5 L6.5,20.5 A2,2 0 0 1 4.5,18.5 L4.5,12.5 A2,2 0 0 1 6.5,10.5 Z M8,10.5 V7.8 a4,4 0 0 1 8,0 v2.7" />
+                                <TextBlock x:Name="LockdownLabel" Text="Engage lockdown" FontSize="12"
+                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                 </Border>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -303,33 +356,93 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- Top bar: engine controls -->
-            <Border Grid.Row="0" Background="{DynamicResource BgSecondary}"
-                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                            VerticalAlignment="Center" Margin="20,12">
-                    <!-- The library's switch: same control as every other toggle here,
-                         so the theme control does not look like a one-off. -->
-                    <!-- The icon rides inside the knob, so the switch shows which
-                         theme you are in rather than that two exist. -->
-                    <ToggleButton x:Name="ThemeToggle" Style="{StaticResource ThemeSwitch}"
-                                  Click="ThemeToggle_Click" Margin="0,0,16,0"
-                                  VerticalAlignment="Center"
-                                  ToolTip="Switch between the dark and light theme" />
-                    <TextBlock x:Name="EngineStatus" Text="Engine: starting"
-                               Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,16,0" />
-                    <Button x:Name="LockdownButton" Content="Engage lockdown"
-                            Style="{StaticResource ActionButton}" Margin="0,0,10,0"
-                            Click="LockdownButton_Click" />
-                    <!-- The library's own switch: Fluent proportions, the knob
-                         animation, and the states Windows users already know.
-                         The hand-built one was 94 by 32 with ON/OFF lettering,
-                         which is a control shouting at the person using it. -->
-                    <ui:ToggleSwitch x:Name="EnableFirewallButton" Content="Firewall"
-                                     Click="EnableFirewall_Click" VerticalAlignment="Center"
-                                     Margin="0,0,12,0"
-                                     ToolTip="Turn protection on or off. Off leaves this PC unfiltered." />
-                </StackPanel>
+            <!-- ===================== Top bar =====================
+                 SPEC.md section 1: 54 high, padding 0/24/0/28, and its bottom
+                 rule is 'line' rather than the 'line2' used for control borders -
+                 chrome dividers are the quieter of the two.
+
+                 The firewall switch and lockdown button used to live here. They
+                 are controls that change the posture, so they now sit with the
+                 posture they change; what is left here is what the machine is
+                 doing, which is a different question and belongs in a different
+                 place. -->
+            <Border Grid.Row="0" Height="54" Background="{DynamicResource BgSecondary}"
+                    BorderBrush="{DynamicResource Divider}" BorderThickness="0,0,0,1">
+                <Grid Margin="28,0,24,0">
+                    <!-- Search. Not yet wired to anything: the command palette it
+                         opens is 0.99.48. It is placed and styled now so the top
+                         bar is not rebuilt twice, and it is deliberately disabled
+                         rather than silently inert - a search box that swallows
+                         typing and does nothing is worse than one that says it is
+                         not ready. -->
+                    <Border x:Name="SearchBox" Width="300" Height="32" HorizontalAlignment="Left"
+                            VerticalAlignment="Center" CornerRadius="7" Padding="11,0"
+                            Background="{DynamicResource BgCard}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                            ToolTip="Search is arriving with the command palette in a later build.">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Path Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"
+                                      Margin="0,0,9,0" Stroke="{DynamicResource TextTertiary}"
+                                      StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M18,11 A7,7 0 1 1 4,11 A7,7 0 1 1 18,11 M16,16 L21,21" />
+                                <TextBlock Text="Search apps, rules, addresses..." FontSize="12.5"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                            </StackPanel>
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    CornerRadius="4" Padding="5,2"
+                                    Background="{DynamicResource BgElevated}">
+                                <TextBlock Text="Ctrl K" FontSize="10.5"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                VerticalAlignment="Center">
+                        <Ellipse x:Name="EngineDot" Width="6" Height="6" VerticalAlignment="Center"
+                                 Margin="0,0,7,0" Fill="{DynamicResource WarnText}" />
+                        <TextBlock x:Name="EngineStatus" Text="Engine: starting" FontSize="12"
+                                   VerticalAlignment="Center" Margin="0,0,14,0"
+                                   Foreground="{DynamicResource TextSecondary}" />
+
+                        <Rectangle Width="1" Height="20" Margin="0,0,14,0"
+                                   Fill="{DynamicResource Divider}" VerticalAlignment="Center" />
+
+                        <!-- Throughput. The session totals that the footer used to
+                             carry are on these two as tooltips: the rate is the
+                             glanceable number, the session total is the one you go
+                             looking for. -->
+                        <Path Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center"
+                              Margin="0,0,5,0" Stroke="{DynamicResource TextPrimary}"
+                              StrokeThickness="2.6" StrokeLineJoin="Round"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Data="M6,10 L12,4 L18,10 M12,4 L12,20" />
+                        <TextBlock x:Name="TopUp" Text="0 B/s" FontSize="11.5"
+                                   FontFamily="{StaticResource MonoFont}" VerticalAlignment="Center"
+                                   Margin="0,0,14,0" Foreground="{DynamicResource TextSecondary}" />
+
+                        <Path Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center"
+                              Margin="0,0,5,0" Stroke="{DynamicResource BlockText}"
+                              StrokeThickness="2.6" StrokeLineJoin="Round"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Data="M6,14 L12,20 L18,14 M12,20 L12,4" />
+                        <TextBlock x:Name="TopDown" Text="0 B/s" FontSize="11.5"
+                                   FontFamily="{StaticResource MonoFont}" VerticalAlignment="Center"
+                                   Margin="0,0,14,0" Foreground="{DynamicResource TextSecondary}" />
+
+                        <!-- The design specifies a 30x30 icon button here. Kept as the
+                             animated switch by an explicit decision: the icon rides
+                             inside the knob, so it shows which theme you are in
+                             rather than that two exist. Recorded as a deliberate
+                             deviation, not an oversight. -->
+                        <ToggleButton x:Name="ThemeToggle" Style="{StaticResource ThemeSwitch}"
+                                      Click="ThemeToggle_Click" VerticalAlignment="Center"
+                                      ToolTip="Switch between the dark and light theme" />
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- ===================== Content area ===================== -->
@@ -567,8 +680,12 @@
                         <StackPanel>
                             <TextBlock Text="ALLOWED" FontSize="10.5" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,9" />
+                            <!-- 't1', not green. Blocked-in-brand is the design's one sanctioned
+                                 decorative use of the accent; Allowed is deliberately not
+                                 its mirror. Green is a state colour and a running total is
+                                 not a state. -->
                             <TextBlock x:Name="StatAllowed" Text="0" FontSize="30" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource AllowText}" />
+                                       Foreground="{DynamicResource TextPrimary}" />
                         </StackPanel>
                     </Border>
                     <Border Grid.Column="3" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource Divider}" Padding="22,0,0,0"
@@ -1108,13 +1225,34 @@
             <!-- ========== Traffic ========== -->
             <Grid x:Name="PanelTraffic" Visibility="Collapsed">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />   <!-- metering banner, collapsed when measured -->
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid Grid.Row="0" Margin="0,0,0,16">
+
+                <!-- SPEC.md section 10, degraded state: 'warn-bg' on a 1px 'warn'
+                     hairline, 8px radius, above the header. This is where the
+                     footer's metering readout went. It states a caveat about how
+                     to read the figures below it, so it belongs on the screen with
+                     the figures, and only while the caveat applies - which is what
+                     a permanent label everywhere could not express. -->
+                <Border x:Name="MeteringBanner" Grid.Row="0" Visibility="Collapsed"
+                        CornerRadius="8" Padding="12,9" Margin="0,0,0,14"
+                        Background="{DynamicResource WarnFill}"
+                        BorderBrush="{DynamicResource WarnText}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,9,0"
+                                 Fill="{DynamicResource WarnText}" />
+                        <TextBlock Text="Estimated metering — per-app byte counts are derived, not measured. Live ETW metering is unavailable in this session."
+                                   FontSize="11.5" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondary}" />
+                    </StackPanel>
+                </Border>
+
+                <Grid Grid.Row="1" Margin="0,0,0,16">
                     <StackPanel>
                         <TextBlock Text="Traffic" Style="{StaticResource H1}" />
                         <TextBlock x:Name="TrafficSubtitle"
@@ -1123,7 +1261,7 @@
                     </StackPanel>
                 </Grid>
 
-                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="14" Margin="0,0,0,16">
+                <Border Grid.Row="2" Style="{StaticResource Card}" Padding="14" Margin="0,0,0,16">
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="CONNECTION MAP" Style="{StaticResource Muted}"
                                    FontSize="11" FontWeight="SemiBold" Margin="2,0,0,10" />
@@ -1137,7 +1275,7 @@
                     </DockPanel>
                 </Border>
 
-                <Grid Grid.Row="2">
+                <Grid Grid.Row="3">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
@@ -1186,7 +1324,7 @@
                     </Border>
                 </Grid>
             
-                <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,16,0,0">
+                <Border Grid.Row="4" Style="{StaticResource Card}" Margin="0,16,0,0">
                     <DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                             <TextBlock Text="DATA USAGE BY APP" Style="{StaticResource Muted}"
@@ -1244,7 +1382,7 @@
                     </DockPanel>
                 </Border>
 
-                <Border Grid.Row="4" Style="{StaticResource Card}" Margin="0,16,0,0">
+                <Border Grid.Row="5" Style="{StaticResource Card}" Margin="0,16,0,0">
                     <DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
                             <TextBlock Text="TRAFFIC BREAKDOWN" Style="{StaticResource SectionLabel}"
@@ -2486,38 +2624,18 @@
         </Grid>
         </Grid>
 
-        <!-- ===================== Persistent footer status bar ===================== -->
-        <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{DynamicResource BgSecondary}"
-                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,7">
-            <DockPanel LastChildFill="False">
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                    <!-- Declared in the 'warn' role because the text beside it reads
-                         "Starting..." until the first sample arrives, and not-yet-known
-                         is a warning state rather than a protected one. -->
-                    <Ellipse x:Name="FooterProtDot" Width="8" Height="8" Fill="{DynamicResource WarnText}"
-                             VerticalAlignment="Center" Margin="0,0,7,0" />
-                    <TextBlock x:Name="FooterProtText" Text="Starting..." FontSize="11.5"
-                               Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
-                               Margin="0,0,22,0" />
-                    <Ellipse Width="8" Height="8" Fill="{DynamicResource InboundBrush}"
-                             VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBlock x:Name="FooterDown" Text="0 B/s" FontSize="11.5"
-                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"
-                               Margin="0,0,18,0" />
-                    <Ellipse Width="8" Height="8" Fill="{DynamicResource OutboundBrush}"
-                             VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBlock x:Name="FooterUp" Text="0 B/s" FontSize="11.5"
-                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                    <TextBlock x:Name="FooterMeter" Text="Estimated metering" FontSize="11"
-                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"
-                               Margin="0,0,18,0" />
-                    <TextBlock x:Name="FooterAlerts" Text="No new alerts" FontSize="11.5"
-                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
-                </StackPanel>
-            </DockPanel>
-        </Border>
+        <!-- The persistent footer was removed in 0.99.43. Three of its five
+             readouts had become duplicates once the posture module and top bar
+             landed: protection state was in both of those, the rates were in the
+             top bar, and the alert count was already the nav badge.
+
+             Its two genuinely unique readouts were rehomed rather than dropped.
+             Session totals are tooltips on the top bar rates - the rate is what
+             you glance at, the total is what you go looking for. Metering mode is
+             now a banner on Traffic, shown only when metering is estimated rather
+             than ETW-measured, which is the screen where that caveat changes how
+             you read a number. A permanent label on every screen was noise; a
+             banner where the number is being read is signal. -->
         </Grid>
     </Grid>
 </ui:FluentWindow>

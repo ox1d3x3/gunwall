@@ -1,6 +1,6 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.99.42. It
+This document describes how GunWall is **actually built** as of v0.99.43. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -268,6 +268,29 @@ dictionary writes across sampling loops.
 
 Charts are drawn by hand onto a canvas rather than with a charting library, in
 keeping with the zero-dependency rule.
+
+### Window chrome
+
+The window is a sidebar and a content column. The sidebar is 238px: brand, a
+scrolling nav in three groups, and the **posture module** docked to the bottom —
+state, the sentence explaining it, the firewall control and lockdown, together,
+because the controls that change the posture belong with the posture they change.
+
+Docking order matters. The posture module is declared *before* the nav
+`ScrollViewer` so it claims the bottom edge first and the nav takes what remains.
+Declared after, the nav would take the remaining space and push it out of view.
+
+The content column is a 54px top bar over the panel host. The top bar answers
+what the machine is doing — engine state, throughput — not what the operator
+wants done, which is the sidebar's question.
+
+There is **no footer**. One existed until 0.99.43 and was removed when the
+posture module and top bar made three of its five readouts duplicates. Its two
+unique readouts were rehomed: session totals to tooltips on the top bar rates,
+and metering mode to a degraded banner on Traffic shown only while metering is
+estimated. The rule that produced that split is worth keeping: a caveat about
+how to read a figure belongs on the screen with the figure, and only while it
+applies.
 
 ### Theming, and the one rule that keeps being broken
 

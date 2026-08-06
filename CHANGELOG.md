@@ -6,6 +6,35 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.43] — 2026-08-06
+
+Second of eight design-migration releases. The chrome: sidebar posture module,
+rebuilt top bar, and the footer retired.
+
+### Changed
+- **The sidebar's protection card is now the posture module the design specifies**, docked to the bottom of the rail: role dot, state, ON/OFF pill, the sentence explaining what the state means, the firewall control, and lockdown. What it replaced was a shield glyph with a single word under it and the real sentence hidden in a tooltip — a shape dictated by a 92-pixel rail. The rail has been 238 pixels since 0.99.33. The card outlived the constraint that shaped it by ten releases, and its own comment was still explaining the reasoning: *"the rail is 92 pixels wide, so a card with an icon and two lines of text beside it could only ever clip."* Nothing had clipped in a long time; nobody had reread the comment.
+- **The top bar is rebuilt to section 1**: 54 high, search box with its shortcut chip on the left, then engine state with a role dot, a hairline divider, and the two throughput readouts. Its bottom rule is `line` rather than `line2` — chrome dividers are the quieter of the two hairlines.
+- **The firewall switch and lockdown button moved out of the top bar into the posture module.** They are controls that change the posture, so they belong with the posture they change; the top bar now answers what the machine is doing, which is a different question.
+- The firewall control's label states what pressing it *does* rather than what state the machine is in, per section 11. The state is already on the line above it.
+- The engine line and its dot are now set together. They were independent and could disagree, and a dot saying one thing beside text saying another is worse than either alone.
+- The theme control stays as the animated switch rather than the design's 30×30 icon button, by explicit decision. Recorded as a deliberate deviation rather than an oversight.
+
+### Removed
+- **The persistent footer.** Once the posture module and top bar landed, three of its five readouts were duplicates: protection state appeared in both of those, the rates in the top bar, and the alert count was already the nav badge. Its two genuinely unique readouts were rehomed rather than dropped — session totals are tooltips on the top bar rates, and metering mode is now a banner on Traffic. The empty `Auto` grid row went with it: an empty row is not visually harmless, it is a row that anything given `Grid.Row="1"` lands in silently.
+
+### Added
+- **A degraded-state banner on Traffic** (section 10: `warn-bg` on a 1px `warn` hairline, 8px radius, above the header) shown only while metering is estimated rather than ETW-measured. It states a caveat about how to read the figures below it, so it lives on the screen with the figures and only while the caveat applies. A permanent label on every screen could express neither.
+
+### Fixed
+- **The connection prompt's details button has been rendering as a bare dot.** `PromptButton` carries `Padding="15,0"` — thirty pixels — and the button was `Width="34"`, leaving four pixels for a twelve-pixel chevron. It clipped to a sliver, beside Allow and Block, on the one window in this application where a misclick has consequences. Widened to 66. Behind it, a collapsed label had its two strings inverted; corrected while it was open, though nothing could ever have shown it.
+- The prompt header read "App Is Blocked". Section 11 is sentence case throughout, and the title case read oddly regardless.
+- **The ALLOWED statistic was green.** The design gives it `t1`: blocked-in-brand is the one sanctioned decorative use of the accent, and allowed is deliberately not its mirror. Green is a state colour and a running total is not a state. Verified against the design source rather than the rendered screenshot.
+
+### Note
+The metering banner was added as a new first row on Traffic, which left the panel's four existing children pointing at the wrong rows — two of them overlapping on the same one. Caught by counting row indices against children before packaging rather than by looking at it afterwards, which on a collapsed panel would not have shown anything.
+
+---
+
 ## [0.99.42] — 2026-08-06
 
 First of eight releases migrating the interface to the Claude Design handoff.

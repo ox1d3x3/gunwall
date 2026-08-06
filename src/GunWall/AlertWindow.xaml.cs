@@ -67,7 +67,7 @@ public partial class AlertWindow : Window
             {
             // Short enough to fit the title line without truncating; the
             // subtitle carries the rest.
-            HeaderText.Text = "App Is Blocked";
+            HeaderText.Text = "App is blocked";
             if (SummaryText != null) SummaryText.Text = "Approve to allow network access";
         }
 
@@ -183,7 +183,7 @@ public partial class AlertWindow : Window
         bool showing = DetailsPanel.Visibility == Visibility.Visible;
 
         DetailsPanel.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
-        if (DetailsLabel != null) DetailsLabel.Text = showing ? "Details" : "Hide details";
+        if (DetailsLabel != null) DetailsLabel.Text = showing ? "Hide details" : "Details";
         // A SymbolIcon carries a Symbol, not a character - setting Text on it
         // would compile and then quietly do nothing.
         if (DetailsChevron != null)
