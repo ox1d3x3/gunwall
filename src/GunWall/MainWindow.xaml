@@ -1032,8 +1032,15 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="PUBLISHER" Width="190"
-                                                DisplayMemberBinding="{Binding Publisher}" />
+                                <GridViewColumn Header="PUBLISHER" Width="190">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Publisher}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Publisher}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="VIRUSTOTAL" Width="130">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
@@ -1057,8 +1064,16 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="PATH" Width="300"
-                                                DisplayMemberBinding="{Binding ExecutablePath}" />
+                                <GridViewColumn Header="PATH" Width="300">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding ExecutablePath}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       FontFamily="{StaticResource MonoFont}" FontSize="11.5"
+                                                       ToolTip="{Binding ExecutablePath}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="CONNS" Width="86">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
@@ -1166,7 +1181,7 @@
                         </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="PROCESS" Width="230">
+                                <GridViewColumn Header="PROCESS" Width="210">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding ProcessDisplay}"
@@ -1175,25 +1190,25 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="PID" Width="64"
+                                <GridViewColumn Header="PID" Width="56"
                                                 DisplayMemberBinding="{Binding ProcessId}" />
-                                <GridViewColumn Header="PROTO" Width="56"
+                                <GridViewColumn Header="PROTO" Width="66"
                                                 DisplayMemberBinding="{Binding Protocol}" />
-                                <GridViewColumn Header="LOCAL" Width="190">
+                                <GridViewColumn Header="LOCAL" Width="175">
                                                 <GridViewColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Text="{Binding LocalEndpoint}" Style="{StaticResource DataCell}" />
                                                     </DataTemplate>
                                                 </GridViewColumn.CellTemplate>
                                             </GridViewColumn>
-                                <GridViewColumn Header="REMOTE" Width="220">
+                                <GridViewColumn Header="REMOTE" Width="195">
                                                 <GridViewColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Text="{Binding RemoteEndpoint}" Style="{StaticResource DataCell}" />
                                                     </DataTemplate>
                                                 </GridViewColumn.CellTemplate>
                                             </GridViewColumn>
-                                <GridViewColumn Header="LOCATION" Width="210">
+                                <GridViewColumn Header="LOCATION" Width="196">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
@@ -1207,8 +1222,13 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="STATE" Width="124"
-                                                DisplayMemberBinding="{Binding State}" />
+                                <!-- STATE was here until 0.99.50. The design's Connections
+                                     table has six columns and carries state in the
+                                     inspector - which this build already did, so the
+                                     column repeated what the panel beside it says. It was
+                                     also the column being pushed off the right edge at
+                                     ordinary window widths, so it was both redundant and
+                                     the thing actually breaking. -->
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -1785,9 +1805,9 @@
                                                 DisplayMemberBinding="{Binding TimeText}" />
                                 <GridViewColumn Header="APPLICATION" Width="150"
                                                 DisplayMemberBinding="{Binding AppName}" />
-                                <GridViewColumn Header="PROTO" Width="56"
+                                <GridViewColumn Header="PROTO" Width="66"
                                                 DisplayMemberBinding="{Binding Protocol}" />
-                                <GridViewColumn Header="DIRECTION" Width="80"
+                                <GridViewColumn Header="DIRECTION" Width="96"
                                                 DisplayMemberBinding="{Binding Direction}" />
                                 <GridViewColumn Header="REMOTE" Width="200">
                                                 <GridViewColumn.CellTemplate>

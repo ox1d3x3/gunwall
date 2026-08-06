@@ -6,6 +6,25 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.50] — 2026-08-06
+
+Column sizing. Three defects, one of them introduced by the release before it.
+
+### Fixed
+- **`PROTO` was rendering as `PROT`.** Uppercasing the headers in 0.99.49 made every one of them wider, and this was the column with no slack: 20px of header padding left 36px for a word that needs about 40. `DIRECTION` in the packet log was in the same position. Both widened, and a check now measures every header against its own column so this cannot recur silently. Making text wider is an obvious consequence of uppercasing it, and I did not think about it at all.
+- **Long values were cut mid-character with no ellipsis.** Publisher read "Kaspersky Labs GmbH — inval" and paths stopped mid-folder. A hard cut reads as the value *ending* there; an ellipsis says it continues. Both columns now trim properly and carry the full value as a tooltip.
+- **The Connections table was losing its last column entirely at ordinary window widths.** Seven fixed-width columns plus a 340px inspector overflowed anything under about 1730px, and `HorizontalScrollBarVisibility="Disabled"` means overflow is silent clipping rather than a scrollbar.
+
+### Changed
+- **`STATE` is gone from the Connections table.** The design gives that table six columns and carries state in the inspector — which this build already did, so the column was repeating what the panel beside it says, and it was the column being pushed off the edge. Redundant *and* the thing actually breaking. The remaining six were rebalanced from 1094px to 898px so the table fits alongside the inspector at normal widths.
+
+### Note
+The first attempt at this asserted and wrote nothing, because `PROTO` also exists in the packet log and the "exactly one occurrence" guard caught an edit that would have hit the wrong table. That guard has now paid for itself twice.
+
+The version check also had a bug of its own: `"0.99.50.0".rstrip(".0")` strips a *set* of characters rather than a suffix, yielding `0.99.5`, so it reported the four files disagreeing when they did not. Latent since the check was written and invisible until the first version ending in zero — which is exactly the kind of defect a check is meant to catch rather than be.
+
+---
+
 ## [0.99.49] — 2026-08-06
 
 ### Added

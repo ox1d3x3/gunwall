@@ -258,8 +258,12 @@ def check_version_consistency():
         if len(found) != 1:
             fail("version", f"{label}: expected exactly 1 version match, found {len(found)}")
             continue
-        seen[label] = found[0].rstrip(".0") if label == "app.manifest" else found[0]
-    vals = {v.removesuffix(".0") if v.count(".") == 3 else v for v in seen.values()}
+        # removesuffix, NOT rstrip: rstrip takes a SET of characters, so
+        # "0.99.50.0".rstrip(".0") strips every trailing dot and zero and yields
+        # "0.99.5". Latent until the first version ending in zero, which is
+        # exactly the kind of bug a check is supposed to catch rather than be.
+        seen[label] = found[0].removesuffix(".0") if label == "app.manifest" else found[0]
+    vals = set(seen.values())
     if len(vals) > 1:
         fail("version", f"versions disagree: {seen}")
     elif vals:
