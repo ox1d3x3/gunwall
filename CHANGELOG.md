@@ -6,6 +6,19 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.53] — 2026-08-07
+
+### Fixed
+- **The ellipsis fix from two releases ago did not work on the flag columns, and I reported it as done.** `Location` and `Country` put their text inside a horizontal `StackPanel`, which measures children with **infinite width** — so the `TextTrimming="CharacterEllipsis"` that was already sitting on that `TextBlock` was honoured by the layout system as "no overflow, nothing to trim", while the cell boundary clipped the glyphs anyway. `AS200107 K` still read as an operator name rather than a truncated one.
+
+  Both are `Grid` now, `Auto` for the flag and `*` for the text, so the constraint actually exists. Worth being precise about the failure: the property was present and correct, and asserting that it was present was never evidence that it did anything.
+
+### Added
+- **Scrollbars are thin, thumb-only, with no track and no stepper arrows.** The library default is a Fluent scrollbar with buttons at both ends and a filled track — the loudest chrome in a window whose whole visual argument is hairlines, attached to the thing you are least interested in looking at. The thumb uses `line2` at rest and `t3` under the pointer, the same two values as the table hairlines, so it reads as part of the frame.
+- **A 2px `brand` focus ring**, replacing WPF's dotted Win32 rectangle, which in this design reads as a rendering fault. `FocusVisualStyle` is the right hook precisely because WPF applies it for **keyboard** focus and not for a mouse click — a ring on the button you just clicked tells you what you already know, and that is what makes people switch focus indicators off. 2px is the reserved measure, matching a selected row and the nav marker.
+
+---
+
 ## [0.99.52] — 2026-08-06
 
 ### Changed

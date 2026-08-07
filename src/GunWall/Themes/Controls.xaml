@@ -52,6 +52,7 @@
          people learn is to press the coloured one. Closing the window blocks,
          so the safe answer is also the free one. -->
     <Style x:Key="PromptSecondary" TargetType="Button">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Height" Value="36" />
         <Setter Property="MinWidth" Value="92" />
         <Setter Property="FontSize" Value="12.5" />
@@ -159,6 +160,7 @@
     </Style>
 
     <Style x:Key="PromptChevron" TargetType="Button">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Width" Value="30" />
         <Setter Property="Height" Value="30" />
         <Setter Property="Cursor" Value="Hand" />
@@ -577,6 +579,7 @@
          wrong half of the pair. Taking both from the library keeps them in step
          in either theme. -->
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <!-- Painted from GunWall's own brand token rather than the library's
              accent chain. That chain derives a lighter, desaturated variant for
              dark themes, which is right for chrome and wrong for a filled
@@ -609,6 +612,7 @@
         <!-- The standard Fluent button, unaltered apart from a shared height so
          rows of controls line up. -->
     <Style x:Key="ActionButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="Padding" Value="15,0" />
         <Setter Property="FontSize" Value="13" />
@@ -624,6 +628,7 @@
          was the tray menu. A button that gets you into a state must get you out
          of it. -->
     <Style x:Key="PostureButton" TargetType="Button">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="Cursor" Value="Hand" />
@@ -646,6 +651,92 @@
                             <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- =====================================================================
+         Scrollbars, SPEC.md section 12: thin, thumb only, no track, no arrows.
+
+         The library default is a Fluent scrollbar with stepper buttons and a
+         filled track. In a window whose whole visual argument is hairlines and
+         quiet surfaces, that is the loudest chrome on screen, and it is attached
+         to the thing you are least interested in looking at.
+
+         The thumb is 'line2' at rest and 't3' under the pointer - the same two
+         values the table hairlines use, so a scrollbar reads as part of the
+         frame rather than as a control sitting on top of it.
+         ===================================================================== -->
+    <Style x:Key="ScrollThumb" TargetType="Thumb">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="t" CornerRadius="3" Margin="2"
+                            Background="{DynamicResource BorderBrush}" />
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="t" Property="Background" Value="{DynamicResource TextTertiary}" />
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="t" Property="Background" Value="{DynamicResource TextTertiary}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Width" Value="10" />
+        <Setter Property="MinWidth" Value="10" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <!-- No RepeatButtons. A stepper arrow is a 20px target that
+                         moves the view by one line; it costs both ends of every
+                         scrollbar in the application and earns neither. -->
+                    <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <Track.Thumb>
+                            <Thumb Style="{StaticResource ScrollThumb}" />
+                        </Track.Thumb>
+                    </Track>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Orientation" Value="Horizontal">
+                            <Setter Property="Height" Value="10" />
+                            <Setter Property="MinHeight" Value="10" />
+                            <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- =====================================================================
+         Focus, SPEC.md section 12: a 2px 'brand' ring.
+
+         WPF's default focus visual is a dotted rectangle inherited from Win32,
+         which in this design reads as a rendering fault rather than as focus.
+
+         FocusVisualStyle is the right hook specifically because WPF applies it
+         for KEYBOARD focus and not for a mouse click. A ring drawn on the button
+         you just clicked tells you something you already know, and that is the
+         thing that makes people want focus indicators switched off.
+
+         2px is the reserved measure - the same as a selected table row and the
+         nav marker. Nothing else in this design is 2px, which is what lets the
+         width alone carry the meaning.
+         ===================================================================== -->
+    <Style x:Key="FocusRing">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="8" RadiusY="8"
+                               Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

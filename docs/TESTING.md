@@ -163,22 +163,23 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-**Layout conformance — the most recent change.**
+**Scrollbars.** Anywhere a list overflows — Connections is easiest. Should be a
+thin rounded thumb with no track behind it and **no arrow buttons at either
+end**, darkening slightly under the pointer.
 
-1. **Page padding.** Content should sit 36px from the sidebar and window edge,
-   30px from the top bar, and 44px from the bottom. Previously a uniform 24. The
-   last row of a long table should no longer sit flush on the window edge.
-2. **Chart height.** On Overview the chart should be a fixed band of about 230px
-   of plot area, with **Top talkers / Recent decisions taking the leftover
-   height** instead. On a tall window this is the visible difference: the chart
-   stops growing and the lists below get longer.
-   *Send: Overview maximised, and again on a short window.*
-3. **Nothing else should have moved.** The padding change touches all thirteen
-   screens, so any panel that clips at the right edge now but did not before is
-   this change, and worth reporting.
+**Focus ring.** Press **Tab** repeatedly from a fresh window. Buttons should show
+a 2px red ring. Then **click** the same buttons with the mouse — the ring should
+*not* appear. If it shows on click, the hook is wrong.
 
-**Carried from the release before, still untested:**
+**Ellipsis on the flag columns.** Connections `LOCATION`, and Traffic `COUNTRY`.
+Text must end in `...`, never mid-word. This was reported fixed once before and
+was not, so it is worth an actual look rather than a glance.
 
-- Hover a truncated Path or Publisher in Applications — a tooltip should show the
-  full value.
-- Connections `LOCATION` should end in `...` rather than cutting mid-word.
+**Carried from the release before, if not yet checked:**
+
+- Page padding: 36 from the sidebar and window edge, 30 from the top bar, 44 at
+  the bottom.
+- Chart height on Overview: a fixed band, with Top talkers / Recent decisions
+  taking the leftover height. *Send Overview maximised and on a short window.*
+- Hover a truncated Path or Publisher in Applications — tooltip shows the full
+  value.

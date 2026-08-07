@@ -1264,14 +1264,29 @@
                                 <GridViewColumn Header="LOCATION" Width="196">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <StackPanel Orientation="Horizontal">
-                                                <Image Width="20" Height="14" Margin="0,0,7,0"
+                                            <!-- Grid, not StackPanel. TextTrimming only engages when the
+                                                 TextBlock is width-constrained, and a horizontal
+                                                 StackPanel measures its children with INFINITE
+                                                 width - so the ellipsis request is honoured by the
+                                                 layout system as "no overflow, nothing to trim"
+                                                 while the cell boundary clips the glyphs anyway.
+                                                 The result reads as a value that ENDS mid-word:
+                                                 "AS200107 K". Auto for the flag, star for the text,
+                                                 and the constraint exists. -->
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Image Grid.Column="0" Width="20" Height="14" Margin="0,0,7,0"
                                                        VerticalAlignment="Center" Stretch="Uniform"
                                                        SnapsToDevicePixels="True"
                                                        Source="{Binding Country, Converter={StaticResource CountryFlag}}" />
-                                                <TextBlock Text="{Binding Location}" VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding Location}"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding Location}" />
+                                            </Grid>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
@@ -1463,12 +1478,20 @@
                                         <GridViewColumn Header="COUNTRY" Width="240">
                                             <GridViewColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <Image Width="22" Height="15" Margin="0,0,9,0" VerticalAlignment="Center"
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Image Grid.Column="0" Width="22" Height="15" Margin="0,0,9,0"
+                                                               VerticalAlignment="Center"
                                                                Stretch="Uniform" SnapsToDevicePixels="True"
                                                                Source="{Binding Code, Converter={StaticResource CountryFlag}}" />
-                                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                                                    </StackPanel>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   ToolTip="{Binding Name}" />
+                                                    </Grid>
                                                 </DataTemplate>
                                             </GridViewColumn.CellTemplate>
                                         </GridViewColumn>
