@@ -6,6 +6,42 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.52] — 2026-08-06
+
+### Changed
+- **Page padding is the design's 30 top / 36 sides / 44 bottom**, replacing a uniform 24 on every screen. The asymmetry is the point: the extra at the bottom stops the last row of a long table sitting flush against the window edge.
+- **The dashboard chart no longer grows to fill the window.** It sat in a star-sized row, so on a tall display it stretched to around 700px — and a throughput trace does not get more readable by getting taller, it just flattens against a larger empty field. Pinned to a 230px plot area, roughly the 310px card the design draws, and the remaining height goes to Top talkers and Recent decisions, which *do* get more useful with more room.
+
+### Documentation
+- **Version numbers now mark releases, not changes.** The roadmaps were annotated version by version — "*(v0.85.0, v0.98.0)*", "Shipped through v0.32", "Phase 1 … Phase 5" — which turned a list of open work into a promise about sequencing. This project reorders freely, so that promise was never true. Both roadmaps are now grouped by **what the work touches and how risky it is**, with no version numbers in either.
+
+  The README badge states the stage rather than the number, so a bump no longer edits that file. Four files carry the version and must agree; `CHANGELOG.md` is the only other place a version belongs. The rule is written down in `CONTRIBUTING.md` rather than left as a habit.
+
+  **This entry did not bump the version.** It is the first application of the rule: the change is documentation only, the binary is byte-identical to the one already built for testing, and inventing a number for it would have been exactly the noise the rule exists to stop.
+
+### Added
+- **`docs/TESTING.md`** — what to check on each build and what to send back.
+
+  This is written down for the same reason the checks moved into `tools/checks/`: the code is authored somewhere that cannot compile WPF or render a pixel of it, so every pre-release check is a proxy and the build on X1 is the only place the software actually exists. The screenshots are not a courtesy, they are the test suite — and asking for them ad hoc, differently each time, has meant the wrong thing got checked more than once.
+
+  It includes a table of what can be verified here versus what only the build can show, stated plainly so that "this should work" is read as exactly that.
+
+---
+
+## [0.99.51] — 2026-08-06
+
+### Fixed
+- **Text cells trim with an ellipsis in all twelve tables.** 0.99.50 fixed this on two columns — Publisher and Path — and moved on. Fourteen more could clip, and Connections' `LOCATION` was still cutting mid-word: `AS200107 K` reads as an operator name rather than a truncated one. That is the failure this project keeps naming: the fix was correct and its scope was decided by which two examples happened to be in the screenshot.
+
+  Declared once per table rather than per column, because most of these are `DisplayMemberBinding` — which produces a bare `TextBlock` with no template to hang a setter on. `ListView.Resources` is the correct scope specifically because resource lookup walks the **logical** tree, and a generated row's logical parent is the `ListView`; the same style inside the `ControlTemplate` would never be found.
+
+  It reaches column headers too, which is wanted: a header too narrow for its own word now shows `PRO...` rather than silently reading as `PROT`.
+
+### Note — the HITS column is not here, deliberately
+The design's Rules table has five columns and this build has four; `HITS` is the missing one. It is not a layout gap. `FirewallRule` has no hit counter, and nothing in the WFP layer counts rule matches today — so the column would need hit counting built behind it first. Adding an empty column to match a screenshot would look like conformance and mean nothing. It belongs on the roadmap as a feature, not in a theme release.
+
+---
+
 ## [0.99.50] — 2026-08-06
 
 Column sizing. Three defects, one of them introduced by the release before it.

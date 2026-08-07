@@ -44,6 +44,19 @@ goal, and every package is a supply chain someone has to trust.
 
 **No telemetry.** GunWall makes no outbound request the user did not ask for.
 
+**Version numbers mark releases, not changes.** Bump when a build goes out for
+testing or publication — not for every edit, and never for a documentation-only
+change. Four files carry the version and must agree:
+`src/GunWall/GunWall.csproj`, `src/GunWall/app.manifest`, the About string in
+`MainWindow.xaml.cs`, and `CurrentVersion` in `Services/UpdateService.cs`.
+`tools/checks/check_theme.py` fails the build if they disagree.
+
+Nothing else should reference a version. The README badge states the stage, not
+the number, and the roadmaps describe what is open rather than which release it
+belongs to — because a version attached to a plan is a promise about sequencing,
+and this project reorders freely. `CHANGELOG.md` is the one place versions and
+dates belong.
+
 **Everything must be removable.** Any filter GunWall installs must be removable
 again, including after a crash. Persist filter identifiers, and make removal
 idempotent — deleting something that is already gone is not an error.

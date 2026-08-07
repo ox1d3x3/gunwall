@@ -2,11 +2,19 @@
 
 This document tracks GunWall's path to **full feature parity with mature reference firewalls** on the Windows Filtering Platform, and beyond. It is exhaustive: every capability a complete WFP firewall is expected to have is listed, marked ✅ done, ◐ partial, or ☐ planned.
 
+**Nothing here is tied to a version number.** Work is grouped by what it touches
+and how risky it is, not by the release it lands in. Ordering within a group is a
+rough sense of value, not a queue — items get picked up when they make sense, and
+a version number attached to a plan is a promise about sequencing that this
+project has no reason to make. What shipped and when lives in
+[`CHANGELOG.md`](CHANGELOG.md); this file is only about what is true now and what
+is still open.
+
 GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet dependencies, MIT**. See the "Architecture & language" note at the bottom for why it stays single-language.
 
 ---
 
-## ✅ Shipped (through v0.32)
+## ✅ Shipped
 
 **Engine & enforcement** — event-driven WFP detection (kernel net-event stream, not polling) with crash-loop self-recovery · Zero-Trust default-deny with persistent per-app approval · lockdown · stealth mode · per-app allow/block, directional, timed (auto-expiring) and silent (muted) rules · critical-process protection · persistent filters with stored IDs for clean removal.
 
@@ -22,11 +30,12 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 
 ---
 
-## ☐ Remaining for parity
+## ☐ Open
 
-### Phase 1 — App model & visibility (safe, managed C#)
+### App model & visibility
+*Managed C# throughout. No kernel risk.*
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
-- ✅ **Service & network-app categorization** *(v0.85.0, v0.98.0)* — connections name the hosted service, and services can be blocked individually by their own identity.
+- ✅ **Service & network-app categorization** — connections name the hosted service, and services can be blocked individually by their own identity.
 - ☐ **Pico / subsystem process support** — identify WSL and other minimal-process traffic.
 - ✅ **App icons in the list** — each executable's icon is shown in the Application column.
 - ✅ **App properties dialog** — a per-app detail window (path, publisher, hash, signature, type/package, counts) with **Open file location**, **Copy path** and a notes field.
@@ -35,27 +44,30 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 - ◐ **Color-highlight customization** — ✅ user-editable colors for signed / unsigned / system / invalid / unknown (Settings → Appearance). Remaining: the **special**, **pico**, **undeletable** and **connection** categories (need the underlying detection).
 - ✅ **Per-app notes** — attach a free-text note to any app (in the Properties dialog).
 
-### Phase 2 — Notifications, blocklists & logging (safe)
+### Notifications, blocklists & logging
+*Managed C# throughout. No kernel risk.*
 - ✅ **Fullscreen-silent mode** — approval popups are held back while a fullscreen app/game/presentation is foreground (detected via the OS notification-state signal), and appear once it ends.
 - ✅ **Confirmation prompts** — confirm-before-clearing the Activity / Packets logs, and an always-confirm-on-exit option (on top of the existing active-firewall exit warning).
-- ✅ **Notification exclusions** *(v0.81.0)* — alerts are categorised (security, protection changes, network, rules) and each category can be silenced independently. *(GunWall currently raises a single new-app approval prompt, so this waits on having multiple notification categories to exclude.)*
+- ✅ **Notification exclusions** — alerts are categorised (security, protection changes, network, rules) and each category can be silenced independently. *(GunWall currently raises a single new-app approval prompt, so this waits on having multiple notification categories to exclude.)*
 - ☐ **3-level blocklist control** — allow / block / disable per category (adds an explicit allow/whitelist level over today's on/off), plus an **"extra" curated list** and **exclude-apps-from-blocklist**.
-- ✅ **Logging upgrades** *(complete)* — blocked/allowed events to the **Windows Event Log** (toggle), a configurable **log-size limit** (live-row cap + CSV rotation size), and a separate **error log viewer** with deduplicated entries (v0.81, v0.84).
-- ◐ **View & tray niceties** — ✅ autosize columns, **tray single-click**, and **UI size / zoom** (v0.81). Remaining: list view modes (details / icon / tile) and icon sizes.
+- ✅ **Logging upgrades** *(complete)* — blocked/allowed events to the **Windows Event Log** (toggle), a configurable **log-size limit** (live-row cap + CSV rotation size), and a separate **error log viewer** with deduplicated entries.
+- ◐ **View & tray niceties** — ✅ autosize columns, **tray single-click**, and **UI size / zoom**. Remaining: list view modes (details / icon / tile) and icon sizes.
 
-### Phase 3 — Kernel hardening (higher risk, large coverage)
-- ◐ **Expanded WFP layers** — **16 layers wired and verified on hardware** (v0.80–v0.83): outbound connect, inbound accept, listen, **resource assignment** (bind, TCP *and* UDP), inbound/outbound transport, outbound ICMP error, and **IP forwarding** — each v4 and v6. Shipped as opt-in, removable rules through the fault-tolerant filter path.
-  - ✅ **Kernel layer self-test** (v0.82–v0.83) — probes every layer *and condition* the kernel accepts, using a permit filter at weight 0 that is non-persistent and deleted immediately. This surfaced three incorrect WFP identifiers that had been failing silently, including one that had disabled IPv4 stealth-mode ICMP suppression entirely.
+### Kernel hardening
+*Touches the WFP filter set. Every item here needs hardware verification and a removal path before it ships.*
+- ◐ **Expanded WFP layers** — **16 layers wired and verified on hardware**: outbound connect, inbound accept, listen, **resource assignment** (bind, TCP *and* UDP), inbound/outbound transport, outbound ICMP error, and **IP forwarding** — each v4 and v6. Shipped as opt-in, removable rules through the fault-tolerant filter path.
+  - ✅ **Kernel layer self-test** — probes every layer *and condition* the kernel accepts, using a permit filter at weight 0 that is non-persistent and deleted immediately. This surfaced three incorrect WFP identifiers that had been failing silently, including one that had disabled IPv4 stealth-mode ICMP suppression entirely.
   - Remaining: ALE_CONNECT_REDIRECT and the matching *_DISCARD* layers (v4/v6).
 - ☐ **Quick rule toggles** — one-tap *Allow Windows Update* and *Allow 6to4 / IPv6 transition*.
-- ◐ **Filter tamper resistance** — ✅ detection and self-healing ship in v0.99.0. Remaining: true prevention via an access-control list, which needs the privilege split first (an elevated-user process cannot lock out other administrators without locking out itself). *Carries a lockout risk; needs a guaranteed recovery path before shipping.* The sublayer-delete-by-key removal path is now proven, which is a prerequisite.
+- ◐ **Filter tamper resistance** — ✅ detection and self-healing have shipped. Remaining: true prevention via an access-control list, which needs the privilege split first (an elevated-user process cannot lock out other administrators without locking out itself). *Carries a lockout risk; needs a guaranteed recovery path before shipping.* The sublayer-delete-by-key removal path is now proven, which is a prerequisite.
 
-### Phase 4 — Advanced / dangerous (opt-in, heavily warned, last)
+### Advanced and dangerous
+*Opt-in, heavily warned, and each one needs a guaranteed recovery path. These are last for a reason, not for a release date.*
 - ☐ **Boot-time filters** — enforce blocking during boot before GunWall starts. *Can break boot networking; must be reversible from Safe Mode.*
 - ☐ **Windows Update repair (WUFix)** — registry repair for a stuck Update service. *Edits HKLM; gated behind explicit confirmation.*
 - ☐ **Compressed / encrypted profile formats** — alongside today's plain JSON.
 
-### Phase 5 — Localization
+### Localization
 - ☐ **Multi-language UI** — externalize strings and ship language packs.
 
 ---

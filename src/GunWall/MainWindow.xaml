@@ -511,16 +511,20 @@
             </Border>
 
             <!-- ===================== Content area ===================== -->
-            <Grid Grid.Row="1" Margin="24" x:Name="PanelHost" RenderTransformOrigin="0.5,0">
+            <!-- Page padding, SPEC.md section 1: 30 top / 36 sides / 44 bottom. The
+                 asymmetry is deliberate - the extra at the bottom stops the last
+                 row of a long table sitting flush on the window edge, which is
+                 what a uniform 24 was doing on every screen. -->
+            <Grid Grid.Row="1" Margin="36,30,36,44" x:Name="PanelHost" RenderTransformOrigin="0.5,0">
                 <Grid.RenderTransform><TranslateTransform x:Name="PanelHostShift" /></Grid.RenderTransform>
 
             <!-- ========== Dashboard ========== -->
             <Grid x:Name="PanelDashboard">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />   <!-- hero -->
+                    <RowDefinition Height="Auto" />   <!-- stats -->
+                    <RowDefinition Height="Auto" />   <!-- chart, fixed height -->
+                    <RowDefinition Height="*" />      <!-- talkers + decisions take the rest -->
                 </Grid.RowDefinitions>
 
                 <!-- Dashboard hero, SPEC.md. The page leads with a statement of
@@ -697,7 +701,10 @@
                                 <TextBlock Text="Up" Style="{StaticResource Muted}" Margin="6,0,0,0" />
                             </StackPanel>
                         </StackPanel>
-                        <Grid Grid.Row="1">
+                        <!-- 230 for the plot area, which puts the card at roughly the
+                             310 the design draws. Fixed rather than star-sized: see the
+                             row definitions above. -->
+                        <Grid Grid.Row="1" Height="230">
                             <Canvas x:Name="GraphCanvas" ClipToBounds="True" Background="Transparent"
                                     SizeChanged="GraphCanvas_SizeChanged"
                                     MouseMove="GraphCanvas_MouseMove" MouseLeave="GraphCanvas_MouseLeave" />
@@ -955,6 +962,29 @@
                     <ListView x:Name="AppsList" Tag="No applications seen yet. They appear here the first time each one tries to connect." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling"
                               PreviewMouseRightButtonDown="Row_RightClickSelect">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                         <ListView.ContextMenu>
                             <ContextMenu Opened="AppsContextMenu_Opened">
                                 <MenuItem Header="Mute (allow, no popups)" Click="MuteApp_Click" />
@@ -1166,6 +1196,29 @@
                               VirtualizingPanel.VirtualizationMode="Recycling"
                               SelectionChanged="ConnSelected"
                               PreviewMouseRightButtonDown="Row_RightClickSelect">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Close this connection" Click="CloseConn_Click" />
@@ -1382,6 +1435,29 @@
                             <TextBlock DockPanel.Dock="Top" Text="TOP COUNTRIES" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
                             <ListView x:Name="TrafficCountries" Tag="No traffic attributed to a country yet." BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                                 <ListView.View>
                                     <GridView>
                                         <GridViewColumn Header="COUNTRY" Width="240">
@@ -1408,6 +1484,29 @@
                             <TextBlock DockPanel.Dock="Top" Text="MOST ACTIVE APPS" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
                             <ListView x:Name="TrafficApps" Tag="No per-app traffic recorded yet." BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                                 <ListView.View>
                                     <GridView>
                                         <GridViewColumn Header="APPLICATION" Width="210" DisplayMemberBinding="{Binding Name}" />
@@ -1466,6 +1565,29 @@
                         </DockPanel>
                         <ListView x:Name="UsageList" Tag="No per-app usage recorded yet." BorderThickness="0" Background="Transparent" MaxHeight="260"
                                   VirtualizingPanel.IsVirtualizing="True">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="APPLICATION" Width="280" DisplayMemberBinding="{Binding App}" />
@@ -1661,6 +1783,29 @@
                             <TextBlock DockPanel.Dock="Top" Text="QUERY LOG" Style="{StaticResource SectionLabel}" Margin="4,2,0,8" />
                             <ListView x:Name="DnsLog" Tag="No DNS queries observed yet." BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                                 <ListView.View>
                                     <GridView>
                                         <GridViewColumn Header="TIME" Width="84" DisplayMemberBinding="{Binding TimeText}" />
@@ -1741,6 +1886,29 @@
                                    Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <ListView x:Name="AlertsList" Tag="No alerts. That is the good outcome." BorderThickness="0" Background="Transparent"
                                   VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="TIME" Width="84" DisplayMemberBinding="{Binding TimeText}" />
@@ -1799,6 +1967,29 @@
                 <Border Grid.Row="1" Padding="0">
                     <ListView x:Name="PacketsList" Tag="No packets logged yet. Decisions appear here as they happen." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="TIME" Width="84"
@@ -1916,6 +2107,29 @@
                 <!-- Rules list -->
                 <Border Grid.Row="2" Padding="0">
                     <ListView x:Name="RulesList" Tag="No custom rules yet. Rules you add from a prompt or from Applications appear here." VirtualizingPanel.IsVirtualizing="True">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="ACTION" Width="80"
@@ -2027,6 +2241,29 @@
                 <Border Grid.Row="1" Padding="0">
                     <ListView x:Name="ServicesList" Tag="No Windows services loaded yet." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="SERVICE" Width="220" DisplayMemberBinding="{Binding Display}" />
@@ -2076,6 +2313,29 @@
                 </Grid>
                 <Border Grid.Row="1" Padding="0">
                     <ListView x:Name="DevicesList" Tag="No devices found yet. Run a scan to look for hosts on your network." VirtualizingPanel.IsVirtualizing="True">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="IP ADDRESS" Width="160">
@@ -2256,6 +2516,29 @@
                 <Border Grid.Row="1" Padding="0">
                     <ListView x:Name="ActivityList" Tag="No activity recorded yet." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.Resources>
+                            <!-- Every text cell in this table trims with an ellipsis.
+
+                                 Scoped here rather than app-wide, and declared once per
+                                 table rather than per column, because most of these
+                                 columns are DisplayMemberBinding - which produces a bare
+                                 TextBlock with no template to hang a setter on. Without
+                                 this they cut mid-character, and a hard cut reads as the
+                                 value ENDING there: "AS200107 K" looks like an operator
+                                 name, not a truncated one.
+
+                                 ListView.Resources is the right scope specifically
+                                 because resource lookup walks the LOGICAL tree, and a
+                                 generated row's logical parent is the ListView. The same
+                                 style inside the ControlTemplate would not be found.
+
+                                 It reaches column headers too, which is wanted: a header
+                                 too narrow for its own word now shows "PRO..." rather
+                                 than silently reading as "PROT". -->
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ListView.Resources>
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="TIME" Width="90"

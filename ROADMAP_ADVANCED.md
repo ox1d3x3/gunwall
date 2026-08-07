@@ -25,7 +25,7 @@ this up front keeps the roadmap realistic:
 2. **No DNS server (yet).** Domain-based filtering in reference designs works because the firewall
    **is** the system's DNS resolver. GunWall currently only *selects* a system resolver. → A whole
    cluster of high-value features (domain rules, CNAME-cloaking defense, DGA heuristics, "block DNS
-   bypass") is unlocked by **one foundational build: a local DNS resolver/proxy** (Phase 3). This is
+   bypass") is unlocked by **one foundational build: a local DNS resolver/proxy**. This is
    the single highest-leverage investment in this document.
 3. **Zero external dependencies.** Reference designs embed SQLite, bloom-filter libs, GeoIP libs,
    etc. GunWall keeps a zero-NuGet footprint. → Where those help (history DB, fast list lookup,
@@ -91,17 +91,17 @@ feature, and it maps cleanly onto WFP with just an IP classifier (no GeoIP, no D
 endpoint; the per-app scope toggles become block filters / connect-time verdicts. **Effort:** small–
 medium. **Risk:** low. **Payoff:** high.
 
-> **Status — complete (v0.41.0 → v0.80.0):** all per-app scopes ship (right-click an app →
+> **Status — complete:** all per-app scopes ship (right-click an app →
 > *Block by network scope*), enforced with app-ID + remote-range WFP filters through the
 > fault-tolerant path, fully removable:
-> - ✅ **Block device-local**, **Block LAN**, **Block incoming** *(v0.41.0)*
-> - ✅ **Block Internet (LAN only)** *(v0.76.0)* — 46 IPv4 CIDRs covering exactly the public
+> - ✅ **Block device-local**, **Block LAN**, **Block incoming**
+> - ✅ **Block Internet (LAN only)** — 46 IPv4 CIDRs covering exactly the public
 >   address space, derived programmatically and verified disjoint from the local/LAN ranges,
 >   plus `2000::/3` for all routable IPv6.
-> - ✅ **Block P2P / direct** *(v0.76.0)* — reactive, using the §3 resolver's resolved-address
+> - ✅ **Block P2P / direct** — reactive, using the §3 resolver's resolved-address
 >   memory: a public address the app never looked up by name is a direct connection. Blocked
 >   per-address with the session torn down; requires the resolver to be running.
-> - ✅ **Block server / listening sockets** *(v0.80.0)* — denies the app any listening port via
+> - ✅ **Block server / listening sockets** — denies the app any listening port via
 >   `ALE_RESOURCE_ASSIGNMENT` (bind, TCP *and* UDP), `ALE_AUTH_LISTEN`, and `ALE_AUTH_RECV_ACCEPT`.
 >
 > The pure `IpScopeClassifier` described above ships in `Services/AppRuleEngine.cs` and is

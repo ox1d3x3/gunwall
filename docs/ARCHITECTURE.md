@@ -1,6 +1,9 @@
 # GunWall — Architecture
 
-This document describes how GunWall is **actually built** as of v0.99.50. It
+This document describes how GunWall is **actually built** — the current state of
+the tree, not a plan. It carries no version number on purpose: it should be true
+of whatever is checked out, and a stamped version only tells you how stale it
+might be. It
 reflects the code in this repository, not an aspirational design. Where the
 long-term plan differs from what ships today, that is called out explicitly.
 
@@ -320,7 +323,13 @@ Ten screens are `ListView` + `GridView`, and all of them draw from three styles 
 that keeps selection, sorting, virtualisation and the fit-columns menu item,
 and the visual delta at the end is small.
 
-Each table carries its empty message in `Tag`, shown on `HasItems=False`. On
+Each table carries its empty message in `Tag`, shown on `HasItems=False`. Each
+also carries an implicit `TextBlock` style in its `Resources` giving every cell
+`TextTrimming="CharacterEllipsis"` — most columns are `DisplayMemberBinding`,
+which yields a bare `TextBlock` with no template to set it on. That scope is
+required rather than convenient: resource lookup walks the **logical** tree, and
+a generated row's logical parent is the `ListView`, so the same style placed in
+the `ControlTemplate` would never be found. On
 several screens an empty table is the good outcome, so it says so rather than
 looking broken.
 

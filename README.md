@@ -11,7 +11,7 @@
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/filtering%20path-no%20dependencies-3DA9FC?style=flat-square)](#-privacy--security)
-[![Status](https://img.shields.io/badge/release-v0.99.50%20(beta)-E0A53F?style=flat-square)](#roadmap)
+[![Status](https://img.shields.io/badge/release-beta-E0A53F?style=flat-square)](#roadmap)
 
 *Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and nothing between you and the kernel.*
 
@@ -226,38 +226,45 @@ Then in GunWall: **Settings → Security & Privacy → GeoIP data source → Sel
 
 ## Roadmap
 
-### Delivered
+GunWall is not planned by version number. Work is grouped by what it touches and
+how risky it is; things land when they are ready and verified on hardware, not on
+a schedule. [`CHANGELOG.md`](CHANGELOG.md) records what shipped and when —
+this section is about what exists and what is still open.
 
-| Milestone | Focus |
+### What works today
+
+| Area | Capability |
 |---|---|
-| **v0.9 – v0.13** | Zero-Trust default-deny with persistent approval; SHA-256 tamper hashing; event-driven kernel detection with crash-loop recovery; Packets Log; custom rules |
-| **v0.14 – v0.28** | Stealth mode; directional & timed rules; system-rule library; profiles; versioned backups; Windows Firewall import; light/dark themes; VirusTotal |
-| **v0.29 – v0.40** | Blocklists with WFP fallback; filtering DNS; Authenticode signature verification; diagnostics export |
-| **v0.41 – v0.60** | Network scopes; GeoIP with country & ASN blocking; built-in DNS resolver; domain heuristics; verdict reasons; captive portal helper; notification center |
-| **v0.61 – v0.75** | ETW per-app metering; Apps Usage Timeline; traffic breakdown by app/host/protocol/country; world map; status bar; per-app activity sparklines |
-| **v0.76 – v0.77** | Block-Internet and P2P/direct scopes; **ordered per-app entity rule engine** with presets |
-| **v0.78 – v0.79** | **Secure DNS (DNS-over-HTTPS)** with fail-closed default; **CNAME-cloaking defence** |
-| **v0.80 – v0.84** | Expanded kernel layer coverage (routed traffic, port binding); server-socket scope; kernel layer **self-test**; notification exclusions; error-log viewer; tray and view options |
+| **Enforcement** | Zero-trust default-deny with persistent per-app approval · lockdown · stealth mode · directional, timed and silent rules · critical-process protection |
+| **Rules** | Custom rules by address, CIDR, port, protocol and direction · manual IP blocklist · curated system-rule library · ordered per-app entity rules with presets |
+| **Scopes** | Block device-local, LAN, incoming, Internet, P2P/direct, and listening sockets — per application |
+| **Kernel coverage** | 16 WFP layers wired and verified on hardware, v4 and v6 · kernel layer self-test · filter tamper detection with self-healing |
+| **Visibility** | Connection inspector · live packet log · throughput graph · activity feed · per-app metering from ETW · traffic by app, host, protocol and country · LAN scanner |
+| **App trust** | Authenticode signature verification · SHA-256 tamper detection · VirusTotal hash lookup · per-app properties and notes |
+| **DNS** | Built-in resolver · DNS-over-HTTPS with a fail-closed default · CNAME-cloaking defence · domain heuristics · filtering-DNS selection |
+| **Blocking** | Telemetry and update blocklists with WFP fallback when the hosts file is unavailable · ads and trackers via filtering DNS |
+| **Management** | Profiles · versioned backups · Windows Firewall import · diagnostics export · run at startup · close to tray · notification centre |
 
-### Planned
+### What is open
 
-**Near term**
+Grouped by risk rather than order. The full list, with detail, is in
+[`ROADMAP.md`](ROADMAP.md).
 
-- Domain and filter-list entities for access rules
-- Per-service attribution for `svchost`-hosted services
-- Anti-hijack protection for DNS settings
+**No kernel risk** — three-level blocklist control with an explicit allow level ·
+per-network trust profiles · list view modes and further interface options ·
+remaining colour-category customisation · pico and subsystem process
+identification.
 
-**Medium term**
+**Touches the filter set** — connect-redirection and discard layers · quick rule
+toggles for Windows Update and IPv6 transition · true filter tamper *prevention*,
+which needs a privilege split first because an elevated user process cannot lock
+out other administrators without locking out itself.
 
-- Per-network trust profiles (home / work / public)
-- Connection-redirection layer support
-- List view modes and further interface options
+**Needs a guaranteed recovery path before it can ship** — boot-time filters ·
+Windows Update service repair · compressed and encrypted profile formats.
 
-**Toward v1.0**
-
-- Hardened service split and privilege separation
-- Code signing, installer, and auto-update
-- Tamper-resistant filter protection
+**Before 1.0** — service split and privilege separation · code signing, an
+installer and auto-update · multi-language interface.
 
 ---
 
@@ -266,9 +273,10 @@ Then in GunWall: **Settings → Security & Privacy → GeoIP data source → Sel
 | Document | What it covers |
 |---|---|
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in every release |
-| [`ROADMAP.md`](ROADMAP.md) | Planned work, by phase |
+| [`ROADMAP.md`](ROADMAP.md) | What is open, grouped by area and risk |
 | [`ROADMAP_ADVANCED.md`](ROADMAP_ADVANCED.md) | Deeper design notes for the zero-trust features |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How GunWall is built: the WFP engine, filter weights, persistence, DNS, metering |
+| [`docs/TESTING.md`](docs/TESTING.md) | How to verify a build, and what to capture when something looks wrong |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Build setup, conventions, and the rules for touching kernel interop |
 | [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability, and the guarantees GunWall intends to hold |
 
