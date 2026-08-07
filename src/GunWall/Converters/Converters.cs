@@ -12,9 +12,12 @@ public sealed class StatusToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var allowed = new SolidColorBrush(Color.FromRgb(0x2E, 0x9E, 0x54));
-        var blocked = new SolidColorBrush(Color.FromRgb(0xD6, 0x53, 0x4F));
-        return value is AppStatus s && s == AppStatus.Blocked ? blocked : allowed;
+        // These were #2E9E54 and #D6534F - fixed values that cannot be right in
+        // both themes, on the pills that state whether an application is allowed
+        // to reach the network. Resolved at conversion time so they follow the
+        // palette in force.
+        return (Brush)System.Windows.Application.Current.FindResource(
+            value is AppStatus s && s == AppStatus.Blocked ? "BlockText" : "AllowText");
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -26,9 +29,11 @@ public sealed class StatusToFillConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var allowedFill = new SolidColorBrush(Color.FromRgb(0xE7, 0xF6, 0xEC));
-        var blockedFill = new SolidColorBrush(Color.FromRgb(0xFC, 0xEB, 0xEA));
-        return value is AppStatus s && s == AppStatus.Blocked ? blockedFill : allowedFill;
+        // #E7F6EC and #FCEBEA are near-white tints - light-theme values, hard
+        // coded. The palette's 'ok-bg' and 'brand-bg' are alpha tints of the
+        // role colour, so they sit correctly on either ground.
+        return (Brush)System.Windows.Application.Current.FindResource(
+            value is AppStatus s && s == AppStatus.Blocked ? "BlockFill" : "AllowFill");
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -64,7 +69,7 @@ public sealed class CategoryToBrushConverter : IValueConverter
             ? Services.CategoryPalette.ForCategory(c)
             : Services.CategoryPalette.Get("Unknown");
         try { return new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)); }
-        catch { return new SolidColorBrush(Color.FromRgb(0x7A, 0x82, 0x8C)); }
+        catch { return (Brush)System.Windows.Application.Current.FindResource("TextTertiary"); }
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

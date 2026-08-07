@@ -163,14 +163,17 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-**The throughput chart, in both themes.** Both lines should now sit on a soft
-flat tint — a faint red wash under download, a faint ink wash under upload — with
-**both lines the same weight**. Previously only download had a fill, it was a
-gradient starting near 60% opacity, and download was drawn noticeably thicker.
+**Traffic page, both themes.** The apps usage timeline should be a neutral line
+over a faint flat wash — **no blue anywhere**. The connection map's home marker
+should be neutral ink, destinations and arcs red.
 
-Worth looking at on a busy moment rather than an idle one: the fills only read
-properly when there is something to fill under. If either wash looks like a solid
-block rather than a tint, the palette token is being applied at full strength and
-that is the thing to report.
+**Applications status pills, in DARK theme especially.** `Allowed` and `Blocked`
+were painted from hard-coded light-theme values, so dark is where a mistake would
+show. They should be a soft tint carrying coloured text, matching the packet log.
 
-*Send: Overview in both themes, ideally while traffic is moving.*
+**Application properties window.** Open one from Applications and check the
+signature line takes a theme colour rather than a fixed one — switch themes with
+the window open if you can.
+
+**Throughput chart, while traffic is moving.** Both lines on a soft flat tint,
+same stroke weight.

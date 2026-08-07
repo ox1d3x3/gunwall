@@ -126,8 +126,22 @@ def check_colour_home():
                  f"Controls.xaml: literal {m.group(1)} - colour belongs in the palettes")
         if re.search(r"<(SolidColorBrush|LinearGradientBrush|RadialGradientBrush|Color)\b", line):
             fail("colour-home", f"Controls.xaml: colour resource defined outside the palettes")
+    # ...and the same rule in C#. The XAML-only version of this check passed for
+    # fourteen releases while ten raw colours sat in the drawing code, including
+    # a blue that was the System CATEGORY colour reused as chart chrome. Markup
+    # was never the only place a colour could be written; it was just the only
+    # place anyone was looking.
+    RAW = re.compile(r"Color\.From(?:Rgb|Argb)\(\s*0x[0-9A-Fa-f]{2}\s*,\s*0x[0-9A-Fa-f]{2}")
+    for cs_file in sorted(APP.rglob("*.cs")):
+        for n, line in enumerate(cs_file.read_text(encoding="utf-8").splitlines(), 1):
+            if RAW.search(line):
+                fail("colour-home",
+                     f"{cs_file.relative_to(ROOT)}:{n} builds a colour from literal "
+                     "channels - read it from the palette instead, or it will not "
+                     "follow a theme change")
+
     if not any(f.startswith("[colour-home]") for f in failures):
-        notes.append("colour-home: no colour defined outside the palettes")
+        notes.append("colour-home: no colour outside the palettes, in markup or code")
 
 
 def check_dead_keys():

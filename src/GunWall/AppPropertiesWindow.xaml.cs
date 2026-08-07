@@ -39,12 +39,14 @@ public partial class AppPropertiesWindow : Window
             SignatureStatus.Invalid  => "\u2717 Invalid signature",
             _                        => "Signature unknown"
         };
-        SignatureText.Foreground = new SolidColorBrush(sig.Status switch
+        // The identical four literals were fixed in AlertWindow in 0.99.44 and
+        // this copy was not looked for. Same verdict, same tokens.
+        SignatureText.Foreground = (Brush)System.Windows.Application.Current.FindResource(sig.Status switch
         {
-            SignatureStatus.Valid    => Color.FromRgb(0x3F, 0xB8, 0x68),
-            SignatureStatus.Unsigned => Color.FromRgb(0xE0, 0xA5, 0x3F),
-            SignatureStatus.Invalid  => Color.FromRgb(0xE2, 0x5C, 0x5C),
-            _                        => Color.FromRgb(0x7A, 0x82, 0x8C)
+            SignatureStatus.Valid    => "AllowText",
+            SignatureStatus.Unsigned => "WarnText",
+            SignatureStatus.Invalid  => "BlockText",
+            _                        => "TextTertiary"
         });
 
         // Microsoft Store / UWP identity

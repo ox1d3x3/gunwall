@@ -276,7 +276,7 @@ public partial class AlertWindow : Window
         sp.Children.Add(new System.Windows.Shapes.Ellipse
         {
             Width = 10, Height = 10,
-            Fill = new SolidColorBrush(Color.FromRgb(0x3D, 0xD6, 0x8C)),
+            Fill = (Brush)System.Windows.Application.Current.FindResource("AllowText"),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 8, 0)
         });

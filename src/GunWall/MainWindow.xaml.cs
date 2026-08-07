@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.56 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.57 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -692,7 +692,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         (double X, double Y) home = WorldMapData.CountryPoints.TryGetValue(homeCode.ToUpperInvariant(), out var hp)
             ? hp : (500, 470);
 
-        var arcColor = Color.FromRgb(0xE0, 0x52, 0x4D);
+        // Was #E0524D - a red, but not either palette's red, so it drifted from
+        // every other red on screen and did not move with the theme.
+        var arcColor = ((SolidColorBrush)System.Windows.Application.Current
+            .FindResource("BlockText")).Color;
         int arcs = 0;
         foreach (var (code, count) in top)
         {
@@ -737,8 +740,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var homeDot = new System.Windows.Shapes.Ellipse
         {
             Width = 9, Height = 9,
-            Fill = new SolidColorBrush(Color.FromArgb(0xE6, 0x0A, 0x84, 0xFF)),
-            Stroke = new SolidColorBrush(Color.FromArgb(0x59, 0x0A, 0x84, 0xFF)),
+            // Was #0A84FF, which is the SYSTEM category colour from
+            // CategoryPalette - user data, editable in Settings, and section 2
+            // says not to reuse it in the interface. It was also the only blue
+            // left in the application. This marker is "you", so it takes neutral
+            // ink; the destinations below take the accent.
+            Fill = new SolidColorBrush(HueOf("TextPrimary", 0xE6)),
+            Stroke = new SolidColorBrush(HueOf("TextPrimary", 0x59)),
             StrokeThickness = 3,
             ToolTip = homeCode.Length > 0
                 ? $"This device \u00b7 {GunWall.Services.GeoData.CountryName(homeCode)}" : "This device"
@@ -756,8 +764,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             var dot = new System.Windows.Shapes.Ellipse
             {
                 Width = r * 2, Height = r * 2,
-                Fill = new SolidColorBrush(Color.FromArgb(0xE0, 0x23, 0xC0, 0x5C)),
-                Stroke = new SolidColorBrush(Color.FromArgb(0x66, 0x23, 0xC0, 0x5C)),
+                // Was #23C05C. Green here is decoration, not state - a destination
+                // is not "allowed", it is just somewhere traffic went - and section
+                // 2 reserves green for state. Brand is the one hue this design
+                // spends on drawing the eye.
+                Fill = new SolidColorBrush(HueOf("BlockText", 0xE0)),
+                Stroke = new SolidColorBrush(HueOf("BlockText", 0x66)),
                 StrokeThickness = 2,
                 ToolTip = $"{GunWall.Services.GeoData.CountryName(code)} · {count} destinations"
             };
@@ -1931,7 +1943,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
             if (n == 1) pts[1] = new Point(w, pts[0].Y); // degenerate first minute
 
-            var accent = Color.FromRgb(0x0A, 0x84, 0xFF);
+            // The usage strip was #0A84FF with a gradient from 40% alpha - the
+            // same category-colour-as-chrome mistake as the map marker, and the
+            // last blue in the interface. Neutral ink over a flat 'fill-up',
+            // matching the throughput chart, because brand is already spent here
+            // on the drag-selection you pull across this strip: data and
+            // selection must not be the same colour.
+            var accent = ((SolidColorBrush)System.Windows.Application.Current
+                .FindResource("TextPrimary")).Color;
+            var stripFill = ((SolidColorBrush)System.Windows.Application.Current
+                .FindResource("FillUp")).Color;
             var segs = SplineBeziers(pts);
 
             var fillGeo = new StreamGeometry();
@@ -1944,9 +1965,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 ctx.LineTo(new Point(pts[^1].X, h), isStroked: false, isSmoothJoin: false);
             }
             fillGeo.Freeze();
-            var fillBrush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x66, accent.R, accent.G, accent.B), 0.0));
-            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, accent.R, accent.G, accent.B), 1.0));
+            var fillBrush = new SolidColorBrush(stripFill);
             fillBrush.Freeze();
             canvas.Children.Add(new System.Windows.Shapes.Path
             {
@@ -3590,9 +3609,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     Width = 8, Height = 8,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(0, 0, 9, 0),
-                    Fill = new SolidColorBrush(r.Supported
-                        ? Color.FromRgb(0x30, 0xD1, 0x58)
-                        : Color.FromRgb(0xFF, 0x45, 0x3A))
+                    // #30D158 and #FF453A are the valid and invalid CATEGORY
+                    // colours. Supported/unsupported is a state, so it takes the
+                    // state tokens.
+                    Fill = (Brush)System.Windows.Application.Current.FindResource(
+                        r.Supported ? "AllowText" : "BlockText")
                 };
                 DockPanel.SetDock(dot, Dock.Left);
                 row.Children.Add(dot);
@@ -6165,9 +6186,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // double duty as the primary action AND the blocked verdict, which is
             // the design's decision rather than an oversight: in a firewall the
             // destructive action and the blocked outcome are the same idea.
-            var seed = dark
-                ? System.Windows.Media.Color.FromRgb(0xFF, 0x3B, 0x21)
-                : System.Windows.Media.Color.FromRgb(0xD9, 0x2C, 0x11);
+            // Read from the palette rather than restated. These two were correct,
+            // but a correct copy is still a copy: retune 'brand' and the library's
+            // derived accent would quietly keep the old value. Safe to read here -
+            // ApplyTheme has already merged the palette by this point.
+            var seed = ((SolidColorBrush)System.Windows.Application.Current
+                .FindResource("BlockText")).Color;
             Wpf.Ui.Appearance.ApplicationAccentColorManager.Apply(seed, theme);
 
             // Mica is the translucent window material Windows 11 uses. It is
@@ -6209,6 +6233,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // A theme that fails to apply must not take the window down.
             Services.DiagnosticLog.LogException("ApplyControlLibraryTheme", ex);
         }
+    }
+
+    /// <summary>A palette colour at a given alpha. Drawing code needs Color
+    /// rather than Brush, and needed a way to tint one without restating it.</summary>
+    private static Color HueOf(string key, byte alpha)
+    {
+        var c = ((SolidColorBrush)System.Windows.Application.Current.FindResource(key)).Color;
+        return Color.FromArgb(alpha, c.R, c.G, c.B);
     }
 
     private void ApplyTheme(bool dark)

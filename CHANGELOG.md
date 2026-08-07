@@ -6,6 +6,26 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.57] — 2026-08-07
+
+Fifteen raw colours in the drawing and conversion code, found because one of them
+was visible in a screenshot.
+
+### Fixed
+- **The apps usage timeline was blue** — `#0A84FF`, under a gradient from 40% alpha. That is not merely "a colour the design does not use": it is the **System category colour** from `CategoryPalette`, which section 2 calls user data and forbids reusing in the interface. It was editable in Settings, so a user changing their System swatch would have retinted a chart. Neutral ink over a flat `fill-up` now, matching the throughput chart — brand is deliberately not used here, because brand is already spent on the drag-selection pulled across that same strip, and data must not be the colour of selection.
+- **The connection map** used `#0A84FF` for the home marker and `#23C05C` for destinations. Home is neutral ink — it is "you", not a state — and destinations take the accent. A destination is not "allowed"; it is somewhere traffic went, and green here was decoration. Arcs were `#E0524D`, a red belonging to neither palette.
+- **The Applications status pills were hard-coded light-theme values.** `#2E9E54` ink on `#E7F6EC` fill — near-white tints that cannot be right in both themes, on the pills stating whether an application may reach the network. I described these pills as the correct treatment two releases ago while comparing them against the packet log; they were the better of two wrong things.
+- **`AppPropertiesWindow` carried the identical four signature literals I fixed in `AlertWindow` in 0.99.44.** I fixed one window and never looked for the other copy.
+- The prompt's confirmation dot, and the category-colour fallback, were also literals.
+
+### Added
+- **`colour-home` now scans C# as well as markup.** The XAML-only version passed for fifteen releases while these sat in the drawing code. Markup was never the only place a colour could be written — it was just the only place the check was looking, and a check that only inspects the place you already thought about is not much of a check.
+
+### Note
+Every one of these was found by following a single blue smudge in a screenshot of the Traffic page. The lesson is not that the fix was hard; it is that "no colour outside the palettes" had been reported as passing for months while fifteen counter-examples sat in files the check never opened.
+
+---
+
 ## [0.99.56] — 2026-08-07
 
 ### Fixed
