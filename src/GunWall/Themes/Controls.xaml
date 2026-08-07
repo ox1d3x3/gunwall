@@ -463,6 +463,7 @@
          Motion is the spec's: 120ms for the hover tint, 150ms for the marker
          growing from nothing to its full height. -->
     <Style x:Key="SideNavButton" TargetType="RadioButton">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="Normal" />
@@ -731,6 +732,32 @@
          nav marker. Nothing else in this design is 2px, which is what lets the
          width alone carry the meaning.
          ===================================================================== -->
+    <!-- The same ring, keyed as the SYSTEM default.
+
+         FocusVisualStyle does not inherit - it is registered on FrameworkElement
+         without FrameworkPropertyMetadataOptions.Inherits - so setting it on the
+         window root does nothing for the 103 checkboxes, combo boxes and text
+         fields below it. Setting it per style would mean an implicit style per
+         control type with BasedOn pointing at the library's, which is the WPF
+         pattern most likely to resolve to itself and recurse.
+
+         SystemParameters.FocusVisualStyleKey is the supported hook: WPF looks up
+         this key for any element that has not specified its own focus visual, so
+         one entry replaces the Win32 dotted rectangle everywhere at once. The
+         explicit setters elsewhere stay - they document intent, and they win for
+         the controls that carry them.
+         ============================================================ -->
+    <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="8" RadiusY="8"
+                               Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="FocusRing">
         <Setter Property="Control.Template">
             <Setter.Value>
@@ -786,6 +813,13 @@
          rather than a trigger, and guessing wrong shows "nothing here" over a
          table that simply has not finished loading. -->
     <Style TargetType="ListView">
+        <!-- No ring on the container. A rectangle drawn around an entire table
+             says "this list has focus", which is never the question - the
+             question is which ROW, and the row answers it itself. This is the
+             box that appeared around Top talkers: not our ring at all, but the
+             Win32 dotted default showing through because only buttons had been
+             given a replacement. -->
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
@@ -863,6 +897,7 @@
          shifts every row beneath it, which on a live table that is also
          inserting rows reads as the list jumping. -->
     <Style TargetType="ListViewItem">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontSize" Value="{StaticResource TableFontSize}" />
         <Setter Property="Padding" Value="8,10" />

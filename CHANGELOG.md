@@ -6,6 +6,39 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.55] — 2026-08-07
+
+### Fixed
+- **The packet log's verdict pills were solid capsules with white text.** Section 7 defines a status pill as a *tint* of its verdict colour carrying that colour as ink — `ok-bg` behind `ok`, at radius 6. This one bound `ActionBrush`, which is the **text** colour, as its **background**, then put white on top.
+
+  On a log where most rows say the same thing, that produces a wall of saturated green with the occasional saturated red — and the red stops standing out precisely because the green is shouting just as loudly. A verdict column exists so the exceptions catch your eye.
+
+  `ActionFill` has been on the model the whole time, correctly paired with `ActionBrush`, and the dashboard's decisions list was already using it. Only this one pill was inverted, which is why the two looked different on the same screen.
+- **The new focus ring was drawing around whole sections that are not interactive** — a brand-coloured rectangle around all of Top talkers. 0.99.54 suppressed the ring on `ListView` containers, but Top talkers and the four traffic breakdowns are `ItemsControl`, so the suppression never applied to them and the app-wide system focus visual added in that same release did. Six display-only lists are now out of the focus path entirely. `EntityRuleList` stays focusable, since its rows are reorderable, but no longer rings the whole container.
+
+### Verified on hardware
+- Focus ring on the nav rail, landing on the item rather than the rail.
+- Ellipsis holding on `LOCATION`, `PATH` and `PUBLISHER`.
+- Thin scrollbars with no stepper arrows.
+
+---
+
+## [0.99.54] — 2026-08-07
+
+### Fixed
+- **The focus ring only covered buttons, so everything else still showed the Win32 dotted rectangle** — visible as a box drawn around the whole Top talkers list. Two separate problems behind that:
+
+  A ring around an entire table is the wrong idea regardless of how it is drawn. "This list has focus" is never the question; the question is which **row**, and the row answers it itself. The container now suppresses the visual and the row carries it.
+
+  For everything else, my first attempt set `FocusVisualStyle` on the window root — which does nothing, because that property is registered on `FrameworkElement` **without** `Inherits`. I wrote a comment asserting it cascaded before checking that it does. It covers 103 checkboxes, combo boxes and text fields through `SystemParameters.FocusVisualStyleKey` instead, which is the supported hook: WPF looks that key up for any element that has not specified its own, so one entry replaces the default everywhere. Per-style setters stay where they exist — they document intent and they win.
+
+### Verified on hardware
+- Ellipsis on the flag columns, after the `StackPanel` → `Grid` change: `Switzerland · AS200107...` rather than `AS200107 K`.
+- Thin thumb-only scrollbars, no stepper arrows.
+- The focus ring appears on **Tab** and not on click, which was the behaviour the `FocusVisualStyle` hook was chosen for.
+
+---
+
 ## [0.99.53] — 2026-08-07
 
 ### Fixed

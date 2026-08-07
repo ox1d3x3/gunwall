@@ -68,7 +68,13 @@ PENDING_TOKENS = {
 
 # Keys GunWall defines FOR the control library rather than for itself. Nothing in
 # this repository references them by design.
-LIBRARY_KEYS = {"PaneFluentButtonHeight", "PaneFluentButtonWidth"}
+LIBRARY_KEYS = {
+    "PaneFluentButtonHeight", "PaneFluentButtonWidth",
+    # WPF looks this one up internally for any element that has not specified
+    # its own focus visual. Nothing in this repository references it by name and
+    # nothing should - that is how the hook works.
+    "{x:Static SystemParameters.FocusVisualStyleKey}",
+}
 
 failures = []
 notes = []

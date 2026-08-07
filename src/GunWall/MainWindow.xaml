@@ -821,7 +821,7 @@
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="TOP TALKERS" Style="{StaticResource SectionLabel}"
                                    Margin="0,0,0,14" />
-                        <ItemsControl x:Name="TopTalkersList">
+                        <ItemsControl x:Name="TopTalkersList" Focusable="False" FocusVisualStyle="{x:Null}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="0,0,0,15">
@@ -863,7 +863,7 @@
                                     Background="Transparent" FontSize="12.5"
                                     Foreground="{DynamicResource TextSecondary}" />
                         </DockPanel>
-                        <ItemsControl x:Name="RecentDecisionsList">
+                        <ItemsControl x:Name="RecentDecisionsList" Focusable="False" FocusVisualStyle="{x:Null}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="0,0,0,11">
@@ -1666,22 +1666,22 @@
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="Apps" Style="{StaticResource Muted}" FontSize="11"
                                            FontWeight="SemiBold" Margin="0,0,0,8" />
-                                <ItemsControl x:Name="BreakApps" ItemTemplate="{StaticResource BreakRowTemplate}" />
+                                <ItemsControl x:Name="BreakApps" Focusable="False" FocusVisualStyle="{x:Null}" ItemTemplate="{StaticResource BreakRowTemplate}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="Hosts" Style="{StaticResource Muted}" FontSize="11"
                                            FontWeight="SemiBold" Margin="0,0,0,8" />
-                                <ItemsControl x:Name="BreakHosts" ItemTemplate="{StaticResource BreakRowTemplate}" />
+                                <ItemsControl x:Name="BreakHosts" Focusable="False" FocusVisualStyle="{x:Null}" ItemTemplate="{StaticResource BreakRowTemplate}" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="Traffic type" Style="{StaticResource Muted}" FontSize="11"
                                            FontWeight="SemiBold" Margin="0,0,0,8" />
-                                <ItemsControl x:Name="BreakTypes" ItemTemplate="{StaticResource BreakRowTemplate}" />
+                                <ItemsControl x:Name="BreakTypes" Focusable="False" FocusVisualStyle="{x:Null}" ItemTemplate="{StaticResource BreakRowTemplate}" />
                             </StackPanel>
                             <StackPanel Grid.Column="3">
                                 <TextBlock Text="Countries" Style="{StaticResource Muted}" FontSize="11"
                                            FontWeight="SemiBold" Margin="0,0,0,8" />
-                                <ItemsControl x:Name="BreakCountries" ItemTemplate="{StaticResource BreakRowTemplate}" />
+                                <ItemsControl x:Name="BreakCountries" Focusable="False" FocusVisualStyle="{x:Null}" ItemTemplate="{StaticResource BreakRowTemplate}" />
                                 <TextBlock x:Name="BreakCountriesHint" Visibility="Collapsed"
                                            TextWrapping="Wrap" FontSize="11" Margin="0,2,16,0"
                                            Foreground="{DynamicResource TextSecondary}"
@@ -2033,10 +2033,24 @@
                                 <GridViewColumn Header="ACTION" Width="110">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Border CornerRadius="12" Padding="9,2" HorizontalAlignment="Left"
-                                                    Background="{Binding ActionBrush}">
-                                                <TextBlock Text="{Binding Action}" Foreground="{DynamicResource TextOnAccent}"
-                                                           FontSize="11" FontWeight="SemiBold" />
+                                            <!-- SPEC.md section 7: a status pill is a TINT of its
+                                                 verdict colour with the verdict colour as ink -
+                                                 'ok-bg' behind 'ok' - at radius 6. This one bound
+                                                 ActionBrush, the TEXT colour, as its BACKGROUND and
+                                                 then put white on top of it, so every row carried a
+                                                 saturated capsule at full strength. On a log where
+                                                 most rows say the same thing, that is a wall of
+                                                 solid green with the occasional solid red, and the
+                                                 red stops standing out precisely because the green
+                                                 is shouting just as loudly.
+
+                                                 ActionFill has existed on the model the whole time,
+                                                 correctly paired, and the dashboard's decisions list
+                                                 was already using it. Only this one was inverted. -->
+                                            <Border CornerRadius="6" Padding="10,3" HorizontalAlignment="Left"
+                                                    Background="{Binding ActionFill}">
+                                                <TextBlock Text="{Binding Action}" Foreground="{Binding ActionBrush}"
+                                                           FontSize="11.5" FontWeight="SemiBold" />
                                             </Border>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
@@ -2474,7 +2488,7 @@
                                     <Button Content="Add rule" Style="{StaticResource PrimaryButton}"
                                             Click="EntityAddRule_Click" Padding="16,8" />
                                 </StackPanel>
-                                <ItemsControl x:Name="EntityRuleList" Margin="0,4,0,0">
+                                <ItemsControl x:Name="EntityRuleList" FocusVisualStyle="{x:Null}" Margin="0,4,0,0">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <Border Background="{DynamicResource BgElevated}" CornerRadius="6"
