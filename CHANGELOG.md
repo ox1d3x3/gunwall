@@ -6,6 +6,23 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.56] — 2026-08-07
+
+### Fixed
+- **The throughput chart now uses the area-fill tokens it was given four months of releases ago.** `fill-up` and `fill-down` were added to both palettes in 0.99.42 and read by nothing since. The chart was instead building a three-stop gradient from 59% alpha down to zero, derived from the stroke colour, **on the download series only**.
+
+  Three problems in one. A gradient starting near 60% opacity is a second graphic competing with the trace it exists to support — section 9 asks for a flat tint, brand at 10% below download and text colour at 7% below upload, because the fill gives the line a body rather than making a point of its own. Deriving the fill from the stroke also cannot be right across themes: the light fills are not the dark ones at a different alpha, which is exactly why they are palette entries. And filling only one of two series made the chart read as one important measurement and one afterthought, when upload and download are the same kind of number.
+- Both series are stroke 1.3, as specified. They were 2.2 and 1.6 — a weight difference that said one line mattered more.
+
+### Verified on hardware
+- Packet log verdict pills as tints carrying coloured text, matching Applications.
+- Focus ring landing on nav items with no rectangle around Top talkers or the traffic breakdowns.
+
+### Still open
+Skeleton and error states, and the letter-spacing decision. Section 10 has now been read properly and is more specific than assumed — the loading state wants 8 skeleton rows with per-column varied widths, a 13px spinner and a caption, the empty state a dashed frame with the brand mark at 35%, and "no results" a distinct frameless treatment quoting the query. The empty state currently shipped is a plain centred line, so it is closer to a placeholder than to the specification.
+
+---
+
 ## [0.99.55] — 2026-08-07
 
 ### Fixed

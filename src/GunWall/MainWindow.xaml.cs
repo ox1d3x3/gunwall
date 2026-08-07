@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.55 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.56 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3240,8 +3240,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Color Series(string key) =>
             ((SolidColorBrush)System.Windows.Application.Current.FindResource(key)).Color;
 
-        AddSmoothSeries(canvas, _gDown, max, w, h, Series("InboundBrush"), fillArea: true, _graphScroll);
-        AddSmoothSeries(canvas, _gUp, max, w, h, Series("OutboundBrush"), fillArea: false, _graphScroll);
+        // Both series carry an area, and each takes its own palette token rather
+        // than deriving one from its stroke. The tokens have existed since
+        // 0.99.42 and nothing read them: the chart was building a three-stop
+        // gradient from 59% alpha down to nothing, on the download series only.
+        //
+        // Section 9 asks for a flat tint under each line - 'fill-down' is the
+        // brand at 10%, 'fill-up' is the text colour at 7% - because the fill is
+        // there to give the line a body, not to draw attention on its own. A
+        // gradient starting near 60% opacity is a second graphic competing with
+        // the trace it is supposed to support, and only one of the two lines had
+        // it, so the chart read as one important series and one afterthought.
+        //
+        // Stroke is 1.3 on both for the same reason: they are the same kind of
+        // measurement and neither outranks the other.
+        AddSmoothSeries(canvas, _gDown, max, w, h, Series("InboundBrush"), Series("FillDown"), _graphScroll);
+        AddSmoothSeries(canvas, _gUp,   max, w, h, Series("OutboundBrush"), Series("FillUp"),  _graphScroll);
 
         var now = DateTime.UtcNow;
         if (_lastGraphSample != DateTime.MinValue)
@@ -3313,12 +3327,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     private static void AddSmoothSeries(Canvas canvas, double[] series, double max,
-                                        double w, double h, Color color, bool fillArea,
+                                        double w, double h, Color color, Color fill,
                                         Transform scroll)
     {
         var pts = SeriesPoints(series, max, w, h);
 
-        if (fillArea)
         {
             var fillGeo = new StreamGeometry();
             using (var ctx = fillGeo.Open())
@@ -3331,10 +3344,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
             fillGeo.Freeze();
 
-            var fillBrush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x96, color.R, color.G, color.B), 0.0));
-            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x38, color.R, color.G, color.B), 0.5));
-            fillBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, color.R, color.G, color.B), 1.0));
+            // Flat, and straight from the palette - not derived from the stroke,
+            // because the light theme's fills are not simply the dark ones at a
+            // different alpha.
+            var fillBrush = new SolidColorBrush(fill);
             fillBrush.Freeze();
             canvas.Children.Add(new System.Windows.Shapes.Path { Data = fillGeo, Fill = fillBrush, IsHitTestVisible = false, RenderTransform = scroll });
         }
@@ -3352,7 +3365,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             Data = lineGeo,
             Stroke = new SolidColorBrush(color),
-            StrokeThickness = fillArea ? 2.2 : 1.6,
+            StrokeThickness = 1.3,
             StrokeLineJoin = PenLineJoin.Round,
             IsHitTestVisible = false,
             RenderTransform = scroll

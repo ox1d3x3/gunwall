@@ -50,8 +50,6 @@ ICONS = APP / "Themes" / "Icons.xaml"
 # here several releases later, the token was never really needed.
 PENDING_TOKENS = {
     "Skeleton":       "0.99.46 table lifecycle states",
-    "FillUp":         "0.99.47 chart area fills",
-    "FillDown":       "0.99.47 chart area fills",
     "FocusRing":      "0.99.49 focus rings",
     "InfoText":       "0.99.45 neutral pill text",
     "StatFontSize":   "0.99.47 primary stat, 30px",

@@ -163,17 +163,14 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-**Packet log verdict pills.** Should be a soft tint carrying coloured text —
-green-on-pale-green, red-on-pale-red — at the same weight as the Status pills on
-Applications. Compare the two screens side by side; they should now look like the
-same component. Not solid capsules with white text.
+**The throughput chart, in both themes.** Both lines should now sit on a soft
+flat tint — a faint red wash under download, a faint ink wash under upload — with
+**both lines the same weight**. Previously only download had a fill, it was a
+gradient starting near 60% opacity, and download was drawn noticeably thicker.
 
-**Tab through the dashboard.** The ring should appear on buttons and nav items
-only. It must **not** draw a rectangle around Top talkers, Recent decisions, or
-any of the traffic breakdown lists — those are display, not controls.
+Worth looking at on a busy moment rather than an idle one: the fills only read
+properly when there is something to fill under. If either wash looks like a solid
+block rather than a tint, the palette token is being applied at full strength and
+that is the thing to report.
 
-**Tab into a table.** The ring should land on a **row**, not around the whole
-list.
-
-**Tab through Settings.** Checkboxes and dropdowns should show the red ring
-rather than a dotted box.
+*Send: Overview in both themes, ideally while traffic is moving.*
