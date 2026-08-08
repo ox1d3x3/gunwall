@@ -2294,7 +2294,13 @@
                                 <GridViewColumn Header="NAME" Width="160" DisplayMemberBinding="{Binding Name}" />
                                 <GridViewColumn Header="RULE" Width="90"
                                                 DisplayMemberBinding="{Binding BlockedText}" />
-                                <GridViewColumn Header="" Width="130">
+                                <!-- 165, not 130. The label is dynamic: "Block service"
+                                     needs 131px in the bundled face and "Unblock
+                                     service" needs 147, so the column was sized for
+                                     neither state and clipped in both. Widths here
+                                     are set from the LONGEST string a cell can hold,
+                                     not the one visible when it was written. -->
+                                <GridViewColumn Header="" Width="165">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <Button Content="{Binding ServiceActionText}" Style="{StaticResource ActionButton}"
@@ -2303,7 +2309,9 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="" Width="110">
+                                <!-- Likewise: "Unblock host" needs 124px. "Block host"
+                                     fit by two pixels, which is not fitting. -->
+                                <GridViewColumn Header="" Width="140">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <Button Content="Block host" Style="{StaticResource ActionButton}"

@@ -266,6 +266,12 @@ def check_binding_override():
         # AlertWindow is constructed per prompt, so it always resolves at the
         # current theme. A swap while a prompt is open would still freeze it.
         ("AlertWindow", "SignatureText", "Foreground"),
+        # The subject tile takes the ROLE colour, which depends on why the prompt
+        # appeared rather than on the theme. Same exemption, same condition: the
+        # window is constructed per prompt, so it always resolves at the current
+        # theme. A theme switch with a prompt open would still freeze it.
+        ("AlertWindow", "SubjectTile", "Background"),
+        ("AlertWindow", "SubjectIcon", "Stroke"),
     }
     BRUSH_PROPS = ("Foreground", "Background", "Fill", "Stroke", "BorderBrush")
     for xaml in APP.glob("*.xaml"):

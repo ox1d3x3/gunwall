@@ -277,6 +277,7 @@ installer and auto-update · multi-language interface.
 | [`ROADMAP_ADVANCED.md`](ROADMAP_ADVANCED.md) | Deeper design notes for the zero-trust features |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How GunWall is built: the WFP engine, filter weights, persistence, DNS, metering |
 | [`docs/TESTING.md`](docs/TESTING.md) | How to verify a build, and what to capture when something looks wrong |
+| [`docs/HANDOVER.md`](docs/HANDOVER.md) | What keeps going wrong, what stops it now, and the deviations that are deliberate |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Build setup, conventions, and the rules for touching kernel interop |
 | [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability, and the guarantees GunWall intends to hold |
 

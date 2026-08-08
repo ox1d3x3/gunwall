@@ -67,29 +67,81 @@
             </Border>
 
             <StackPanel Margin="16,15,16,15">
-                <!-- The question, then the two facts needed to answer it. -->
-                <TextBlock x:Name="SummaryText" Text="An app wants to connect out"
-                           FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"
-                           Foreground="{DynamicResource TextPrimary}" />
+                <!-- Subject column, then content. The reference format this follows
+                     puts an icon beside the question and gives each fact its own
+                     leading glyph, and both earn their place here:
 
-                <Grid Margin="0,11,0,0">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="NameText" Text="app.exe" FontSize="12.5"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                   MaxWidth="220"
+                       - the tile anchors the dialog to a subject, so it reads as
+                         "this application is asking" rather than as a bare sentence
+                       - an app icon and a country flag are recognised before either
+                         is read, which on a prompt answered in two seconds is most
+                         of the decision
+
+                     The tile takes the ROLE colour, so a blocked-app prompt arrives
+                     visibly different from a first-connection one. -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border x:Name="SubjectTile" Grid.Column="0" Width="44" Height="44"
+                            CornerRadius="11" Margin="0,2,14,0" VerticalAlignment="Top"
+                            Background="{DynamicResource WarnFill}">
+                        <Path x:Name="SubjectIcon" Width="21" Height="21" Stretch="Uniform"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Fill="{x:Null}" Stroke="{DynamicResource WarnText}"
+                              StrokeThickness="1.8" StrokeLineJoin="Round"
+                              Data="{DynamicResource IconSecurity}" />
+                    </Border>
+
+                    <StackPanel Grid.Column="1">
+                        <TextBlock x:Name="SummaryText" Text="An app wants to connect out"
+                                   FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"
                                    Foreground="{DynamicResource TextPrimary}" />
-                        <Border CornerRadius="4" Padding="6,1" Margin="8,0,0,0"
-                                Background="{DynamicResource InfoFill}" VerticalAlignment="Center">
-                            <TextBlock x:Name="SignatureText" Text="Checking..." FontSize="10"
-                                       FontWeight="SemiBold"
+                        <TextBlock x:Name="HeaderText" Text="First connection" FontSize="12"
+                                   Margin="0,3,0,0"
+                                   Foreground="{DynamicResource TextTertiary}" />
+
+                        <!-- Fact rows. Glyph, value, then a trailing chip where one
+                             adds something - the signature verdict here. -->
+                        <Grid Margin="0,13,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Image x:Name="AppIcon" Grid.Column="0" Width="16" Height="16"
+                                   VerticalAlignment="Center" Margin="0,0,9,0"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                            <TextBlock x:Name="NameText" Grid.Column="1" Text="app.exe" FontSize="12.5"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                            <Border Grid.Column="2" CornerRadius="4" Padding="6,1" Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource InfoFill}">
+                                <TextBlock x:Name="SignatureText" Text="Checking..." FontSize="10"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </Border>
+                        </Grid>
+
+                        <Grid Margin="0,9,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Image x:Name="FlagIcon" Grid.Column="0" Width="20" Height="14"
+                                   VerticalAlignment="Center" Margin="0,0,7,0" Stretch="Uniform"
+                                   SnapsToDevicePixels="True" />
+                            <TextBlock x:Name="AddressText" Grid.Column="1" Text="&#x2014;" FontSize="12"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{DynamicResource MonoFont}"
+                                       TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource TextSecondary}" />
-                        </Border>
+                        </Grid>
                     </StackPanel>
                 </Grid>
-                <TextBlock x:Name="AddressText" Text="&#x2014;" FontSize="12" Margin="0,7,0,0"
-                           FontFamily="{StaticResource MonoFont}"
-                           TextTrimming="CharacterEllipsis"
-                           Foreground="{DynamicResource TextSecondary}" />
 
                 <!-- Detail, collapsed. Everything a decision might need that the
                      two lines above do not carry. -->

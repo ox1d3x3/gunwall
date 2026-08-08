@@ -44,6 +44,13 @@ goal, and every package is a supply chain someone has to trust.
 
 **No telemetry.** GunWall makes no outbound request the user did not ask for.
 
+**A check must be shown to fail before it is trusted.** Reintroduce the defect
+it was written for, watch the check fail, remove the defect, watch it pass. This
+project has shipped three checks that could not fail — one whose exclusion rule
+matched everything, one that skipped misses silently, and one whose own string
+handling was wrong. A check never demonstrated against its own defect is a guess
+that counts as coverage. [`docs/HANDOVER.md`](docs/HANDOVER.md) lists them.
+
 **Version numbers mark releases, not changes.** Bump when a build goes out for
 testing or publication — not for every edit, and never for a documentation-only
 change. Four files carry the version and must agree:

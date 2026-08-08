@@ -163,24 +163,27 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-**`DIRECTION` on Rules.** This has now been "fixed" twice and clipped both times.
-The column was deliberately left at its original width so that a clip still means
-the guard is not working, rather than being masked by a wider column. If it reads
-in full, letter-spacing is genuinely off under the monospace font.
+**The connection prompt.** Turn the firewall on, then launch something that has
+never connected. Expect:
 
-Then switch the interface font to **Instrument Sans** and check the same header:
-spacing should **return** there, and still fit. That half proves the guard is
-selective rather than simply disabled.
+- a coloured tile on the left holding a shield
+- the question, with a quieter line beneath it
+- a row with the **application's own icon**, its name, and a signature chip
+- a row with a **country flag** and the address; hovering the flag names the
+  country
+- the chevron still expands to port, reverse DNS, time and full path
 
-**Table states**, still untested across several builds:
+A missing flag is expected for a LAN or IPv6 destination, and for any address
+before the GeoIP database is downloaded. A missing app icon is possible for some
+system binaries. Neither should change the layout.
 
-- **Empty** — Rules with no custom rules. Frame should be **dashed**, with the
-  column header still visible above it.
-- **No results** — type nonsense into a filter box. Must look clearly different
-  from the empty state.
-- **Loading** — press Scan network: eight skeleton bars and a caption.
-- Watch for **the page jumping** as a table changes state.
+**Windows services buttons.** Both should read in full. Then block one and look
+again — the label becomes "Unblock service", which is longer, and is what the
+column is now sized for.
 
-**Command palette**, if not already exercised: Ctrl+K, arrows, Enter, Escape,
-click outside. Picking an application should land on Applications with the filter
-already set.
+**Still not exercised, across several builds:**
+
+- **Empty state** — Rules with no custom rules. Frame should be **dashed**.
+- **No results** — nonsense into a filter box; must differ clearly from empty.
+- **Tracking under a proportional font** — switch to Instrument Sans and check a
+  column header. Spacing should **return** and still not clip.

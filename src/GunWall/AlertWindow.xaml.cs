@@ -37,9 +37,13 @@ public partial class AlertWindow : Window
     private System.Windows.Threading.DispatcherTimer? _countdown;
     private int _secondsLeft;
 
+    private readonly GunWall.Services.GeoIpService? _firewallGeo;
+
     public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null, bool strictMode = false,
-                       int timeoutSeconds = 0, bool defaultAllow = false)
+                       int timeoutSeconds = 0, bool defaultAllow = false,
+                       GunWall.Services.GeoIpService? geo = null)
     {
+        _firewallGeo = geo;
         InitializeComponent();
         _info = info;
         _onBlock = onBlock;
@@ -50,6 +54,11 @@ public partial class AlertWindow : Window
         _secondsLeft = timeoutSeconds;
 
         NameText.Text = info.ProcessName;
+
+        // The app's own icon. Recognised before the name is read, which on a
+        // prompt answered in two seconds is most of the decision.
+        try { AppIcon.Source = Services.IconService.GetIcon(info.ExePath); }
+        catch { /* no icon is a cosmetic loss, never a reason to fail the prompt */ }
         AddressText.Text = string.IsNullOrEmpty(info.RemoteAddress)
             ? "\u2014 (no remote yet)"
             : $"{info.Protocol.ToLowerInvariant()}://{info.RemoteAddress}";
@@ -59,6 +68,26 @@ public partial class AlertWindow : Window
         SignatureText.Text = "Checking...";
         SignatureText.ToolTip = "Checking the digital signature...";
         HostText.Text = "Resolving...";
+
+        // Country flag beside the destination. Deliberately best-effort: the
+        // lookup is local and instant when the database is loaded, empty for a
+        // LAN or IPv6 address, and a missing flag simply leaves the row reading
+        // as it did before. A prompt must never wait on GeoIP to appear.
+        try
+        {
+            string code = _firewallGeo?.Lookup(info.RemoteAddress).Country ?? "";
+            if (code.Length > 0)
+            {
+                FlagIcon.Source = (System.Windows.Media.ImageSource?)
+                    new GunWall.Converters.CountryFlagConverter()
+                        .Convert(code, typeof(System.Windows.Media.ImageSource),
+                                 null!, System.Globalization.CultureInfo.InvariantCulture);
+                // The flag is recognised; the name is what someone reaches for when
+                // it is not. Hovering answers that without spending a row on it.
+                FlagIcon.ToolTip = GunWall.Services.GeoData.CountryName(code);
+            }
+        }
+        catch { }
         UpdateSummary();
 
         // In Zero Trust (strict) mode the app is currently BLOCKED and stays
@@ -69,7 +98,8 @@ public partial class AlertWindow : Window
             // subtitle carries the rest.
             // HeaderText is the state strip now, so it is the uppercase kicker;
             // SummaryText is the 22px question and keeps naming the app.
-            HeaderText.Text = "BLOCKED - AWAITING APPROVAL";
+            HeaderText.Text = "Blocked - awaiting approval";
+            SetSubjectRole("Block");
         }
 
         Loaded += OnLoaded;
@@ -286,6 +316,18 @@ public partial class AlertWindow : Window
     }
 
     private void StopCountdown() => _countdown?.Stop();
+
+    /// <summary>Tints the subject tile by role, so a blocked-app prompt arrives
+    /// visibly different from a first-connection one before a word is read.</summary>
+    private void SetSubjectRole(string role)
+    {
+        try
+        {
+            SubjectTile.Background = (Brush)System.Windows.Application.Current.FindResource(role + "Fill");
+            SubjectIcon.Stroke = (Brush)System.Windows.Application.Current.FindResource(role + "Text");
+        }
+        catch { }
+    }
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

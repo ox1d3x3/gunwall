@@ -315,7 +315,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.68 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.70 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2753,7 +2753,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             },
             strictMode: _firewall.StrictMode,
             timeoutSeconds: _firewall.PopupTimeoutSeconds,
-            defaultAllow: _firewall.PopupDefaultAllow);
+            defaultAllow: _firewall.PopupDefaultAllow,
+            geo: _firewall.GeoIp);
         win.Owner = this;
         win.Closed += (_, _) => { _alertOpen = false; ShowNextAlert(); };
         win.Show();
