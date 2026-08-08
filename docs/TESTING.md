@@ -163,24 +163,20 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-**Font weights.** The default is now bundled JetBrains Mono in four weights, and
-weight is the thing most likely to be wrong: compare a **column header** or a
-**section label** against the body text beside it. Headers should look clearly
-heavier. If everything renders at one weight, SemiBold and Bold are not resolving
-within the family and that is the whole change failing.
+**Is the bundled font actually loading?** The previous build failed here silently.
+The test is one glance: **is the interface monospaced?** Body text, checkbox
+labels, settings descriptions — all of it should have even character widths. If
+any of it looks proportional, the bundled family is not resolving and WPF has
+fallen back to the system font.
 
-**Letter-spacing.** Section labels (`TOP TALKERS`, `RECENT DECISIONS`) and column
-headers should be visibly airier than before. Two failure modes: nothing changed,
-or the spacing is so wide the label reads as separate letters. Either is worth a
-screenshot.
+Then compare the **bundled default** against selecting your **installed**
+JetBrainsMono NF from the picker. They should look the same. Different means the
+same failure.
 
-Also check no label **wraps or truncates oddly** — tracking rebuilds the text as
-one run per character, and line breaks now fall between those runs.
+**Weight hierarchy.** Compare a column header or section label against the body
+text beside it — headers should be visibly heavier. One weight everywhere means
+only part of the family resolved.
 
-**Connections inspector.** Should be **absent** on arrival, with the table using
-the full width, and appear when a row is selected. It should not flicker while
-the list refreshes.
-
-**Font picker.** Settings → Appearance. Switching should repaint immediately
-without a restart. Selecting a single-weight font should show a warning under the
-picker.
+**Switching.** Pick Instrument Sans, then reset to default. Both should repaint
+immediately, with no restart, and machine values (addresses, ports, byte counts)
+should stay monospaced throughout.

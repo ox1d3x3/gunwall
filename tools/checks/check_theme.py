@@ -263,6 +263,57 @@ def check_binding_override():
         notes.append(f"binding-override: clean ({len(STATE_PAINTED)} state-painted, repaint invariant holds)")
 
 
+def check_font_families():
+    """Every bundled weight of a family must agree on its typographic name.
+
+    WPF resolves a FontFamily by name ID 16 when present, falling back to ID 1.
+    If two files in one family disagree on ID 16 they become TWO families, and a
+    weight request against either finds a partial set - at which point WPF falls
+    back to the system UI font and the whole interface silently stops using the
+    bundled face.
+
+    0.99.61 did exactly that. Renaming files "to fold the weights into one
+    family" set ID 16 on two of four, splitting Regular+Bold from
+    Medium+SemiBold. Upstream had already unified them; the rename was solving a
+    solved problem and broke it. Nothing errored, nothing logged - the text just
+    stopped being monospaced.
+    """
+    fonts = sorted((APP / "Fonts").glob("*.ttf"))
+    if not fonts:
+        return
+    try:
+        from fontTools.ttLib import TTFont
+    except ImportError:
+        notes.append("font-family: skipped (fontTools not installed)")
+        return
+
+    groups = {}
+    for f in fonts:
+        t = TTFont(str(f), lazy=True)
+        n = t["name"]
+        typo, fam = n.getDebugName(16), n.getDebugName(1)
+        weight = t["OS/2"].usWeightClass
+        t.close()
+        # Group by the stem before the weight suffix, which is what a human
+        # means by "this family's files".
+        stem = f.stem.split("-")[0]
+        groups.setdefault(stem, []).append((f.name, typo or fam, weight))
+
+    for stem, items in sorted(groups.items()):
+        resolved = {name for _, name, _ in items}
+        if len(resolved) > 1:
+            fail("font-family",
+                 f"{stem}: files disagree on the name WPF resolves - {sorted(resolved)}. "
+                 "They will register as separate families and weight selection "
+                 "will fall back to the system font")
+        weights = sorted(w for _, _, w in items)
+        if len(weights) != len(set(weights)):
+            fail("font-family", f"{stem}: duplicate weights {weights}")
+
+    if not any(f.startswith("[font-family]") for f in failures):
+        notes.append(f"font-family: {len(groups)} bundled families, each internally consistent")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -295,6 +346,7 @@ def main():
     check_dead_keys()
     check_element_references()
     check_binding_override()
+    check_font_families()
     check_version_consistency()
 
     for n in notes:

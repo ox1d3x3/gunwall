@@ -6,6 +6,25 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.62] — 2026-08-07
+
+### Fixed
+- **The bundled font was not loading at all, and 0.99.61 caused it.** The whole interface silently fell back to the system UI font — which is why the bundled default looked nothing like the same font installed on the machine.
+
+  The cause was the renaming I did in 0.99.61. WPF resolves a family by name **ID 16** (typographic family) when present, falling back to ID 1. Upstream already sets ID 16 to `JetBrainsMono Nerd Font` on **every** weight, so all four were one family and no renaming was needed. My rename set ID 16 on two of the four, which split them: Regular and Bold kept the upstream name, Medium and SemiBold got the new one. The reference then matched a family containing only weights 500 and 600, a 400 request found nothing, and WPF fell back.
+
+  I renamed the files to solve a problem upstream had already solved, checked ID 1 to confirm it had worked, and never looked at ID 16. Two of the four disagreed, and nothing errored, logged or failed — the text just stopped being monospaced.
+
+- The bundled face is now `JetBrainsMono Nerd Font` — the same variant installed on the maintainer's machine — **exactly as upstream ships it**. No file has been modified: not the outlines, not the name table.
+
+### Added
+- **A `font-family` check.** Every bundled weight of a family must agree on the name WPF will resolve. Disagreement means two families, a partial weight set, and a silent fallback — which is a failure with no symptom other than "it looks wrong", and therefore exactly the kind this project keeps writing checks for.
+
+### Note
+The rule this leaves, and the reason it is now in a check rather than a comment: **read name ID 16 before renaming a font, and prefer not renaming at all.** Upstream font naming is usually already correct for the case it was built for.
+
+---
+
 ## [0.99.61] — 2026-08-07
 
 ### Changed

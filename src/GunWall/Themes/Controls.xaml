@@ -224,21 +224,32 @@
          replacing this entry at runtime repaints the application - the same
          late-binding rule the palettes follow, for the same reason.
 
-         JetBrainsMono NFM - JetBrains Mono with the Nerd Fonts icon set - is the
-         default, embedded in four weights. It is OFL and its fsType is 0, so it
-         can be redistributed and embedded; that was checked before bundling
-         rather than assumed.
+         JetBrainsMono Nerd Font is the default, embedded in four weights,
+         EXACTLY AS UPSTREAM SHIPS THEM. It is OFL with fsType 0, so it can be
+         redistributed and embedded; that was checked rather than assumed.
 
-         Upstream ships Medium and SemiBold as their OWN families, named
-         "JetBrainsMono NFM Medium" and "...SemiBold", each with subfamily
-         "Regular". A FontWeight request against "JetBrainsMono NFM" would miss
-         them entirely and return Regular with no error - the variable-font trap
-         in a different costume. All four were renamed into one family so weight
-         resolves within it.
+         The name matters and is easy to get wrong. Upstream sets:
 
-         It costs about 9.5MB, against roughly 1MB for the stock face. That is
-         the price of 12,503 glyphs, and it is a deliberate trade rather than an
-         oversight.
+             name ID 1  (family)      "JetBrainsMono NF", "...NF Medium", ...
+             name ID 16 (typographic) "JetBrainsMono Nerd Font"   - all four
+             name ID 17 (subfamily)   Regular / Medium / SemiBold / Bold
+
+         WPF resolves a family by ID 16 when it is present, so referencing
+         "#JetBrainsMono Nerd Font" gets one family with all four weights, and
+         the differing ID 1 values are irrelevant.
+
+         0.99.61 renamed these files "to fold the weights into one family". That
+         was solving a problem upstream had already solved, and the rename set
+         ID 16 on two of the four - which SPLIT the family: Regular and Bold kept
+         the upstream typographic name, Medium and SemiBold got the new one. The
+         reference then matched a family containing only 500 and 600, a 400
+         request found nothing, and WPF fell back to the system UI font. The
+         entire interface silently stopped being monospaced.
+
+         The rule this leaves: check name ID 16 before renaming anything, and
+         prefer not renaming at all.
+
+         It costs about 9.5MB for 12,503 glyphs per weight - a deliberate trade.
 
          Instrument Sans remains embedded and selectable. A user-chosen face is
          resolved from the fonts INSTALLED on the machine rather than shipped
@@ -246,12 +257,12 @@
          commercial use, so it cannot redistribute a face whose own licence
          forbids it. Reading an installed font places no licence obligation on
          the repository at all. -->
-    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#JetBrainsMono NFM</FontFamily>
-    <!-- Machine values take the same family as the interface. NFM IS JetBrains
-         Mono with the Nerd Fonts icon set patched in - identical metrics, same
-         drawing - so bundling stock JetBrains Mono alongside it would have meant
-         about 11MB of near-duplicate outlines to gain nothing. -->
-    <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrainsMono NFM</FontFamily>
+    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#JetBrainsMono Nerd Font</FontFamily>
+    <!-- Machine values take the same family as the interface. The Nerd Font build
+         IS JetBrains Mono with an icon set patched in - identical metrics, same
+         drawing - so bundling the stock face alongside it would have meant about
+         11MB of near-duplicate outlines to gain nothing. -->
+    <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrainsMono Nerd Font</FontFamily>
 
     <!-- Type ramp, SPEC.md section 3. Body is 13 and table cells 12.5; the
          design never uppercases anything above 12px, and its tracking widens as
