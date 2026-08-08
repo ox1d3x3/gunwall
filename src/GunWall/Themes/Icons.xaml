@@ -144,6 +144,18 @@
         <LineGeometry StartPoint="16,16" EndPoint="21,21" />
     </GeometryGroup>
 
+    <!-- Device marker for the connection map: a monitor on a stand. Drawn rather
+         than dotted because "where this machine appears to be" is a different
+         KIND of thing from "where traffic went", and a dot in another colour only
+         says that faintly. With a VPN running, this marker moving to another
+         country is the confirmation the tunnel is up - and it staying put is the
+         warning that it is not. -->
+    <GeometryGroup x:Key="IconDevice">
+        <RectangleGeometry Rect="2.5,4,19,12.5" RadiusX="2" RadiusY="2" />
+        <LineGeometry StartPoint="12,16.5" EndPoint="12,20" />
+        <LineGeometry StartPoint="8,20" EndPoint="16,20" />
+    </GeometryGroup>
+
     <!-- Tick, used by verdict rows and confirmations. Left OPEN: this is a
          polyline in the source, and closing it would draw a triangle. -->
     <PathGeometry x:Key="IconCheck" Figures="M4,12.5 L9.5,18 L20,6.5" />

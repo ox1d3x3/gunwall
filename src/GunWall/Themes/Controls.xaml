@@ -1,6 +1,7 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:gw="clr-namespace:GunWall.Controls"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
 
     <!-- ============================ Palette ============================ -->
@@ -57,7 +58,7 @@
         <Setter Property="MinWidth" Value="92" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="FontWeight" Value="Medium" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -117,7 +118,7 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="CaretBrush" Value="{DynamicResource BlockText}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource BlockFill}" />
@@ -219,7 +220,25 @@
          display sizes is set for these faces, and Segoe at the same values looks
          wrong rather than merely different. If a face fails to load it should be
          obvious, not quietly absorbed. -->
-    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#Instrument Sans</FontFamily>
+    <!-- The interface face. Referenced with DynamicResource everywhere so that
+         replacing this entry at runtime repaints the application - the same
+         late-binding rule the palettes follow, for the same reason.
+
+         JetBrains Mono is the default and is embedded, in four weights. Two of
+         those - SemiBold and Bold - were added in this release, because the
+         upstream SemiBold ships as its own family named "JetBrains Mono
+         SemiBold" with subfamily "Regular": a FontWeight="SemiBold" request
+         against "JetBrains Mono" would find nothing and come back Regular with
+         no error, which is the variable-font trap in a different costume. Both
+         were renamed into one family so weight resolves within it.
+
+         Instrument Sans remains embedded and selectable. A user-chosen face is
+         resolved from the fonts INSTALLED on the machine rather than shipped
+         with the application: this repository is MIT licensed, which grants
+         commercial use, so it cannot redistribute a face whose own licence
+         forbids it. Reading an installed font places no licence obligation on
+         the repository at all. -->
+    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#JetBrains Mono</FontFamily>
     <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrains Mono</FontFamily>
 
     <!-- Type ramp, SPEC.md section 3. Body is 13 and table cells 12.5; the
@@ -346,30 +365,35 @@
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="FontWeight" Value="Medium" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
         <Setter Property="FontSize" Value="{StaticResource BodyFontSize}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
     </Style>
 
     <Style x:Key="H1" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
         <Setter Property="FontSize" Value="{StaticResource TitleFontSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="H2" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
         <Setter Property="FontSize" Value="{StaticResource SubtitleFontSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
+    <!-- Section labels carry the design's 0.11em tracking. See Controls/Tracking.cs
+         for why this needs an attached property and what it costs - in short, WPF
+         has no character spacing, and the approximation is only safe on short
+         static labels that neither wrap nor ellipsise. These qualify. -->
     <Style x:Key="SectionLabel" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="gw:Tracking.Em" Value="0.11" />
     </Style>
 
     <Style x:Key="Muted" TargetType="TextBlock">
@@ -631,7 +655,7 @@
     <Style x:Key="PostureButton" TargetType="Button">
         <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="Template">
@@ -881,8 +905,11 @@
                     <Border x:Name="hb" Background="Transparent"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
                             Padding="10,0,10,10" SnapsToDevicePixels="True">
-                        <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                          TextElement.Foreground="{DynamicResource TextTertiary}" />
+                        <!-- Headers are short, static and never wrap, so the
+                             tracking approximation is safe here too. -->
+                        <TextBlock Text="{TemplateBinding Content}" gw:Tracking.Em="0.10"
+                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                   Foreground="{DynamicResource TextTertiary}" />
                     </Border>
                 </ControlTemplate>
             </Setter.Value>

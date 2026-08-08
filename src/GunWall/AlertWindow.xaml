@@ -8,7 +8,7 @@
     ShowInTaskbar="False" Topmost="True"
     WindowStartupLocation="Manual"
     Typography.NumeralAlignment="Tabular"
-    FontFamily="{StaticResource UiFont}"
+    FontFamily="{DynamicResource UiFont}"
     Background="Transparent"
     MouseLeftButtonDown="Window_MouseLeftButtonDown">
 

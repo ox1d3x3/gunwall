@@ -1147,6 +1147,9 @@ public sealed class FirewallManager : IDisposable
     public bool ThemeDark => _data.ThemeDark;
     public void SetThemeDark(bool v) { _data.ThemeDark = v; _store.Save(_data); }
 
+    public string UiFontFamily => _data.UiFontFamily ?? "";
+    public void SetUiFontFamily(string v) { _data.UiFontFamily = v ?? ""; _store.Save(_data); }
+
     public string VirusTotalApiKey => _data.VirusTotalApiKey;
     public void SetVirusTotalApiKey(string v) { _data.VirusTotalApiKey = v?.Trim() ?? ""; _store.Save(_data); }
 

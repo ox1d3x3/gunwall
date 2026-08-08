@@ -163,17 +163,24 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-**Traffic page, both themes.** The apps usage timeline should be a neutral line
-over a faint flat wash — **no blue anywhere**. The connection map's home marker
-should be neutral ink, destinations and arcs red.
+**Font weights.** The default is now bundled JetBrains Mono in four weights, and
+weight is the thing most likely to be wrong: compare a **column header** or a
+**section label** against the body text beside it. Headers should look clearly
+heavier. If everything renders at one weight, SemiBold and Bold are not resolving
+within the family and that is the whole change failing.
 
-**Applications status pills, in DARK theme especially.** `Allowed` and `Blocked`
-were painted from hard-coded light-theme values, so dark is where a mistake would
-show. They should be a soft tint carrying coloured text, matching the packet log.
+**Letter-spacing.** Section labels (`TOP TALKERS`, `RECENT DECISIONS`) and column
+headers should be visibly airier than before. Two failure modes: nothing changed,
+or the spacing is so wide the label reads as separate letters. Either is worth a
+screenshot.
 
-**Application properties window.** Open one from Applications and check the
-signature line takes a theme colour rather than a fixed one — switch themes with
-the window open if you can.
+Also check no label **wraps or truncates oddly** — tracking rebuilds the text as
+one run per character, and line breaks now fall between those runs.
 
-**Throughput chart, while traffic is moving.** Both lines on a soft flat tint,
-same stroke weight.
+**Connections inspector.** Should be **absent** on arrival, with the table using
+the full width, and appear when a row is selected. It should not flicker while
+the list refreshes.
+
+**Font picker.** Settings → Appearance. Switching should repaint immediately
+without a restart. Selecting a single-weight font should show a warning under the
+picker.

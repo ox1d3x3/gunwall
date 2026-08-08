@@ -6,6 +6,38 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.60] — 2026-08-07
+
+### Changed
+- **JetBrains Mono is the default interface font**, bundled, in four weights. Instrument Sans stays embedded and selectable; installed faces including `JetBrainsMono NF` remain available in the picker. The bundled build is the default deliberately — defaulting to a font the application does not ship means every machine that lacks it silently gets something else.
+- **SemiBold and Bold were added to the bundled JetBrains Mono**, and both were renamed into one family first. Upstream ships SemiBold as its own family called *"JetBrains Mono SemiBold"* with subfamily *"Regular"*, so a `FontWeight="SemiBold"` request against *"JetBrains Mono"* finds nothing and returns Regular with no error — the variable-font trap in a different costume. Both families now carry 400/500/600/700.
+
+### Added
+- **Letter-spacing, positive only.** WPF has no character-spacing property, so it is an attached property that rebuilds short labels as a run per character with hair spaces between. Applied to section labels (0.11em) and column headers (0.10em), where uppercase text at 10–11px most needs it.
+
+  Three costs, all documented at the top of `Controls/Tracking.cs` rather than discovered later: it cannot express **negative** tracking, so the design's −0.03em at display sizes is not attempted; wrapping and trimming now break between inserted runs, so it must not be used on anything that wraps; and copied text carries the spacing characters. All three are acceptable for short static uppercase labels and for nothing else, which is exactly where it is used.
+
+- **The Connections inspector is collapsed until a row is selected.** It was a 340px card holding one line of instruction, permanently, on the screen with the widest table in the application — spending a third of the width to say it had nothing to show. It is not re-collapsed on deselection: the list rebuilds by clear-and-re-add every sample, so a panel that vanished twice a second would be worse than one that stays.
+
+### Note
+The Neuromax font supplied for this release is **not** bundled. Its `info.txt` reads "Freeware, Non-Commercial", and this repository is MIT, which grants commercial use — shipping it would hand every downstream user a licence conflict they never agreed to. It can be installed locally and selected from the picker like any other installed face.
+
+---
+
+## [0.99.59] — 2026-08-07
+
+### Added
+- **The interface font is now a setting.** Instrument Sans remains the bundled default; any other face is read from the fonts **installed on the machine**. Applies immediately — `UiFont` binds with `DynamicResource` everywhere, the same late-binding rule the palettes follow.
+
+  Installed rather than bundled is a licence constraint rather than a preference, and it is worth stating why: this repository is MIT, which grants commercial use. It therefore cannot redistribute a face whose own terms forbid commercial use, because every downstream user would inherit a conflict. Reading a font the user already has installed places no obligation on the repository at all.
+
+  Two things the picker reports rather than hiding: a saved font that is no longer installed says so instead of silently reverting, and a face carrying a single weight warns that headings and column headers cannot render heavier than body text.
+- **The connection map marks this device with a monitor glyph rather than a dot.** The destinations are dots; this is not a destination, it is the machine, and giving it the same shape in another colour asks the eye to remember a legend. It carries a halo in the page background so it stays legible over a landmass, an arc, or a destination dot beneath it, and its tooltip names the country traffic appears to originate from.
+
+  With a VPN running, that marker sitting over a different country is the confirmation the tunnel is carrying traffic — and it staying put is the warning that it is not.
+
+---
+
 ## [0.99.58] — 2026-08-07
 
 ### Fixed

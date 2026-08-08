@@ -187,6 +187,11 @@ public sealed class StoreData
     /// <summary>UI theme: true = dark, false = light.</summary>
     public bool ThemeDark { get; set; } = true;
 
+    /// <summary>Interface font family name. Empty means the embedded default.
+    /// A NAME rather than a file: the font is read from the ones installed on
+    /// this machine, so nothing about a user's choice is redistributed.</summary>
+    public string UiFontFamily { get; set; } = "";
+
     /// <summary>VirusTotal API key (optional, user-provided).</summary>
     public string VirusTotalApiKey { get; set; } = "";
 

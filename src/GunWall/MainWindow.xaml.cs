@@ -284,6 +284,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 MaxLogFileCombo.SelectedIndex = _firewall.MaxLogFileMB switch
                 { 2 => 0, 5 => 1, 20 => 2, 50 => 3, _ => 1 };
             PopulateColorUi();
+            PopulateFontChoice();
+            ApplyUiFont(_firewall.UiFontFamily);
             UpdateCustomListStatus(); // §5 reflect any saved custom blocklist file
             RefreshEntityRules();     // §1 render saved country/continent/ASN rules + GeoIP status
             try
@@ -313,7 +315,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.58 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.60 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -767,23 +769,43 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // destination, so the marker for "you" was hidden precisely in the case
         // it matters most. Nothing about the colour was wrong; the dot was
         // underneath another one.
-        var homeDot = new System.Windows.Shapes.Ellipse
+        // A device glyph rather than another dot. The destinations are dots; this
+        // is not a destination, it is the machine, and giving it the same shape in
+        // a different colour asks the eye to remember a legend. The shape says it
+        // directly - and with a VPN running, seeing this sit over a different
+        // country is the whole confirmation that the tunnel is carrying traffic.
+        var homeIcon = new System.Windows.Shapes.Path
         {
-            Width = 9, Height = 9,
-            // Was #0A84FF, which is the SYSTEM category colour from
-            // CategoryPalette - user data, editable in Settings, and section 2
-            // says not to reuse it in the interface. It was also the only blue
-            // left in the application. This marker is "you", so it takes neutral
-            // ink; the destinations take the accent.
-            Fill = new SolidColorBrush(HueOf("TextPrimary", 0xE6)),
-            Stroke = new SolidColorBrush(HueOf("TextPrimary", 0x59)),
-            StrokeThickness = 3,
+            Data = (Geometry)System.Windows.Application.Current.FindResource("IconDevice"),
+            Stretch = Stretch.Uniform,
+            Width = 17, Height = 17,
+            Fill = null,
+            Stroke = new SolidColorBrush(HueOf("TextPrimary", 0xFF)),
+            StrokeThickness = 2.0,
+            StrokeLineJoin = PenLineJoin.Round,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            SnapsToDevicePixels = true,
             ToolTip = homeCode.Length > 0
-                ? $"This device \u00b7 {GunWall.Services.GeoData.CountryName(homeCode)}" : "This device"
+                ? $"This device \u00b7 traffic appears to originate in {GunWall.Services.GeoData.CountryName(homeCode)}"
+                : "This device"
         };
-        Canvas.SetLeft(homeDot, home.X - 4.5);
-        Canvas.SetTop(homeDot, home.Y - 4.5);
-        MapMarkers.Children.Add(homeDot);
+
+        // A halo in the page background, so the glyph stays legible over a
+        // landmass, an arc, or a destination dot underneath it.
+        var halo = new System.Windows.Shapes.Ellipse
+        {
+            Width = 25, Height = 25,
+            Fill = new SolidColorBrush(HueOf("BgPrimary", 0xD9)),
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(halo, home.X - 12.5);
+        Canvas.SetTop(halo, home.Y - 12.5);
+        MapMarkers.Children.Add(halo);
+
+        Canvas.SetLeft(homeIcon, home.X - 8.5);
+        Canvas.SetTop(homeIcon, home.Y - 8.5);
+        MapMarkers.Children.Add(homeIcon);
     }
 
     /// <summary>Builds the 90x20 sparkline for one app row from its last 30
@@ -2923,6 +2945,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // (Clear + re-add); keep the last view until a real row is chosen.
         if (ConnList.SelectedItem is not ConnectionInfo c) return;
 
+        // The panel is collapsed until there is something to put in it, so the
+        // table has the full width whenever nothing is selected. Deliberately not
+        // re-collapsed on deselection: the list rebuilds by Clear + re-add every
+        // sample, which deselects transiently, and a panel that appeared and
+        // vanished twice a second would be worse than one that stays.
+        if (ConnInspector != null) ConnInspector.Visibility = Visibility.Visible;
         InspPlaceholder.Visibility = Visibility.Collapsed;
         InspContent.Visibility = Visibility.Visible;
 
@@ -4196,6 +4224,106 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             RefreshSwatches();
         }
         catch { }
+    }
+
+    // ============================================================== interface font
+    // Bundled, so it looks the same on a machine that has installed nothing.
+    // "JetBrainsMono NF" - the Nerd Font build - is a separate, system-installed
+    // family and stays selectable for anyone who has it; it is not the default,
+    // because defaulting to a font the application does not ship means every
+    // other machine silently gets something else.
+    private const string DefaultUiFont = "pack://application:,,,/Fonts/#JetBrains Mono";
+    private bool _fontUiLoading;
+
+    /// <summary>Fills the picker with the bundled face plus everything installed.
+    /// Installed rather than bundled is a licence constraint, not a preference:
+    /// this repository is MIT, which grants commercial use, so it cannot carry a
+    /// font whose own terms forbid it. Reading a face the user already has
+    /// installed puts no obligation on the repository at all.</summary>
+    private void PopulateFontChoice()
+    {
+        if (FontChoice == null) return;
+        _fontUiLoading = true;
+        try
+        {
+            var names = new List<string> { "JetBrains Mono (bundled default)", "Instrument Sans (bundled)" };
+            names.AddRange(System.Windows.Media.Fonts.SystemFontFamilies
+                .Select(f => f.Source)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
+            FontChoice.ItemsSource = names;
+
+            string saved = _firewall.UiFontFamily;
+            FontChoice.SelectedIndex = 0;
+            if (!string.IsNullOrEmpty(saved))
+            {
+                int i = saved == "Instrument Sans" ? 1
+                      : names.FindIndex(n => string.Equals(n, saved, StringComparison.OrdinalIgnoreCase));
+                // A saved font can disappear - uninstalled, or the settings file
+                // moved to another machine. Say so rather than silently reverting.
+                if (i > 0) FontChoice.SelectedIndex = i;
+                else ShowFontWarning($"\"{saved}\" is no longer installed, so the default is in use.");
+            }
+        }
+        catch (Exception ex) { SampleStepError("font list", ex); }
+        finally { _fontUiLoading = false; }
+    }
+
+    private void FontChoice_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_fontUiLoading || FontChoice?.SelectedItem is not string pick) return;
+        ApplyUiFont(FontChoice.SelectedIndex switch
+        {
+            0 => "",                                  // bundled default
+            1 => "Instrument Sans",                   // the other bundled face
+            _ => pick                                 // installed on this machine
+        });
+    }
+
+    private void FontReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (FontChoice != null) FontChoice.SelectedIndex = 0;
+        ApplyUiFont("");
+    }
+
+    /// <summary>Swaps the UiFont resource. Everything binds it with
+    /// DynamicResource, so this repaints without a restart.</summary>
+    private void ApplyUiFont(string family)
+    {
+        try
+        {
+            var ff = string.IsNullOrEmpty(family) ? new FontFamily(DefaultUiFont)
+                   : family == "Instrument Sans"
+                       ? new FontFamily("pack://application:,,,/Fonts/#Instrument Sans")
+                       : new FontFamily(family);
+            System.Windows.Application.Current.Resources["UiFont"] = ff;
+            _firewall.SetUiFontFamily(family);
+
+            // A face with one weight cannot express the interface's hierarchy:
+            // every SemiBold heading and column header falls back to Regular, or
+            // to a synthesised bold, and the design leans on 450/500/600/700 to
+            // separate a label from its value. Worth saying out loud, because
+            // nothing else will report it.
+            if (!string.IsNullOrEmpty(family))
+            {
+                int weights = ff.FamilyTypefaces
+                    .Select(t => t.Weight.ToOpenTypeWeight()).Distinct().Count();
+                ShowFontWarning(weights > 1 ? "" :
+                    $"\"{family}\" ships a single weight, so headings and column " +
+                    "headers cannot render heavier than body text. Addresses and " +
+                    "byte counts stay in JetBrains Mono either way.");
+            }
+            else ShowFontWarning("");
+        }
+        catch (Exception ex) { SampleStepError("font apply", ex); }
+    }
+
+    private void ShowFontWarning(string text)
+    {
+        if (FontWarning == null) return;
+        FontWarning.Text = text;
+        FontWarning.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void RefreshSwatches()
