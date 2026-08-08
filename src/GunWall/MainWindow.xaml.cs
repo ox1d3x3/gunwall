@@ -313,7 +313,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.57 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.58 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -736,24 +736,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             MapMarkers.Children.Add(arc);
         }
 
-        // Home marker: accent ring so the origin reads at a glance.
-        var homeDot = new System.Windows.Shapes.Ellipse
-        {
-            Width = 9, Height = 9,
-            // Was #0A84FF, which is the SYSTEM category colour from
-            // CategoryPalette - user data, editable in Settings, and section 2
-            // says not to reuse it in the interface. It was also the only blue
-            // left in the application. This marker is "you", so it takes neutral
-            // ink; the destinations below take the accent.
-            Fill = new SolidColorBrush(HueOf("TextPrimary", 0xE6)),
-            Stroke = new SolidColorBrush(HueOf("TextPrimary", 0x59)),
-            StrokeThickness = 3,
-            ToolTip = homeCode.Length > 0
-                ? $"This device \u00b7 {GunWall.Services.GeoData.CountryName(homeCode)}" : "This device"
-        };
-        Canvas.SetLeft(homeDot, home.X - 4.5);
-        Canvas.SetTop(homeDot, home.Y - 4.5);
-        MapMarkers.Children.Add(homeDot);
 
         foreach (var (code, count) in top)
         {
@@ -777,6 +759,31 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Canvas.SetTop(dot, pt.Y - r);
             MapMarkers.Children.Add(dot);
         }
+
+        // Home is drawn LAST, on top of the destinations.
+        //
+        // It was drawn first, which meant any destination in the same country
+        // covered it - and with a VPN active the apparent location IS usually a
+        // destination, so the marker for "you" was hidden precisely in the case
+        // it matters most. Nothing about the colour was wrong; the dot was
+        // underneath another one.
+        var homeDot = new System.Windows.Shapes.Ellipse
+        {
+            Width = 9, Height = 9,
+            // Was #0A84FF, which is the SYSTEM category colour from
+            // CategoryPalette - user data, editable in Settings, and section 2
+            // says not to reuse it in the interface. It was also the only blue
+            // left in the application. This marker is "you", so it takes neutral
+            // ink; the destinations take the accent.
+            Fill = new SolidColorBrush(HueOf("TextPrimary", 0xE6)),
+            Stroke = new SolidColorBrush(HueOf("TextPrimary", 0x59)),
+            StrokeThickness = 3,
+            ToolTip = homeCode.Length > 0
+                ? $"This device \u00b7 {GunWall.Services.GeoData.CountryName(homeCode)}" : "This device"
+        };
+        Canvas.SetLeft(homeDot, home.X - 4.5);
+        Canvas.SetTop(homeDot, home.Y - 4.5);
+        MapMarkers.Children.Add(homeDot);
     }
 
     /// <summary>Builds the 90x20 sparkline for one app row from its last 30

@@ -6,6 +6,20 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.58] — 2026-08-07
+
+### Fixed
+- **The connection map's home marker was invisible, and the colour fix in 0.99.57 could not have shown it.** It was added to the canvas *before* the destination dots, so any destination in the same country drew straight over it — and with a VPN active the apparent location generally **is** a destination, so the marker for "you" was hidden exactly in the case where knowing where the machine appears to be is the point. Destinations scale up to 18px against the home marker's 9px, so it was covered completely rather than partially. Drawn last now.
+
+  Worth separating the two things: nothing about the colour was wrong. The dot was underneath another one, and had been since the map was written. Repainting something that is not visible produces exactly the same screenshot, which is why this only surfaced on a second look at the same page.
+
+### Verified on hardware
+- The apps usage timeline is neutral in both themes — the last blue is gone.
+- Status pills read as tints on dark, where the hard-coded light-theme values would have shown.
+- Chart fills flat on both series, at matching stroke weight.
+
+---
+
 ## [0.99.57] — 2026-08-07
 
 Fifteen raw colours in the drawing and conversion code, found because one of them
