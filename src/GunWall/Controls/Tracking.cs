@@ -47,14 +47,30 @@ public static class Tracking
     public static void SetEm(DependencyObject o, double v) => o.SetValue(EmProperty, v);
     public static double GetEm(DependencyObject o) => (double)o.GetValue(EmProperty);
 
+    /// <summary>The text before any spacing was inserted. Without this, a second
+    /// Apply would space the already-spaced string, and skipping would leave the
+    /// first pass's spacing in place with no way to undo it.</summary>
+    private static readonly DependencyProperty OriginalProperty =
+        DependencyProperty.RegisterAttached(
+            "Original", typeof(string), typeof(Tracking), new PropertyMetadata(null));
+
     private static void OnEmChanged(DependencyObject o, DependencyPropertyChangedEventArgs e)
     {
         if (o is not TextBlock tb) return;
-        // Text arrives from a binding or a style setter, either of which can land
-        // after this property does, so apply on load as well as on change.
+
+        // Deliberately NOT applied here. A style setter lands this property while
+        // the element is still being built, before it joins the visual tree - so
+        // FontFamily has not inherited yet and still reads as the system default,
+        // which is proportional. Measuring then says "not monospaced" and spaces
+        // text that should never have been spaced.
+        //
+        // That is exactly what shipped: the monospace guard added in 0.99.66 ran
+        // on the SECOND pass, correctly returned early, and left the first pass's
+        // spacing untouched - so column headers kept rendering "DIRECTI(" while
+        // the guard reported itself working.
         tb.Loaded -= OnLoaded;
         tb.Loaded += OnLoaded;
-        Apply(tb);
+        if (tb.IsLoaded) Apply(tb);
     }
 
     private static void OnLoaded(object sender, RoutedEventArgs e)
@@ -83,8 +99,13 @@ public static class Tracking
     private static void Apply(TextBlock tb)
     {
         double em = GetEm(tb);
-        string text = tb.Text ?? "";
-        if (em <= 0 || text.Length < 2) return;
+
+        // Work from the ORIGINAL every time, so applying twice cannot compound
+        // and skipping can actually restore.
+        string original = (string?)tb.GetValue(OriginalProperty) ?? tb.Text ?? "";
+        tb.SetValue(OriginalProperty, original);
+
+        if (em <= 0 || original.Length < 2) { Restore(tb, original); return; }
 
         // Not under a monospace face. This approximation inserts hair spaces, and
         // a monospace font gives EVERY glyph the same advance - so a hair space is
@@ -97,7 +118,7 @@ public static class Tracking
         // "DIRECTI(". Tracking is a proportional-type adjustment, and a monospace
         // face is already evenly spaced, so skipping is correct rather than merely
         // safe. It returns automatically if the user picks a proportional font.
-        if (IsMonospaced(tb)) return;
+        if (IsMonospaced(tb)) { Restore(tb, original); return; }
 
         // A hair space is the narrowest fixed-width space Unicode defines, and it
         // does not collapse the way a normal space does. Repeating it is coarse -
@@ -108,10 +129,19 @@ public static class Tracking
         string gap = new string('\u200A', count);
 
         tb.Inlines.Clear();
-        for (int i = 0; i < text.Length; i++)
+        for (int i = 0; i < original.Length; i++)
         {
-            tb.Inlines.Add(new Run(text[i].ToString()));
-            if (i < text.Length - 1) tb.Inlines.Add(new Run(gap));
+            tb.Inlines.Add(new Run(original[i].ToString()));
+            if (i < original.Length - 1) tb.Inlines.Add(new Run(gap));
         }
+    }
+
+    /// <summary>Puts the plain text back. Needed because a skip has to undo an
+    /// earlier pass, not merely decline to add to it.</summary>
+    private static void Restore(TextBlock tb, string original)
+    {
+        if (tb.Text == original) return;
+        tb.Inlines.Clear();
+        tb.Text = original;
     }
 }

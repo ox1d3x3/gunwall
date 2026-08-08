@@ -6,6 +6,24 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.68] — 2026-08-08
+
+### Fixed
+- **`DIRECTION` was still clipping, because the monospace guard added in 0.99.66 ran too late to matter.**
+
+  Tracking applies twice: once when the style setter lands the attached property, and once on `Loaded`. The first pass happens while the element is still being built, **before it joins the visual tree** — so `FontFamily` has not inherited yet and still reads as the system default, which is proportional. The guard measures, sees a proportional face, and spaces the text.
+
+  The second pass, on `Loaded`, measures correctly, sees monospace, and returns early — leaving the first pass's spacing exactly where it was. The guard reported itself working while the damage had already been done and was never undone.
+
+  Two changes: nothing is applied before `Loaded`, and a skip now **restores** the plain text rather than merely declining to add more. The original string is kept so repeated passes cannot compound either.
+
+  The arithmetic, for the record: `DIRECTION` in the bundled face at 10.5px is 56.7px, which fits its 100px column with 20px of padding to spare. With two hair spaces per gap it became 157.5px — clipping by 78.
+
+### Note
+The Rules column was left at 100px on purpose. Widening it would have hidden whether the fix worked; if the header still clips, the guard still is not taking effect and that is worth knowing rather than papering over.
+
+---
+
 ## [0.99.67] — 2026-08-08
 
 The command palette — the last outstanding item of the design migration.

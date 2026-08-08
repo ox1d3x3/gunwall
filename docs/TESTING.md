@@ -163,28 +163,24 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-This build batches several releases, so the list is longer than usual.
+**`DIRECTION` on Rules.** This has now been "fixed" twice and clipped both times.
+The column was deliberately left at its original width so that a clip still means
+the guard is not working, rather than being masked by a wider column. If it reads
+in full, letter-spacing is genuinely off under the monospace font.
 
-**Command palette.** Press **Ctrl+K**, or click the top bar search field.
-Expect a centred panel over a dimmed window, with the sidebar dimmed too.
+Then switch the interface font to **Instrument Sans** and check the same header:
+spacing should **return** there, and still fit. That half proves the guard is
+selective rather than simply disabled.
 
-- Typing filters across **Actions**, **Go to** and **Applications**
-- Arrows move, **Enter** activates, **Escape** and a click outside both close
-- Pick an application: should land on Applications with the filter already set
-- Pick "Turn firewall on/off": the palette should close *before* anything happens
+**Table states**, still untested across several builds:
 
-**Column headers must not clip.** `DIRECTION` on Rules and Packet log was the one
-that broke. Then switch the font to **Instrument Sans** and check again —
-spacing should return there and still not clip.
-
-**Interface scale** defaults to Compact (90%) for a fresh install. An existing
-install keeps what it had.
-
-**Table states**, still untested from earlier builds:
-
-- **Empty** — Rules with no custom rules. The frame should be **dashed**, and the
-  column header must still show above it.
+- **Empty** — Rules with no custom rules. Frame should be **dashed**, with the
+  column header still visible above it.
 - **No results** — type nonsense into a filter box. Must look clearly different
-  from empty.
+  from the empty state.
 - **Loading** — press Scan network: eight skeleton bars and a caption.
 - Watch for **the page jumping** as a table changes state.
+
+**Command palette**, if not already exercised: Ctrl+K, arrows, Enter, Escape,
+click outside. Picking an application should land on Applications with the filter
+already set.
