@@ -177,9 +177,39 @@
 
                 <!-- Actions. The chevron is a real 30x30 button this time, sized
                      from its own padding rather than inheriting thirty pixels of
-                     it from a shared style and clipping the glyph to a dot. -->
+                     it from a shared style and clipping the glyph to a dot.
+
+                     THREE REAL COLUMNS, as of 0.99.72. Until then this was a
+                     single-cell Grid holding three children aligned left, left
+                     and right - which positions them but reserves nothing for
+                     any of them. The hint was bounded by MaxWidth="210" instead,
+                     a number chosen against the buttons as they measured when it
+                     was written, and nothing enforced it: 40px of left margin
+                     plus 210 reaches 250px into a row where the buttons begin at
+                     176. The hint ran underneath the Block button.
+
+                     That is trap 2.8 with the direction reversed - not sizing a
+                     column for the string that happens to be visible, but
+                     letting a string assume space that belongs to something
+                     else. Here the buttons are the fixed part and the hint's
+                     width is DERIVED, so the star column hands it exactly what
+                     is left over and it ellipsises inside its own cell rather
+                     than sliding under a neighbour. The overlap is now
+                     structurally impossible rather than arithmetically avoided.
+
+                     The 10px margins are the visible gap either side. They are
+                     deliberately explicit rather than borrowed from the
+                     chevron's internal whitespace or the Block button's 15px
+                     padding, because both of those belong to styles that can
+                     change without anyone thinking about this row. -->
                 <Grid Margin="0,14,0,0">
-                    <Button x:Name="DetailsButton" HorizontalAlignment="Left"
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="DetailsButton" Grid.Column="0"
                             Style="{StaticResource PromptChevron}" Click="Details_Click"
                             ToolTip="Show everything known about this connection.">
                         <Path x:Name="DetailsChevron" Width="13" Height="13" Stretch="Uniform"
@@ -188,12 +218,14 @@
                               StrokeEndLineCap="Round" Fill="{x:Null}"
                               Data="{StaticResource IconChevronDown}" />
                     </Button>
-                    <TextBlock x:Name="DetailsLabel" Visibility="Collapsed" />
-                    <TextBlock x:Name="CountdownHint" Margin="40,0,0,0" FontSize="11.5"
+
+                    <TextBlock x:Name="CountdownHint" Grid.Column="1" FontSize="11.5"
+                               Margin="10,0,10,0"
                                VerticalAlignment="Center" HorizontalAlignment="Left"
-                               TextTrimming="CharacterEllipsis" MaxWidth="210"
+                               TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource TextTertiary}" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
                         <Button x:Name="BlockButton" Content="Block" Click="Block_Click"
                                 Style="{StaticResource PromptSecondary}" Margin="0,0,8,0" />
                         <Button x:Name="AllowButton" Content="Allow" Click="Allow_Click"

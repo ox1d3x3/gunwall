@@ -163,8 +163,37 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-**The connection prompt.** Turn the firewall on, then launch something that has
-never connected. Expect:
+**The Overview chart.** Look at the bottom edge of the graph. The `-60s / -45s /
+-30s / -15s / now` labels must sit **below** the baseline with the trace clear of
+them. Previously the line was drawn through the digits. Hover the chart too: the
+vertical cursor line should stop at the baseline, not run down over the labels.
+
+**Connections, with nothing selected.** The inspector panel on the right must be
+there from the moment the screen opens, showing *"Select a connection to inspect
+its full details."* There should be **no wide band of empty ruled rows** to the
+right of `LOCATION`.
+
+Then select a row. The table must **not jump or reflow** — the inspector was
+already occupying its space. Then drag the window narrower and wider: `LOCATION`
+should grow and shrink to fill, never leaving a gap and never pushing off the
+right edge. At the narrowest window it stops shrinking and truncates instead.
+
+**The connection prompt's bottom row.** Turn the firewall
+on and launch something that has never connected. Watch the strip holding the
+chevron, the hint and the two buttons:
+
+- The hint must sit **clear of the Block button**, not touching it.
+- Let the countdown run. It should read `Blocks in 18s` (or `Allows in 18s`),
+  counting down, and it should be there **immediately** — not blank for a second,
+  and starting at the full timeout rather than one less.
+- Press the chevron. The countdown stops and the hint becomes `Closing blocks`.
+- If your timeout is set to Never, it reads `Closing blocks` throughout.
+
+The old text was `Blocks automatically in 18s`, which is nine characters past
+what fits. If you see any hint touching or running under a button, the column
+fix did not take.
+
+**The rest of the prompt.** Expect:
 
 - a coloured tile on the left holding a shield
 - the question, with a quieter line beneath it

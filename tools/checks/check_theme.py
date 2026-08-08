@@ -424,6 +424,354 @@ def check_font_families():
         notes.append(f"font-family: {len(groups)} bundled families, each internally consistent")
 
 
+def check_hint_width():
+    """The connection prompt's countdown hint must fit the space left over.
+
+    0.99.71 put the hint in a single-cell Grid between the chevron and the
+    buttons, bounded by MaxWidth="210" - a number picked against the buttons as
+    they measured at the time. A single cell reserves nothing, so nothing
+    enforced it, and "Blocks automatically in 18s" rendered underneath the Block
+    button.
+
+    0.99.72 made it a real star column, which stops the OVERLAP. It does not
+    stop the string being too long: a hint that ellipsises to "Blocks
+    automatically i..." has lost the seconds, which is the only part with a
+    deadline attached. So the budget is derived here from the same metrics the
+    layout uses, and the strings are measured against it.
+
+    Every input is READ, not assumed - window width, chevron width, button
+    MinWidth, the hint's margins and font size, and the font's own advance
+    width from the TTF. If any of those change, this recomputes rather than
+    going quietly stale, which is the whole complaint in trap 2.11.
+    """
+    alert_x = (APP / "AlertWindow.xaml").read_text(encoding="utf-8")
+    alert_c = (APP / "AlertWindow.xaml.cs").read_text(encoding="utf-8")
+    ctrls = SHARED.read_text(encoding="utf-8")
+
+    def one(pat, text, what, flags=re.S):
+        # DOTALL by default: several of these anchors span lines, and without it
+        # they match nothing and the check reports "found 0" rather than reading
+        # a value. The interpolated format string opts OUT, because it contains
+        # its own quotes and has to be read to end-of-line instead.
+        m = re.findall(pat, text, flags)
+        if len(m) != 1:
+            fail("hint-width", f"expected exactly 1 match for {what}, found {len(m)}")
+            return None
+        return m[0]
+
+    win = one(r'\n\s*Width="(\d+)" SizeToContent="Height"', alert_x, "window width")
+    # Border Margin, BorderThickness, then the inner StackPanel's Margin.
+    marg = one(r'CornerRadius="12" Margin="(\d+)"', alert_x, "card margin")
+    bord = one(r'BorderBrush="\{DynamicResource BorderBrush\}" BorderThickness="(\d+)"',
+               alert_x, "card border")
+    pad = one(r'<StackPanel Margin="16,(\d+),16,(\d+)">', alert_x, "content padding")
+    chev = one(r'x:Key="PromptChevron".*?<Setter Property="Width" Value="(\d+)"',
+               ctrls, "chevron width")
+    btnw = one(r'x:Key="PromptSecondary".*?<Setter Property="MinWidth" Value="(\d+)"',
+               ctrls, "button MinWidth")
+    gap = one(r'x:Name="BlockButton".*?Margin="0,0,(\d+),0"', alert_x, "button gap")
+    hm = one(r'x:Name="CountdownHint".*?Margin="(\d+),0,(\d+),0"', alert_x, "hint margins")
+    fs = one(r'x:Name="CountdownHint".*?FontSize="([\d.]+)"', alert_x, "hint font size")
+    budget_decl = one(r"HintBudgetChars\s*=\s*(\d+)", alert_c, "HintBudgetChars")
+    if None in (win, marg, bord, pad, chev, btnw, gap, hm, fs, budget_decl):
+        return
+
+    # The hint inherits the window's UiFont. JetBrainsMono is the default and,
+    # being monospaced, is the WORST case - Instrument Sans averages narrower.
+    # Read the advance from the file rather than recalling 0.6em: trap 2.5 was a
+    # font metric taken on trust.
+    font = APP / "Fonts" / "JetBrainsMonoNerdFont-Regular.ttf"
+    try:
+        adv, upm = _ttf_advance(font, ord("W"))
+    except Exception as ex:
+        fail("hint-width", f"could not read advance from {font.name}: {ex}")
+        return
+
+    row = int(win) - 2 * (int(marg) + int(bord) + 16)
+    free = row - int(chev) - (2 * int(btnw) + int(gap)) - (int(hm[0]) + int(hm[1]))
+    per_char = float(fs) * adv / upm
+    budget = int(free // per_char)
+
+    if budget != int(budget_decl):
+        fail("hint-width",
+             f"HintBudgetChars says {budget_decl} but the layout gives {budget} "
+             f"({free:.0f}px free / {per_char:.2f}px per char)")
+
+    # Every string the hint can hold, including the widest countdown value the
+    # timeout picker offers. Sized from the LONGEST it can hold, not the one
+    # visible when this was written - trap 2.8.
+    strings = [one(r'FailClosedHint\s*=\s*"([^"]*)"', alert_c, "FailClosedHint")]
+    # NOT [^"]*: the format string holds "Allow" and "Block" in their own quotes,
+    # so that stops after nineteen characters and measures a fragment. It passed
+    # doing exactly that, because the fragment happened to be under budget - a
+    # check succeeding on a value it never really read, which is 2.10 again.
+    fmt = one(r'CountdownText\(\)\s*=>\s*\$"(.+)";\s*$', alert_c, "CountdownText",
+              flags=re.M)
+    if None in (strings[0], fmt):
+        return
+    rendered = (fmt.replace('{(_defaultAllow ? "Allow" : "Block")}', "Block")
+                   .replace("{_secondsLeft}", "999"))
+    if "{" in rendered:
+        fail("hint-width",
+             f"CountdownText has an interpolation this check cannot render: {rendered}")
+        return
+    strings.append(rendered)
+
+    for s in strings:
+        if len(s) > budget:
+            fail("hint-width",
+                 f'"{s}" is {len(s)} chars, over the {budget}-char budget '
+                 f"({len(s) * per_char:.0f}px into {free:.0f}px)")
+
+    before = len(failures)
+    _check_hint_column(alert_x)
+
+    # Only report if nothing above failed. The first version appended this
+    # unconditionally, so a broken column printed "ok ... star column" directly
+    # beside a FAIL saying the column was wrong - a check contradicting itself in
+    # the same output, at the moment someone most needs to read it plainly.
+    if len(failures) == before:
+        worst = max(strings, key=len)
+        notes.append(f"hint-width: {budget} chars fit, longest is {len(worst)} "
+                     f'("{worst}"), star column')
+
+
+def _check_hint_column(alert_x):
+    """The structural half: the hint must live in a star column of its own.
+
+    Short strings alone are not the fix. They were short once before, in a
+    single-cell Grid, and grew. A star column bounds the hint whatever it says,
+    so this asserts the column exists rather than trusting that the strings stay
+    disciplined - and it is a real XML parse, because a regex looking for
+    ColumnDefinitions near a name is the kind of loose match that reports success
+    on the wrong Grid.
+    """
+    import xml.etree.ElementTree as ET
+    NS = "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}"
+    X = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    root = ET.fromstring(alert_x)
+
+    owner = None
+    for grid in root.iter(NS + "Grid"):
+        for child in grid:
+            if child.get(X + "Name") == "CountdownHint":
+                owner = (grid, child)
+                break
+        if owner:
+            break
+    if owner is None:
+        fail("hint-width", "CountdownHint is not a direct child of any Grid")
+        return
+
+    grid, hint = owner
+    cols = [c for defs in grid.findall(NS + "Grid.ColumnDefinitions")
+            for c in defs.findall(NS + "ColumnDefinition")]
+    if len(cols) != 3:
+        fail("hint-width",
+             f"the actions Grid has {len(cols)} column definitions, expected 3 "
+             "(chevron / hint / buttons). With fewer, children overlap instead "
+             "of being given space, which is how 0.99.71 shipped.")
+        return
+
+    idx = hint.get("Grid.Column")
+    if idx != "1":
+        fail("hint-width", f'CountdownHint is in column {idx!r}, expected "1"')
+        return
+    if cols[1].get("Width") != "*":
+        fail("hint-width",
+             f'the hint column is Width={cols[1].get("Width")!r}, expected "*" - '
+             "a fixed or Auto width does not shrink to what is left over")
+    if hint.get("MaxWidth"):
+        fail("hint-width",
+             f'CountdownHint has MaxWidth={hint.get("MaxWidth")!r}. The star '
+             "column already bounds it; a hand-picked maximum is the number that "
+             "was wrong in 0.99.71.")
+    if hint.get("TextTrimming") != "CharacterEllipsis":
+        fail("hint-width",
+             "CountdownHint must set TextTrimming=CharacterEllipsis, so an "
+             "over-long string ends in ... rather than at a cut character")
+
+
+def _ttf_advance(path, codepoint):
+    """Advance width and unitsPerEm for one glyph, straight out of the TTF.
+
+    Hand-parsed so the check has no dependency the repository does not already
+    carry. Reads the table directory, then head.unitsPerEm, hhea.numberOfHMetrics
+    and the hmtx entry for the glyph cmap format 4 maps the codepoint to.
+    """
+    import struct
+    b = path.read_bytes()
+    n = struct.unpack(">H", b[4:6])[0]
+    tabs = {}
+    for i in range(n):
+        o = 12 + 16 * i
+        tag = b[o:o + 4].decode("latin-1")
+        tabs[tag] = struct.unpack(">I", b[o + 8:o + 12])[0]
+
+    upm = struct.unpack(">H", b[tabs["head"] + 18:tabs["head"] + 20])[0]
+    num_h = struct.unpack(">H", b[tabs["hhea"] + 34:tabs["hhea"] + 36])[0]
+
+    # cmap: find a format 4 subtable and walk it for the codepoint.
+    c = tabs["cmap"]
+    best = None
+    for i in range(struct.unpack(">H", b[c + 2:c + 4])[0]):
+        o = c + 4 + 8 * i
+        pid, eid, off = struct.unpack(">HHI", b[o:o + 8])
+        if (pid, eid) in ((3, 1), (3, 10), (0, 3), (0, 4)):
+            best = c + off
+            break
+    if best is None:
+        raise ValueError("no unicode cmap subtable")
+    if struct.unpack(">H", b[best:best + 2])[0] != 4:
+        raise ValueError("cmap subtable is not format 4")
+
+    segx2 = struct.unpack(">H", b[best + 6:best + 8])[0]
+    seg = segx2 // 2
+    ends = struct.unpack(f">{seg}H", b[best + 14:best + 14 + segx2])
+    so = best + 16 + segx2
+    starts = struct.unpack(f">{seg}H", b[so:so + segx2])
+    do = so + segx2
+    deltas = struct.unpack(f">{seg}h", b[do:do + segx2])
+    ro = do + segx2
+    ranges = struct.unpack(f">{seg}H", b[ro:ro + segx2])
+
+    gid = 0
+    for i in range(seg):
+        if starts[i] <= codepoint <= ends[i]:
+            if ranges[i] == 0:
+                gid = (codepoint + deltas[i]) & 0xFFFF
+            else:
+                p = ro + 2 * i + ranges[i] + 2 * (codepoint - starts[i])
+                gid = struct.unpack(">H", b[p:p + 2])[0]
+                if gid:
+                    gid = (gid + deltas[i]) & 0xFFFF
+            break
+    if gid == 0:
+        raise ValueError(f"U+{codepoint:04X} is not in the font")
+
+    idx = min(gid, num_h - 1)
+    adv = struct.unpack(">H", b[tabs["hmtx"] + 4 * idx:tabs["hmtx"] + 4 * idx + 2])[0]
+    return adv, upm
+
+
+def check_graph_axis():
+    """The chart's time labels must sit in a reserved band, not in the plot.
+
+    0.99.72 drew the series and the baseline to the full canvas height and then
+    placed the labels at `h - 15` — an offset inside the area the chart is drawn
+    into. That is not a reserved band; it is an overlap written as arithmetic,
+    and the trace ran through the digits on every dip toward zero.
+
+    The rule this encodes: the plot height and the label position must both come
+    from the band constant, and the raw canvas height must not reach the drawing
+    calls at all. Testing for the ABSENCE of the old pattern matters as much as
+    the presence of the new one — a band that exists but is bypassed looks
+    identical to no band.
+    """
+    before = len(failures)
+    src = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    m = re.search(r"GraphAxisBand\s*=\s*([\d.]+)", src)
+    if not m:
+        fail("graph-axis", "GraphAxisBand is not declared")
+        return
+    band = float(m.group(1))
+
+    body = re.search(r"private void RedrawGraph\(\).*?\n    }\n", src, re.S)
+    if not body:
+        fail("graph-axis", "could not locate RedrawGraph")
+        return
+    body = body.group(0)
+
+    if not re.search(r"double\s+ph\s*=.*?h\s*-\s*GraphAxisBand", body):
+        fail("graph-axis", "RedrawGraph does not derive a plot height from GraphAxisBand")
+        return
+
+    # The raw canvas height must not reach the drawing calls.
+    for call, pat in (("DrawBaseline", r"DrawBaseline\(canvas,\s*w,\s*(\w+)\)"),
+                      ("AddSmoothSeries", r"AddSmoothSeries\([^;]*?,\s*w,\s*(\w+),")):
+        for arg in re.findall(pat, body):
+            if arg != "ph":
+                fail("graph-axis",
+                     f"{call} is given '{arg}' as its height, expected the plot "
+                     "height 'ph' - drawing to the full canvas puts the chart "
+                     "over the axis labels")
+
+    tops = re.findall(r"Canvas\.SetTop\(tb,\s*([^)]+)\)", body)
+    if len(tops) != 1:
+        fail("graph-axis", f"expected 1 axis-label SetTop, found {len(tops)}")
+        return
+    top = tops[0].strip()
+    if not top.startswith("ph"):
+        fail("graph-axis",
+             f"axis labels are positioned at '{top}', which is not relative to "
+             "the plot height - that is exactly how they ended up inside the plot")
+        return
+
+    off = re.match(r"ph\s*\+\s*([\d.]+)", top)
+    if off:
+        # 9.5px text is about 13px of line box. It has to clear the baseline and
+        # still fit inside the band, or the fix trades one overlap for a clip.
+        need = float(off.group(1)) + 13
+        if need > band:
+            fail("graph-axis",
+                 f"labels sit at ph+{off.group(1)} and need ~{need:.0f}px, but the "
+                 f"band is only {band:.0f}px - they would be clipped")
+
+    # Gated, like hint-width: a check that prints "ok" beside its own FAIL is
+    # unreadable at the one moment someone needs it plain.
+    if len(failures) == before:
+        notes.append(f"graph-axis: {band:.0f}px band, plot and labels both derived")
+
+
+def check_table_last_column():
+    """The Connections table's last column must be derived, not declared.
+
+    GridView columns are fixed widths and nothing stretches. Wider than the sum
+    and the table shows ruled empty space; narrower and it clips silently, since
+    these tables have no horizontal scrollbar. The window is resizable from
+    1000px and carries an interface scale on top, so no single number is right at
+    both ends - which is why 196px left a 490px empty band on a wide window while
+    still truncating the ASN it was meant to show.
+    """
+    before = len(failures)
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+    src = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    lv = re.search(r'<ListView x:Name="ConnList".*?</ListView>', xaml, re.S)
+    if not lv:
+        fail("last-column", "could not locate the ConnList ListView")
+        return
+    if 'SizeChanged="ConnList_SizeChanged"' not in lv.group(0):
+        fail("last-column",
+             "ConnList does not hook SizeChanged, so its last column keeps a "
+             "fixed width and cannot follow the window")
+        return
+    if not re.search(r"private void ConnList_SizeChanged", src):
+        fail("last-column", "ConnList_SizeChanged is hooked in XAML but not defined")
+        return
+
+    body = re.search(r"private void ConnList_SizeChanged.*?\n    }\n", src, re.S)
+    if not body:
+        fail("last-column", "could not read the body of ConnList_SizeChanged")
+        return
+    body = body.group(0)
+
+    # Re-entrancy: assigning Width raises SizeChanged again.
+    if "Math.Abs" not in body:
+        fail("last-column",
+             "ConnList_SizeChanged assigns a width without comparing against the "
+             "current one; setting Width re-raises SizeChanged and the layout "
+             "pass will not settle")
+    if "ConnLastColumnMin" not in body:
+        fail("last-column",
+             "no minimum on the derived width - a narrow window would shrink the "
+             "column to nothing rather than letting it clip")
+
+    if len(failures) == before:
+        notes.append("last-column: ConnList last column derived from the table width")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -460,6 +808,9 @@ def main():
     check_binding_override()
     check_font_families()
     check_no_code_pack_fonts()
+    check_hint_width()
+    check_graph_axis()
+    check_table_last_column()
     check_version_consistency()
 
     for n in notes:

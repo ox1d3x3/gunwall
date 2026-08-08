@@ -93,11 +93,11 @@ public partial class AlertWindow : Window
         // In Zero Trust (strict) mode the app is currently BLOCKED and stays
         // blocked unless approved; reflect that in the header.
         if (_strictMode)
-            {
-            // Short enough to fit the title line without truncating; the
-            // subtitle carries the rest.
-            // HeaderText is the state strip now, so it is the uppercase kicker;
-            // SummaryText is the 22px question and keeps naming the app.
+        {
+            // HeaderText is the SUBTITLE under the question, not a kicker - the
+            // state strip that held the kicker was retired in 0.99.71 and this
+            // comment described it for one release after it stopped existing.
+            // SummaryText above is the question and keeps naming the app.
             HeaderText.Text = "Blocked - awaiting approval";
             SetSubjectRole("Block");
         }
@@ -228,8 +228,7 @@ public partial class AlertWindow : Window
         if (!showing)
         {
             StopCountdown();
-            if (CountdownHint != null)
-                CountdownHint.Text = "Closing blocks the app";
+            SetHint(FailClosedHint);
         }
         SizeToContent = SizeToContent.Height;
     }
@@ -267,15 +266,66 @@ public partial class AlertWindow : Window
         base.OnClosed(e);
     }
 
+    // ---------------------------------------------------------------- hint text
+    //
+    // The hint sits in the middle column of the actions row, between the chevron
+    // and the buttons, and that column's width is not a choice - it is whatever
+    // the other two leave behind:
+    //
+    //     368  row width (430 window - 14 margin - 1 border - 16 padding, twice)
+    //   -  30  chevron (PromptChevron Width)
+    //   - 192  Block 92 + gap 8 + Allow 92 (PromptSecondary MinWidth)
+    //   -  20  the hint's own 10px margins
+    //   = 126px, and JetBrainsMono is 0.600em per glyph flat, so at 11.5px
+    //     every character is 6.9px and the budget is 18 CHARACTERS.
+    //
+    // "Blocks automatically in 18s" was 27 and ran under the Block button. The
+    // word "automatically" carried none of the meaning - the sentence says the
+    // same thing without it.
+    //
+    // This limit is checked by hint-width in tools/checks/check_theme.py rather
+    // than trusted to this comment, because trap 2.11 is exactly a documented
+    // limit that nothing enforced: the tracking helper's "proportional fonts
+    // only" sat at the top of its file for three releases and then the default
+    // font became monospace.
+    private const int HintBudgetChars = 18;
+
+    /// <summary>Shown when no timer is running: closing the prompt without
+    /// answering blocks the app. Fail-closed is the guarantee, so it is stated
+    /// rather than left to be discovered.</summary>
+    private const string FailClosedHint = "Closing blocks";
+
+    private string CountdownText() =>
+        $"{(_defaultAllow ? "Allow" : "Block")}s in {_secondsLeft}s";
+
+    /// <summary>The only place the hint is written, so the budget is enforced
+    /// rather than merely declared. The check in tools/checks catches this
+    /// before a build; the assert catches anything the check's regexes cannot
+    /// see, such as a string built at runtime. Release builds drop it.</summary>
+    private void SetHint(string text)
+    {
+        System.Diagnostics.Debug.Assert(
+            text.Length <= HintBudgetChars,
+            $"Prompt hint \"{text}\" is {text.Length} chars against a "
+            + $"{HintBudgetChars}-char column. It will ellipsise.");
+        if (CountdownHint != null) CountdownHint.Text = text;
+    }
+
     private void StartCountdown()
     {
         // "Never" (0): no auto-decision — the popup stays until the user chooses.
         if (_timeoutSeconds <= 0)
         {
-            if (CountdownHint != null)
-                CountdownHint.Text = "Closing blocks the app";
+            SetHint(FailClosedHint);
             return;
         }
+
+        // Stated before the timer starts. Previously the first Tick was the
+        // first thing to write the hint, so it was blank for a second and then
+        // opened one short - a 20s timeout appeared as "19s". The countdown is
+        // the one number here with a deadline attached; it should be right from
+        // the first frame.
+        SetHint(CountdownText());
 
         // Otherwise count down and, on expiry, apply the user's chosen default
         // action (Allow or Block).
@@ -286,9 +336,7 @@ public partial class AlertWindow : Window
         _countdown.Tick += (_, _) =>
         {
             _secondsLeft--;
-            string verb = _defaultAllow ? "Allow" : "Block";
-            if (CountdownHint != null)
-                CountdownHint.Text = $"{verb}s automatically in {_secondsLeft}s";
+            SetHint(CountdownText());
             if (_secondsLeft <= 0)
             {
                 _countdown?.Stop();

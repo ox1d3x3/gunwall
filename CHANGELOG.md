@@ -6,6 +6,83 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.73] — 2026-08-08
+
+Three defects found by reading the 0.99.72 screenshots rather than by anyone reporting them. Two share a shape with the bug 0.99.72 fixed.
+
+### Fixed
+- **The chart's time labels were inside the plot, with the trace drawn through them.** The series and the baseline were drawn to the full canvas height and the labels placed at `h - 15`. On a 230px canvas the baseline sits at 229 and the label box occupies 215–228, so every dip toward zero crossed the digits — clearest at `-45s`.
+
+  An offset inside the area something else draws into is not a reserved band; it is an overlap written as arithmetic. **Same shape as the connection prompt's actions row in 0.99.72**: alignment within a shared area is not a claim on space.
+
+  A 22px band is now reserved at the bottom. The plot height, the baseline, the cursor line and the label position all derive from one constant, and the raw canvas height no longer reaches the drawing calls.
+
+- **The Connections inspector could never show its placeholder.** `InspPlaceholder` was `Collapsed` in markup, and the only line in the project that touched it — in `ConnSelected` — collapsed it again. Its text had been unreachable since it was written.
+
+  The panel was also collapsed until a row was selected, for a stated reason that was sound about the wrong problem: the list rebuilds by Clear + re-add every sample, so re-collapsing on deselection would have flickered. True, but the conclusion should have been *never collapse it*, not *start collapsed*. The panel is permanent now and only its contents swap.
+
+- **Which is what made half the Connections table empty.** With the inspector collapsed the table ran the full content width while its columns summed to far less: 492px of ruled empty space on a 1573px window, while `LOCATION` truncated to `AS2…` on every row and never showed the ASN it exists to show. Selecting a row then shrank the table by 350px and reflowed every column under the pointer.
+
+- **The last column is now derived rather than declared.** A `GridView` column is a fixed width and nothing stretches, so a table wider than its columns shows empty space and one narrower clips — silently, since these tables have no horizontal scrollbar. With the window resizable from 1000px and an interface scale on top, no single number is right at both ends. `LOCATION` takes whatever the other five leave, floored at 150px.
+
+  It is the right column to absorb it: country, then ASN, then operator name is unbounded content, so it is the only one whose truncation costs the reader something they wanted.
+
+### Added
+- **A `graph-axis` check.** Asserts the plot height derives from the band, that the raw canvas height reaches neither `DrawBaseline` nor `AddSmoothSeries`, that the labels are positioned relative to the plot, and that the band is tall enough to hold a 9.5px line. Testing for the **absence** of the old pattern matters as much as the presence of the new one — a band that exists but is bypassed looks identical to no band.
+
+- **A `last-column` check.** Asserts the hook exists, the handler exists, that it compares before assigning (setting `Width` re-raises `SizeChanged`, and without a guard the layout pass never settles), and that a minimum is applied.
+
+  Between them, shown to fail on seven defects and clear on restore: labels back at `h - 15`, series to the full canvas, baseline to the full canvas, a band too small for its label, the hook removed, the re-entrancy guard removed, the minimum removed.
+
+### Note — the same reporting bug, in the checks I wrote to catch the last one
+Both new checks appended their `ok` line unconditionally, so a failure printed `ok graph-axis: 22px band` directly beside `FAIL [graph-axis]`. That is the exact defect called out in the 0.99.72 notes and fixed there in `hint-width` — written again, the same week, in the checks added to catch the bug that entry was about. Gated in all three now.
+
+### Note — an arithmetic correction
+0.99.72's analysis said wiring the inspector would leave the columns "nearly filling" the table. That was wrong: it ignored the 90% interface scale, and the real remainder was ~175px, not ~50. The derived last column closes it at any width, which is what should have been proposed in the first place rather than a wider fixed number.
+
+---
+
+## [0.99.72] — 2026-08-08
+
+### Fixed
+- **The connection prompt's countdown hint ran underneath the Block button.** Reported from a build as overlapping text, and it was: "Closing blocks the app" ends 16px inside the button's rectangle.
+
+  The actions row was a single-cell `Grid` holding three children aligned left, left and right. That **positions** them; it reserves nothing for any of them. The hint was bounded instead by `MaxWidth="210"` — a number chosen against the buttons as they measured when it was written — and with 40px of left margin it could reach 250px into a row where the buttons begin at 176.
+
+  The row is 368px (430 window, less 14px margin, 1px border and 16px padding on each side). The chevron takes 30 and the buttons take 192, so 146 is genuinely free. Nothing was enforcing that.
+
+  It is now three real columns — `Auto` / `*` / `Auto` — so the hint receives exactly what the other two leave over and ellipsises inside its own cell. The overlap is structurally impossible rather than arithmetically avoided.
+
+  This is **trap 2.8 with the direction reversed**: not a column sized for the string that happens to be visible, but a string assuming space that belonged to something else. Recorded as 2.12.
+
+- **The countdown string was too long for the space that exists, which the column fix alone would not have solved.** JetBrainsMono is a flat 0.600em per glyph, so at 11.5px every character is 6.9px and the budget is 18 characters. `"Blocks automatically in 18s"` is 27 — it would have ellipsised to `"Blocks automatically i…"`, losing the seconds, which is the only part of that sentence with a deadline attached.
+
+  Now `"Blocks in 18s"` / `"Allows in 18s"`, and `"Closing blocks"` when no timer is running. The word "automatically" was carrying none of the meaning.
+
+  The screenshot showed the mild case. The countdown case is worse and had not been seen yet.
+
+- **The hint was blank for its first second, and opened one short.** `_secondsLeft--` ran before anything wrote the text, so nothing appeared until the first tick and a 20s timeout first displayed "19s". Stated now before the timer starts.
+
+### Added
+- **A `hint-width` check**, because trap 2.11 is exactly this shape: a limit written in a comment that nothing runs. It derives the budget from the same metrics the layout uses — window width, card margin, border and padding, chevron width, button `MinWidth` and gap, the hint's own margins and font size — and reads the glyph advance **out of the TTF** rather than recalling 0.6em, since trap 2.5 was a font metric taken on trust. It then measures every string the hint can hold, including a three-digit countdown.
+
+  It also asserts the structure: three column definitions, the hint in column 1, that column `*`, no hand-picked `MaxWidth`, and `TextTrimming` set. Short strings are not the fix on their own — they were short once before, in a single-cell Grid, and grew.
+
+  Shown to fail on seven separate defects before being trusted: the real 27-character string, the single-cell Grid, a reinstated `MaxWidth`, a widened button shifting the budget under the declared constant, the wrong column index, a fixed width in place of the star, and `TextTrimming` removed. Each restored and confirmed passing.
+
+### Notes — three things this check got wrong before it was right
+`[^"]*` to read the interpolated format string stopped at the quotes around `"Allow"`, so it measured a 19-character fragment, and the fragment was under budget. **It passed by not reading the value.** That is 2.10 again, in a check written specifically because of 2.10.
+
+It also appended `ok … star column` unconditionally, so a broken column printed that line directly beside its own `FAIL`. A check contradicting itself in the same output is unreadable at the one moment it matters.
+
+And two of the falsification injections were refused by their own uniqueness assertions rather than silently patching the wrong element — `TextTrimming="CharacterEllipsis"` at 31 spaces of indent is a substring of the same text at 39, and `<ColumnDefinition Width="*" />` appears four times in that file. The assertion is why those became visible instead of becoming a passing test of nothing.
+
+### Changed
+- `DetailsLabel` removed — a collapsed, empty `TextBlock` referenced nowhere in the project.
+- The comment beside `HeaderText` described the state strip retired in 0.99.71, one release after it stopped existing. `HeaderText` is the subtitle under the question.
+
+---
+
 ## [0.99.71] — 2026-08-08
 
 ### Fixed

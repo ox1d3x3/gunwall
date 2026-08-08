@@ -1170,6 +1170,7 @@
                 <Border Grid.Column="0" Padding="0">
                     <ListView x:Name="ConnList" gw:Table.EmptyTitle="No active connections" gw:Table.EmptyText="Nothing is talking to the network right now." VirtualizingPanel.IsVirtualizing="True"
                               VirtualizingPanel.VirtualizationMode="Recycling"
+                              SizeChanged="ConnList_SizeChanged"
                               SelectionChanged="ConnSelected"
                               PreviewMouseRightButtonDown="Row_RightClickSelect">
                         <ListView.Resources>
@@ -1288,11 +1289,18 @@
                      Collapsed rather than hidden: Visibility="Collapsed" on the
                      Border removes it from layout, so the table takes the width
                      back rather than leaving a gap where the panel used to be. -->
+                <!-- Always present. It used to be Collapsed until a row was picked,
+                     which had two costs: the table ran the full content width with
+                     its columns summing to far less, leaving a wide band of ruled
+                     empty space; and the first selection shrank the table by 350px,
+                     reflowing every column under the pointer. The placeholder below
+                     was written for exactly this state and could never appear -
+                     it was Collapsed in markup and the only line that touched it
+                     collapsed it again. -->
                 <Border x:Name="ConnInspector" Grid.Column="1" Width="340" Margin="12,0,0,0"
-                        Visibility="Collapsed"
                         Style="{StaticResource Card}" Padding="0">
                     <Grid>
-                        <TextBlock x:Name="InspPlaceholder" Visibility="Collapsed"
+                        <TextBlock x:Name="InspPlaceholder"
                                    Text="Select a connection to inspect its full details."
                                    Style="{StaticResource Muted}" TextWrapping="Wrap"
                                    TextAlignment="Center" HorizontalAlignment="Center"

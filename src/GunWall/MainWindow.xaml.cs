@@ -67,6 +67,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // counters) so the graph's leading edge updates in near-real-time, 4x faster
     // than the 1s stats loop. 240 points x 250ms = the same 60s window.
     private const int GraphFinePoints = 240;
+
+    /// <summary>Height reserved at the bottom of the graph canvas for the time
+    /// axis. The plot, the baseline and the cursor line all stop above it.
+    ///
+    /// Until 0.99.73 there was no band: the series were drawn to the full canvas
+    /// height, the baseline sat at h-1, and the labels were placed at h-15 —
+    /// inside the plot, with the trace running straight through the digits. The
+    /// labels were positioned relative to the same height the chart was drawn
+    /// into, which is not a reserved band, it is an overlap expressed as an
+    /// offset. Same shape as the connection prompt's actions row: alignment
+    /// inside a shared area is not a claim on space.</summary>
+    private const double GraphAxisBand = 22;
     private readonly double[] _gDown = new double[GraphFinePoints];
 
     // Phase 4: footer session counters + graph hover state
@@ -315,7 +327,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.71 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.73 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2941,18 +2953,75 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ===== §11 connection inspector (read-only detail pane) =====
+    /// <summary>Smallest the LOCATION column may become. Below this the country
+    /// name is gone and only the flag is left, which says less than the column
+    /// costs.</summary>
+    private const double ConnLastColumnMin = 150;
+
+    /// <summary>Gives the last column whatever the others leave over.
+    ///
+    /// A GridView column is a fixed width; nothing in it stretches. So a table
+    /// wider than the sum of its columns shows ruled empty space to the right,
+    /// and a table narrower than that sum clips - silently, because these tables
+    /// have no horizontal scrollbar to reveal what was lost. With the window
+    /// resizable from 1000px upward and an interface scale on top of that, no
+    /// single number is right at both ends.
+    ///
+    /// So the width is DERIVED rather than chosen, which is the same correction
+    /// as the connection prompt's star column: where one part of a row is fixed,
+    /// the other's size is arithmetic, not a preference.
+    ///
+    /// LOCATION is the right column to absorb it. Its content — country, then
+    /// ASN, then the operator's name — is unbounded, so it is the one column that
+    /// can always use another fifty pixels, and the only one whose truncation
+    /// costs the reader something they wanted.</summary>
+    private void ConnList_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        try
+        {
+            if (ConnList?.View is not GridView gv || gv.Columns.Count < 2) return;
+
+            double others = 0;
+            for (int i = 0; i < gv.Columns.Count - 1; i++)
+            {
+                // Width, not ActualWidth. On the first SizeChanged the columns may
+                // not have been measured yet, so ActualWidth reads 0 and the last
+                // column would be handed the entire table before being corrected on
+                // a later pass. Every fixed column here declares a Width; NaN means
+                // an auto column, and only then is the measured value the honest
+                // one.
+                var col = gv.Columns[i];
+                others += double.IsNaN(col.Width) ? col.ActualWidth : col.Width;
+            }
+
+            // ListView chrome: a 1px border each side, plus the vertical scrollbar,
+            // which this table effectively always has. Read from the system rather
+            // than assumed, because it is a theme metric and not a constant.
+            double chrome = SystemParameters.VerticalScrollBarWidth + 2;
+            double target = Math.Max(ConnLastColumnMin, ConnList.ActualWidth - others - chrome);
+
+            // Assigning Width re-enters this handler. Only act on a real change, or
+            // the two feed each other and the layout pass never settles.
+            var last = gv.Columns[^1];
+            if (Math.Abs(last.Width - target) > 0.5) last.Width = target;
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("ConnList_SizeChanged", ex); }
+    }
+
     private void ConnSelected(object sender, SelectionChangedEventArgs e)
     {
         // Ignore the transient deselection that happens while the list refreshes
         // (Clear + re-add); keep the last view until a real row is chosen.
         if (ConnList.SelectedItem is not ConnectionInfo c) return;
 
-        // The panel is collapsed until there is something to put in it, so the
-        // table has the full width whenever nothing is selected. Deliberately not
-        // re-collapsed on deselection: the list rebuilds by Clear + re-add every
-        // sample, which deselects transiently, and a panel that appeared and
-        // vanished twice a second would be worse than one that stays.
-        if (ConnInspector != null) ConnInspector.Visibility = Visibility.Visible;
+        // The panel is always present now, so nothing here toggles it. Only its
+        // contents swap: the placeholder gives way to the detail on the first
+        // selection and does not come back.
+        //
+        // Deliberately not restored on deselection: the list rebuilds by Clear +
+        // re-add every sample, which deselects transiently, and a panel flipping
+        // to "select a connection" twice a second would be worse than one that
+        // keeps showing the last row you asked about.
         InspPlaceholder.Visibility = Visibility.Collapsed;
         InspContent.Visibility = Visibility.Visible;
 
@@ -3286,8 +3355,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             max = Math.Max(max, _gUp[i]);
         }
 
+        // Everything below draws into the PLOT area, not the canvas. The bottom
+        // GraphAxisBand pixels belong to the time axis and nothing else may enter
+        // them - that is what makes the labels legible rather than overprinted.
+        double ph = Math.Max(1, h - GraphAxisBand);
+
         _graphStepX = w / (GraphFinePoints - 1);
-        DrawBaseline(canvas, w, h); // static, not scrolled
+        DrawBaseline(canvas, w, ph); // static, not scrolled
         // Download: blue gradient area. Upload: thin magenta line.
         // Series colours come from the theme, not from literals. They were
         // hardcoded blue and pink here, which is why changing the palette had no
@@ -3312,8 +3386,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         //
         // Stroke is 1.3 on both for the same reason: they are the same kind of
         // measurement and neither outranks the other.
-        AddSmoothSeries(canvas, _gDown, max, w, h, Series("InboundBrush"), Series("FillDown"), _graphScroll);
-        AddSmoothSeries(canvas, _gUp,   max, w, h, Series("OutboundBrush"), Series("FillUp"),  _graphScroll);
+        AddSmoothSeries(canvas, _gDown, max, w, ph, Series("InboundBrush"), Series("FillDown"), _graphScroll);
+        AddSmoothSeries(canvas, _gUp,   max, w, ph, Series("OutboundBrush"), Series("FillUp"),  _graphScroll);
 
         var now = DateTime.UtcNow;
         if (_lastGraphSample != DateTime.MinValue)
@@ -3324,7 +3398,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _lastGraphSample = now;
         _graphScroll.X = 0; // new data appended at the right; restart the slide
 
-        // Time axis: subtle relative labels along the bottom (static, cheap).
+        // Time axis: relative labels in the reserved band BELOW the baseline.
+        // Previously h - 15, which is inside the plot: at a 230px canvas the
+        // baseline is at 229 and the label occupied 215-228, so every trace that
+        // dipped near zero crossed the text. The design puts them clear of the
+        // plot, and a label a line is drawn through is not a label.
         var axisBrush = (Brush)System.Windows.Application.Current.FindResource("TextTertiary");
         foreach (var (frac, label) in new[] { (0.0, "-60s"), (0.25, "-45s"), (0.5, "-30s"), (0.75, "-15s"), (1.0, "now") })
         {
@@ -3334,7 +3412,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             };
             canvas.Children.Add(tb);
             Canvas.SetLeft(tb, Math.Clamp(frac * w - (frac >= 1.0 ? 24 : frac > 0 ? 11 : 0), 0, Math.Max(0, w - 26)));
-            Canvas.SetTop(tb, h - 15);
+            Canvas.SetTop(tb, ph + 6);
         }
 
         UpdateGraphHover(); // values under a resting cursor stay current
@@ -3846,7 +3924,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         GraphTooltipDown.Text = $"\u2193 {FormatRate(_gDown[i])}";
         GraphTooltipUp.Text = $"\u2191 {FormatRate(_gUp[i])}";
 
-        GraphCursorLine.Height = h;
+        GraphCursorLine.Height = Math.Max(1, h - GraphAxisBand);
         Canvas.SetLeft(GraphCursorLine, Math.Clamp(x, 0, w - 1));
         Canvas.SetTop(GraphCursorLine, 0);
         GraphCursorLine.Visibility = Visibility.Visible;

@@ -152,6 +152,58 @@ character wide and the character is not even in the font.
 
 **Rule:** if a limit matters, encode it. A comment does not run.
 
+### 2.12 A container that positions but does not reserve
+
+A single-cell `Grid` with children aligned left, left and right looks like a
+three-part row and is not one. Alignment places things; it does not give them
+space, and nothing stops two of them occupying the same pixels. The connection
+prompt's countdown hint was bounded by a hand-picked `MaxWidth` instead, chosen
+against the buttons as they measured at the time, and ran underneath the Block
+button.
+
+This is 2.8 with the direction reversed: not a column sized for the string that
+happens to be visible, but a string assuming space belonging to something else.
+Where one part of a row is fixed, the other's width is **derived** — so it needs
+a star column, not a number.
+
+**Check:** `hint-width`, which asserts the columns exist *and* measures every
+string against the budget the layout actually leaves. Both halves are needed:
+short strings in a single cell are what shipped, and they grew.
+
+### 2.13 A fixed column in a container that resizes
+
+A `GridView` column is a fixed width and nothing in it stretches. Wider than the
+sum of its columns and a table shows ruled empty space; narrower and it clips —
+**silently**, because these tables have no horizontal scrollbar to reveal what
+was lost. With a resizable window and an interface scale on top, no single
+number is right at both ends.
+
+Connections carried a 196px `LOCATION` that left 492px empty on a wide window
+while still truncating the ASN it existed to display.
+
+**Rule:** where the rest of a row is fixed, the remaining column's width is
+arithmetic, not a preference. Derive it, floor it, and compare before assigning —
+setting `Width` re-raises `SizeChanged`.
+
+**Check:** `last-column`.
+
+### 2.14 An offset inside a shared area, mistaken for reserved space
+
+Positioning something at `height - 15` does not reserve fifteen pixels; it places
+one thing inside an area another thing is still drawing into. The chart's time
+labels sat at `h - 15` while the series drew to `h`, so the trace ran through the
+digits.
+
+This is 2.12 in a canvas instead of a `Grid`. Both are the same error: alignment
+within a shared area read as a claim on space.
+
+**Rule:** reserve the band as a named constant and derive every consumer from it —
+the drawing height, the baseline, the cursor, the label. Then check that the raw
+height no longer reaches the drawing calls, because a band that exists but is
+bypassed looks exactly like no band.
+
+**Check:** `graph-axis`.
+
 ---
 
 ## 3. Working agreements
