@@ -894,7 +894,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ListView">
-                    <Grid>
+                    <Grid MinHeight="260">
                         <!-- This ScrollViewer style is NOT optional and NOT cosmetic.
                              When a ListView has a GridView, the column header row is
                              drawn by a GridViewHeaderRowPresenter that lives inside
@@ -904,21 +904,149 @@
                              at all - which looks like a layout bug rather than a
                              missing style, and would be hunted for in the wrong
                              place entirely. -->
-                        <ScrollViewer Focusable="False" Padding="{TemplateBinding Padding}"
+                        <ScrollViewer x:Name="sv" Focusable="False" Padding="{TemplateBinding Padding}"
                                       Style="{DynamicResource {x:Static GridView.GridViewScrollViewerStyleKey}}">
                             <ItemsPresenter SnapsToDevicePixels="True" />
                         </ScrollViewer>
-                        <TextBlock x:Name="empty" Text="{TemplateBinding Tag}"
-                                   Visibility="Collapsed" FontSize="13" Margin="0,42,0,0"
-                                   TextWrapping="Wrap" TextAlignment="Center" MaxWidth="380"
-                                   HorizontalAlignment="Center" VerticalAlignment="Top"
-                                   Foreground="{DynamicResource TextTertiary}" />
+                        <!-- ========== Lifecycle states, section 10 ==========
+                             These sit BESIDE the ScrollViewer rather than over it,
+                             because section 10 is explicit that the column header
+                             and its rule always render. A state that covered the
+                             header would make the table look like it had gone away.
+                             MinHeight below keeps the page from jumping as a table
+                             moves between states. -->
+
+                        <!-- LOADING. Widths vary per row so it reads as text that
+                             has not arrived, not as a grid that has. -->
+                        <StackPanel x:Name="loading" Visibility="Collapsed" Margin="10,16,10,0"
+                                    VerticalAlignment="Top">
+                            <Border Height="9" CornerRadius="4" Width="300" Margin="0,0,0,21" HorizontalAlignment="Left" Background="{DynamicResource Skeleton}" />
+                            <Border Height="9" CornerRadius="4" Width="230" Margin="0,0,0,21" HorizontalAlignment="Left" Background="{DynamicResource Skeleton}" />
+                            <Border Height="9" CornerRadius="4" Width="350" Margin="0,0,0,21" HorizontalAlignment="Left" Background="{DynamicResource Skeleton}" />
+                            <Border Height="9" CornerRadius="4" Width="255" Margin="0,0,0,21" HorizontalAlignment="Left" Background="{DynamicResource Skeleton}" />
+                            <Border Height="9" CornerRadius="4" Width="365" Margin="0,0,0,21" HorizontalAlignment="Left" Background="{DynamicResource Skeleton}" />
+                            <Border Height="9" CornerRadius="4" Width="200" Margin="0,0,0,21" HorizontalAlignment="Left" Background="{DynamicResource Skeleton}" />
+                            <Border Height="9" CornerRadius="4" Width="280" Margin="0,0,0,21" HorizontalAlignment="Left" Background="{DynamicResource Skeleton}" />
+                            <Border Height="9" CornerRadius="4" Width="330" Margin="0,0,0,21" HorizontalAlignment="Left" Background="{DynamicResource Skeleton}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <Border Width="13" Height="13" CornerRadius="7" VerticalAlignment="Center"
+                                        Margin="0,0,10,0" BorderThickness="2"
+                                        BorderBrush="{DynamicResource BorderBrush}" />
+                                <TextBlock Text="{Binding Path=(gw:Table.LoadingText), RelativeSource={RelativeSource TemplatedParent}}"
+                                           FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- EMPTY. Dashed frame, mark at 35%. On several of these
+                             screens nothing is the GOOD outcome, so it is stated
+                             calmly rather than as a problem. -->
+                        <Grid x:Name="empty" Visibility="Collapsed" Margin="0,16,0,0"
+                              VerticalAlignment="Top">
+                            <!-- A Grid with a Rectangle behind, not a Border: WPF's
+                                 Border has no dash support, and section 10 asks for a
+                                 dashed frame specifically - it is what says "nothing
+                                 is here" rather than "here is a panel". -->
+                            <Rectangle RadiusX="12" RadiusY="12" StrokeThickness="1"
+                                       StrokeDashArray="4 3" SnapsToDevicePixels="True"
+                                       Stroke="{DynamicResource BorderBrush}" />
+                            <StackPanel HorizontalAlignment="Center" MaxWidth="400" Margin="0,44">
+                                <!-- DynamicResource, not Static. This dictionary is
+                                     merged BEFORE Icons.xaml, so a StaticResource to
+                                     an icon key has nothing to resolve against at
+                                     parse time and throws StaticResourceHolder. That
+                                     surfaces as an unhandled dialog on every screen
+                                     holding a ListView - not as a missing icon - so
+                                     the symptom points nowhere near the cause. Late
+                                     binding removes the ordering dependency rather
+                                     than trading it for a different one. -->
+                                <Path Width="34" Height="34" Stretch="Uniform" Opacity="0.35"
+                                      HorizontalAlignment="Center" Fill="{x:Null}"
+                                      Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.7"
+                                      StrokeLineJoin="Round"
+                                      Data="{DynamicResource IconSecurity}" />
+                                <TextBlock Text="{Binding Path=(gw:Table.EmptyTitle), RelativeSource={RelativeSource TemplatedParent}}"
+                                           FontSize="16" FontWeight="SemiBold" Margin="0,14,0,0"
+                                           TextAlignment="Center" HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock Text="{Binding Path=(gw:Table.EmptyText), RelativeSource={RelativeSource TemplatedParent}}"
+                                           FontSize="12.5" Margin="0,7,0,0" TextWrapping="Wrap"
+                                           TextAlignment="Center" HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- NO RESULTS. No frame, flush left: rows exist and a query
+                             is hiding them, which is undone by clearing a box rather
+                             than by waiting. -->
+                        <StackPanel x:Name="noresults" Visibility="Collapsed"
+                                    Margin="2,26,0,0" VerticalAlignment="Top">
+                            <TextBlock FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}">
+                                <Run Text="No matches for " />
+                                <Run FontFamily="{DynamicResource MonoFont}"
+                                     Text="{Binding Path=(gw:Table.Query), RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}" />
+                            </TextBlock>
+                            <TextBlock Text="Clearing the filter brings the full list back."
+                                       FontSize="12.5" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextTertiary}" />
+                        </StackPanel>
+
+                        <!-- ERROR. Body states what is STILL TRUE before what is
+                             broken, and the mono line is a code to paste - never a
+                             raw exception. -->
+                        <Border x:Name="error" Visibility="Collapsed" Margin="0,16,0,0"
+                                CornerRadius="12" Padding="21" VerticalAlignment="Top"
+                                Background="{DynamicResource BlockFill}"
+                                BorderBrush="{DynamicResource BlockText}" BorderThickness="1">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,9,0"
+                                             Fill="{DynamicResource BlockText}" />
+                                    <TextBlock Text="Could not read this list" FontSize="14"
+                                               FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextPrimary}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Path=(gw:Table.ErrorText), RelativeSource={RelativeSource TemplatedParent}}"
+                                           FontSize="12.5" Margin="0,9,0,0" TextWrapping="Wrap" MaxWidth="520"
+                                           HorizontalAlignment="Left"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                                <TextBlock Text="{Binding Path=(gw:Table.ErrorCode), RelativeSource={RelativeSource TemplatedParent}}"
+                                           FontSize="11" Margin="0,10,0,0"
+                                           FontFamily="{DynamicResource MonoFont}"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                            </StackPanel>
+                        </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <!-- Loading and Error are stated outright by whoever owns the
+                             data. Empty versus no-results is DERIVED from whether a
+                             query is set, because those two need different words and
+                             have different remedies. -->
+                        <Trigger Property="gw:Table.Phase" Value="Loading">
+                            <Setter TargetName="loading" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="sv" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="gw:Table.Phase" Value="Error">
+                            <Setter TargetName="error" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="sv" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <!-- Ordered: the no-results case is listed first so the empty
+                             case, declared after, wins when the query is blank. -->
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="HasItems" Value="False" />
+                                <Condition Property="gw:Table.Phase" Value="Ready" />
                             </MultiTrigger.Conditions>
+                            <Setter TargetName="noresults" Property="Visibility" Value="Visible" />
+                        </MultiTrigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="HasItems" Value="False" />
+                                <Condition Property="gw:Table.Phase" Value="Ready" />
+                                <Condition Property="gw:Table.Query" Value="" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="noresults" Property="Visibility" Value="Collapsed" />
                             <Setter TargetName="empty" Property="Visibility" Value="Visible" />
                         </MultiTrigger>
                     </ControlTemplate.Triggers>

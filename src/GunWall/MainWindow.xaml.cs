@@ -315,7 +315,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.63 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.67 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2473,6 +2473,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void PacketsSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
+        SyncTableQueries();
         string q = PacketsSearch.Text?.Trim() ?? "";
         var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_packets);
         if (string.IsNullOrEmpty(q))
@@ -3086,6 +3087,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void AppSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
+        SyncTableQueries();
         _appFilter = AppSearch.Text;
         RebuildAppsList();
     }
@@ -3212,6 +3214,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void ConnSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
+        SyncTableQueries();
         _connFilter = ConnSearch.Text;
         RebuildConnList();
     }
@@ -3867,102 +3870,151 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ================================================================ nav
-    // ============================================================== search
-    /// <summary>One destination the top bar search can jump to.</summary>
-    private sealed record SearchHit(string Label, string Group, RadioButton Target);
+    // ====================================================== command palette
+    /// <summary>One thing the palette can do. Actions carry a delegate;
+    /// destinations carry the nav button; applications carry neither and are
+    /// resolved on activation.</summary>
+    private sealed record PaletteHit(string Label, string Group, string Detail,
+                                     Action? Run = null, RadioButton? Target = null);
 
-    private List<SearchHit> BuildSearchIndex() => new()
+    private List<PaletteHit> BuildPaletteIndex()
     {
-        new("Overview",         "Monitor", NavDashboard),
-        new("Activity",         "Monitor", NavActivity),
-        new("Packet log",       "Monitor", NavPackets),
-        new("Connections",      "Monitor", NavConnections),
-        new("Traffic",          "Monitor", NavTraffic),
-        new("Alerts",           "Monitor", NavAlerts),
-        new("Applications",     "Enforce", NavFirewall),
-        new("Rules",            "Enforce", NavRules),
-        new("Security",         "Enforce", NavSecurity),
-        new("DNS resolver",     "Enforce", NavDns),
-        new("Windows services", "System",  NavServices),
-        new("Network scan",     "System",  NavNetwork),
-        new("Settings",         "System",  NavSettings),
-    };
+        bool on = _firewall.StrictMode;
+        bool ld = _firewall.LockdownEngaged;
 
-    /// <summary>Ctrl+K focuses the search box, per the chip it advertises. A
-    /// shortcut shown on a control that does not respond to it is worse than no
-    /// shortcut at all.</summary>
+        // Actions first, and stated as actions. Section 11: say what pressing it
+        // does, not the abstraction.
+        var hits = new List<PaletteHit>
+        {
+            new(on ? "Turn firewall off" : "Turn firewall on", "Actions", "Enter",
+                () => EnableFirewall_Click(this, new RoutedEventArgs())),
+            new(ld ? "Release lockdown" : "Engage lockdown", "Actions", "",
+                () => LockdownButton_Click(this, new RoutedEventArgs())),
+            new("Snooze filtering for 15 minutes", "Actions", "",
+                () => Snooze_Click(new Button { Tag = "15" }, new RoutedEventArgs())),
+            new("Scan the local network", "Actions", "",
+                () => { NavNetwork.IsChecked = true; ScanNetwork_Click(this, new RoutedEventArgs()); }),
+            new("Check for updates", "Actions", "",
+                () => CheckUpdate_Click(this, new RoutedEventArgs())),
+        };
+
+        foreach (var (label, target) in new (string, RadioButton)[]
+        {
+            ("Overview", NavDashboard), ("Activity", NavActivity), ("Packet log", NavPackets),
+            ("Connections", NavConnections), ("Traffic", NavTraffic), ("Alerts", NavAlerts),
+            ("Applications", NavFirewall), ("Rules", NavRules), ("Security", NavSecurity),
+            ("DNS resolver", NavDns), ("Windows services", NavServices),
+            ("Network scan", NavNetwork), ("Settings", NavSettings),
+        })
+            hits.Add(new(label, "Go to", "", null, target));
+
+        // Applications are searched by name and by path, because "where did that
+        // come from" is as often a path question as a name one.
+        foreach (var a in _apps.Take(400))
+            hits.Add(new(a.Name, "Applications", a.ExecutablePath, () =>
+            {
+                NavFirewall.IsChecked = true;
+                if (AppSearch != null) { AppSearch.Text = a.Name; SyncTableQueries(); }
+            }));
+
+        return hits;
+    }
+
+    /// <summary>Ctrl+K opens the palette, per the chip in the top bar. A shortcut
+    /// printed on a control that does not respond to it is worse than none.</summary>
     private void Window_PreviewKeyDown_Search(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == System.Windows.Input.Key.K &&
             (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
         {
-            SearchInput?.Focus();
-            SearchInput?.SelectAll();
-            e.Handled = true;
+            OpenPalette(); e.Handled = true;
+        }
+        else if (e.Key == System.Windows.Input.Key.Escape && Palette?.Visibility == Visibility.Visible)
+        {
+            ClosePalette(); e.Handled = true;
         }
     }
 
-    private void SearchInput_TextChanged(object sender, TextChangedEventArgs e)
+    private void SearchBox_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => OpenPalette();
+    private void PaletteScrim_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => ClosePalette();
+
+    private void OpenPalette()
     {
-        if (SearchResults == null || SearchPopup == null) return;
-        string q = (SearchInput.Text ?? "").Trim();
-        if (SearchPlaceholder != null)
-            SearchPlaceholder.Visibility = q.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        if (q.Length == 0) { SearchPopup.IsOpen = false; return; }
-
-        var hits = BuildSearchIndex()
-            .Where(h => h.Label.Contains(q, StringComparison.OrdinalIgnoreCase)
-                     || h.Group.Contains(q, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        SearchResults.ItemsSource = hits;
-        if (hits.Count > 0) SearchResults.SelectedIndex = 0;
-        SearchPopup.IsOpen = hits.Count > 0;
+        if (Palette == null) return;
+        Palette.Visibility = Visibility.Visible;
+        PaletteInput.Text = "";
+        FilterPalette("");
+        PaletteInput.Focus();
     }
 
-    private void SearchInput_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void ClosePalette()
     {
-        if (SearchResults == null || SearchPopup == null) return;
-        int n = SearchResults.Items.Count;
+        if (Palette == null) return;
+        Palette.Visibility = Visibility.Collapsed;
+        PaletteInput.Text = "";
+    }
+
+    private void PaletteInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        string q = PaletteInput.Text ?? "";
+        if (PaletteHint != null)
+            PaletteHint.Visibility = q.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        FilterPalette(q.Trim());
+    }
+
+    private void FilterPalette(string q)
+    {
+        if (PaletteList == null) return;
+        try
+        {
+            var hits = BuildPaletteIndex();
+            if (q.Length > 0)
+                hits = hits.Where(h =>
+                    h.Label.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    h.Detail.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            // Grouped through a view rather than by building headers as rows:
+            // WPF skips group headers during keyboard navigation, which a
+            // hand-built flat list would not.
+            var view = new System.Windows.Data.ListCollectionView(hits);
+            view.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription("Group"));
+            PaletteList.ItemsSource = view;
+            if (hits.Count > 0) PaletteList.SelectedIndex = 0;
+        }
+        catch (Exception ex) { SampleStepError("palette", ex); }
+    }
+
+    private void PaletteInput_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (PaletteList == null) return;
+        int n = PaletteList.Items.Count;
         switch (e.Key)
         {
             case System.Windows.Input.Key.Down when n > 0:
-                SearchResults.SelectedIndex = (SearchResults.SelectedIndex + 1) % n;
-                e.Handled = true; break;
+                PaletteList.SelectedIndex = (PaletteList.SelectedIndex + 1) % n;
+                PaletteList.ScrollIntoView(PaletteList.SelectedItem); e.Handled = true; break;
             case System.Windows.Input.Key.Up when n > 0:
-                SearchResults.SelectedIndex = (SearchResults.SelectedIndex - 1 + n) % n;
-                e.Handled = true; break;
+                PaletteList.SelectedIndex = (PaletteList.SelectedIndex - 1 + n) % n;
+                PaletteList.ScrollIntoView(PaletteList.SelectedItem); e.Handled = true; break;
             case System.Windows.Input.Key.Enter:
-                ActivateSearchHit(); e.Handled = true; break;
+                ActivatePaletteHit(); e.Handled = true; break;
             case System.Windows.Input.Key.Escape:
-                ClearSearch(); e.Handled = true; break;
+                ClosePalette(); e.Handled = true; break;
         }
     }
 
-    private void SearchResults_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        => ActivateSearchHit();
+    private void PaletteList_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => ActivatePaletteHit();
 
-    private void SearchInput_LostFocus(object sender, RoutedEventArgs e)
+    private void ActivatePaletteHit()
     {
-        // Closing the popup here would race the click that is selecting from it,
-        // so only the text is left alone; StaysOpen="False" dismisses it.
-        if (SearchPopup != null && !SearchResults.IsMouseOver) SearchPopup.IsOpen = false;
-    }
-
-    private void ActivateSearchHit()
-    {
-        if (SearchResults?.SelectedItem is not SearchHit hit) return;
-        hit.Target.IsChecked = true;   // raises Nav_Checked, which does the work
-        ClearSearch();
-    }
-
-    private void ClearSearch()
-    {
-        if (SearchPopup != null) SearchPopup.IsOpen = false;
-        if (SearchInput != null) SearchInput.Text = "";
-        if (SearchPlaceholder != null) SearchPlaceholder.Visibility = Visibility.Visible;
-        System.Windows.Input.Keyboard.ClearFocus();
+        if (PaletteList?.SelectedItem is not PaletteHit hit) return;
+        // Closed BEFORE running: several of these open a dialog or change the
+        // posture, and a palette still sitting over the result would have to be
+        // dismissed afterwards to see what happened.
+        ClosePalette();
+        if (hit.Target != null) hit.Target.IsChecked = true;
+        else hit.Run?.Invoke();
     }
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
@@ -4325,6 +4377,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (FontWarning == null) return;
         FontWarning.Text = text;
         FontWarning.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // ===================================================== table lifecycle
+    /// <summary>Keeps each filtered table's Query in step with its box, so the
+    /// empty state can tell "there is nothing" from "nothing matches what you
+    /// typed". Those need different words and have different remedies - one is
+    /// a state of the world, the other is undone by clearing a box.</summary>
+    private void SyncTableQueries()
+    {
+        try
+        {
+            SetQ(AppsList, AppSearch);
+            SetQ(ConnList, ConnSearch);
+            SetQ(PacketsList, PacketsSearch);
+            SetQ(ServicesList, SystemSearch);
+        }
+        catch (Exception ex) { SampleStepError("table query", ex); }
+
+        static void SetQ(System.Windows.Controls.ListView? list, System.Windows.Controls.TextBox? box)
+        {
+            if (list == null) return;
+            GunWall.Controls.Table.SetQuery(list, box?.Text?.Trim() ?? "");
+        }
     }
 
     private void RefreshSwatches()
@@ -4982,6 +5057,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void SystemSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
+        SyncTableQueries();
         _systemFilter = SystemSearch.Text?.Trim() ?? "";
         BuildSystemRulesUi();
     }
@@ -5246,6 +5322,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             ScanBtn.IsEnabled = false;
             ScanBtn.Content = "Scanning...";
             _devices.Clear();
+            // The one table with a real lifecycle: a scan takes seconds and can
+            // fail. Everything else here populates in one pass, so it stays on
+            // Ready - claiming a loading state that lasts a frame would add a
+            // flicker and describe nothing.
+            GunWall.Controls.Table.SetPhase(DevicesList, GunWall.Controls.TablePhase.Loading);
             if (NetworkSubtitle != null) NetworkSubtitle.Text = "Scanning your local network...";
 
             var found = await NetworkScanner.ScanAsync(pct =>
@@ -5255,10 +5336,25 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 }));
 
             foreach (var d in found) _devices.Add(d);
+            GunWall.Controls.Table.SetPhase(DevicesList, GunWall.Controls.TablePhase.Ready);
             if (NetworkSubtitle != null)
                 NetworkSubtitle.Text = $"Found {found.Count} device(s) on your local network.";
         }
-        catch (Exception ex) { ShowError(ex); }
+        catch (Exception ex)
+        {
+            // Section 10: say what is STILL TRUE before what is broken. Someone
+            // reading a failure on a firewall needs to know whether they are
+            // exposed before they need to know which call threw, and the mono
+            // line is a code to paste rather than a raw exception.
+            GunWall.Controls.Table.SetPhase(DevicesList, GunWall.Controls.TablePhase.Error);
+            GunWall.Controls.Table.SetErrorText(DevicesList,
+                "Your firewall rules are unaffected and still enforcing - this is the " +
+                "local network scan only. It needs ARP and ICMP, which some networks " +
+                "and security software block.");
+            GunWall.Controls.Table.SetErrorCode(DevicesList,
+                $"SCAN-{ex.GetType().Name}  ·  {DateTime.Now:HH:mm:ss}");
+            if (NetworkSubtitle != null) NetworkSubtitle.Text = "Scan could not finish.";
+        }
         finally
         {
             ScanBtn.IsEnabled = true;

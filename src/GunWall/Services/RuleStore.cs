@@ -339,7 +339,10 @@ public sealed class StoreData
     public bool TraySingleClick { get; set; }
 
     /// <summary>UI zoom percentage (100 = normal size).</summary>
-    public int UiZoomPercent { get; set; } = 100;
+    /// <summary>Interface scale. 90 by default: the design's metrics were drawn
+    /// for a denser grid than WPF's defaults produce, and at 100 the whole thing
+    /// reads a size too large. Existing installs keep whatever they saved.</summary>
+    public int UiZoomPercent { get; set; } = 90;
     public List<string> DnsResolverBlocklist { get; set; } = new();
 
     // §3 Phase 2: system-DNS routing state. DnsRedirectActive is the user's saved

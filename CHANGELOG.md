@@ -6,6 +6,91 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.67] — 2026-08-08
+
+The command palette — the last outstanding item of the design migration.
+
+### Added
+- **A 620px centred command palette over a scrim**, replacing the 300px dropdown that hung under the top bar field. The dropdown could list destinations and nothing else, so the actions people actually want at speed — turn the firewall on, engage lockdown — had no home in it.
+
+  Three groups: **Actions**, **Go to**, and **Applications**. Ctrl+K opens it, the top bar field opens it on click, typing filters across all three, arrows move, Enter activates, Escape or a click on the scrim closes.
+
+  Applications are matched on **name and path**, because "where did that come from" is as often a path question as a name one. Selecting one navigates to Applications with the filter already set.
+
+- A `Scrim` token in both palettes. Light is not the dark value at a different alpha: the backdrop sits over white there, so it needs to be lighter to read as a dim rather than a blackout.
+
+### Notes on two decisions
+Grouping is done through a `ListCollectionView` rather than by building header rows into a flat list, because WPF skips group headers during keyboard navigation and a hand-built list would have stopped on them.
+
+The palette closes **before** running the action. Several of these open a dialog or change the posture, and a palette still sitting over the result would have to be dismissed to see what happened.
+
+The scrim spans both grid columns so it covers the sidebar. A palette that dimmed the content but left the nav lit would read as a dialog belonging to one panel rather than to the application.
+
+### Still open, and not design work
+- **Negative letter-spacing** at display sizes. Moot while the interface font is monospace — the tracking mechanism correctly skips monospaced faces, and a monospace face has no tight display sizes to loosen. Worth revisiting only if the default becomes proportional again.
+- **Four columns blocked on data**: Rules `HITS`, Windows services `Action`, Network scan `Vendor` and `Latency`, Traffic `Share`. Each needs a feature behind it. Adding empty columns would look like conformance and mean nothing.
+
+---
+
+## [0.99.66] — 2026-08-08
+
+### Changed
+- **The interface scale defaults to 90% (Compact).** The design's metrics were drawn for a denser grid than WPF's defaults produce, so at 100% the whole thing reads a size too large. Existing installs keep whatever they saved.
+
+### Fixed
+- **Letter-spacing was mangling column headers under the monospace font** — `DIRECTION` rendered as `DIRECTI(`. Two compounding reasons, both a consequence of the interface font changing after the tracking was written:
+
+  A monospace face gives **every** glyph the same advance, so the hair space the tracking inserts is a full character wide rather than the 0.045em it assumes — roughly doubling each label. And JetBrains Mono does not contain U+200A at all, so the character was also forcing a font fallback mid-string.
+
+  Tracking now measures the face and skips monospaced ones. That is correct rather than merely safe: tracking is a proportional-type adjustment, and a monospace face is already evenly spaced. It returns automatically if a proportional font is selected.
+
+- **The empty-state frame is dashed**, as section 10 asks. It was solid because WPF's `Border` has no dash support — it is a `Rectangle` with `StrokeDashArray` behind the content now. The distinction carries meaning: a dashed frame says *nothing is here*, a solid one says *here is a panel*.
+
+### Note
+The tracking bug is a good example of a change being correct when written and wrong later. The hair-space approximation was sound against Instrument Sans, and its limits were documented at the top of `Controls/Tracking.cs` — but "only works with proportional fonts" was written as a caveat rather than enforced, and three releases later the default font became monospace. The check now lives in the code rather than the comment.
+
+---
+
+## [0.99.65] — 2026-08-08
+
+### Fixed
+- **0.99.64 threw on every screen containing a table.** The empty state referenced an icon geometry with `StaticResource`, and `Icons.xaml` is merged **after** `Controls.xaml` in `App.xaml`. `StaticResource` resolves at parse time against the current dictionary and those merged before it, so the reference had nothing to resolve against and threw `StaticResourceHolder` while the template was instantiating.
+
+  The failure mode is worth naming, because it is why this got past me: a forward reference across dictionaries does **not** degrade to a missing icon. It throws during template instantiation, which surfaces as an unhandled error dialog on every panel holding a `ListView` — a symptom pointing nowhere near the cause. `Controls.xaml` parses fine in isolation and the XML is valid; only the merge order makes it wrong.
+
+  Now `DynamicResource`, which removes the ordering dependency rather than trading it for a different one. Reordering the dictionaries would also have worked and would have left the next cross-reference to fail the same way.
+
+### Added
+- **A `merge-order` check**: no `StaticResource` may reference a key defined in a dictionary merged later. It reads the merge order from `App.xaml` rather than assuming one.
+
+  It was verified by reintroducing the actual bug and confirming it fails, then removing it and confirming it clears. A check written after a defect and never shown to catch that defect is a guess, and this project has shipped enough of those.
+
+---
+
+## [0.99.64] — 2026-08-08
+
+Table lifecycle states — the last structural piece of the design migration.
+
+### Added
+- **All four states from section 10**: loading, empty, no-results and error, on all twelve tables.
+
+  The states sit **beside** the scroll region rather than over it, because section 10 is explicit that the column header and its rule always render — a state that covered the header would make the table look like it had gone away. The content region keeps a 260px minimum so the page does not jump as a table changes state.
+
+- **A state machine rather than a trigger, and that distinction is the point.** "No rows" is three different situations wearing one appearance: nothing has loaded yet, the load failed, or there genuinely is nothing — and a fourth once a filter exists, where rows are there and the query is hiding them.
+
+  `HasItems` cannot tell those apart, and guessing wrong is not cosmetic. Showing *"No alerts. That is the good outcome."* over a table still reading the kernel buffer tells someone their machine is quiet when nobody has looked yet. On a firewall that is the wrong answer to give confidently. So the phase is stated by whoever owns the data, and empty-versus-no-results is derived from whether a query is set.
+
+- **The empty state is now the design's**, replacing the plain centred line I shipped in 0.99.49 and described at the time as though it were finished: dashed frame, mark at 35%, a title and a body. Each table says what *it* means by nothing — and on several of them, nothing is the good outcome, so it is stated calmly rather than as a problem.
+
+- **Network scan carries the loading and error states**, because it is the only table with a real lifecycle: it takes seconds and it can fail. Everything else populates in one pass and stays on `Ready` — claiming a loading state that lasts a frame would add a flicker and describe nothing.
+
+  Its error copy follows the section 10 rule that the body states **what is still true** before what is broken: *"Your firewall rules are unaffected and still enforcing — this is the local network scan only."* Someone reading a failure on a firewall needs to know whether they are exposed before they need to know which call threw. The mono line is a code and a timestamp to paste, never a raw exception.
+
+### Note
+The first attempt at the template edit corrupted `Controls.xaml` — I reused a string index after reassigning the string it indexed into, so the replacement landed before the document root. Restored from the last verified package and redone against literal anchors with uniqueness assertions, which is what the rest of this project's edits already do and what I skipped for being in a hurry.
+
+---
+
 ## [0.99.63] — 2026-08-08
 
 ### Fixed

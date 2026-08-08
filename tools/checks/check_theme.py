@@ -49,8 +49,6 @@ ICONS = APP / "Themes" / "Icons.xaml"
 # that gets ignored. Delete an entry when its phase lands; if an entry is still
 # here several releases later, the token was never really needed.
 PENDING_TOKENS = {
-    "Skeleton":       "0.99.46 table lifecycle states",
-    "FocusRing":      "0.99.49 focus rings",
     "InfoText":       "0.99.45 neutral pill text",
     "StatFontSize":   "0.99.47 primary stat, 30px",
     "IconCheck":      "0.99.48 verdict rows in the table system",
@@ -97,6 +95,49 @@ def check_theme_parity():
     for k in sorted(l - d):
         fail("parity", f"{k} is in the light palette only")
     notes.append(f"parity: {len(d)} keys, both palettes")
+
+
+def check_merge_order():
+    """No StaticResource may reference a key from a dictionary merged later.
+
+    StaticResource resolves at PARSE time against the current dictionary and the
+    ones merged before it. A forward reference across dictionaries does not
+    degrade to a missing icon - it throws StaticResourceHolder while the template
+    is being instantiated, which surfaces as an unhandled error dialog on every
+    screen that uses the control. The symptom points nowhere near the cause.
+
+    0.99.64 shipped exactly one of these: the table empty-state referenced an
+    icon geometry from Icons.xaml, which App.xaml merges AFTER Controls.xaml.
+    Every panel containing a ListView threw on load.
+    """
+    app = (APP / "App.xaml").read_text(encoding="utf-8")
+    order = re.findall(r'<ResourceDictionary\s+Source="Themes/([^"]+)"', app)
+    if not order:
+        return
+    defined_by = {}
+    for i, name in enumerate(order):
+        f = APP / "Themes" / name
+        if not f.exists():
+            continue
+        for k in re.findall(r'x:Key="([^"]+)"', f.read_text(encoding="utf-8")):
+            defined_by.setdefault(k, i)
+
+    for i, name in enumerate(order):
+        f = APP / "Themes" / name
+        if not f.exists():
+            continue
+        for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            code = re.sub(r"<!--.*?-->", "", line)
+            for m in re.finditer(r"\{StaticResource\s+([A-Za-z0-9_]+)\s*\}", code):
+                key = m.group(1)
+                at = defined_by.get(key)
+                if at is not None and at > i:
+                    fail("merge-order",
+                         f"{name}:{n} uses StaticResource {key}, defined in "
+                         f"{order[at]} which is merged later - it cannot resolve at "
+                         "parse time and will throw when the template instantiates")
+    if not any(f.startswith("[merge-order]") for f in failures):
+        notes.append(f"merge-order: no forward StaticResource across {len(order)} dictionaries")
 
 
 def check_late_binding():
@@ -374,6 +415,7 @@ def check_version_consistency():
 def main():
     check_theme_parity()
     check_late_binding()
+    check_merge_order()
     check_colour_home()
     check_dead_keys()
     check_element_references()

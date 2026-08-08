@@ -62,11 +62,42 @@ public static class Tracking
         if (sender is TextBlock tb) Apply(tb);
     }
 
+    /// <summary>True when the face gives every glyph the same advance.</summary>
+    private static bool IsMonospaced(TextBlock tb)
+    {
+        try
+        {
+            double W = Measure(tb, "W"), i = Measure(tb, "i");
+            return System.Math.Abs(W - i) < 0.01;
+        }
+        catch { return false; }
+    }
+
+    private static double Measure(TextBlock tb, string s) =>
+        new System.Windows.Media.FormattedText(
+            s, System.Globalization.CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            new System.Windows.Media.Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch),
+            tb.FontSize, System.Windows.Media.Brushes.Black, 1.0).WidthIncludingTrailingWhitespace;
+
     private static void Apply(TextBlock tb)
     {
         double em = GetEm(tb);
         string text = tb.Text ?? "";
         if (em <= 0 || text.Length < 2) return;
+
+        // Not under a monospace face. This approximation inserts hair spaces, and
+        // a monospace font gives EVERY glyph the same advance - so a hair space is
+        // a full character wide, not the 0.045em this assumes. JetBrains Mono does
+        // not even contain U+200A, so the character also forces a font fallback
+        // mid-string.
+        //
+        // The visible result once the interface font became monospace: column
+        // headers roughly doubled in width and clipped - "DIRECTION" rendered as
+        // "DIRECTI(". Tracking is a proportional-type adjustment, and a monospace
+        // face is already evenly spaced, so skipping is correct rather than merely
+        // safe. It returns automatically if the user picks a proportional font.
+        if (IsMonospaced(tb)) return;
 
         // A hair space is the narrowest fixed-width space Unicode defines, and it
         // does not collapse the way a normal space does. Repeating it is coarse -

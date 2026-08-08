@@ -163,19 +163,28 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-**One question decides it: is the interface monospaced on a fresh start?**
+This build batches several releases, so the list is longer than usual.
 
-Launch with the default selected. Body text, checkbox labels and settings
-descriptions should all have even character widths. If any of it is
-proportional, the bundled family still is not resolving.
+**Command palette.** Press **Ctrl+K**, or click the top bar search field.
+Expect a centred panel over a dimmed window, with the sidebar dimmed too.
 
-Then, because the previous three attempts all *looked* plausible and were not:
+- Typing filters across **Actions**, **Go to** and **Applications**
+- Arrows move, **Enter** activates, **Escape** and a click outside both close
+- Pick an application: should land on Applications with the filter already set
+- Pick "Turn firewall on/off": the palette should close *before* anything happens
 
-1. Pick **Instrument Sans (bundled)** — should switch to a proportional sans,
-   immediately, no restart.
-2. Pick **JetBrainsMono Nerd Font (bundled default)** — should switch back to
-   monospace.
-3. Pick an **installed** font — should also work. This one worked throughout the
-   bug, so it proves nothing on its own; it is here to confirm nothing regressed.
-4. **Restart the app.** Whatever was selected should survive, and still render.
-   Startup was where the failure was introduced, so this step is the real test.
+**Column headers must not clip.** `DIRECTION` on Rules and Packet log was the one
+that broke. Then switch the font to **Instrument Sans** and check again —
+spacing should return there and still not clip.
+
+**Interface scale** defaults to Compact (90%) for a fresh install. An existing
+install keeps what it had.
+
+**Table states**, still untested from earlier builds:
+
+- **Empty** — Rules with no custom rules. The frame should be **dashed**, and the
+  column header must still show above it.
+- **No results** — type nonsense into a filter box. Must look clearly different
+  from empty.
+- **Loading** — press Scan network: eight skeleton bars and a caption.
+- Watch for **the page jumping** as a table changes state.

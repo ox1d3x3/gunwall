@@ -66,6 +66,9 @@
     <SolidColorBrush x:Key="FillUp" Color="#0F0D0F12" />        <!-- 'fill-up': t1 at 6% -->
 
     <!-- Loading bars, section 10. Consumed by the table lifecycle states. -->
+    <!-- Backdrop behind the command palette. 55% of ink, lighter because the ground is white. -->
+    <SolidColorBrush x:Key="Scrim" Color="#8C0D0F12" />
+
     <SolidColorBrush x:Key="Skeleton" Color="#0E000000" />      <!-- 'skeleton': 5.5% black -->
 
     <sys:Boolean xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="IsDarkTheme">False</sys:Boolean>
