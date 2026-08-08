@@ -163,20 +163,19 @@ This section is rewritten each time a build goes out, and deliberately names no
 version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
 which is the authority for what actually changed.
 
-**Is the bundled font actually loading?** The previous build failed here silently.
-The test is one glance: **is the interface monospaced?** Body text, checkbox
-labels, settings descriptions — all of it should have even character widths. If
-any of it looks proportional, the bundled family is not resolving and WPF has
-fallen back to the system font.
+**One question decides it: is the interface monospaced on a fresh start?**
 
-Then compare the **bundled default** against selecting your **installed**
-JetBrainsMono NF from the picker. They should look the same. Different means the
-same failure.
+Launch with the default selected. Body text, checkbox labels and settings
+descriptions should all have even character widths. If any of it is
+proportional, the bundled family still is not resolving.
 
-**Weight hierarchy.** Compare a column header or section label against the body
-text beside it — headers should be visibly heavier. One weight everywhere means
-only part of the family resolved.
+Then, because the previous three attempts all *looked* plausible and were not:
 
-**Switching.** Pick Instrument Sans, then reset to default. Both should repaint
-immediately, with no restart, and machine values (addresses, ports, byte counts)
-should stay monospaced throughout.
+1. Pick **Instrument Sans (bundled)** — should switch to a proportional sans,
+   immediately, no restart.
+2. Pick **JetBrainsMono Nerd Font (bundled default)** — should switch back to
+   monospace.
+3. Pick an **installed** font — should also work. This one worked throughout the
+   bug, so it proves nothing on its own; it is here to confirm nothing regressed.
+4. **Restart the app.** Whatever was selected should survive, and still render.
+   Startup was where the failure was introduced, so this step is the real test.

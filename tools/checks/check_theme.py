@@ -263,6 +263,38 @@ def check_binding_override():
         notes.append(f"binding-override: clean ({len(STATE_PAINTED)} state-painted, repaint invariant holds)")
 
 
+def check_no_code_pack_fonts():
+    """No FontFamily may be constructed from a pack URI in C#.
+
+    A pack URI resolves only against a base URI. XAML supplies one from the file
+    it is parsed in; the single-argument FontFamily(string) constructor has none,
+    so new FontFamily("pack://application:,,,/Fonts/#X") matches nothing and WPF
+    falls back to the system font - silently, with no exception and no log line.
+
+    0.99.59 shipped this. The picker built its families in code, and applying one
+    at startup overwrote the working XAML resource with a non-resolving copy.
+    Installed fonts kept working because they resolve by plain name, which made
+    it look like the bundled files were at fault - three releases were spent on
+    the font files before the constructor was suspected.
+    """
+    hits = []
+    for cs in sorted(APP.rglob("*.cs")):
+        for n, line in enumerate(cs.read_text(encoding="utf-8").splitlines(), 1):
+            # Strip line comments first. The note explaining THIS rule contains
+            # the exact pattern it forbids, and the first version of this check
+            # flagged its own documentation.
+            code = re.sub(r"//.*$", "", line)
+            if re.search(r'new\s+FontFamily\s*\(\s*"pack://', code):
+                hits.append(f"{cs.relative_to(ROOT)}:{n}")
+    for h in hits:
+        fail("font-packuri",
+             f"{h} constructs a FontFamily from a pack URI - it has no base URI to "
+             "resolve against and will silently fall back. Copy the XAML resource "
+             "instead")
+    if not hits:
+        notes.append("font-packuri: no pack-URI FontFamily built in code")
+
+
 def check_font_families():
     """Every bundled weight of a family must agree on its typographic name.
 
@@ -347,6 +379,7 @@ def main():
     check_element_references()
     check_binding_override()
     check_font_families()
+    check_no_code_pack_fonts()
     check_version_consistency()
 
     for n in notes:

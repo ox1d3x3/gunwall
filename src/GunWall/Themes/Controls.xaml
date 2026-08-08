@@ -257,6 +257,26 @@
          commercial use, so it cannot redistribute a face whose own licence
          forbids it. Reading an installed font places no licence obligation on
          the repository at all. -->
+    <!-- The two bundled faces, declared HERE and nowhere else.
+
+         This matters more than it looks. A pack URI only resolves against a base
+         URI, and XAML supplies that base from the file it is parsed in. The
+         single-argument FontFamily(string) constructor in C# has no base, so
+         new FontFamily("pack://application:,,,/Fonts/#Whatever") silently
+         produces a family that matches nothing - and WPF then falls back to the
+         system UI font without raising anything.
+
+         That is precisely what shipped in 0.99.59: the font picker built its
+         families in code, and applying one at startup OVERWROTE the working
+         resource below with a non-resolving copy. Installed fonts kept working,
+         because those resolve by plain name from the system collection and need
+         no base URI at all - which is exactly why the failure looked like "the
+         bundled fonts are broken" rather than "the constructor is wrong".
+
+         Code now copies these objects instead of rebuilding them. -->
+    <FontFamily x:Key="UiFontMono">pack://application:,,,/Fonts/#JetBrainsMono Nerd Font</FontFamily>
+    <FontFamily x:Key="UiFontSans">pack://application:,,,/Fonts/#Instrument Sans</FontFamily>
+
     <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#JetBrainsMono Nerd Font</FontFamily>
     <!-- Machine values take the same family as the interface. The Nerd Font build
          IS JetBrains Mono with an icon set patched in - identical metrics, same

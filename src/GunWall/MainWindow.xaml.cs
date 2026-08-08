@@ -315,7 +315,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.62 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.63 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4227,10 +4227,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ============================================================== interface font
-    // Bundled, so every machine gets the same face whether or not it has
-    // installed anything. Any separately installed build - "JetBrainsMono NF",
-    // the proportional variant, or anything else - still appears in the picker.
-    private const string DefaultUiFont = "pack://application:,,,/Fonts/#JetBrainsMono Nerd Font";
+    // Deliberately not a pack URI constant any more - nothing in code should be
+    // building one. The bundled faces live as resources; see ApplyUiFont.
     private bool _fontUiLoading;
 
     /// <summary>Fills the picker with the bundled face plus everything installed.
@@ -4291,10 +4289,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         try
         {
-            var ff = string.IsNullOrEmpty(family) ? new FontFamily(DefaultUiFont)
-                   : family == "Instrument Sans"
-                       ? new FontFamily("pack://application:,,,/Fonts/#Instrument Sans")
-                       : new FontFamily(family);
+            // Bundled faces are COPIED from the XAML resources, never rebuilt.
+            // new FontFamily("pack://...") has no base URI to resolve against and
+            // silently matches nothing; see the note beside UiFontMono in
+            // Controls.xaml. Installed faces resolve by plain name and are safe
+            // to construct here.
+            var res = System.Windows.Application.Current.Resources;
+            var ff = string.IsNullOrEmpty(family) ? (FontFamily)res["UiFontMono"]
+                   : family == "Instrument Sans" ? (FontFamily)res["UiFontSans"]
+                   : new FontFamily(family);
             System.Windows.Application.Current.Resources["UiFont"] = ff;
             _firewall.SetUiFontFamily(family);
 

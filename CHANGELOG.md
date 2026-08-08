@@ -6,6 +6,31 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.63] — 2026-08-08
+
+### Fixed
+- **The bundled fonts never loaded, and the font files were never the problem.** The cause was one line of C#:
+
+  ```
+  new FontFamily("pack://application:,,,/Fonts/#JetBrainsMono Nerd Font")
+  ```
+
+  A pack URI resolves only against a **base URI**. XAML supplies one from the file it is parsed in, which is why the resource declared in `Controls.xaml` worked for dozens of releases. The single-argument `FontFamily(string)` constructor has no base, so it produces a family matching nothing — and WPF falls back to the system UI font silently, with no exception and no log line.
+
+  0.99.59 introduced the font picker, which built its families in code. Applying one at startup **overwrote the working XAML resource with a non-resolving copy**, so every bundled face stopped loading from that release onward. Installed fonts kept working because they resolve by plain name from the system collection and need no base URI — which is exactly what made this look like "the bundled files are wrong".
+
+  Bundled faces are now declared once in XAML and **copied** by code, never rebuilt.
+
+### Added
+- **A `font-packuri` check**: no `FontFamily` may be constructed from a pack URI in C#. The first version of it flagged the comment explaining the rule, because that comment contains the pattern it forbids; it strips comments now.
+
+### Note — three releases spent on the wrong thing
+0.99.61 renamed font files. 0.99.62 replaced them with untouched upstream ones and added a check that the name tables agree. Both were reasonable responses to the evidence, and both were treating a symptom: the fonts were fine the whole time.
+
+The tell was in the report from the start — *"working fine selecting any other my windows installed font"*. Bundled failing while installed worked isolates the difference to how the family is **constructed**, not to the files. I read it as evidence about the files three times before reading it as evidence about the code.
+
+---
+
 ## [0.99.62] — 2026-08-07
 
 ### Fixed
