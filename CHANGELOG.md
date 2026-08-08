@@ -6,6 +6,23 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.61] — 2026-08-07
+
+### Changed
+- **JetBrainsMono NFM is the bundled default**, in four weights, replacing the stock JetBrains Mono added one release earlier. NFM *is* JetBrains Mono with the Nerd Fonts icon set patched in — identical metrics, same drawing — so shipping both would have meant roughly 11MB of near-duplicate outlines to gain nothing. The stock files were removed and **machine values now take the same family**, which is what the mono role always wanted.
+- Two things were checked before bundling rather than assumed: the licence is **SIL OFL 1.1**, and `fsType` is **0**, which permits installable embedding. Neither is true of every font offered as free.
+- The same family-splitting trap appeared again and was fixed again: upstream ships Medium and SemiBold as their own families — *"JetBrainsMono NFM Medium"*, *"...SemiBold"* — each with subfamily "Regular". A `FontWeight` request against *"JetBrainsMono NFM"* would miss both and return Regular with no error. All four renamed into one family.
+
+### Fixed
+- The font setting's own description still read *"Instrument Sans ships with GunWall and is the default"* — untrue since the previous release changed the default and I did not update the sentence describing it. A settings page that misstates its own default is worse than one with no description.
+
+### Note on size
+The bundled fonts go from about 1MB to about 9.5MB. That is the cost of 12,503 glyphs per weight, and for a portable single-file application it is worth stating plainly rather than letting it be discovered: the binary grows by roughly that much. It is a deliberate trade, and reversible — dropping to Regular and Bold would halve it at the cost of the weight hierarchy the interface uses to separate a label from its value.
+
+`third-party-licenses/JetBrainsMono-OFL.txt` is now `JetBrainsMonoNFM-OFL.txt` and states what actually ships, including that two files were renamed and no outline altered.
+
+---
+
 ## [0.99.60] — 2026-08-07
 
 ### Changed

@@ -224,13 +224,21 @@
          replacing this entry at runtime repaints the application - the same
          late-binding rule the palettes follow, for the same reason.
 
-         JetBrains Mono is the default and is embedded, in four weights. Two of
-         those - SemiBold and Bold - were added in this release, because the
-         upstream SemiBold ships as its own family named "JetBrains Mono
-         SemiBold" with subfamily "Regular": a FontWeight="SemiBold" request
-         against "JetBrains Mono" would find nothing and come back Regular with
-         no error, which is the variable-font trap in a different costume. Both
-         were renamed into one family so weight resolves within it.
+         JetBrainsMono NFM - JetBrains Mono with the Nerd Fonts icon set - is the
+         default, embedded in four weights. It is OFL and its fsType is 0, so it
+         can be redistributed and embedded; that was checked before bundling
+         rather than assumed.
+
+         Upstream ships Medium and SemiBold as their OWN families, named
+         "JetBrainsMono NFM Medium" and "...SemiBold", each with subfamily
+         "Regular". A FontWeight request against "JetBrainsMono NFM" would miss
+         them entirely and return Regular with no error - the variable-font trap
+         in a different costume. All four were renamed into one family so weight
+         resolves within it.
+
+         It costs about 9.5MB, against roughly 1MB for the stock face. That is
+         the price of 12,503 glyphs, and it is a deliberate trade rather than an
+         oversight.
 
          Instrument Sans remains embedded and selectable. A user-chosen face is
          resolved from the fonts INSTALLED on the machine rather than shipped
@@ -238,8 +246,12 @@
          commercial use, so it cannot redistribute a face whose own licence
          forbids it. Reading an installed font places no licence obligation on
          the repository at all. -->
-    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#JetBrains Mono</FontFamily>
-    <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrains Mono</FontFamily>
+    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#JetBrainsMono NFM</FontFamily>
+    <!-- Machine values take the same family as the interface. NFM IS JetBrains
+         Mono with the Nerd Fonts icon set patched in - identical metrics, same
+         drawing - so bundling stock JetBrains Mono alongside it would have meant
+         about 11MB of near-duplicate outlines to gain nothing. -->
+    <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrainsMono NFM</FontFamily>
 
     <!-- Type ramp, SPEC.md section 3. Body is 13 and table cells 12.5; the
          design never uppercases anything above 12px, and its tracking widens as

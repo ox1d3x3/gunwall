@@ -315,7 +315,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.60 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.61 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4227,12 +4227,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ============================================================== interface font
-    // Bundled, so it looks the same on a machine that has installed nothing.
-    // "JetBrainsMono NF" - the Nerd Font build - is a separate, system-installed
-    // family and stays selectable for anyone who has it; it is not the default,
-    // because defaulting to a font the application does not ship means every
-    // other machine silently gets something else.
-    private const string DefaultUiFont = "pack://application:,,,/Fonts/#JetBrains Mono";
+    // Bundled, so every machine gets the same face whether or not it has
+    // installed anything. Any separately installed build - "JetBrainsMono NF",
+    // the proportional variant, or anything else - still appears in the picker.
+    private const string DefaultUiFont = "pack://application:,,,/Fonts/#JetBrainsMono NFM";
     private bool _fontUiLoading;
 
     /// <summary>Fills the picker with the bundled face plus everything installed.
@@ -4246,7 +4244,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _fontUiLoading = true;
         try
         {
-            var names = new List<string> { "JetBrains Mono (bundled default)", "Instrument Sans (bundled)" };
+            var names = new List<string> { "JetBrainsMono NFM (bundled default)", "Instrument Sans (bundled)" };
             names.AddRange(System.Windows.Media.Fonts.SystemFontFamilies
                 .Select(f => f.Source)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
