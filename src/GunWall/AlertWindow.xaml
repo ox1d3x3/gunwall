@@ -45,27 +45,15 @@
         </Border.Effect>
 
         <StackPanel>
-            <!-- State strip. What kind of moment this is, then the countdown in
-                 mono so a number changing every second cannot shove the text
-                 beside it around. -->
-            <Border Padding="16,12" BorderThickness="0,0,0,1"
-                    BorderBrush="{DynamicResource Divider}">
-                <Grid>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,9,0"
-                                 Fill="{DynamicResource WarnText}" />
-                        <TextBlock x:Name="HeaderText" Text="FIRST CONNECTION"
-                                   FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource WarnText}" />
-                    </StackPanel>
-                    <TextBlock x:Name="CountdownHint" HorizontalAlignment="Right"
-                               VerticalAlignment="Center" FontSize="10.5"
-                               FontFamily="{StaticResource MonoFont}"
-                               TextTrimming="CharacterEllipsis" MaxWidth="200"
-                               Foreground="{DynamicResource TextTertiary}" />
-                </Grid>
-            </Border>
+            <!-- The state strip was retired in 0.99.71. It carried a role dot,
+                 an uppercase kicker and the countdown. The subject tile now takes
+                 the role colour and the subtitle under the question states the
+                 kind of moment, so two of its three jobs were being done twice -
+                 and the duplicate x:Name for the kicker was a compile error, which
+                 is a blunt way of being told the same thing.
 
+                 The countdown moved to the actions row, where the consequence it
+                 describes is next to the buttons that avoid it. -->
             <StackPanel Margin="16,15,16,15">
                 <!-- Subject column, then content. The reference format this follows
                      puts an icon beside the question and gives each fact its own
@@ -201,6 +189,10 @@
                               Data="{StaticResource IconChevronDown}" />
                     </Button>
                     <TextBlock x:Name="DetailsLabel" Visibility="Collapsed" />
+                    <TextBlock x:Name="CountdownHint" Margin="40,0,0,0" FontSize="11.5"
+                               VerticalAlignment="Center" HorizontalAlignment="Left"
+                               TextTrimming="CharacterEllipsis" MaxWidth="210"
+                               Foreground="{DynamicResource TextTertiary}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button x:Name="BlockButton" Content="Block" Click="Block_Click"
                                 Style="{StaticResource PromptSecondary}" Margin="0,0,8,0" />

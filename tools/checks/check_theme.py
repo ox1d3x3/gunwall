@@ -97,6 +97,37 @@ def check_theme_parity():
     notes.append(f"parity: {len(d)} keys, both palettes")
 
 
+def check_duplicate_names():
+    """No x:Name may appear twice in one XAML file.
+
+    WPF generates a field per x:Name, so a duplicate is CS0102 - a compile error,
+    not a runtime one. That means it is caught, but only by the maintainer on the
+    other side of a build, which in this project is the slowest feedback loop
+    there is. It costs nothing to catch here.
+
+    0.99.70 shipped one: restructuring the connection prompt added a subtitle
+    named HeaderText while the state strip still had a TextBlock of that name.
+    The duplicate was really a design duplicate - two elements doing one job -
+    and the compiler said so in the bluntest available way.
+    """
+    for f in sorted(APP.glob("*.xaml")) + sorted((APP / "Themes").glob("*.xaml")):
+        text = f.read_text(encoding="utf-8")
+        # Each ControlTemplate is its own NAMESCOPE, so a name repeated across
+        # templates is legal and normal - Controls.xaml has five borders called
+        # "Bd" and always has. Only the window's own scope can collide, so the
+        # templates are removed before counting. Getting this wrong would have
+        # meant a check that fails on correct code, which is the same defect as
+        # one that passes on broken code wearing a more convincing face.
+        scope = re.sub(r"<ControlTemplate\b.*?</ControlTemplate>", "", text, flags=re.S)
+        names = re.findall(r'x:Name="([^"]+)"', scope)
+        for n in sorted({x for x in names if names.count(x) > 1}):
+            fail("duplicate-name",
+                 f"{f.name}: x:Name {n!r} appears {names.count(n)} times - WPF "
+                 "generates one field per name, so this is CS0102")
+    if not any(f.startswith("[duplicate-name]") for f in failures):
+        notes.append("duplicate-name: every x:Name unique within its file")
+
+
 def check_merge_order():
     """No StaticResource may reference a key from a dictionary merged later.
 
@@ -422,6 +453,7 @@ def main():
     check_theme_parity()
     check_late_binding()
     check_merge_order()
+    check_duplicate_names()
     check_colour_home()
     check_dead_keys()
     check_element_references()

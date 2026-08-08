@@ -6,6 +6,24 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.71] — 2026-08-08
+
+### Fixed
+- **0.99.70 did not compile: `CS0102`, two elements named `HeaderText`.** The restructure added a subtitle under the question while the state strip still had a kicker of that name.
+
+  The duplicate name was really a **duplicate job**. The strip carried three things — a role dot, an uppercase kicker, and the countdown — and the restructure gave the first two to the subject tile and the subtitle. Only the countdown was still unique to it. So the strip is retired rather than renamed, and the countdown moved to the actions row, where the consequence it describes sits beside the buttons that avoid it.
+
+  Same shape as retiring the footer: the fix was not to rename the collision but to notice that two things were saying one thing.
+
+### Added
+- **A `duplicate-name` check.** WPF generates one field per `x:Name`, so a duplicate is a compile error — caught, but only by the maintainer on the far side of a build, which is the slowest feedback loop in this project. It costs nothing to catch here.
+
+  It excludes `ControlTemplate` bodies, because each template is its own namescope: `Controls.xaml` has five borders called `Bd` and always has. The first version flagged them, which would have been a check that fails on correct code — the same defect as one that passes on broken code, wearing a more convincing face.
+
+  Verified both ways: reintroduce the real duplicate and it fails, restore and it passes, with the legitimate template names quiet throughout.
+
+---
+
 ## [0.99.70] — 2026-08-08
 
 ### Changed

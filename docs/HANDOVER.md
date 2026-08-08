@@ -116,7 +116,18 @@ at once and clipped the two with no slack.
 **Rule:** size from the longest string a cell can hold, not the current one.
 **Check:** headers are measured against their own column width.
 
-### 2.9 Checks that cannot fail
+### 2.9 A name collision that is really a duplicate job
+
+Two elements named the same thing is `CS0102`. But a collision usually means two
+elements were given one job — the connection prompt ended up with a kicker in a
+state strip and a subtitle under the question, both stating the kind of moment.
+The fix is rarely a rename; it is noticing the duplication the compiler
+stumbled over.
+
+**Check:** `duplicate-name`, excluding `ControlTemplate` bodies, which are
+separate namescopes.
+
+### 2.10 Checks that cannot fail
 
 Three shipped:
 
@@ -132,7 +143,7 @@ Three shipped:
 defect** before it is trusted. Reintroduce the bug, watch it fail, remove it,
 watch it pass. A check never demonstrated against its own defect is a guess.
 
-### 2.10 Approximations documented as caveats rather than enforced
+### 2.11 Approximations documented as caveats rather than enforced
 
 The letter-spacing helper inserts hair spaces. Its limits were written at the
 top of the file — including that it only works with proportional fonts. Three
