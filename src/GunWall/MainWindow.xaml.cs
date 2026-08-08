@@ -143,6 +143,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     // Latest snapshot kept for instant re-filtering when search text changes.
     private List<ConnectionInfo> _lastConns = new();
+    /// <summary>True while RebuildConnList is swapping the rows. The list clears
+    /// and refills every sample, which deselects transiently, so a null selection
+    /// during a rebuild is noise - only one that survives the rebuild is real.</summary>
+    private bool _connRebuilding;
     private Dictionary<int, (string Name, string Path)> _lastProcs = new();
 
     // ---- ETW per-app byte meter (experimental; approximation is the fallback)
@@ -327,7 +331,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.73 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.74 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2923,33 +2927,45 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (!_geoDownloading && GeoDownloadBtn != null)
             GeoDownloadBtn.IsEnabled = !_firewall.GeoIpApiActive; // download is for local mode only
 
-        _connections.Clear();
-        bool geo = _firewall.GeoIpActive;
-        // Dedupe GeoIP lookups within this refresh: many sockets often share one remote
-        // IP (e.g. a browser holding dozens of connections to the same CDN), so resolve
-        // each distinct address once instead of once per row.
-        Dictionary<string, GunWall.Services.GeoIpService.GeoInfo>? geoMemo =
-            geo ? new(StringComparer.OrdinalIgnoreCase) : null;
-        foreach (var c in view.OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
+        _connRebuilding = true;
+        try
         {
-            if (geo && c.Country.Length == 0 && !string.IsNullOrEmpty(c.RemoteAddress))
+            _connections.Clear();
+            bool geo = _firewall.GeoIpActive;
+            // Dedupe GeoIP lookups within this refresh: many sockets often share one remote
+            // IP (e.g. a browser holding dozens of connections to the same CDN), so resolve
+            // each distinct address once instead of once per row.
+            Dictionary<string, GunWall.Services.GeoIpService.GeoInfo>? geoMemo =
+                geo ? new(StringComparer.OrdinalIgnoreCase) : null;
+            foreach (var c in view.OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
             {
-                if (!geoMemo!.TryGetValue(c.RemoteAddress, out var g))
+                if (geo && c.Country.Length == 0 && !string.IsNullOrEmpty(c.RemoteAddress))
                 {
-                    g = _firewall.GeoIp.Lookup(c.RemoteAddress);
-                    geoMemo[c.RemoteAddress] = g;
+                    if (!geoMemo!.TryGetValue(c.RemoteAddress, out var g))
+                    {
+                        g = _firewall.GeoIp.Lookup(c.RemoteAddress);
+                        geoMemo[c.RemoteAddress] = g;
+                    }
+                    if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; }
                 }
-                if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; }
+                _connections.Add(c);
             }
-            _connections.Add(c);
-        }
 
-        if (keepConn != null)
-        {
-            var re = _connections.FirstOrDefault(c =>
-                $"{c.ProcessId}|{c.Protocol}|{c.LocalAddress}:{c.LocalPort}|{c.RemoteAddress}:{c.RemotePort}" == keepConn);
-            if (re != null) ConnList.SelectedItem = re;
+            if (keepConn != null)
+            {
+                var re = _connections.FirstOrDefault(c =>
+                    $"{c.ProcessId}|{c.Protocol}|{c.LocalAddress}:{c.LocalPort}|{c.RemoteAddress}:{c.RemotePort}" == keepConn);
+                if (re != null) ConnList.SelectedItem = re;
+            }
         }
+        finally { _connRebuilding = false; }
+
+        // The rebuild has settled. If the row that was selected did not come back
+        // - socket closed, or the filter no longer matches it - that is a real
+        // deselection and the panel closes. Handled here rather than in the
+        // SelectionChanged handler because only here is it known that the refill
+        // is finished and nothing further is coming.
+        if (ConnList.SelectedItem is null) CollapseConnInspector();
     }
 
     // ===== §11 connection inspector (read-only detail pane) =====
@@ -3008,22 +3024,31 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex) { Services.DiagnosticLog.LogException("ConnList_SizeChanged", ex); }
     }
 
+    /// <summary>Closes the inspector. The panel is the only switch - there is no
+    /// empty state inside it, because a panel that collapses when nothing is
+    /// selected has no state in which a placeholder could ever be seen. 0.99.73
+    /// kept one and it was unreachable; it is gone rather than left to look like
+    /// a feature.</summary>
+    private void CollapseConnInspector()
+    {
+        if (ConnInspector != null) ConnInspector.Visibility = Visibility.Collapsed;
+    }
+
     private void ConnSelected(object sender, SelectionChangedEventArgs e)
     {
-        // Ignore the transient deselection that happens while the list refreshes
-        // (Clear + re-add); keep the last view until a real row is chosen.
-        if (ConnList.SelectedItem is not ConnectionInfo c) return;
+        if (ConnList.SelectedItem is not ConnectionInfo c)
+        {
+            // Clear + re-add deselects on every sample. Ignore that; RebuildConnList
+            // decides once it has finished refilling. A deselection outside a rebuild
+            // is the user clicking away, and closes the panel.
+            if (!_connRebuilding) CollapseConnInspector();
+            return;
+        }
 
-        // The panel is always present now, so nothing here toggles it. Only its
-        // contents swap: the placeholder gives way to the detail on the first
-        // selection and does not come back.
-        //
-        // Deliberately not restored on deselection: the list rebuilds by Clear +
-        // re-add every sample, which deselects transiently, and a panel flipping
-        // to "select a connection" twice a second would be worse than one that
-        // keeps showing the last row you asked about.
-        InspPlaceholder.Visibility = Visibility.Collapsed;
-        InspContent.Visibility = Visibility.Visible;
+        // Opens on selection. The table gives up the width, and its last column
+        // absorbs the change rather than the rows clipping - which is why this
+        // panel can come and go without the table jumping badly.
+        if (ConnInspector != null) ConnInspector.Visibility = Visibility.Visible;
 
         InspProcess.Text = string.IsNullOrEmpty(c.ProcessName) ? "(unknown)" : c.ProcessName;
         InspSub.Text = $"PID {c.ProcessId}  \u00B7  {c.Protocol}";

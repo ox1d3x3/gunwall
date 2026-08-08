@@ -157,62 +157,93 @@ When I say "this should work", read it as exactly that.
 
 ---
 
-## 5. Specific things worth checking in the current build
+## 5. The standing checklist
 
-This section is rewritten each time a build goes out, and deliberately names no
-version: check it against the top entry of [`CHANGELOG.md`](../CHANGELOG.md),
-which is the authority for what actually changed.
+Copy this. It does not change between builds. Section 6 is the part that does.
 
-**The Overview chart.** Look at the bottom edge of the graph. The `-60s / -45s /
--30s / -15s / now` labels must sit **below** the baseline with the trace clear of
-them. Previously the line was drawn through the digits. Hover the chart too: the
-vertical cursor line should stop at the baseline, not run down over the labels.
+### Every build — 60 seconds
 
-**Connections, with nothing selected.** The inspector panel on the right must be
-there from the moment the screen opens, showing *"Select a connection to inspect
-its full details."* There should be **no wide band of empty ruled rows** to the
-right of `LOCATION`.
+- [ ] It compiles. If not: **first error only**, with file and line.
+- [ ] It starts elevated, tray icon appears, window opens.
+- [ ] Posture module reads **Protected**, engine dot in the top bar is green.
+- [ ] Upload/download counters are moving.
 
-Then select a row. The table must **not jump or reflow** — the inspector was
-already occupying its space. Then drag the window narrower and wider: `LOCATION`
-should grow and shrink to fill, never leaving a gap and never pushing off the
-right edge. At the narrowest window it stops shrinking and truncates instead.
+If any of these fail, stop and report. Nothing below is meaningful yet.
 
-**The connection prompt's bottom row.** Turn the firewall
-on and launch something that has never connected. Watch the strip holding the
-chevron, the hint and the two buttons:
+### Every build — 5 minutes
 
-- The hint must sit **clear of the Block button**, not touching it.
-- Let the countdown run. It should read `Blocks in 18s` (or `Allows in 18s`),
-  counting down, and it should be there **immediately** — not blank for a second,
-  and starting at the full timeout rather than one less.
-- Press the chevron. The countdown stops and the hint becomes `Closing blocks`.
-- If your timeout is set to Never, it reads `Closing blocks` throughout.
+These catch the classes of bug that have actually shipped here. Not one of them
+is hypothetical.
 
-The old text was `Blocks automatically in 18s`, which is nine characters past
-what fits. If you see any hint touching or running under a button, the column
-fix did not take.
+- [ ] **Themes, twice, without restarting.** Dark → light → dark. Watch every
+      status dot, chip and chart line. Anything that goes grey, black or invisible
+      is a `DynamicResource` that got frozen.
+- [ ] **Open a table, hover a row, then select it.** Hover and selection must look
+      different from each other, and text must stay readable in both.
+- [ ] **Column headers.** Every table has them, in both themes.
+- [ ] **A connection prompt.** Trigger one. Nothing overlapping, nothing clipped.
+- [ ] **Ctrl+K.** Palette opens, typing filters, Escape closes.
+- [ ] **Resize the window** from wide to near-minimum. Nothing clips off the right
+      edge, no column leaves a gap. These tables have **no horizontal scrollbar**,
+      so anything lost is lost silently.
 
-**The rest of the prompt.** Expect:
+### Every build — the two states that are easy to skip
 
-- a coloured tile on the left holding a shield
-- the question, with a quieter line beneath it
-- a row with the **application's own icon**, its name, and a signature chip
-- a row with a **country flag** and the address; hovering the flag names the
-  country
-- the chevron still expands to port, reverse DNS, time and full path
+Both were shipped repeatedly without ever being looked at.
 
-A missing flag is expected for a LAN or IPv6 destination, and for any address
-before the GeoIP database is downloaded. A missing app icon is possible for some
-system binaries. Neither should change the layout.
+- [ ] **Empty.** Rules with no custom rules: frame **dashed**, headers still above it.
+- [ ] **No results.** Type nonsense into any filter box. Must look **clearly
+      different** from empty. That distinction is why the table lifecycle is a
+      state machine and not a trigger.
 
-**Windows services buttons.** Both should read in full. Then block one and look
-again — the label becomes "Unblock service", which is longer, and is what the
-column is now sized for.
+### When the interface font changes
 
-**Still not exercised, across several builds:**
+- [ ] Settings → interface font → **Instrument Sans**. Look at a column header.
+      Letter-spacing should **return** and still not clip. The monospace guard is
+      meant to be selective, not simply off.
 
-- **Empty state** — Rules with no custom rules. Frame should be **dashed**.
-- **No results** — nonsense into a filter box; must differ clearly from empty.
-- **Tracking under a proportional font** — switch to Instrument Sans and check a
-  column header. Spacing should **return** and still not clip.
+---
+
+## 6. This build — 0.99.74
+
+### The change
+
+- [ ] **Connections, nothing selected.** No inspector panel. The table uses the
+      full width, `LOCATION` stretched to fill it.
+- [ ] **Select a row.** Panel opens, details appear, `LOCATION` gives up the width.
+- [ ] **Watch it for thirty seconds with a row selected.** The panel must sit
+      still. The list refills every second and deselects transiently as it does;
+      if the panel strobes or flickers, the rebuild guard is not holding.
+- [ ] **Click empty space below the rows.** Panel closes.
+- [ ] **Select a short-lived connection and wait for it to close.** Panel closes
+      by itself once the row stops coming back.
+- [ ] **Resize with a row selected**, then without. `LOCATION` follows in both.
+
+### Still outstanding from 0.99.72 — not yet run
+
+- [ ] **Settings → "Popup stays open for" → 15 seconds.** Then trigger a prompt.
+      Expect `Blocks in 15s`, counting, present immediately, starting at 15.
+      Press the chevron: it stops and reads `Closing blocks`.
+
+      This is the case that was actually broken. Three builds have shipped with it
+      unexercised because the default is **Never**, which never runs the countdown.
+
+### Carried from 0.99.73
+
+- [ ] **Overview chart.** Time labels **below** the baseline, trace clear of the
+      digits. Hover: the cursor line stops at the baseline.
+
+---
+
+## 7. What to send
+
+Full-window screenshots, both themes if the change touches colour. For a layout
+bug, the whole window — a crop hides what the element is being measured against.
+
+Describe what you **see**, not what you think causes it. "The firewall says it is
+off when it is on" led to a bug that turned out to be invisible text; no amount of
+looking at the toggle would have found it.
+
+If a check reported success and the build is still wrong, say so plainly. A check
+that passes on a broken build is a worse problem than the bug, and it is recorded
+in `HANDOVER.md` §2.10 when it happens.

@@ -6,6 +6,32 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.74] — 2026-08-09
+
+### Changed
+- **The Connections inspector collapses again when nothing is selected**, and opens on selection. Reverted at the maintainer's direction; 0.99.73 had made it permanent.
+
+  The reason it was made permanent no longer applies. The empty band it was hiding was never really the panel's fault — it was a fixed last column in a resizable table, and 0.99.73 fixed that separately. With `LOCATION` deriving its width, the table stays full whether the panel is there or not. The panel is free to come and go.
+
+- **The transient deselection is now distinguished from a real one.** This was the actual difficulty, and the reason 0.99.72 never closed the panel at all: `RebuildConnList` clears and refills the list every sample, so the selection drops roughly once a second. Closing on that would strobe.
+
+  `RebuildConnList` now raises `_connRebuilding` in a `try`/`finally` for the duration of the refill. `ConnSelected` ignores a null selection while it is raised; the rebuild decides once, after the refill has settled. A row that does not come back — socket closed, or filtered out — is a real deselection and closes the panel.
+
+  `finally` rather than a plain assignment: an exception mid-refill would otherwise leave the guard raised, and the inspector could never close again for the rest of the session.
+
+### Removed
+- **`InspPlaceholder`**, and the code touching it. A panel that collapses when nothing is selected has no state in which a placeholder can be seen. It was unreachable markup in 0.99.73 — the same defect it was restored to fix, reintroduced by the fix. Deleted rather than left looking like a feature.
+
+### Added
+- Three assertions folded into `last-column`: the `_connRebuilding` guard exists, `RebuildConnList` raises it inside `try`/`finally`, and `ConnSelected` consults it before closing. Each shown to fail on the real defect first.
+
+  Only the guard is checked, because it is the half that is easy to lose. An edit that drops it produces a panel flickering once a second — obvious on screen, invisible to every other check in the suite.
+
+### Docs
+- `TESTING.md` restructured into a standing checklist that does not change between builds, plus a short per-build section that does. Sections 5 and 6.
+
+---
+
 ## [0.99.73] — 2026-08-08
 
 Three defects found by reading the 0.99.72 screenshots rather than by anyone reporting them. Two share a shape with the bug 0.99.72 fixed.

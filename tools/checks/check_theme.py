@@ -768,8 +768,55 @@ def check_table_last_column():
              "no minimum on the derived width - a narrow window would shrink the "
              "column to nothing rather than letting it clip")
 
+    _check_inspector_toggle(xaml, src)
+
     if len(failures) == before:
         notes.append("last-column: ConnList last column derived from the table width")
+
+
+def _check_inspector_toggle(xaml, src):
+    """The inspector closes on a real deselection, not on the transient one.
+
+    The connections list clears and refills every sample, so it deselects roughly
+    once a second. Closing the panel on that would flicker, which is why 0.99.72
+    never closed it at all and 0.99.73 left it permanently open. The correct
+    behaviour needs both halves: close on deselection, but only once the rebuild
+    has settled.
+
+    Only the guard is checked, because that is the half that is easy to lose. A
+    later edit that drops it produces a panel strobing once a second - obvious on
+    screen, invisible to every other check here.
+    """
+    if 'x:Name="InspPlaceholder"' in xaml or "InspPlaceholder" in src:
+        fail("last-column",
+             "InspPlaceholder is back. A panel that collapses when nothing is "
+             "selected has no state in which a placeholder can be seen - it was "
+             "unreachable markup in 0.99.73 and should not return.")
+
+    if not re.search(r"private bool _connRebuilding", src):
+        fail("last-column", "_connRebuilding guard is missing")
+        return
+
+    rb = re.search(r"private void RebuildConnList\(\).*?\n    }\n", src, re.S)
+    if not rb:
+        fail("last-column", "could not locate RebuildConnList")
+        return
+    rb = rb.group(0)
+    if "_connRebuilding = true" not in rb or "finally { _connRebuilding = false; }" not in rb:
+        fail("last-column",
+             "RebuildConnList does not raise _connRebuilding in a try/finally. "
+             "Without finally an exception mid-refill leaves the guard raised and "
+             "the inspector can never close again.")
+
+    cs_ = re.search(r"private void ConnSelected.*?\n    }\n", src, re.S)
+    if not cs_:
+        fail("last-column", "could not locate ConnSelected")
+        return
+    if "_connRebuilding" not in cs_.group(0):
+        fail("last-column",
+             "ConnSelected closes the inspector without consulting "
+             "_connRebuilding - the list deselects transiently every sample, so "
+             "the panel would strobe once a second")
 
 
 def check_version_consistency():

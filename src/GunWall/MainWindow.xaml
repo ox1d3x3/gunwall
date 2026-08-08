@@ -1289,23 +1289,26 @@
                      Collapsed rather than hidden: Visibility="Collapsed" on the
                      Border removes it from layout, so the table takes the width
                      back rather than leaving a gap where the panel used to be. -->
-                <!-- Always present. It used to be Collapsed until a row was picked,
-                     which had two costs: the table ran the full content width with
-                     its columns summing to far less, leaving a wide band of ruled
-                     empty space; and the first selection shrank the table by 350px,
-                     reflowing every column under the pointer. The placeholder below
-                     was written for exactly this state and could never appear -
-                     it was Collapsed in markup and the only line that touched it
-                     collapsed it again. -->
+                <!-- Collapsed until a row is picked, and closed again when the
+                     selection really goes away. "Really" is the whole difficulty:
+                     the list clears and refills every sample, so it deselects
+                     transiently once a second, and closing on that would flicker.
+                     RebuildConnList raises a guard for the duration and decides
+                     once, after the refill has settled - see ConnSelected.
+
+                     There is no empty state INSIDE the panel. A panel that
+                     collapses when nothing is selected has no state in which a
+                     placeholder could be seen; 0.99.73 carried one that was
+                     unreachable in markup, and it has been removed rather than
+                     left to look like a feature.
+
+                     The width the panel takes and gives back is absorbed by the
+                     table's last column, not by the rows clipping. -->
                 <Border x:Name="ConnInspector" Grid.Column="1" Width="340" Margin="12,0,0,0"
+                        Visibility="Collapsed"
                         Style="{StaticResource Card}" Padding="0">
                     <Grid>
-                        <TextBlock x:Name="InspPlaceholder"
-                                   Text="Select a connection to inspect its full details."
-                                   Style="{StaticResource Muted}" TextWrapping="Wrap"
-                                   TextAlignment="Center" HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" Margin="28" />
-                        <ScrollViewer x:Name="InspContent" Visibility="Collapsed"
+                        <ScrollViewer x:Name="InspContent"
                                       VerticalScrollBarVisibility="Auto" Padding="18,16">
                             <StackPanel>
                                 <TextBlock x:Name="InspProcess" Style="{StaticResource H2}" TextWrapping="Wrap" />
