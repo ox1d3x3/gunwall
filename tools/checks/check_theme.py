@@ -237,6 +237,104 @@ def check_dead_keys():
         notes.append(f"dead-key: none ({len(PENDING_TOKENS)} pending tokens allow-listed)")
 
 
+def check_local_calls():
+    """Every bare method call must resolve to something declared in the project.
+
+    This is the gap that shipped 0.99.75. `CollapseConnInspector` was deleted by a
+    block replacement and two call sites were left pointing at nothing. Every
+    check in this file passed: the XAML was well-formed, every x:Name resolved,
+    every XAML event handler had a method. None of them look at C# calling C#.
+
+    `element-ref` below says the Roslyn pass answers this. It does - but the
+    Roslyn pass is the compiler on the maintainer's machine, which is the far side
+    of the loop. Deferring to it is deferring to the thing the check was supposed
+    to run in front of.
+
+    Scope, deliberately narrow: a bare PascalCase call - not `x.Foo(`, not
+    `new Foo(` - must be declared somewhere in the project's .cs files. That
+    catches a deleted or renamed method, which is the actual failure, without
+    needing to resolve types. Anything inherited or attribute-shaped is
+    allow-listed by name, and the list is short enough to read.
+    """
+    import glob as _glob
+    srcs = {f: Path(f).read_text(encoding="utf-8")
+            for f in _glob.glob(str(APP / "**" / "*.cs"), recursive=True)}
+    if not srcs:
+        fail("local-call", "no .cs files found")
+        return
+
+    def strip(t):
+        t = re.sub(r'@"(?:[^"]|"")*"', '""', t)
+        t = re.sub(r'"(?:\\.|[^"\\])*"', '""', t)
+        t = re.sub(r"//[^\n]*", "", t)
+        return re.sub(r"/\*.*?\*/", "", t, flags=re.S)
+
+    declared = set()
+    for t in srcs.values():
+        for m in re.finditer(
+                r"(?:^|[;{}\)]\s*)(?:\[[^\]]*\]\s*)*"
+                r"(?:(?:public|private|protected|internal|static|async|override|virtual"
+                r"|sealed|new|partial|extern|unsafe|readonly)\s+)*"
+                # The return type: at least one NON-SPACE token, then mandatory
+                # whitespace before the name. The first version of this allowed the
+                # type to be whitespace only, so ") CollapseConnInspector(" parsed
+                # as a declaration with a blank return type - every call site
+                # registered itself as its own definition, and the check passed on
+                # the exact deletion it was written for. Third time this session.
+                r"[\w<>\[\],\.\?]+[\w<>\[\],\.\?\s]*\s+"
+                r"(\w+)\s*(?:<[^(){};=]*>)?\s*\(", strip(t)):
+            declared.add(m.group(1))
+
+        # Tuple return types - "(ulong h1, ulong h2) Hash(" - which the pattern
+        # above cannot see, because allowing parentheses in a return type would let
+        # it match call sites again. A separate, tighter pattern instead: an access
+        # modifier, a parenthesised type, then the name.
+        for m in re.finditer(
+                r"(?:public|private|protected|internal)\s+"
+                r"(?:(?:static|async|override|virtual|sealed|new|readonly|partial)\s+)*"
+                r"\([^()]*\)\s+(\w+)\s*(?:<[^(){};=]*>)?\s*\(", strip(t)):
+            declared.add(m.group(1))
+
+    KEYWORDS = {
+        "if", "while", "for", "foreach", "switch", "catch", "lock", "using", "return",
+        "fixed", "do", "else", "when", "nameof", "typeof", "sizeof", "default",
+        "checked", "unchecked", "stackalloc", "await", "throw", "is", "as", "not",
+        "get", "set", "value", "var", "yield",
+    }
+    # Names that resolve without being declared in this project. Grouped by REASON,
+    # not collected ad hoc: an allow-list that grows one name at a time is how a
+    # check quietly stops failing. Anything that does not fit one of these three
+    # categories is a finding, not an entry.
+    ALLOWED = (
+        # 1. Instance members inherited from Window / FrameworkElement / Control,
+        #    called unqualified from a code-behind class that derives from them.
+        {"Activate", "BeginAnimation", "Close", "DragMove", "FindResource",
+         "TryFindResource", "Hide", "Show", "InitializeComponent"}
+        # 2. Attribute constructors, which are syntactically calls.
+        | {"DllImport", "FieldOffset", "MarshalAs", "StructLayout"}
+        # 3. Generic BCL types whose construction spans a line break, so the
+        #    "not preceded by new" guard cannot see the new.
+        | {"HashSet", "IReadOnlyDictionary"}
+    )
+
+    unresolved = {}
+    for f, t in srcs.items():
+        for m in re.finditer(r"(?<![\w\.])(?<!new\s)([A-Z]\w*)\s*(?:<[^(){};]*>)?\s*\(",
+                             strip(t)):
+            n = m.group(1)
+            if n in KEYWORDS or n in ALLOWED or n in declared:
+                continue
+            unresolved.setdefault(n, set()).add(Path(f).name)
+
+    for n, files in sorted(unresolved.items()):
+        fail("local-call",
+             f"'{n}' is called in {', '.join(sorted(files))} but declared nowhere "
+             "in the project - this is CS0103 waiting for the next build")
+
+    if not unresolved:
+        notes.append(f"local-call: {len(declared)} declarations, every bare call resolves")
+
+
 def check_element_references():
     """Deliberately not implemented here - see the note below.
 
@@ -258,7 +356,8 @@ def check_element_references():
     exist is CS0103, and CS0103 outside a .xaml.cs file is always real. This
     function stays as a marker so the gap is visible rather than forgotten.
     """
-    notes.append("element-ref: not checked here - covered by the Roslyn pass (CS0103)")
+    notes.append("element-ref: element identifiers still need the compiler; "
+                 "bare method calls are covered by local-call above")
 
 
 def check_binding_override():
@@ -834,6 +933,81 @@ def _check_inspector_toggle(xaml, src):
              "the panel would strobe once a second")
 
 
+def check_header_fit():
+    """Every fixed-width table column must be wide enough for its own header.
+
+    `DESTINATIONS` in the Traffic apps table was 110px against a header needing
+    108. The final S was cut mid-glyph - `DESTINATION` with a sliver - which is
+    the LOCATIO failure again in a different table: a header clipped by the column
+    boundary rather than trimmed by its own TextBlock, so TextTrimming never
+    engages and there is no ellipsis to warn you.
+
+    The first version of this scan found nothing, because it used 0.600em per
+    character - the raw font advance. Headers carry `Tracking.Em="0.10"` on top of
+    that, so the true cost is 0.700em, and twelve characters of it is 8px more
+    than the guess. **Every number below is read** - font size, tracking and
+    padding out of the header style, the advance out of the TTF. That is the
+    difference between this check and the one that passed on a clipping header.
+    """
+    before = len(failures)
+    ctrls = SHARED.read_text(encoding="utf-8")
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+
+    style = re.search(r'<Style TargetType="GridViewColumnHeader">.*?</Style>', ctrls, re.S)
+    if not style:
+        fail("header-fit", "no GridViewColumnHeader style found")
+        return
+    style = style.group(0)
+
+    def one(pat, what):
+        m = re.findall(pat, style)
+        if len(m) != 1:
+            fail("header-fit", f"expected 1 {what} in the header style, found {len(m)}")
+            return None
+        return m[0]
+
+    fs = one(r'<Setter Property="FontSize" Value="([\d.]+)" />', "FontSize")
+    pad = one(r'Padding="([\d.]+),[\d.]+,([\d.]+),[\d.]+"', "Padding")
+    track = one(r'gw:Tracking\.Em="([\d.]+)"', "Tracking.Em")
+    if None in (fs, pad, track):
+        return
+
+    font = APP / "Fonts" / "JetBrainsMonoNerdFont-SemiBold.ttf"
+    if not font.exists():
+        font = APP / "Fonts" / "JetBrainsMonoNerdFont-Regular.ttf"
+    try:
+        adv, upm = _ttf_advance(font, ord("W"))
+    except Exception as ex:
+        fail("header-fit", f"could not read advance from {font.name}: {ex}")
+        return
+
+    per = float(fs) * (adv / upm + float(track))
+    padding = float(pad[0]) + float(pad[1])
+
+    # A header that only just fits is a header that clips on the next font or
+    # padding change. DESTINATIONS had 1.8px and was already cut.
+    MARGIN = 6.0
+
+    worst = None
+    for m in re.finditer(r'<GridViewColumn Header="([^"]+)"\s+Width="([\d.]+)"', xaml):
+        head, width = m.group(1), float(m.group(2))
+        need = len(head) * per + padding
+        slack = width - need
+        if worst is None or slack < worst[0]:
+            worst = (slack, head, width, need)
+        if slack < MARGIN:
+            line = xaml[:m.start()].count("\n") + 1
+            fail("header-fit",
+                 f'MainWindow.xaml:{line} header "{head}" needs {need:.0f}px but its '
+                 f"column is {width:.0f} ({slack:.1f}px slack, {MARGIN:.0f} required) - "
+                 "the column boundary cuts it mid-glyph, and TextTrimming cannot "
+                 "reach a header that believes it has room")
+
+    if len(failures) == before and worst:
+        notes.append(f"header-fit: {per:.2f}px/char incl. {track}em tracking; "
+                     f'tightest is "{worst[1]}" with {worst[0]:.0f}px spare')
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -866,6 +1040,7 @@ def main():
     check_duplicate_names()
     check_colour_home()
     check_dead_keys()
+    check_local_calls()
     check_element_references()
     check_binding_override()
     check_font_families()
@@ -873,6 +1048,7 @@ def main():
     check_hint_width()
     check_graph_axis()
     check_table_last_column()
+    check_header_fit()
     check_version_consistency()
 
     for n in notes:

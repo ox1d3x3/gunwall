@@ -331,7 +331,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.75 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.77 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3095,6 +3095,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 + "the overflow will be cut by the scroll area, not trimmed.");
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("ConnList_SizeChanged", ex); }
+    }
+
+    /// <summary>Closes the inspector. The panel is the only switch - there is no
+    /// empty state inside it, because a panel that collapses when nothing is
+    /// selected has no state in which a placeholder could ever be seen. 0.99.73
+    /// kept one and it was unreachable; it is gone rather than left to look like
+    /// a feature.</summary>
+    private void CollapseConnInspector()
+    {
+        if (ConnInspector != null) ConnInspector.Visibility = Visibility.Collapsed;
     }
 
     private void ConnSelected(object sender, SelectionChangedEventArgs e)

@@ -6,6 +6,58 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.77] — 2026-08-09
+
+0.99.76 verified on hardware: Traffic renders its two sections, Connections shows `LOCATION` in full with the inspector open, diagnostics report zero errors across 458 sample ticks and 136/136 filters present. One new defect found in the same screenshots.
+
+### Fixed
+- **`DESTINATIONS` in the Traffic apps table was cut mid-glyph.** 110px column against a header needing 108. The final S rendered as a sliver.
+
+  Same failure as `LOCATIO`: a header clipped by the column boundary rather than trimmed by its own `TextBlock`, so `TextTrimming` never engages and there is no ellipsis to warn anyone. Widened to 124. `COUNTRIES` beside it had 3.9px of slack and went to 100.
+
+### Added
+- **A `header-fit` check** — every fixed-width column must be wider than its own header, with 6px to spare.
+
+  **The first version of this scan reported nothing wrong on a visibly clipping header.** It used 0.600em per character, the raw font advance. Headers carry `Tracking.Em="0.10"` on top of that, so the real cost is 0.700em — twelve characters of it is 8px more than the guess, which is the entire margin.
+
+  Every number is now read: font size, tracking and padding out of the `GridViewColumnHeader` style, the glyph advance out of the TTF. Shown to fail both on the width that shipped and on a changed tracking value, the second confirming the metric is genuinely read rather than baked in.
+
+  This is the fourth check this session to pass on the defect it was written for. The pattern holds: **a check's first green result is not evidence.** What makes it evidence is running it against the real defect.
+
+### Notes — three things that look like defects and are not
+- **The VirusTotal column is empty** because no API key is set (`VirusTotalApiKey` is blank in the config). Working as configured.
+- **The metering banner** reads correctly: `EtwMeterEnabled=False`, so per-app byte counts are derived. The banner says exactly that.
+- **The countdown still cannot be tested**: `PopupTimeoutSeconds` is 0, which is "Never". The countdown never runs at that setting, which is why five builds have now shipped without it being exercised once.
+
+---
+
+## [0.99.76] — 2026-08-09
+
+### Fixed
+- **`CS0103`: `CollapseConnInspector` did not exist.** 0.99.75 deleted it and left two call sites. Restored.
+
+  How it happened is the part worth keeping. The edit replaced a block between two anchors and asserted `old.count("private void") == 2` first. The count was right — and the two were `CollapseConnInspector` and `ConnList_SizeChanged`. The replacement restored only the second.
+
+  **The assertion checked a quantity, not an identity.** Two methods of the right shape is not the same as the two that were meant, so a correct-looking guard passed on a wrong edit. Recorded as trap 2.15.
+
+### Added
+- **A `local-call` check** — every bare PascalCase call must resolve to a declaration somewhere in the project. The first check here that looks at C# calling C# rather than XAML.
+
+  Shown to fail on three shapes: the deletion that shipped, a rename with callers left behind, and a rename in another file. Clean baseline: 819 declarations, every call resolves.
+
+- The `element-ref` note has been corrected. It said the gap was covered by the Roslyn pass, which is true and useless — the Roslyn pass is the compiler on the maintainer's machine, the far side of the loop this suite runs in front of. Recorded as trap 2.16.
+
+### Note — this check also passed on the bug it was written for, twice
+The first version's declaration pattern allowed the return type to be whitespace, so `) CollapseConnInspector(` parsed as a declaration with a blank return type. **Every call site registered itself as its own definition.** It reported "981 declarations, every bare call resolves" on a tree with the method deleted.
+
+Caught only by running it against the real defect. That is the third check this session to pass without testing anything — after `hint-width` measuring a 19-character fragment, and both 0.99.73 checks printing `ok` beside their own `FAIL`.
+
+The pattern is consistent enough to name: **a new check's first result is not evidence.** What makes it evidence is the falsification run, and it has earned its place in the working agreements rather than being one of them by convention.
+
+The second version then missed four real methods with tuple return types — `(ulong h1, ulong h2) Hash(` — because parentheses could not be allowed in the return type without matching call sites again. A separate, tighter pattern handles those.
+
+---
+
 ## [0.99.75] — 2026-08-09
 
 Both defects found by reading screenshots sent with "no error found". One of them was mine, from two releases ago.

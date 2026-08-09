@@ -204,6 +204,34 @@ bypassed looks exactly like no band.
 
 **Check:** `graph-axis`.
 
+### 2.15 An anchor assertion that counts instead of identifying
+
+0.99.75 replaced a block of `MainWindow.xaml.cs` between two anchors and asserted
+`old.count("private void") == 2` before doing it. The count was correct. The two
+methods were `CollapseConnInspector` and `ConnList_SizeChanged`, the replacement
+text only restored the second, and the first was deleted with two live call sites
+still pointing at it. `CS0103`, on the maintainer's machine, after a download.
+
+The uniqueness discipline was followed. The assertion still passed on a wrong
+edit, because **it checked a quantity rather than an identity**. Two of the right
+shape is not the same as the two that were meant.
+
+**Rule:** an assertion before a block replacement must name what is being removed
+and confirm the replacement puts each of them back. `count(...) == n` is not that.
+
+**Check:** `local-call` — every bare PascalCase call must resolve to a declaration
+somewhere in the project. It is the first check here that looks at C# calling C#.
+
+### 2.16 A gap documented as covered by something outside the loop
+
+`element-ref` had a careful note saying the Roslyn pass answers it, since a
+missing element is `CS0103`. True — and the Roslyn pass is the compiler on the
+maintainer's machine, which is the far side of the loop the check exists to run in
+front of. A gap deferred to the build is a gap, described politely.
+
+**Rule:** "covered elsewhere" is only coverage if the elsewhere runs before the
+handover. Otherwise say it is not covered.
+
 ---
 
 ## 3. Working agreements

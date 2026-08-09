@@ -1544,8 +1544,8 @@
                                 <ListView.View>
                                     <GridView>
                                         <GridViewColumn Header="APPLICATION" Width="210" DisplayMemberBinding="{Binding Name}" />
-                                        <GridViewColumn Header="DESTINATIONS" Width="110" DisplayMemberBinding="{Binding Count}" />
-                                        <GridViewColumn Header="COUNTRIES" Width="90" DisplayMemberBinding="{Binding Countries}" />
+                                        <GridViewColumn Header="DESTINATIONS" Width="124" DisplayMemberBinding="{Binding Count}" />
+                                        <GridViewColumn Header="COUNTRIES" Width="100" DisplayMemberBinding="{Binding Countries}" />
                                     </GridView>
                                 </ListView.View>
                             </ListView>

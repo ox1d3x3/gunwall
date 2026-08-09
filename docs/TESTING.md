@@ -204,19 +204,15 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.75
+## 6. This build — 0.99.77
 
-- [ ] **Connections, select a row.** The `LOCATION` header must read **`LOCATION`**,
-      not `LOCATIO`. Nothing anywhere may be cut mid-letter — a value that runs out
-      of room must end in `...`.
-- [ ] **Drag the window narrow with a row selected.** Columns should tighten
-      together and everything keep ending in `...`. Nothing slides off the right.
-- [ ] **Close the inspector.** Columns return to their full widths, `LOCATION`
-      stretches to fill.
-- [ ] **Traffic.** `TOP COUNTRIES` and `MOST ACTIVE APPS` must show their lists, or
-      their empty-state message. Never a bare label over blank space.
-- [ ] **Traffic, short window.** The page scrolls now. The bottom card must not be
-      cut off by the window edge.
+Everything from 0.99.76 passed on hardware. This build changes two column widths
+on one screen, so the run is short.
+
+- [ ] **Traffic → MOST ACTIVE APPS.** The header must read `DESTINATIONS` in full,
+      with the final S intact, and `COUNTRIES` beside it likewise. Nothing cut
+      mid-letter.
+- [ ] **Traffic → TOP COUNTRIES** unchanged: still lists countries with counts.
 
 ### Still outstanding — four builds now
 
