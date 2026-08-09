@@ -32,6 +32,7 @@ The lesson both encode: verifying that a value CHANGED says nothing about what
 is still READING somewhere else.
 """
 
+import collections
 import re
 import sys
 from pathlib import Path
@@ -1063,6 +1064,211 @@ def _check_combo_fit(xaml, per_char_base):
                  f'"{longest}" needs {need:.0f} - the text is cut, not ellipsised')
 
 
+def check_preset_protocols():
+    """No system-rule preset may name a protocol the engine cannot express.
+
+    The engine turns a preset's Protocol string into an IP_PROTOCOL condition. A
+    value it does not recognise yields **no condition at all**, and a filter with
+    no protocol condition matches every protocol on its ports. So an unrecognised
+    protocol does not fail - it silently WIDENS the rule, and on an allow preset
+    at weight 0x0B that is a permit for everything.
+
+    This is the same shape as trap 2.4: a value that resolves to nothing rather
+    than to an error, so the failure looks like success. It is checked here
+    because both halves live in this repository - the vocabulary the engine
+    accepts, and every string the catalogue asks for.
+
+    Also asserts that a preset with no ports carries a protocol, because a permit
+    with neither is a permit for everything outbound.
+    """
+    before = len(failures)
+    engine = (APP / "Services" / "Wfp" / "WfpEngine.cs").read_text(encoding="utf-8")
+    cat = (APP / "Models" / "SystemRuleCatalog.cs").read_text(encoding="utf-8")
+
+    sw = re.search(r"byte\?\s+proto\s*=\s*protocol\?\.ToUpperInvariant\(\)\s*switch\s*\{(.*?)\};",
+                   engine, re.S)
+    if not sw:
+        fail("preset-protocol", "could not read the engine's protocol mapping")
+        return
+    sw = sw.group(1)
+
+    names = set(re.findall(r'"(\w+)"\s*=>', sw))
+    numeric_ok = "byte.TryParse" in sw
+
+    for m in re.finditer(
+            r'new\("(\w+)",\s*"((?:[^"\\]|\\.)*)".*?"(allow|block)",\s*'
+            r'(?:true|false),\s*(?:true|false),\s*"\w+",\s*"(\w+)",\s*'
+            r'(new\[\]\{[\d,\s]*\}|System\.Array\.Empty<int>\(\))\)', cat, re.S):
+        key, name, category, proto, ports = m.groups()
+        has_ports = "Empty" not in ports and re.search(r"\d", ports)
+
+        if proto not in names and proto != "Any":
+            if not (proto.isdigit() and numeric_ok and 0 < int(proto) < 256):
+                fail("preset-protocol",
+                     f'preset "{key}" asks for protocol "{proto}", which the engine '
+                     "does not map. It would not error - it would drop the protocol "
+                     "condition and permit EVERY protocol on those ports.")
+                continue
+
+        if not has_ports and proto == "Any":
+            special = re.search(rf'new\("{key}",.*?"(?:allow|block)",\s*(true|false)', cat, re.S)
+            if special and special.group(1) == "false":
+                fail("preset-protocol",
+                     f'preset "{key}" has neither ports nor a protocol and is not '
+                     "marked Special - that is a filter with no conditions at all")
+
+    _check_v4_v6_parity(engine)
+
+    if len(failures) == before:
+        vocab = ", ".join(sorted(names)) + (", plus raw numbers" if numeric_ok else "")
+        notes.append(f"preset-protocol: every preset expressible; engine accepts {vocab}")
+
+
+def _check_v4_v6_parity(engine):
+    """A rule path that adds a v4 layer must add the matching v6 layer.
+
+    `AddServiceRule` added only v4 while every other path in the same file added
+    both, so every port/protocol preset was IPv4-only. `Block file sharing (SMB,
+    port 445)` did not block SMB over IPv6 - and unlike a rule that fails to
+    apply, it looked applied, because the v4 half worked.
+
+    Checked structurally rather than by counting: within each rule-building
+    method, a v4 ALE layer with no v6 counterpart is the defect. Counting
+    occurrences file-wide would pass as soon as any method mentioned v6, which is
+    exactly how this survived - the file already said `..._V6` eleven times.
+    """
+    for m in re.finditer(r"\n    (?:public|private)[^\n]*?\b(\w+)\([^)]*\)\s*\n?\s*\{", engine):
+        name = m.group(1)
+        start = m.end()
+        depth, end = 1, start
+        for i in range(start, len(engine)):
+            if engine[i] == "{":
+                depth += 1
+            elif engine[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        body = engine[start:end]
+
+        # COUNTS, not set membership. The first version compared the set of layer
+        # names in the method, which proves only that a v6 layer is mentioned
+        # somewhere in it - so removing one of two v4/v6 pairs left the sets equal
+        # and the check passed on the real defect. This docstring already warned
+        # that file-wide counting was too coarse; the same mistake at method scope
+        # is no better.
+        v4 = collections.Counter(re.findall(r"(FWPM_LAYER_\w+)_V4", body))
+        v6 = collections.Counter(re.findall(r"(FWPM_LAYER_\w+)_V6", body))
+
+        # Two exemptions, both by REASON rather than by name, so a new method
+        # cannot inherit one by being called something similar:
+        #
+        #  - it guards on AddressFamily.InterNetwork, so it only ever handles an
+        #    IPv4 literal and a v6 layer would have nothing to match on;
+        #  - it is a probe rather than a rule path, adding a filter only to prove
+        #    the removal path works.
+        if "AddressFamily.InterNetwork" in body:
+            continue
+        if "recovery" in body.lower() and "delete" in body.lower():
+            continue
+        if "SelfTest" in name or "Probe" in name or "Layers" in name:
+            continue
+
+        # A switch of independent rules must be checked case by case. Counted
+        # whole, AddSystemRule hides a gap: it holds v6-only rules (Block IPv6)
+        # whose surplus absorbs a missing v6 elsewhere, so deleting block_rdp_in's
+        # v6 filter left the method total balanced and the check quiet. Each case
+        # label is its own rule and gets its own count.
+        segments = [(name, body)]
+        cases = re.split(r'\n\s+case\s+"([^"]+)":', body)
+        if len(cases) > 1:
+            segments = [(f"{name}/{cases[i]}", cases[i + 1])
+                        for i in range(1, len(cases) - 1, 2)]
+
+        for label, seg in segments:
+            s4 = collections.Counter(re.findall(r"(FWPM_LAYER_\w+)_V4", seg))
+            s6 = collections.Counter(re.findall(r"(FWPM_LAYER_\w+)_V6", seg))
+            for layer, n4 in s4.items():
+                n6 = s6.get(layer, 0)
+                # Only an UNPAIRED V4 is the defect. More v6 than v4 is deliberate -
+                # "Block IPv6" adds a v6 filter with no v4 counterpart on purpose.
+                # Requiring equality flagged two correct methods, which is how a
+                # check earns the right to be ignored.
+                if n4 > n6:
+                    fail("preset-protocol",
+                         f"{label} adds {layer}_V4 {n4}x but {layer}_V6 only {n6}x - "
+                         "the unpaired v4 covers IPv4 only while appearing applied")
+
+
+def check_reset_path():
+    """The reset must delete filters before the sublayer, and clear the store.
+
+    0.99.79 went straight to FwpmSubLayerDeleteByKey0. WFP does not cascade, so
+    it returned FWP_E_IN_USE (0x8032000A) while filters still referenced the
+    sublayer - and the throw happened BEFORE the store was cleared, so the reset
+    aborted with both the kernel filters and the saved rules intact. The button
+    says "run this before uninstalling".
+
+    Two things are asserted, plus the precondition of the fix:
+
+    1. The manager deletes tracked filters before calling into the engine.
+    2. The engine treats FWP_E_IN_USE as a reported outcome, not an exception.
+    3. Every `ulong` in the persisted model is a filter id - which is what makes
+       collecting them by walking the object graph safe. If a non-filter ulong is
+       ever added to the store, the sweep would hand it to FwpmFilterDeleteById0
+       as though it were a filter. That is a silent, wrong deletion, so it is
+       checked rather than left in a comment.
+    """
+    before = len(failures)
+    mgr = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+    eng = (APP / "Services" / "Wfp" / "WfpEngine.cs").read_text(encoding="utf-8")
+    store = (APP / "Services" / "RuleStore.cs").read_text(encoding="utf-8")
+    models = (APP / "Models" / "Models.cs").read_text(encoding="utf-8")
+
+    body = re.search(r"public bool RemoveAllFiltering\(\).*?\n    \}", mgr, re.S)
+    if not body:
+        fail("reset-path", "FirewallManager.RemoveAllFiltering not found, or no longer "
+                           "returns a status the UI can report")
+        return
+    body = body.group(0)
+
+    del_at = body.find("RemoveFilters")
+    sub_at = body.find("_engine.RemoveAllFiltering")
+    if del_at < 0:
+        fail("reset-path", "the reset never deletes tracked filters - the sublayer "
+                           "delete will fail with FWP_E_IN_USE")
+    elif sub_at < 0 or del_at > sub_at:
+        fail("reset-path", "the sublayer is deleted before the filters that reference "
+                           "it; WFP refuses that with FWP_E_IN_USE")
+
+    clear_at = body.find("new StoreData()")
+    if clear_at < 0 or clear_at < sub_at:
+        fail("reset-path", "the store is not cleared after the kernel work - an "
+                           "exception in between leaves the saved rules behind")
+
+    eng_body = re.search(r"public bool RemoveAllFiltering\(\).*?\n    \}", eng, re.S)
+    if not eng_body:
+        fail("reset-path", "WfpEngine.RemoveAllFiltering not found or does not report "
+                           "whether the sublayer went away")
+    elif "0x8032000A" not in eng_body.group(0):
+        fail("reset-path", "the engine does not handle FWP_E_IN_USE (0x8032000A). An "
+                           "orphaned filter would throw a raw WFP code at the user and "
+                           "abort the reset.")
+
+    # Precondition for walking the graph: no ulong may mean anything but a filter id.
+    for path, text in (("RuleStore.cs", store), ("Models.cs", models)):
+        for m in re.finditer(r"public\s+([\w<>,\s]*?ulong[\w<>,\s]*?)\s+(\w+)\s*\{", text):
+            typ = " ".join(m.group(1).split())
+            if typ not in ("List<ulong>", "Dictionary<string, List<ulong>>"):
+                fail("reset-path",
+                     f"{path}: '{m.group(2)}' is {typ}. The reset collects every ulong "
+                     "in the store as a filter id; a ulong that is not one would be "
+                     "passed to FwpmFilterDeleteById0 as though it were.")
+
+    if len(failures) == before:
+        notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -1104,6 +1310,8 @@ def main():
     check_graph_axis()
     check_table_last_column()
     check_header_fit()
+    check_preset_protocols()
+    check_reset_path()
     check_version_consistency()
 
     for n in notes:

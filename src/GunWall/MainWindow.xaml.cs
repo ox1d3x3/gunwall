@@ -331,7 +331,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.78 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.81 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5893,11 +5893,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         try
         {
-            _firewall.RemoveAllFiltering();
+            bool complete = _firewall.RemoveAllFiltering();
             SyncLockdownButton();
             RebuildAppsList();
-            MessageBox.Show("All GunWall filtering removed.", "GunWall",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(
+                complete
+                    ? "All GunWall filtering removed."
+                    : "GunWall's own filters and saved rules are gone.\n\n"
+                      + "Some filters in GunWall's sublayer were not created by this "
+                      + "installation - left over from a crash or an earlier copy - so "
+                      + "the sublayer itself was kept. They are inactive without rules "
+                      + "behind them, and a restart clears any that were not persistent.",
+                "GunWall", MessageBoxButton.OK,
+                complete ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
         catch (Exception ex)
         {

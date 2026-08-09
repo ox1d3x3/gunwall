@@ -6,6 +6,78 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.81] — 2026-08-09
+
+### Fixed
+- **Reset firewall failed with a raw WFP error and left the machine armed.** Reported on 0.99.79: `FwpmSubLayerDeleteByKey0 failed with code 0x8032000A`.
+
+  `0x8032000A` is `FWP_E_IN_USE` — *the object is referenced by other objects, so it cannot be deleted*. WFP does not cascade: the sublayer delete refuses while any filter still references it. The code went straight to that call, and its comment claimed it removed "every filter inside it", which is the one thing the call will not do.
+
+  **The consequence was worse than the dialog.** The exception fired *before* `_data = new StoreData()`, so the reset aborted with the kernel filters AND the saved rules intact — from a button captioned "Run this before uninstalling". Anyone who saw that error, clicked OK and uninstalled would have been left with a machine still filtering traffic and nothing installed to manage it.
+
+  Now: every tracked filter is deleted first, then the sublayer is attempted, then the store is cleared. `FWP_E_IN_USE` is a reported outcome rather than an exception, because by that point everything known has already gone and what remains is an orphan from a crash or an older copy. The dialog says which of the two happened instead of always claiming success.
+
+- **The filter ids are gathered by walking the store, not by listing the collections.** There are ten of them — lockdown, strict, self, blocklist, system rules, scopes, blocklist WFP filters, entity reactive, blocked services, plus the per-rule lists on two rule types. A reset that forgets one leaves filters behind and fails in exactly the same way, and a hand-written list is a thing to forget. A walk cannot, and it picks up any collection added later without this method being touched.
+
+### Added
+- `reset-path`: asserts filters are deleted before the sublayer, that the store is cleared after the kernel work, and that `FWP_E_IN_USE` is handled. It also asserts the **precondition of the walk** — that every `ulong` in the persisted model is a filter id. If a non-filter `ulong` is ever added to the store, the sweep would hand it to `FwpmFilterDeleteById0` as though it were a filter, so that is checked rather than trusted to a comment. Shown to fail on all three.
+
+### Note — the error code was verified, not recalled
+`0x8032000A` was looked up rather than remembered, per the working agreement on WFP constants. Three neighbouring codes were already defined in the repository and consecutive, which made the inference easy and would have been enough to be wrong quietly. Recorded as trap 2.17: a comment on an interop call must state what the call does, not what the caller wanted.
+
+---
+
+## [0.99.80] — 2026-08-09
+
+Back to the roadmap: **quick rule toggles**, the one remaining ☐ item in kernel hardening that did not need a privilege split first. Building it surfaced two defects in the filter path.
+
+### Added
+- **Four new entries in the system-rule library.** `Windows Update` (Delivery Optimization TCP 7680, WSUS 8530/8531), `Windows Update peer discovery` (UDP 7680), `Teredo` (UDP 3544) and `6to4 / ISATAP` (IP protocol 41).
+
+  These are `allow` presets, so they sit at weight `0x0B` — above per-app rules and the zero-trust baseline. That is what the allow category is for and also what it costs: the permit applies to every process, not just the one that needed it. The Windows Update description says so outright, and points at allowing the svchost service instead, because a permit the reader does not understand is worse than no permit.
+
+### Fixed
+- **The engine could not express a protocol other than TCP or UDP, and failed open when asked.** The mapping fell through to `null` for anything unrecognised — and a null protocol means *no protocol condition*, so the filter matches every protocol on its ports. A preset asking for `41` would not have errored; it would have quietly become a permit for everything.
+
+  Raw IP protocol numbers are now accepted, which is what 6to4 and ISATAP need — they ride directly on IPv4 as protocol 41 with no port of their own.
+
+- **Every port/protocol system rule was IPv4-only.** `AddServiceRule` and `AddPortBlock` added v4 layers and no v6, while every other rule path in the same file — per-app filters, the special presets, custom rules — added both.
+
+  So `Block file sharing (SMB, port 445)` did not block SMB over IPv6. Nor did `Block NetBIOS`, `Block Telnet`, or `Block inbound Remote Desktop`. **A block that covers half the stack is worse than no block, because it is believed.** All now cover both families; expect the filter count to rise accordingly.
+
+### Added — checks
+- `preset-protocol`: no preset may name a protocol the engine cannot express, and no rule path may add a v4 layer without its v6 counterpart. Shown to fail on the reverted engine mapping, an invented protocol name, and each of the three v6 removals.
+
+### Note — the fifth check this session to pass on its own defect
+The v6 half compared the *set* of layer names within a method. Removing one of two `CONNECT_V6` adds from `AddServiceRule` left another in the fallback branch, the sets stayed equal, and it passed.
+
+Its own docstring warned that counting file-wide would be too coarse "as soon as any method mentioned v6" — and I then made exactly that mistake one scope down. Counting fixed it, but equality then flagged two correct methods, because a v6-only rule like `Block IPv6` legitimately has no v4 pair; only an *unpaired v4* is a defect. And counting per method still hid a third case, since `AddSystemRule` is a switch of independent rules whose v6 surplus absorbed a v6 deletion elsewhere. It now splits on case labels and counts each rule separately.
+
+Four versions of one check. Every one of them looked right, and each was found only by running it against the real defect — which is now five for five this session.
+
+---
+
+## [0.99.79] — 2026-08-09
+
+0.99.78 verified: all six dropdowns read in full, `Never (recommended)` included. Diagnostics clean — 0 errors, 144/144 filters, 22/22 kernel layers accepted, ETW metering now live so Traffic reports measured rather than estimated bytes.
+
+### Fixed
+- **The DNS query log's empty state described a mechanism that does not fill it.** It read *"Lookups appear here once GunWall observes them."*
+
+  GunWall was observing: 1,181 DNS events, 472 answers, 204 names known. The log stayed empty anyway, because it lists queries **sent to the resolver on 127.0.0.1**, and the passive ETW observer is a different path entirely. Two mechanisms, one of them named in a message about the other.
+
+  The maintainer read that text, saw observation working and the log empty, and reported a bug. There was no bug — the empty state was describing the wrong half of the feature. It now names the resolver path explicitly and says what to change to route lookups through it.
+
+### Notes — two reports from this session, neither a defect
+
+**DNS query log empty.** `receivedV4=0, receivedV6=0` — the resolver is listening on `127.0.0.1:53` and `[::1]:53` and has received nothing. `network.txt` shows why: the Ethernet adapter's DNS is `fdd7:fc08:57bb::1` and PIA's is `1.1.1.1`. Nothing on the machine points at 127.0.0.1, and the resolver never redirects traffic to itself by design. Working correctly; the message describing it was not.
+
+**GitHub push still failing.** Not GunWall, on this evidence. All four git binaries carry Status=Allowed with four kernel filters each installed (`git-remote-https` holds 2387828–31). No custom rules, no IP blocklist, no system rules, and none of the six `Blocked domain enforced` entries mentions GitHub. The stale `app-3.5.12` GitHubDesktop entry has no filters and points at a path that no longer exists after the 3.6.3 update — inert, not a block.
+
+**A consequence worth knowing about, though.** `Blocked domain enforced: static.cloudflareinsights.com -> 104.16.79.73` is a *shared* Cloudflare address. With "Watch system DNS lookups" on and a 99,557-domain preset loaded, blocking a tracker that resolves to a shared CDN IP kernel-blocks that IP for every other service behind it. GitHub's own range (140.82.x) is not shared, so it does not explain this failure — but it is a real collateral risk of enforcing domain blocks at the IP layer, and it will eventually bite something.
+
+---
+
 ## [0.99.78] — 2026-08-09
 
 0.99.77 verified. The countdown ran for the first time — `Blocks in 12s`, clear of the Block button, five builds after it was fixed. `DESTINATIONS` and `COUNTRIES` render in full. Diagnostics: 0 errors, 148/148 filters present.

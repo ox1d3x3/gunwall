@@ -1816,7 +1816,7 @@
                     <Border Grid.Column="0" Padding="0" Margin="0,0,8,0">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="QUERY LOG" Style="{StaticResource SectionLabel}" Margin="4,2,0,8" />
-                            <ListView x:Name="DnsLog" gw:Table.EmptyTitle="No DNS queries seen" gw:Table.EmptyText="Lookups appear here once GunWall observes them." BorderThickness="0" Background="Transparent"
+                            <ListView x:Name="DnsLog" gw:Table.EmptyTitle="Nothing is using this resolver yet" gw:Table.EmptyText="This log fills only with lookups sent to 127.0.0.1. Set an adapter's DNS server to 127.0.0.1 to route them here - 'Watch system DNS lookups' does not fill this log." BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.

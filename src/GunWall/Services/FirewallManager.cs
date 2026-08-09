@@ -688,11 +688,83 @@ public sealed class FirewallManager : IDisposable
     /// Removes every GunWall filter from the system and clears all saved
     /// rules. Use before uninstalling or to fully reset.
     /// </summary>
-    public void RemoveAllFiltering()
+    /// <summary>Removes every filter GunWall installed and clears saved rules.
+    ///
+    /// Order matters and it was wrong until 0.99.80. This went straight to the
+    /// sublayer delete, which WFP refuses with FWP_E_IN_USE while any filter
+    /// still references it - and the exception fired BEFORE the store was
+    /// cleared, so the reset aborted with both the kernel filters and the saved
+    /// rules intact. The button says "run this before uninstalling", so the
+    /// failure mode was a machine left filtering traffic with no GunWall on it.
+    ///
+    /// The ids are gathered by walking the store rather than by listing the
+    /// collections here. There are ten of them today - lockdown, strict, self,
+    /// blocklist, system rules, scopes, blocklist WFP filters, entity reactive,
+    /// blocked services, and the per-rule lists on two different rule types - and
+    /// a reset that forgets one leaves filters behind and fails exactly the same
+    /// way. A walk cannot forget one, and it picks up any collection added
+    /// later without this method being touched again.</summary>
+    public bool RemoveAllFiltering()
     {
-        _engine.RemoveAllFiltering();
+        var ids = new HashSet<ulong>();
+        CollectFilterIds(_data, ids, new HashSet<object>(ReferenceEqualityComparer.Instance));
+        if (ids.Count > 0)
+        {
+            DiagnosticLog.Log($"Reset: removing {ids.Count} tracked filter(s) before the sublayer.");
+            try { _engine.RemoveFilters(ids.ToList()); }
+            catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/filters", ex); }
+        }
+
+        bool sublayerGone = _engine.RemoveAllFiltering();
+
+        // Cleared unconditionally. The tracked filters are gone; keeping the
+        // store would leave the UI showing rules that no longer exist in the
+        // kernel, which is a worse lie than an orphaned empty sublayer.
         _data = new StoreData();
         _store.Save(_data);
+
+        DiagnosticLog.Log(sublayerGone
+            ? "Reset: complete - sublayer removed and store cleared."
+            : "Reset: filters and store cleared; sublayer retained (untracked filters remain).");
+        return sublayerGone;
+    }
+
+    /// <summary>Walks an object graph collecting every ulong it finds.
+    ///
+    /// Safe because every ulong in the persisted model is a filter id - there is
+    /// no other use of the type in StoreData or the rule classes. If that ever
+    /// stops being true this becomes wrong silently, so the store-shape check in
+    /// tools/checks asserts it rather than leaving it to be remembered.</summary>
+    private static void CollectFilterIds(object? node, HashSet<ulong> into, HashSet<object> seen)
+    {
+        if (node is null) return;
+        if (node is ulong id) { into.Add(id); return; }
+        if (node is string || node.GetType().IsPrimitive || node is decimal || node is DateTime) return;
+        if (!seen.Add(node)) return;   // cycle guard
+
+        if (node is System.Collections.IEnumerable seq)
+        {
+            foreach (var item in seq)
+            {
+                if (item is System.Collections.DictionaryEntry de)
+                { CollectFilterIds(de.Value, into, seen); continue; }
+                // KeyValuePair<,> - read Value without boxing assumptions.
+                var t = item?.GetType();
+                if (t is { IsGenericType: true } &&
+                    t.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+                { CollectFilterIds(t.GetProperty("Value")?.GetValue(item), into, seen); continue; }
+                CollectFilterIds(item, into, seen);
+            }
+            return;
+        }
+
+        if (node.GetType().Namespace?.StartsWith("GunWall", StringComparison.Ordinal) != true) return;
+        foreach (var p in node.GetType().GetProperties())
+        {
+            if (p.GetIndexParameters().Length > 0 || !p.CanRead) continue;
+            try { CollectFilterIds(p.GetValue(node), into, seen); }
+            catch { /* a property that throws is not a filter id */ }
+        }
     }
 
     // ------------------------------------------------ alerts / known apps

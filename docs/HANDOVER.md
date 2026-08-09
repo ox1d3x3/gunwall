@@ -232,6 +232,24 @@ front of. A gap deferred to the build is a gap, described politely.
 **Rule:** "covered elsewhere" is only coverage if the elsewhere runs before the
 handover. Otherwise say it is not covered.
 
+### 2.17 A comment describing what an API would do if it were kind
+
+`RemoveAllFiltering` was documented as tearing down "the entire sublayer and
+every filter inside it". WFP does not do that. `FwpmSubLayerDeleteByKey0` returns
+`FWP_E_IN_USE` while a single filter still references the sublayer — it never
+deletes filters, it refuses.
+
+The comment was not describing the call; it was describing the intention, and
+because it read like a fact nobody checked. The throw then fired *before* the
+store was cleared, so a button labelled "run this before uninstalling" aborted
+leaving both the kernel filters and the saved rules in place.
+
+**Rule:** a comment on an interop call states what the call does, verified from
+the documentation, not what the caller wanted. Where a comment and an error code
+disagree, the error code is the one that ran.
+
+**Check:** `reset-path`.
+
 ---
 
 ## 3. Working agreements

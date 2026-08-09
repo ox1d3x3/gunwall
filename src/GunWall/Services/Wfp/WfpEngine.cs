@@ -655,6 +655,8 @@ public sealed class WfpEngine : IDisposable
                     // inbound only
                     TryAdd(ids, () => BuildConditionedFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
                         AppBlockWeight, FWP_ACTION_BLOCK, "TCP", "", 3389, "Block RDP inbound"));
+                    TryAdd(ids, () => BuildConditionedFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6,
+                        AppBlockWeight, FWP_ACTION_BLOCK, "TCP", "", 3389, "Block RDP inbound"));
                     break;
                 case "block_telnet":
                     AddPortBlock(ids, 23, tcp: true, "Block Telnet 23");
@@ -668,14 +670,20 @@ public sealed class WfpEngine : IDisposable
         return ids;
     }
 
-    // Block a remote port in both directions (outbound connect + inbound accept).
+    // Block a remote port in both directions (outbound connect + inbound accept),
+    // and in both address families. Until 0.99.80 this was v4 only, so "Block
+    // NetBIOS", "Block Telnet" and "Block file sharing (SMB)" all left the IPv6
+    // path open while reporting themselves applied.
     private void AddPortBlock(List<ulong> ids, int port, bool tcp, string name)
     {
         string proto = tcp ? "TCP" : "UDP";
-        TryAdd(ids, () => BuildConditionedFilter(FWPM_LAYER_ALE_AUTH_CONNECT_V4,
-            AppBlockWeight, FWP_ACTION_BLOCK, proto, "", port, name));
-        TryAdd(ids, () => BuildConditionedFilter(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
-            AppBlockWeight, FWP_ACTION_BLOCK, proto, "", port, name));
+        foreach (var layer in new[]
+        {
+            FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWPM_LAYER_ALE_AUTH_CONNECT_V6,
+            FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6,
+        })
+            TryAdd(ids, () => BuildConditionedFilter(layer,
+                AppBlockWeight, FWP_ACTION_BLOCK, proto, "", port, name));
     }
 
     /// <summary>
@@ -694,10 +702,28 @@ public sealed class WfpEngine : IDisposable
             byte weight = block ? AppBlockWeight : AppPermitWeight;
             uint action = block ? FWP_ACTION_BLOCK : FWP_ACTION_PERMIT;
 
-            var layers = new List<Guid>(2);
-            if (direction is "out" or "both") layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V4);
-            if (direction is "in" or "both") layers.Add(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4);
-            if (layers.Count == 0) layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V4);
+            var layers = new List<Guid>(4);
+            // BOTH families, as every other rule path here already does - per-app
+            // filters, the special presets, and custom rules all add v4 and v6.
+            // This function did not, so until 0.99.80 every port/protocol preset
+            // was IPv4-only. "Block file sharing (SMB, port 445)" left SMB over
+            // IPv6 open, and said nothing about it. A block that covers half the
+            // stack is worse than no block, because it is believed.
+            if (direction is "out" or "both")
+            {
+                layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V4);
+                layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V6);
+            }
+            if (direction is "in" or "both")
+            {
+                layers.Add(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4);
+                layers.Add(FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6);
+            }
+            if (layers.Count == 0)
+            {
+                layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V4);
+                layers.Add(FWPM_LAYER_ALE_AUTH_CONNECT_V6);
+            }
 
             int[] portList = (ports == null || ports.Length == 0) ? new[] { 0 } : ports;
             foreach (int port in portList)
@@ -726,19 +752,45 @@ public sealed class WfpEngine : IDisposable
     }
 
     /// <summary>
-    /// Tears down GunWall's entire sublayer and every filter inside it.
-    /// This is the "Disable all filtering" / clean-uninstall action.
+    /// Tears down GunWall's sublayer. **Filters must already be gone.**
+    ///
+    /// WFP does not cascade: FwpmSubLayerDeleteByKey0 returns FWP_E_IN_USE
+    /// (0x8032000A, "the object is referenced by other objects so cannot be
+    /// deleted") while a single filter still references the sublayer. The old
+    /// comment here claimed this removed "every filter inside it", which is what
+    /// the engine will not do, and the mismatch threw a raw WFP error at the user
+    /// from the Reset firewall button.
+    ///
+    /// Returns true if the sublayer went away. False means filters remain - not
+    /// an exception, because by the time this is called the caller has already
+    /// deleted everything it knows about, and anything left is an orphan from a
+    /// crash or an older install. Throwing there would abort the reset and leave
+    /// the saved rules in place too, which is how a "run this before
+    /// uninstalling" button left a machine filtering with nothing to manage it.
     /// </summary>
-    public void RemoveAllFiltering()
+    public bool RemoveAllFiltering()
     {
         EnsureReady();
         var key = SublayerKey;
         uint r = FwpmSubLayerDeleteByKey0(_engine, ref key);
         const uint FWP_E_SUBLAYER_NOT_FOUND = 0x80320007;
+        const uint FWP_E_IN_USE = 0x8032000A;
+
+        if (r == FWP_E_IN_USE)
+        {
+            Services.DiagnosticLog.Log(
+                "Reset: sublayer still referenced by filters this build does not have "
+                + "ids for (orphans from a crash or an earlier install). Everything "
+                + "tracked has been removed; the sublayer was left in place.");
+            EnsureSublayer();
+            return false;
+        }
+
         if (r != ERROR_SUCCESS && r != FWP_E_SUBLAYER_NOT_FOUND)
             throw new WfpException(nameof(FwpmSubLayerDeleteByKey0), r);
         // Recreate an empty sublayer so the engine stays usable.
         EnsureSublayer();
+        return true;
     }
 
     // ---------------------------------------------------------------- helpers
@@ -1103,8 +1155,27 @@ public sealed class WfpEngine : IDisposable
         try
         {
             // Protocol condition (UINT8).
+            //
+            // "TCP" and "UDP" are the names the rule UI offers. A bare number is
+            // also accepted, for the transition protocols that have no port and
+            // therefore no other way to be named - 6to4 and ISATAP are IP
+            // protocol 41, carried directly over IPv4 with no TCP or UDP header.
+            //
+            // The old mapping fell through to null for anything it did not
+            // recognise, and a null protocol means NO PROTOCOL CONDITION - the
+            // filter then matches every protocol on the given ports. So a preset
+            // asking for "41" would not have failed; it would have quietly become
+            // a permit for everything. Widening a rule is a worse outcome than
+            // refusing it, so unrecognised values are now rejected by the
+            // preset-protocol check in tools/checks rather than being dropped
+            // here on the way to the kernel.
             byte? proto = protocol?.ToUpperInvariant() switch
-            { "TCP" => (byte)6, "UDP" => (byte)17, _ => (byte?)null };
+            {
+                "TCP" => (byte)6,
+                "UDP" => (byte)17,
+                var s when byte.TryParse(s, out var n) && n > 0 => n,
+                _ => (byte?)null
+            };
             if (proto.HasValue)
             {
                 conds.Add(new FWPM_FILTER_CONDITION0
