@@ -204,15 +204,26 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.77
+## 6. This build — 0.99.78
 
-Everything from 0.99.76 passed on hardware. This build changes two column widths
-on one screen, so the run is short.
+Six dropdowns widened. One screen each.
 
-- [ ] **Traffic → MOST ACTIVE APPS.** The header must read `DESTINATIONS` in full,
-      with the final S intact, and `COUNTRIES` beside it likewise. Nothing cut
-      mid-letter.
-- [ ] **Traffic → TOP COUNTRIES** unchanged: still lists countries with counts.
+- [ ] **Settings → "Popup stays open for".** Must read `Never (recommended)` in full
+      — it could not previously show its own default.
+- [ ] **Settings → interface scale.** `Extra large (125%)` complete.
+- [ ] **Settings → log entries** and **GeoIP source**: `1000 entries` and
+      `Local database (download)` complete.
+- [ ] **Traffic → window selector.** Pick `Last 5 minutes`. Full text, no cut `t`.
+- [ ] Nothing anywhere cut mid-letter. Out of room means ending in `...`.
+
+### Housekeeping, not a bug
+
+- [ ] **Applications → Allow `git-remote-https`, `update` and `GitHubDesktop`** if
+      you want git pushes working. They were auto-blocked when their prompts timed
+      out. Review `avp` (Kaspersky) and `System` in the same list.
+- [ ] **Consider setting the popup timeout back to Never** now the countdown is
+      confirmed. At 15s with default Block, anything you do not answer in fifteen
+      seconds gets a permanent block rule.
 
 ### Still outstanding — four builds now
 

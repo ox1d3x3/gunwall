@@ -6,6 +6,40 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.78] — 2026-08-09
+
+0.99.77 verified. The countdown ran for the first time — `Blocks in 12s`, clear of the Block button, five builds after it was fixed. `DESTINATIONS` and `COUNTRIES` render in full. Diagnostics: 0 errors, 148/148 filters present.
+
+### Fixed
+- **Six fixed-width ComboBoxes were narrower than their own longest item**, cutting text mid-glyph with no ellipsis. Found from `Last 5 minut` on the Traffic screen — the *t* sliced in half.
+
+  | Control | Was | Now | Could not show |
+  |---|---|---|---|
+  | `PopupTimeoutCombo` | 120 | 210 | `Never (recommended)` |
+  | `UiZoomCombo` | 150 | 200 | `Extra large (125%)` |
+  | `GeoSourceCombo` | 230 | 255 | `Local database (download)` |
+  | `UsageWindowCombo` | 140 | 170 | `Last 5 minutes` |
+  | `MaxLogEntriesCombo` | 130 | 155 | `1000 entries` |
+  | `EntityTypeCombo` | 120 | 130 | `Continent` |
+
+  `PopupTimeoutCombo` is the sharpest of these: **it could not display its own default value.** Four of the six are in Settings, so they were on screen every time anyone changed anything.
+
+  Third instance this week of the same shape — after `LOCATIO` and `DESTINATION`. A control clipped by its own boundary is cut by the layout, not trimmed by its `TextBlock`, so `TextTrimming` never fires and nothing signals that anything is missing.
+
+### Added
+- `header-fit` extended to ComboBoxes: any with an explicit `Width` and literal items must fit its longest, with 8px spare. Shown to fail on both widths that shipped.
+
+  **The two numbers behind it are not equally solid, and the check says so.** Per-character cost is derived — `TableFontSize` out of the shared dictionary, glyph advance out of the TTF. The chrome allowance, 49px, is *measured from a screenshot*, because the ComboBox template belongs to WPF-UI and is not in this repository to read. That is called out in the check rather than blended in with the derived figure: if the control library changes, it is the number that goes stale silently.
+
+  My first regex pass over the ComboBoxes reported a DoH selector whose longest item was "Block" — the non-greedy body match was running past closing tags into the next control. Redone against a real XML parse, which found six rather than five and got the names right.
+
+### Note — the GitHub push failure is GunWall working
+Not a defect. `git-remote-https.exe` and `update.exe` were both auto-blocked when their prompts timed out at 15s with the default set to Block. `git-remote-https` is the process git actually uses to reach github.com over HTTPS, so the push failed at the network layer with a connect error and no indication of the cause. Also blocked in the same window: `avp` (Kaspersky), `GWCtlSrv`, `LockApp`, `OneDrive.Sync.Service`, `System`, `GitHubDesktop` (3.6.3).
+
+The 3.5.12 and 3.6.3 GitHub Desktop entries are separate paths, so the pair is legitimate rather than a duplicate-rule bug.
+
+---
+
 ## [0.99.77] — 2026-08-09
 
 0.99.76 verified on hardware: Traffic renders its two sections, Connections shows `LOCATION` in full with the inspector open, diagnostics report zero errors across 458 sample ticks and 136/136 filters present. One new defect found in the same screenshots.

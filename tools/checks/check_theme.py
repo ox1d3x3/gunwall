@@ -1003,9 +1003,64 @@ def check_header_fit():
                  "the column boundary cuts it mid-glyph, and TextTrimming cannot "
                  "reach a header that believes it has room")
 
+    _check_combo_fit(xaml, per_char_base=float(fs))
+
     if len(failures) == before and worst:
         notes.append(f"header-fit: {per:.2f}px/char incl. {track}em tracking; "
                      f'tightest is "{worst[1]}" with {worst[0]:.0f}px spare')
+
+
+def _check_combo_fit(xaml, per_char_base):
+    """A fixed-width ComboBox must fit its longest literal item.
+
+    `UsageWindowCombo` was 140px against "Last 5 minutes" needing 155, and
+    rendered "Last 5 minut" - cut on the t, no ellipsis. Five more were the same,
+    including the popup-timeout selector, which could not show "Never
+    (recommended)" - its own default.
+
+    PROVENANCE, because these two numbers are not equally solid. The per-character
+    cost is DERIVED: TableFontSize out of the shared dictionary, advance out of
+    the TTF. The chrome allowance - padding plus the chevron well - is MEASURED
+    from a 0.99.77 screenshot at 49px, because the ComboBox template comes from
+    WPF-UI and is not in this repository to read. A measured constant is weaker
+    evidence than a read one and is called out here rather than blended in; if the
+    control library changes, this is the number that goes stale silently.
+    """
+    import xml.etree.ElementTree as ET
+    NS = "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}"
+    X = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+
+    base = SHARED.read_text(encoding="utf-8")
+    m = re.search(r'x:Key="TableFontSize">([\d.]+)<', base)
+    if not m:
+        fail("header-fit", "TableFontSize not found; cannot size ComboBox text")
+        return
+    size = float(m.group(1))
+
+    try:
+        adv, upm = _ttf_advance(APP / "Fonts" / "JetBrainsMonoNerdFont-Regular.ttf", ord("W"))
+    except Exception as ex:
+        fail("header-fit", f"could not read advance: {ex}")
+        return
+
+    per = size * adv / upm
+    CHROME = 49.0   # measured, see docstring
+    MARGIN = 8.0
+
+    root = ET.fromstring(xaml)
+    for cb in root.iter(NS + "ComboBox"):
+        w = cb.get("Width")
+        if not w:
+            continue  # auto-sizes to its widest item; nothing to get wrong
+        items = [i.get("Content") for i in cb.findall(NS + "ComboBoxItem") if i.get("Content")]
+        if not items:
+            continue  # bound at runtime; not knowable from markup
+        longest = max(items, key=len)
+        need = len(longest) * per + CHROME
+        if float(w) - need < MARGIN:
+            fail("header-fit",
+                 f'ComboBox {cb.get(X + "Name") or "(unnamed)"} is {float(w):.0f}px but '
+                 f'"{longest}" needs {need:.0f} - the text is cut, not ellipsised')
 
 
 def check_version_consistency():

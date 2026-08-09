@@ -1558,7 +1558,7 @@
                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                             <TextBlock Text="DATA USAGE BY APP" Style="{StaticResource Muted}"
                                        FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <ComboBox x:Name="UsageWindowCombo" Width="140" HorizontalAlignment="Right"
+                            <ComboBox x:Name="UsageWindowCombo" Width="170" HorizontalAlignment="Right"
                                       SelectionChanged="UsageWindow_Changed" SelectedIndex="1">
                                 <ComboBoxItem Content="Last 5 minutes" />
                                 <ComboBoxItem Content="Last hour" />
@@ -2464,7 +2464,7 @@
                                 <TextBlock Text="Where country/ASN data comes from. &quot;Local database&quot; downloads the full IPv4 table into GunWall (use the Download button on the Connections tab). &quot;Self-hosted API server&quot; queries your own iptoasn-webservice instead - nothing to download, always fresh, and it resolves IPv6 too. Lookups are cached, so each address is fetched only once."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <ComboBox x:Name="GeoSourceCombo" Width="230" SelectedIndex="0">
+                                    <ComboBox x:Name="GeoSourceCombo" Width="255" SelectedIndex="0">
                                         <ComboBoxItem Content="Local database (download)" Tag="local" />
                                         <ComboBoxItem Content="Self-hosted API server" Tag="api" />
                                     </ComboBox>
@@ -2488,7 +2488,7 @@
                                 <TextBlock Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. IPv4 only. Set up a GeoIP data source above first."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <ComboBox x:Name="EntityTypeCombo" Width="120" Margin="0,0,8,0" SelectedIndex="0">
+                                    <ComboBox x:Name="EntityTypeCombo" Width="130" Margin="0,0,8,0" SelectedIndex="0">
                                         <ComboBoxItem Content="Country" Tag="country" />
                                         <ComboBoxItem Content="Continent" Tag="continent" />
                                         <ComboBoxItem Content="ASN" Tag="asn" />
@@ -2757,7 +2757,7 @@
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
                                 <TextBlock Text="UI size" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
-                                <ComboBox x:Name="UiZoomCombo" Width="150"
+                                <ComboBox x:Name="UiZoomCombo" Width="200"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="Compact (90%)" Tag="90" />
                                     <ComboBoxItem Content="Normal (100%)" Tag="100" />
@@ -2794,7 +2794,7 @@
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
                                 <TextBlock Text="Popup stays open for" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
-                                <ComboBox x:Name="PopupTimeoutCombo" Width="120"
+                                <ComboBox x:Name="PopupTimeoutCombo" Width="210"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="Never (recommended)" Tag="0" />
                                     <ComboBoxItem Content="15 seconds" Tag="15" />
@@ -2839,7 +2839,7 @@
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
                                 <TextBlock Text="Keep at most" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
-                                <ComboBox x:Name="MaxLogEntriesCombo" Width="130"
+                                <ComboBox x:Name="MaxLogEntriesCombo" Width="155"
                                           SelectionChanged="Pref_Changed">
                                     <ComboBoxItem Content="500 entries" Tag="500" />
                                     <ComboBoxItem Content="1000 entries" Tag="1000" />
