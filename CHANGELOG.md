@@ -6,6 +6,36 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.82] — 2026-08-09
+
+### Verified on hardware
+0.99.80's two kernel changes, from the session log rather than from a screenshot:
+
+- `System rule ON: block_smb -> 4 filter(s) installed` — **four, where it was two.** The IPv6 gap is closed: v4 and v6, connect and accept.
+- `System rule ON: svc_6to4 -> 2 filter(s) installed` — the raw IP protocol number reaches the kernel. Protocol 41 was previously inexpressible.
+- 22/22 kernel layers accepted.
+
+0.99.81's reset fix also confirmed: `Reset: removing 124 tracked filter(s) before the sublayer`, then the honest warning instead of a raw WFP code, then the store cleared. Run twice, worked twice.
+
+### Fixed
+- **"An unexpected error occurred: The given key was not present in the dictionary" is no longer shown.** It is a **WPF framework defect, not GunWall code** — the stack has no GunWall frame in it at all.
+
+  `MS.Internal.WeakDictionary` backs `ItemPeersStorage`, which is how `ItemsControlAutomationPeer` remembers the automation peer for each item in a list. Replace the items while UI Automation is walking them and the lookup throws. Open against the framework as dotnet/wpf **#2152** and **#7542**.
+
+  GunWall reaches it more often than most applications because it rebuilds its tables every second. It is now counted as a benign fault — the same treatment already given to sockets aborted by GunWall cutting the network — and appears in the diagnostics summary rather than in a dialog. Nothing was actionable in that dialog, and an "unexpected error" box for a known framework bug teaches people to dismiss dialogs that sometimes matter.
+
+  **The suppression is deliberately narrow:** the exception type *and* a WPF-internal stack frame. A `KeyNotFoundException` from GunWall's own code has neither and still raises the dialog.
+
+### Added
+- `fault-suppression`: asserts the classifier checks the type, requires a WPF-internal frame, still counts what it suppresses, and leaves the dialog path intact. Shown to fail on a widened classifier and on a suppression that stops counting.
+
+  Written because this fix is one edit from being harmful. Suppressing `KeyNotFoundException` outright would hide GunWall's own dictionary bugs behind a counter, permanently.
+
+### Note — the error code and the exception were both looked up
+`0x8032000A` was verified as `FWP_E_IN_USE` against Microsoft's WFP error-code table rather than inferred from the three neighbouring codes already in the repository. The automation-peer crash was matched against the open dotnet/wpf issues rather than diagnosed from the shape of the stack. Both were guessable. Guessing right and guessing are the same act.
+
+---
+
 ## [0.99.81] — 2026-08-09
 
 ### Fixed

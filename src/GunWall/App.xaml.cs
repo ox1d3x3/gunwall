@@ -74,8 +74,40 @@ public partial class App : Application
         return true;
     }
 
+    /// <summary>WPF's own bug, reachable from any list that changes while an
+    /// accessibility client is walking it.
+    ///
+    /// `MS.Internal.WeakDictionary` backs `ItemPeersStorage`, which is how
+    /// `ItemsControlAutomationPeer` remembers the automation peer for each item.
+    /// Replace the items while UI Automation is enumerating them and the lookup
+    /// throws — dotnet/wpf issues #2152 and #7542, open against the framework,
+    /// not against anything here. GunWall refreshes its tables every second, so
+    /// it reaches this more often than most applications do.
+    ///
+    /// Deliberately narrow: the exception type AND a WPF-internal frame. A
+    /// KeyNotFoundException thrown by GunWall's own code has neither and still
+    /// gets the dialog, which is the point — this suppresses a known framework
+    /// fault, not a class of exception.</summary>
+    private static bool IsWpfAutomationPeerFault(Exception ex)
+    {
+        if (ex is not System.Collections.Generic.KeyNotFoundException) return false;
+        string trace = ex.StackTrace ?? "";
+        return trace.Contains("MS.Internal.WeakDictionary", StringComparison.Ordinal)
+            || trace.Contains("System.Windows.Automation.Peers", StringComparison.Ordinal);
+    }
+
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        // Counted, not shown. Nothing the reader could do about it, and an
+        // "unexpected error" dialog for a known framework defect teaches people
+        // to dismiss dialogs that sometimes matter.
+        if (IsWpfAutomationPeerFault(e.Exception))
+        {
+            DiagnosticLog.NoteBenignFault("WPF automation peer (dotnet/wpf #2152)");
+            e.Handled = true;
+            return;
+        }
+
         DiagnosticLog.LogException("DispatcherUnhandledException", e.Exception);
         MessageBox.Show(
             $"An unexpected error occurred:\n\n{e.Exception.Message}\n\n" +
