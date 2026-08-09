@@ -204,34 +204,20 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.81 (includes everything from 0.99.80)
+## 6. This build — 0.99.82
 
-0.99.80 was never run. Its checklist is below, after the reset fix.
+0.99.80 and 0.99.81 are both confirmed from the session log. This build only
+changes what happens to one exception, so the run is short.
 
-### The reset fix — do this LAST, it clears everything
-
-- [ ] Set up something to destroy first: allow two or three apps, turn on a system
-      rule or two. Confirm the filter count in **Settings → Check filter integrity**.
-- [ ] **Settings → Remove all GunWall filtering.** Expect **no** raw WFP error.
-      Either "All GunWall filtering removed", or a warning saying GunWall's own
-      filters and rules are gone but the sublayer was kept.
-- [ ] **Check filter integrity** again. The count must have dropped.
-- [ ] Applications and Rules must both be empty afterwards. If the dialog reported
-      success and rules are still listed, that is the old failure and I want to know.
-
-### From 0.99.80 — the quick rule toggles
-
-- [ ] **Verify kernel layers** — 22 of 22 accepted.
-- [ ] **Rules → System Rules → Allow common services.** Four new entries:
-      `Windows Update`, `Windows Update peer discovery`, `Teredo (IPv6 over IPv4)`,
-      `6to4 / ISATAP (IPv6 transition)`. Names and descriptions complete.
-- [ ] **Turn on `6to4 / ISATAP`** — exercises the new raw IP protocol number.
-      Check filter integrity: count rises, nothing missing. Turn off, count returns.
-- [ ] **Turn on `Block file sharing (SMB, port 445)`** — the count should now rise
-      by **four** where it previously rose by two. That is the IPv6 gap closing and
-      it is the change most worth confirming.
-- [ ] Leave the toggles off afterwards unless you want them. An allow preset opens
-      its ports for every process on the machine.
+- [ ] **Use the Applications and Connections screens normally for a few minutes**,
+      toggling system rules and letting the lists refresh. No "An unexpected error
+      occurred: The given key was not present in the dictionary" dialog.
+- [ ] **Export diagnostics** and look at the `Errors this session` line. If the
+      automation-peer fault happened, it should appear as
+      `benign faults: WPF automation peer (dotnet/wpf #2152) xN` rather than as an
+      error. Zero of both is also fine — it does not fire every session.
+- [ ] If any *other* unexpected-error dialog appears, that path is still live and
+      I want the message.
 
 ## 7. What to send
 

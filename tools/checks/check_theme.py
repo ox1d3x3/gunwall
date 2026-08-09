@@ -1269,6 +1269,56 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_fault_suppression():
+    """A suppressed exception must be narrowly identified, never a whole type.
+
+    The WPF automation-peer KeyNotFoundException is a framework defect
+    (dotnet/wpf #2152) that GunWall reaches because it refreshes its tables every
+    second. It is counted as a benign fault rather than shown, which is right -
+    and one edit away from being wrong. Suppressing `KeyNotFoundException`
+    outright would hide GunWall's own dictionary bugs behind a counter and they
+    would never be seen again.
+
+    So: the classifier must test the exception TYPE and a WPF-internal stack
+    frame, and the handler must still reach its dialog for everything else.
+    """
+    before = len(failures)
+    app = (APP / "App.xaml.cs").read_text(encoding="utf-8")
+
+    cls = re.search(r"private static bool IsWpfAutomationPeerFault.*?\n    \}", app, re.S)
+    if not cls:
+        fail("fault-suppression", "IsWpfAutomationPeerFault not found")
+        return
+    cls = cls.group(0)
+
+    if "KeyNotFoundException" not in cls:
+        fail("fault-suppression",
+             "the classifier does not check the exception type - it would match "
+             "on a stack frame alone")
+    if not re.search(r"MS\.Internal\.WeakDictionary|System\.Windows\.Automation\.Peers", cls):
+        fail("fault-suppression",
+             "the classifier does not require a WPF-internal frame, so it would "
+             "swallow GunWall's own KeyNotFoundExceptions")
+
+    handler = re.search(r"private void OnDispatcherUnhandledException.*?\n    \}", app, re.S)
+    if not handler:
+        fail("fault-suppression", "OnDispatcherUnhandledException not found")
+        return
+    handler = handler.group(0)
+
+    if "MessageBox.Show" not in handler:
+        fail("fault-suppression",
+             "the handler no longer shows anything - every unhandled UI fault "
+             "would now be silent")
+    if "NoteBenignFault" not in handler:
+        fail("fault-suppression",
+             "the suppressed fault is not counted, so it would vanish from "
+             "diagnostics entirely rather than being recorded quietly")
+
+    if len(failures) == before:
+        notes.append("fault-suppression: narrow (type + WPF frame), counted, dialog intact")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -1312,6 +1362,7 @@ def main():
     check_header_fit()
     check_preset_protocols()
     check_reset_path()
+    check_fault_suppression()
     check_version_consistency()
 
     for n in notes:
