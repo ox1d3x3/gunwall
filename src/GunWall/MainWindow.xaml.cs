@@ -331,7 +331,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.74 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.75 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2969,69 +2969,132 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ===== §11 connection inspector (read-only detail pane) =====
-    /// <summary>Smallest the LOCATION column may become. Below this the country
-    /// name is gone and only the flag is left, which says less than the column
-    /// costs.</summary>
-    private const double ConnLastColumnMin = 150;
+    /// <summary>What LOCATION wants before anything else is asked to give way.
+    /// Enough for a flag and a country name; the ASN and operator trim after it.</summary>
+    private const double ConnLocationWant = 150;
 
-    /// <summary>Gives the last column whatever the others leave over.
+    /// <summary>Declared widths of the fixed columns, captured once. The handler
+    /// shrinks from these and must be able to restore them, so it cannot read the
+    /// live values - after one squeeze they are no longer the declared ones.</summary>
+    private double[]? _connDeclaredWidths;
+
+    /// <summary>How far each fixed column may be squeezed, in declaration order:
+    /// PROCESS, PID, PROTO, LOCAL, REMOTE. PID and PROTO do not move — they are
+    /// already sized to their content, and taking pixels from "TCP" buys nothing.
+    /// The others carry slack because addresses vary in length.</summary>
+    private static readonly double[] ConnColumnFloors = { 130, 56, 66, 130, 140 };
+
+    /// <summary>Fits the columns to the table.
     ///
-    /// A GridView column is a fixed width; nothing in it stretches. So a table
-    /// wider than the sum of its columns shows ruled empty space to the right,
-    /// and a table narrower than that sum clips - silently, because these tables
-    /// have no horizontal scrollbar to reveal what was lost. With the window
-    /// resizable from 1000px upward and an interface scale on top of that, no
-    /// single number is right at both ends.
+    /// A GridView column is a fixed width and nothing in it stretches, so the sum
+    /// of the columns and the width of the table have to be reconciled by hand.
+    /// Too small a sum leaves ruled empty space; too large a sum clips — and
+    /// clipping here happens OUTSIDE the reach of TextTrimming, because a column
+    /// that overflows the viewport is cut by the scroll area, not by the TextBlock,
+    /// which still believes it has all the room it asked for. That is the
+    /// difference between a value that ends in "..." and a header that reads
+    /// "LOCATIO".
     ///
-    /// So the width is DERIVED rather than chosen, which is the same correction
-    /// as the connection prompt's star column: where one part of a row is fixed,
-    /// the other's size is arithmetic, not a preference.
+    /// 0.99.73 derived the last column but floored it at 150. When the inspector
+    /// opened there were only about 47px left, the floor forced 150 anyway, and the
+    /// total went past the viewport — producing exactly the mid-glyph cut above.
+    /// A floor on the growing column does not create space; it only decides which
+    /// end the overflow comes out of.
     ///
-    /// LOCATION is the right column to absorb it. Its content — country, then
-    /// ASN, then the operator's name — is unbounded, so it is the one column that
-    /// can always use another fifty pixels, and the only one whose truncation
-    /// costs the reader something they wanted.</summary>
+    /// So the floor moved. LOCATION still wants 150, but that want is satisfied by
+    /// taking slack from the columns that have it, and the last column itself is
+    /// only ever given what is genuinely left. When the slack runs out everything
+    /// trims with an ellipsis, which is a legible failure rather than a silent
+    /// one.</summary>
     private void ConnList_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         try
         {
             if (ConnList?.View is not GridView gv || gv.Columns.Count < 2) return;
+            int n = gv.Columns.Count - 1; // fixed columns; the last one absorbs
 
-            double others = 0;
-            for (int i = 0; i < gv.Columns.Count - 1; i++)
+            // Declared widths, captured once and never re-read from the live
+            // columns: after a squeeze those are the squeezed values, and
+            // restoring from them would ratchet the table permanently narrower.
+            if (_connDeclaredWidths is null)
             {
-                // Width, not ActualWidth. On the first SizeChanged the columns may
-                // not have been measured yet, so ActualWidth reads 0 and the last
-                // column would be handed the entire table before being corrected on
-                // a later pass. Every fixed column here declares a Width; NaN means
-                // an auto column, and only then is the measured value the honest
-                // one.
-                var col = gv.Columns[i];
-                others += double.IsNaN(col.Width) ? col.ActualWidth : col.Width;
+                _connDeclaredWidths = new double[n];
+                for (int i = 0; i < n; i++)
+                {
+                    var c = gv.Columns[i];
+                    _connDeclaredWidths[i] = double.IsNaN(c.Width) ? c.ActualWidth : c.Width;
+                }
+            }
+            var declared = _connDeclaredWidths;
+            if (declared.Length != n) return; // columns changed shape; leave it alone
+
+            double chrome = SystemParameters.VerticalScrollBarWidth + 2;
+            double avail = ConnList.ActualWidth - chrome;
+            if (avail <= 0) return;
+
+            double declaredSum = 0;
+            for (int i = 0; i < n; i++) declaredSum += declared[i];
+
+            var target = new double[n];
+            double want = declaredSum + ConnLocationWant;
+
+            if (avail >= want)
+            {
+                // Room to spare: the fixed columns go back to their declared widths
+                // and LOCATION takes the remainder. This is the common case and the
+                // reason the restore has to work — the inspector opens and closes.
+                for (int i = 0; i < n; i++) target[i] = declared[i];
+            }
+            else
+            {
+                // Short: buy LOCATION its 150 from whichever columns have slack,
+                // in proportion to how much each has. Proportional rather than
+                // first-come so no single column carries the whole squeeze.
+                double pool = 0;
+                for (int i = 0; i < n; i++) pool += Math.Max(0, declared[i] - ConnColumnFloors[i]);
+                double take = Math.Min(want - avail, pool);
+
+                for (int i = 0; i < n; i++)
+                {
+                    double slack = Math.Max(0, declared[i] - ConnColumnFloors[i]);
+                    target[i] = declared[i] - (pool > 0 ? take * slack / pool : 0);
+                }
             }
 
-            // ListView chrome: a 1px border each side, plus the vertical scrollbar,
-            // which this table effectively always has. Read from the system rather
-            // than assumed, because it is a theme metric and not a constant.
-            double chrome = SystemParameters.VerticalScrollBarWidth + 2;
-            double target = Math.Max(ConnLastColumnMin, ConnList.ActualWidth - others - chrome);
+            double targetSum = 0;
+            for (int i = 0; i < n; i++) targetSum += target[i];
 
-            // Assigning Width re-enters this handler. Only act on a real change, or
+            // Never a floor here. Whatever is actually left, even if it is little:
+            // a column forced wider than the table does not gain space, it just
+            // pushes the overflow off the right-hand edge where nothing can trim it.
+            double last = avail - targetSum;
+
+            if (last < 0)
+            {
+                // Past every floor — a narrow window with the inspector open can
+                // reach this. The floors are preferences, not hard limits, and the
+                // choice here is between columns narrower than they would like and
+                // a total wider than the table. Narrower wins every time: a squeezed
+                // column still ends in "...", whereas an overflowing total is cut by
+                // the scroll area, outside TextTrimming's reach, mid-glyph.
+                last = ConnLocationWant;
+                double k = avail / (targetSum + last);
+                for (int i = 0; i < n; i++) target[i] *= k;
+                last *= k;
+                targetSum *= k;
+            }
+
+            // Assigning Width re-enters this handler; only act on real changes or
             // the two feed each other and the layout pass never settles.
-            var last = gv.Columns[^1];
-            if (Math.Abs(last.Width - target) > 0.5) last.Width = target;
+            for (int i = 0; i < n; i++)
+                if (Math.Abs(gv.Columns[i].Width - target[i]) > 0.5) gv.Columns[i].Width = target[i];
+            if (Math.Abs(gv.Columns[n].Width - last) > 0.5) gv.Columns[n].Width = last;
+
+            System.Diagnostics.Debug.Assert(targetSum + last <= avail + 0.5,
+                $"Connections columns total {targetSum + last:F0} into {avail:F0} of table - "
+                + "the overflow will be cut by the scroll area, not trimmed.");
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("ConnList_SizeChanged", ex); }
-    }
-
-    /// <summary>Closes the inspector. The panel is the only switch - there is no
-    /// empty state inside it, because a panel that collapses when nothing is
-    /// selected has no state in which a placeholder could ever be seen. 0.99.73
-    /// kept one and it was unreachable; it is gone rather than left to look like
-    /// a feature.</summary>
-    private void CollapseConnInspector()
-    {
-        if (ConnInspector != null) ConnInspector.Visibility = Visibility.Collapsed;
     }
 
     private void ConnSelected(object sender, SelectionChangedEventArgs e)

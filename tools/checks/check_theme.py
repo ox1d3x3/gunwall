@@ -763,10 +763,25 @@ def check_table_last_column():
              "ConnList_SizeChanged assigns a width without comparing against the "
              "current one; setting Width re-raises SizeChanged and the layout "
              "pass will not settle")
-    if "ConnLastColumnMin" not in body:
+    # The defect this replaced: a floor applied to the GROWING column. It does not
+    # create space, it only decides which end the overflow leaves from - and an
+    # overflowing column is cut by the scroll area, outside TextTrimming's reach,
+    # mid-glyph. "LOCATIO" instead of "LOCATION". Test for the absence of the old
+    # pattern as well as the presence of the new one.
+    if re.search(r"double\s+last\s*=\s*Math\.Max\(\s*ConnLocationWant", body):
         fail("last-column",
-             "no minimum on the derived width - a narrow window would shrink the "
-             "column to nothing rather than letting it clip")
+             "the last column is floored at ConnLocationWant. A floor on the "
+             "column being grown cannot create room; it pushes the total past the "
+             "table and the overflow is cut mid-glyph. Take the space from the "
+             "columns that have slack instead.")
+    if "ConnColumnFloors" not in body or "_connDeclaredWidths" not in body:
+        fail("last-column",
+             "no shrink pass: without declared widths and per-column floors there "
+             "is nothing to take space from when the inspector opens")
+    if not re.search(r"if\s*\(\s*last\s*<\s*0\s*\)", body):
+        fail("last-column",
+             "nothing handles the case where even the floors do not fit. The total "
+             "must be scaled to the table, or it overflows and cuts mid-glyph.")
 
     _check_inspector_toggle(xaml, src)
 

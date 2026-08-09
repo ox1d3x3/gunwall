@@ -204,34 +204,26 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.74
+## 6. This build — 0.99.75
 
-### The change
+- [ ] **Connections, select a row.** The `LOCATION` header must read **`LOCATION`**,
+      not `LOCATIO`. Nothing anywhere may be cut mid-letter — a value that runs out
+      of room must end in `...`.
+- [ ] **Drag the window narrow with a row selected.** Columns should tighten
+      together and everything keep ending in `...`. Nothing slides off the right.
+- [ ] **Close the inspector.** Columns return to their full widths, `LOCATION`
+      stretches to fill.
+- [ ] **Traffic.** `TOP COUNTRIES` and `MOST ACTIVE APPS` must show their lists, or
+      their empty-state message. Never a bare label over blank space.
+- [ ] **Traffic, short window.** The page scrolls now. The bottom card must not be
+      cut off by the window edge.
 
-- [ ] **Connections, nothing selected.** No inspector panel. The table uses the
-      full width, `LOCATION` stretched to fill it.
-- [ ] **Select a row.** Panel opens, details appear, `LOCATION` gives up the width.
-- [ ] **Watch it for thirty seconds with a row selected.** The panel must sit
-      still. The list refills every second and deselects transiently as it does;
-      if the panel strobes or flickers, the rebuild guard is not holding.
-- [ ] **Click empty space below the rows.** Panel closes.
-- [ ] **Select a short-lived connection and wait for it to close.** Panel closes
-      by itself once the row stops coming back.
-- [ ] **Resize with a row selected**, then without. `LOCATION` follows in both.
+### Still outstanding — four builds now
 
-### Still outstanding from 0.99.72 — not yet run
-
-- [ ] **Settings → "Popup stays open for" → 15 seconds.** Then trigger a prompt.
+- [ ] **Settings → "Popup stays open for" → 15 seconds**, then trigger a prompt.
       Expect `Blocks in 15s`, counting, present immediately, starting at 15.
-      Press the chevron: it stops and reads `Closing blocks`.
-
-      This is the case that was actually broken. Three builds have shipped with it
-      unexercised because the default is **Never**, which never runs the countdown.
-
-### Carried from 0.99.73
-
-- [ ] **Overview chart.** Time labels **below** the baseline, trace clear of the
-      digits. Hover: the cursor line stops at the baseline.
+      The default is **Never**, which never runs the countdown — which is why this
+      keeps getting missed.
 
 ---
 

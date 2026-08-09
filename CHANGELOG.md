@@ -6,6 +6,39 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.75] — 2026-08-09
+
+Both defects found by reading screenshots sent with "no error found". One of them was mine, from two releases ago.
+
+### Fixed
+- **The `LOCATION` header read `LOCATIO`, cut mid-glyph, whenever the inspector was open.** A regression from 0.99.73.
+
+  That release derived the last column's width but floored it at 150px. With the inspector open there are only about 47 logical pixels left, the floor forced 150 regardless, and the column total went past the table's viewport.
+
+  **A floor on the column being grown cannot create room.** It only decides which end the overflow leaves from. And an overflowing column is cut by the scroll area rather than by its own `TextBlock`, which still believes it has all the width it asked for — so `TextTrimming` never engages. That is the difference between a value ending in `...` and a header reading `LOCATIO`.
+
+  The floor has moved to where it can be paid for. `LOCATION` still wants 150, but that want is now satisfied by taking slack from the columns that have it — `PROCESS`, `LOCAL`, `REMOTE`, proportionally to how much each has — while `PID` and `PROTO` never move, being already sized to their content. The last column itself is only ever given what is genuinely left.
+
+  Measured against the two states in the screenshots: inspector closed, `LOCATION` 399px; inspector open, `PROCESS` 164 / `LOCAL` 149 / `REMOTE` 164 / `LOCATION` 150. Total equals the table exactly in both.
+
+- **And past the floors, everything scales rather than overflowing.** At the 1000px minimum window with the inspector open, the floors themselves sum to more than the table — 522 into 319. Floors that cannot be satisfied are overflow with extra steps, so they are treated as preferences: below that point every column including `LOCATION` is scaled to fit exactly. Narrow columns that trim beat a total wider than the table, every time.
+
+- **`TOP COUNTRIES` and `MOST ACTIVE APPS` rendered as two labels over empty space.** The Traffic panel was a plain `Grid` whose fourth row was star-sized, positioned after a fixed 500px map and before two large `Auto` cards. The star row therefore received whatever was left of the viewport — on a normal window nothing, on a slightly taller one about 35px: enough to draw both section labels and not enough for either list beneath them.
+
+  The panel is a `ScrollViewer` now, as `PanelRules`, `PanelSettings`, `PanelSecurity`, `PanelPackets` and `PanelConnections` already were. The row is `Auto` and says so, and the two lists have a height, so they draw their contents or their empty state rather than nothing.
+
+  This also stops the panel clipping its last card off the bottom edge on shorter windows, which it had been doing silently.
+
+### Added
+- Three assertions in `last-column`, one of which tests for the **absence** of the pattern that caused this: a `Math.Max(ConnLocationWant, ...)` floor on the growing column. Also that a shrink pass exists at all, and that the past-the-floors case is handled. Each shown to fail on the real defect.
+- A `Debug.Assert` in the handler that the column total never exceeds the table.
+
+### Confirmed on hardware
+- Chart axis labels sit below the baseline with the trace clear of them — measured: baseline y=707, labels y=710–724.
+- The Connections inspector opens and closes on selection without flicker, and `LOCATION` fills the width when it is closed.
+
+---
+
 ## [0.99.74] — 2026-08-09
 
 ### Changed

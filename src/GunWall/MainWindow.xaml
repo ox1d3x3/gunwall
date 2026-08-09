@@ -1384,12 +1384,26 @@
             </Grid>
 
             <!-- ========== Traffic ========== -->
-            <Grid x:Name="PanelTraffic" Visibility="Collapsed">
+            <!-- A ScrollViewer, as PanelRules and PanelSettings already are.
+                 It was a plain Grid whose fourth row was star-sized, sitting after
+                 a fixed 500px map and before two large Auto cards. The star row
+                 therefore got whatever was left of the viewport, which on a normal
+                 window was nothing - and on a slightly taller one was about 35px:
+                 enough to draw TOP COUNTRIES and MOST ACTIVE APPS and not enough
+                 for either list beneath them. Two labels over empty space.
+
+                 A star row inside a scroller is measured against its content rather
+                 than the viewport, so the row is Auto now and says so. The panel
+                 also stopped clipping its last card off the bottom edge on shorter
+                 windows, which it had been doing silently. -->
+            <ScrollViewer x:Name="PanelTraffic" Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />   <!-- metering banner, collapsed when measured -->
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />  <!-- was *, which meant "the scraps" -->
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
@@ -1445,7 +1459,7 @@
                     <Border Grid.Column="0" Padding="0" Margin="0,0,18,0">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="TOP COUNTRIES" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
-                            <ListView x:Name="TrafficCountries" gw:Table.EmptyTitle="No traffic by country yet" gw:Table.EmptyText="Destinations are grouped here once GeoIP can place them." BorderThickness="0" Background="Transparent"
+                            <ListView x:Name="TrafficCountries" Height="190" gw:Table.EmptyTitle="No traffic by country yet" gw:Table.EmptyText="Destinations are grouped here once GeoIP can place them." BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
@@ -1502,7 +1516,7 @@
                     <Border Grid.Column="1" Padding="0" Margin="18,0,0,0">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="MOST ACTIVE APPS" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
-                            <ListView x:Name="TrafficApps" gw:Table.EmptyTitle="No per-app traffic yet" gw:Table.EmptyText="Byte counts appear once applications start moving data." BorderThickness="0" Background="Transparent"
+                            <ListView x:Name="TrafficApps" Height="190" gw:Table.EmptyTitle="No per-app traffic yet" gw:Table.EmptyText="Byte counts appear once applications start moving data." BorderThickness="0" Background="Transparent"
                                       VirtualizingPanel.IsVirtualizing="True">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
@@ -1688,6 +1702,7 @@
                     </DockPanel>
                 </Border>
             </Grid>
+            </ScrollViewer>
 
             <!-- ========== DNS resolver ========== -->
             <Grid x:Name="PanelDns" Visibility="Collapsed">
