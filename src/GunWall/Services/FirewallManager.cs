@@ -717,6 +717,65 @@ public sealed class FirewallManager : IDisposable
 
         bool sublayerGone = _engine.RemoveAllFiltering();
 
+        // Tracked ids only reach what GunWall still knows about. Anything orphaned
+        // - a crash between installing a filter and saving its id, a store cleared
+        // before its filters were deleted - stays in the kernel permanently, which
+        // is what FWP_E_IN_USE has been reporting. Ask Windows for the rest.
+        if (!sublayerGone)
+        {
+            var orphans = _engine.FindAllSublayerFilterIds();
+            if (orphans.Count > 0)
+            {
+                DiagnosticLog.Log($"Reset: {orphans.Count} orphaned filter(s) found in the "
+                                + "sublayer that this installation had no id for - removing.");
+                try { _engine.RemoveFilters(orphans); }
+                catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/orphans", ex); }
+
+                // Try again now the sublayer should be empty.
+                sublayerGone = _engine.RemoveAllFiltering();
+                DiagnosticLog.Log(sublayerGone
+                    ? "Reset: sublayer removed after clearing orphans - the machine is back to "
+                      + "Windows defaults."
+                    : "Reset: sublayer still in use after clearing orphans. Something outside "
+                      + "GunWall holds a filter in it.");
+            }
+        }
+
+        // Filters are not the only thing GunWall changes about this machine, and
+        // a button captioned "removes every filter GunWall has created... run this
+        // before uninstalling" was leaving two of them in place:
+        //
+        //  - the hosts file, where blocklist categories are written as 0.0.0.0
+        //    entries. Left behind, the machine keeps blocking those domains with
+        //    nothing installed to explain it or undo it.
+        //  - adapter DNS servers, if the DNS redirect was ever used. Left behind,
+        //    the PC keeps pointing at a resolver that is no longer running, which
+        //    is a machine with no working DNS at all.
+        //
+        // Both are recorded and reversible, and neither was being reversed.
+        try
+        {
+            var blocked = HostsFileService.GetBlockedDomains();
+            if (blocked.Count > 0)
+            {
+                HostsFileService.SetBlockedDomains(Array.Empty<string>(), _store.ProfileFolder);
+                DiagnosticLog.Log($"Reset: cleared {blocked.Count} domain(s) from the hosts file.");
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/hosts", ex); }
+
+        try
+        {
+            if (_data.DnsSavedAdapters is { Count: > 0 })
+            {
+                int n = DnsService.RestoreAdapters(_data.DnsSavedAdapters);
+                DiagnosticLog.Log($"Reset: restored DNS servers on {n} adapter(s).");
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/dns", ex); }
+
+        try { HostsFileService.FlushDns(); } catch { }
+
         // Cleared unconditionally. The tracked filters are gone; keeping the
         // store would leave the UI showing rules that no longer exist in the
         // kernel, which is a worse lie than an orphaned empty sublayer.
@@ -727,6 +786,47 @@ public sealed class FirewallManager : IDisposable
             ? "Reset: complete - sublayer removed and store cleared."
             : "Reset: filters and store cleared; sublayer retained (untracked filters remain).");
         return sublayerGone;
+    }
+
+    /// <summary>Empties every filter-id collection in the store, leaving the rules
+    /// and settings that own them intact.
+    ///
+    /// Walked rather than listed, for the same reason the collection is: the ids
+    /// live in ten places and any list written here would be one refactor behind.
+    /// Clearing them matters as much as deleting the filters - an id left in the
+    /// store points at a filter that no longer exists, and the next teardown would
+    /// quietly fail to remove something real.</summary>
+    private static void ClearAllFilterIds(object? node, HashSet<object>? seen = null)
+    {
+        if (node is null) return;
+        seen ??= new HashSet<object>(ReferenceEqualityComparer.Instance);
+        if (node is string || node.GetType().IsPrimitive) return;
+        if (!seen.Add(node)) return;
+
+        if (node is List<ulong> ul) { ul.Clear(); return; }
+
+        if (node is System.Collections.IEnumerable seq)
+        {
+            foreach (var item in seq)
+            {
+                if (item is System.Collections.DictionaryEntry de)
+                { ClearAllFilterIds(de.Value, seen); continue; }
+                var t = item?.GetType();
+                if (t is { IsGenericType: true } &&
+                    t.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+                { ClearAllFilterIds(t.GetProperty("Value")?.GetValue(item), seen); continue; }
+                ClearAllFilterIds(item, seen);
+            }
+            return;
+        }
+
+        if (node.GetType().Namespace?.StartsWith("GunWall", StringComparison.Ordinal) != true) return;
+        foreach (var p in node.GetType().GetProperties())
+        {
+            if (p.GetIndexParameters().Length > 0 || !p.CanRead) continue;
+            try { ClearAllFilterIds(p.GetValue(node), seen); }
+            catch { }
+        }
     }
 
     /// <summary>Walks an object graph collecting every ulong it finds.
@@ -1020,6 +1120,16 @@ public sealed class FirewallManager : IDisposable
     {
         if (enabled == _data.StrictMode) return;
 
+        // Logged, because enforcement posture is the single most important
+        // control variable in any test and it left no trace at all. A diagnostics
+        // bundle could show a DNS path test failing and give no way to tell
+        // whether the firewall was even enforcing at the time - which made the
+        // one experiment that separates "GunWall is dropping this" from
+        // "something else is" unverifiable after the fact.
+        DiagnosticLog.Log(enabled
+            ? "Protection ON - zero-trust enforcement engaged."
+            : "Protection OFF - monitoring only, nothing is being blocked.");
+
         if (enabled)
         {
             // 1) Base block + loopback keep-alive (atomic transaction).
@@ -1052,13 +1162,33 @@ public sealed class FirewallManager : IDisposable
         }
         else
         {
-            _engine.RemoveFilters(_data.StrictFilterIds);
-            _data.StrictFilterIds.Clear();
-            foreach (var rule in _data.Rules.Where(r => r.Status == AppStatus.Allowed))
+            // OFF means nothing is enforced. It did not, and that was the bug: this
+            // removed the baseline and the filters of rules whose status was
+            // Allowed, and stopped there.
+            //
+            // So every explicitly BLOCKED application kept its block filters - the
+            // Where(Allowed) above skipped exactly the rules whose filters deny
+            // traffic - and lockdown, blocklists, domain-derived address blocks,
+            // system rules, blocked services and entity filters were never touched
+            // at all. Turning the firewall off removed the permits and left the
+            // denials, on a kernel that keeps enforcing them after the app closes.
+            //
+            // Swept the same way the reset sweeps, for the same reason: there are
+            // ten collections of filter ids and a hand-written list is a thing to
+            // forget. The rules themselves are kept - the user asked to stop
+            // enforcing, not to lose their decisions - but every filter behind them
+            // goes, and re-engaging reinstalls from the surviving rules.
+            var ids = new HashSet<ulong>();
+            CollectFilterIds(_data, ids, new HashSet<object>(ReferenceEqualityComparer.Instance));
+            if (ids.Count > 0)
             {
-                try { _engine.RemoveFilters(rule.FilterIds); } catch { }
-                rule.FilterIds.Clear();
+                DiagnosticLog.Log($"Protection OFF: removing {ids.Count} filter(s) - "
+                                + "baseline, app rules, system rules, blocklists and scopes.");
+                try { _engine.RemoveFilters(ids.ToList()); }
+                catch (Exception ex) { DiagnosticLog.LogException("SetStrictMode/off", ex); }
             }
+
+            ClearAllFilterIds(_data);
             _data.StrictMode = false;
             _store.Save(_data);
         }
@@ -1399,8 +1529,137 @@ public sealed class FirewallManager : IDisposable
     /// application. Stored under the domain so removing the domain from the
     /// blocklist removes everything it accumulated.
     /// </summary>
+    /// <summary>Removes any filter sitting in GunWall's sublayer that this
+    /// installation cannot name. Returns how many were removed.
+    ///
+    /// The sublayer belongs to GunWall alone, so a filter in it that the store
+    /// has no id for is by definition something GunWall installed and then lost
+    /// track of - a crash between adding the filter and saving its id, or a store
+    /// cleared while its filters were still in the kernel. Every reset before
+    /// 0.99.81 did the latter: it discarded the ids first and then failed to
+    /// delete the sublayer, orphaning the entire filter set each time.
+    ///
+    /// One machine reached **843 orphans against 4 tracked**. They are PERSISTENT,
+    /// so they survived every reboot and every protection toggle, and they were
+    /// unreachable because nothing knew their ids. They blocked an antivirus's
+    /// updates and a git client for days while every diagnostics bundle reported
+    /// zero errors - GunWall was truthfully reporting on the four it knew about.
+    ///
+    /// Running this at startup is what makes that state unreachable rather than
+    /// merely recoverable: an orphan can now survive at most until the next
+    /// launch, instead of accumulating for the life of the installation.</summary>
+    /// <summary>Set once the store has loaded and posture has been applied.
+    /// Until then this manager's view of its own filters is not yet true, and
+    /// nothing may be deleted on the strength of it.</summary>
+    public bool ReconcileReady { get; private set; }
+
+    public void MarkReconcileReady() => ReconcileReady = true;
+
+    public int ReconcileOrphanFilters()
+    {
+        // GUARD TWO. 0.99.92 fired this from the window's field initialisers, two
+        // minutes of wall-clock before the store had anything in it. Ordering, not
+        // logic, was what made it destructive.
+        if (!ReconcileReady)
+        {
+            DiagnosticLog.Log("Startup reconcile: skipped - store not loaded yet.");
+            return 0;
+        }
+        try
+        {
+            var live = _engine.FindAllSublayerFilterIds();
+            if (live.Count == 0) return 0;
+
+            var tracked = new HashSet<ulong>();
+            CollectFilterIds(_data, tracked, new HashSet<object>(ReferenceEqualityComparer.Instance));
+
+            // GUARD ONE. Knowing nothing is not the same as knowing everything is
+            // an orphan, and 0.99.92 could not tell the difference: it ran while
+            // the store was still empty, read "0 tracked" against 116 live filters,
+            // and deleted the entire working filter set of a protected machine.
+            //
+            // The risk was identified while writing that code and reasoned away as
+            // "correct behaviour if the store is lost". It is not. A firewall that
+            // disarms itself because it briefly could not read its own notes is
+            // worse than one that leaves an orphan behind.
+            //
+            // So: nothing tracked and something live means this component cannot
+            // distinguish the two. Say so and touch nothing. The reset path is
+            // unaffected - there the user has explicitly asked for everything to go.
+            if (tracked.Count == 0)
+            {
+                DiagnosticLog.Log(
+                    $"Startup reconcile: {live.Count} filter(s) in the sublayer but 0 tracked - "
+                    + "declining to act. Nothing was removed. If the machine is stuck, "
+                    + "Settings -> Remove all GunWall filtering clears the sublayer deliberately.");
+                return 0;
+            }
+
+            var orphans = live.Where(id => !tracked.Contains(id)).ToList();
+            if (orphans.Count == 0)
+            {
+                DiagnosticLog.Log($"Startup reconcile: {live.Count} filter(s) in the sublayer, "
+                                + "all accounted for.");
+                return 0;
+            }
+
+            DiagnosticLog.Log($"Startup reconcile: {live.Count} filter(s) in the sublayer, "
+                            + $"{tracked.Count} tracked - removing {orphans.Count} orphan(s) this "
+                            + "installation cannot name.");
+            _engine.RemoveFilters(orphans);
+            return orphans.Count;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("ReconcileOrphanFilters", ex);
+            return 0;
+        }
+    }
+
+    /// <summary>True when a rule can actually be applied to this path.
+    ///
+    /// FwpmGetAppIdFromFileName0 wants a real file and returns ERROR_FILE_NOT_FOUND
+    /// otherwise. Two ways that happens here: a rule left behind by an application
+    /// that updated into a new versioned folder, and a short-lived process that
+    /// has already exited by the time its prompt is answered - GitHub Desktop's
+    /// Squirrel updater copies itself into a temp folder, runs, and deletes it,
+    /// so the prompt outlives the executable it is asking about.
+    ///
+    /// Pseudo-processes are exempt: "System" and "Idle" are kernel identities with
+    /// no file behind them, and WFP accepts them.</summary>
+    public static bool IsApplicablePath(string? exePath)
+    {
+        string p = (exePath ?? "").Trim();
+        if (p.Length == 0) return false;
+        if (!p.Contains('\\')) return true;    // pseudo-process, not a path
+        return System.IO.File.Exists(p);
+    }
+
     public bool AddDomainReactiveBlock(string domain, string remoteIp)
     {
+        // A global /32 block, above every application rule. That is correct for an
+        // address belonging to the blocked site and catastrophic for one it merely
+        // shares: CDN edges answer for thousands of names, so blocking one tracker
+        // takes down every other service behind the same address - permanently,
+        // for every application, and with nothing on screen explaining it.
+        //
+        // This is not hypothetical. A 12-hour session accumulated blocks on Akamai,
+        // CloudFront, Cloudflare, Google and Microsoft edge addresses from tracker
+        // names alone, and the machine lost Kaspersky's update service and GitHub
+        // Desktop's sign-in. Allowing those applications did nothing, because the
+        // block is on the destination and outranks application rules.
+        //
+        // So: if this address has been seen answering for more than one name, it is
+        // shared, and the domain does not get to speak for it.
+        int names = DnsObservations.NameCountForIp(remoteIp);
+        if (names > 1)
+        {
+            EventLog($"Blocked domain {domain} resolved to {remoteIp}, which is shared with "
+                   + $"{names - 1} other name(s) - not blocking the address. "
+                   + $"Seen here: {DnsObservations.NamesForIp(remoteIp)}");
+            return false;
+        }
+
         var ids = _engine.AddGlobalRemoteIpBlock(remoteIp, $"Blocked domain: {domain}");
         if (ids.Count == 0) return false;
         string key = "domainblock|" + domain.ToLowerInvariant();

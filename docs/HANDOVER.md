@@ -250,6 +250,67 @@ disagree, the error code is the one that ran.
 
 **Check:** `reset-path`.
 
+### 2.18 Enforcing a name-based decision at the address layer
+
+A blocklist is a list of NAMES. The kernel filters ADDRESSES. Translating one into
+the other looks obvious and is only safe when the address belongs to the name.
+
+`AddDomainReactiveBlock` installed a global /32 block, above every application
+rule, for whatever address a blocked domain resolved to. On a CDN edge that
+address answers for thousands of names, so blocking one tracker took down every
+unrelated service behind it — permanently, for every application, with nothing on
+screen explaining it. A 12-hour session accumulated blocks on Akamai, CloudFront,
+Cloudflare, Google and Microsoft edges and cost the machine its antivirus updates
+and its git client.
+
+The failure is silent by construction: the block is on the destination, so it
+outranks the application rules the user reaches for, and allowing the affected app
+changes nothing.
+
+**Rule:** before translating a name decision into an address decision, establish
+that the address belongs to that name alone. GunWall already observed the data to
+know this and was discarding it — one name per address, last writer wins.
+
+**Check:** `silent-failure` asserts the sharing test exists on both sides.
+
+### 2.19 A teardown that removes the permits and leaves the denials
+
+`SetStrictMode(false)` removed the zero-trust baseline and then iterated
+`_data.Rules.Where(r => r.Status == AppStatus.Allowed)` to remove their filters.
+That `Where` skipped exactly the rules whose filters **deny** traffic, and nine
+other filter collections - lockdown, blocklists, domain-derived address blocks,
+system rules, blocked services, entity filters - were never touched at all.
+
+Turning the firewall off therefore removed what was letting traffic through and
+kept what was stopping it. On a kernel holding PERSISTENT filters that survive the
+app closing, the result is a machine locked by software that is no longer running
+and no longer offering a way to unlock it.
+
+**Rule:** an "off" that is partial is worse than no "off". A teardown enumerates
+what it owns rather than filtering it - and if the thing being iterated has a
+predicate on it, ask what the predicate excludes.
+
+**Check:** `reset-path` asserts the sweep is reflective and that the Allowed-only
+predicate has not returned.
+
+### 2.20 Treating "I know nothing" as "there is nothing"
+
+The startup reconcile removed every filter in GunWall's sublayer that the store
+could not name. Sound reasoning, and it ran from the window's field initialisers -
+before the store had loaded. It read **0 tracked against 116 live**, concluded all
+116 were orphans, and deleted the entire working filter set of a protected machine.
+
+The risk was seen while the code was being written and dismissed in a comment as
+"correct behaviour too" if the store were lost. It is not. An empty answer from a
+component that is not ready is not an answer.
+
+**Rule:** before acting destructively on a comparison, establish that both sides
+are true. A zero on one side is a reason to stop, not a licence.
+
+**Check:** `reset-path` asserts both the readiness gate and the zero-tracked
+refusal, because either alone would have prevented this and neither alone is
+sufficient.
+
 ---
 
 ## 3. Working agreements

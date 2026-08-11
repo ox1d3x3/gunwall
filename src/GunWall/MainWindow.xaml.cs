@@ -167,6 +167,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         TrafficApps.ItemsSource = _trafficApps;
         DnsLog.ItemsSource = _dnsLog;
         _dnsResolver.Query += OnDnsQuery;
+        // Lets the resolver name the enforcement posture in its own results, so a
+        // self-check line still means something when it is read months later in a
+        // bundle with no memory of what was switched on at the time.
+        _dnsResolver.PostureProbe = () =>
+            _firewall.StrictMode ? "protection ON" : "protection OFF";
         AlertsList.ItemsSource = _notifications;
         ServicesList.ItemsSource = _services;
         DevicesList.ItemsSource = _devices;
@@ -228,6 +233,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // The store is loaded and posture applied by the time Loaded fires, so the
+        // manager's view of its own filters is finally true. 0.99.92 ran this from
+        // the field initialisers instead, read "0 tracked" against 116 live
+        // filters, and deleted a protected machine's entire filter set. Ordering
+        // was the whole bug; the guards inside are the belt to this brace.
+        _firewall.MarkReconcileReady();
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            try { _firewall.ReconcileOrphanFilters(); }
+            catch (Exception ex) { Services.DiagnosticLog.LogException("StartupReconcile", ex); }
+        });
+
         // Apply the saved theme first so the whole window paints correctly.
         bool dark = _firewall.ThemeDark;
         if (ThemeToggle != null) ThemeToggle.IsChecked = !dark; // checked = light
@@ -331,7 +348,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.82 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.93 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4753,6 +4770,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (ExportDiagBtn != null) ExportDiagBtn.IsEnabled = false;
         if (DiagStatus != null) DiagStatus.Text = "Collecting diagnostics\u2026 this takes a few seconds.";
         // Record the UI snapshot pipeline's health so the bundle shows whether the
+        // Posture first: every line below is only interpretable against it. A
+        // path test that fails while enforcement is off means something other
+        // than GunWall; the same result with it on means the opposite. Reading a
+        // bundle without this was guesswork.
+        string protection = _firewall.StrictMode ? "ON (zero-trust enforcing)" : "OFF (monitoring only)";
+        string snoozed = _firewall.SnoozeUntil > DateTime.Now
+            ? _firewall.SnoozeUntil.ToString("HH:mm:ss")
+            : "not snoozed";
+        Services.DiagnosticLog.Log(
+            $"Posture: protection={protection}, lockdown={_firewall.LockdownEngaged}, "
+            + $"snoozedUntil={snoozed}");
+
         // sampling loop is actually feeding the Connections/Traffic panels.
         Services.DiagnosticLog.Log(
             $"UI pipeline: sampleTicks={_sampleTicks}, sampleErrors={_sampleErrors}, " +
@@ -4765,6 +4794,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
             $"plaintextFallback={_dnsResolver.DohFallbackAllowed}, " +
             $"upstreamRefused={_dnsResolver.UpstreamRefused}");
+        // The line above is a scoreboard; this one is the reason. Split because
+        // a reader who sees failures>0 has exactly one next question.
+        Services.DiagnosticLog.Log($"Secure DNS failures: {_dnsResolver.DohFailureDetail}");
+        if (_dnsResolver.DroppedFailClosed > 0)
+            Services.DiagnosticLog.Log(
+                $"Secure DNS: {_dnsResolver.DroppedFailClosed} query(ies) received and deliberately "
+                + "left unanswered - the encrypted upstream failed and plaintext fallback is off. "
+                + "Anything pointed at this resolver saw a DNS timeout, not an error.");
         Services.DiagnosticLog.Log(
             $"DNS observation: observer={(_dnsObserver.SessionActive ? "active" : "off")}, " +
             $"events={_dnsObserver.EventsSeen}, answers={_dnsObserver.AnswersRecorded}, " +
@@ -4772,7 +4809,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             $"knownNames={Services.DnsObservations.Count} " +
             $"(resolver {Services.DnsObservations.RecordedByResolver}, observer {Services.DnsObservations.RecordedByObserver})");
         Services.DiagnosticLog.Log(
-            $"DNS loopback path: listening=[{_dnsResolver.ListenerStatus}], " +
+            $"DNS loopback path: selfCheck=[{_dnsResolver.SelfCheck}], "
+            + $"listening=[{_dnsResolver.ListenerStatus}], " +
             $"receivedV4={_dnsResolver.ReceivedV4}, receivedV6={_dnsResolver.ReceivedV6}, " +
             $"repliesSent={_dnsResolver.RepliesSent}, sendFailures={_dnsResolver.ReplySendFailures}, " +
             $"lastSendError=[{_dnsResolver.LastSendError}]");
@@ -4785,6 +4823,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             $"ranges={_firewall.GeoIpRangeCount:N0}, active={_firewall.GeoIpActive}" +
             (_firewall.GeoIpActive ? "" : "  WARNING: no country/ASN data - those rules cannot match"));
         var tamper = _firewall.CheckIntegrity(repair: false);
+        // Rules whose executable is gone. An application that updates into a
+        // versioned folder - Kaspersky 21.25 -> 21.26, GitHub Desktop app-3.5.12
+        // -> app-3.6.3 - leaves its old rule behind pointing at nothing. The rule
+        // still lists as Allowed, holds no filters, and throws
+        // FwpmGetAppIdFromFileName0 / ERROR_FILE_NOT_FOUND if anything re-applies
+        // it. Two of these sat in a bundle looking exactly like working rules.
+        try
+        {
+            // IsApplicablePath, not File.Exists: "System" and "Idle" are kernel
+            // identities with no file behind them and rules for them are valid.
+            // The first version flagged System as an orphan - a check reporting a
+            // fault in something that was working correctly.
+            var orphans = _firewall.GetRules()
+                .Where(r => !Services.FirewallManager.IsApplicablePath(r.ExecutablePath))
+                .ToList();
+            Services.DiagnosticLog.Log(orphans.Count == 0
+                ? "Rule targets: every rule points at a file that exists."
+                : $"Rule targets: {orphans.Count} rule(s) point at a missing file - "
+                  + string.Join("; ", orphans.Select(r =>
+                        $"{r.DisplayName} [{r.FilterIds.Count} filter(s)] {r.ExecutablePath}")));
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("OrphanRuleScan", ex); }
+
         Services.DiagnosticLog.Log(
             $"Filter integrity: watch={_firewall.TamperWatchEnabled}, " +
             $"expected={tamper.Expected}, missing={tamper.Missing} ({tamper.Detail})");

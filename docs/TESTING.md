@@ -204,20 +204,33 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.82
+## 6. This build — 0.99.93
 
-0.99.80 and 0.99.81 are both confirmed from the session log. This build only
-changes what happens to one exception, so the run is short.
+### First: your machine is currently short 112 filters
 
-- [ ] **Use the Applications and Connections screens normally for a few minutes**,
-      toggling system rules and letting the lists refresh. No "An unexpected error
-      occurred: The given key was not present in the dictionary" dialog.
-- [ ] **Export diagnostics** and look at the `Errors this session` line. If the
-      automation-peer fault happened, it should appear as
-      `benign faults: WPF automation peer (dotnet/wpf #2152) xN` rather than as an
-      error. Zero of both is also fine — it does not fire every session.
-- [ ] If any *other* unexpected-error dialog appears, that path is still live and
-      I want the message.
+0.99.92 deleted them. The store still lists them, so integrity reports them missing.
+Fix before testing anything else:
+
+1. **Turn protection OFF**, then **ON**. That tears down what is left and rebuilds
+   from your rules.
+2. **Check filter integrity** — expect `N/N present, missing=0`.
+
+### Then: repeat the crash test that found it
+
+3. Protection ON, allow two apps, confirm they work.
+4. **End task from Task Manager.**
+5. `netsh wfp show filters file=%TEMP%\a.xml` — note how many entries carry
+   `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`.
+6. **Reopen GunWall**, wait for the window, export diagnostics.
+7. `Startup reconcile:` must read **`all accounted for`** — NOT "removing N orphans".
+8. **Filter integrity must read `missing=0`.** This is the line that failed last time
+   and it is the one that matters.
+9. Your two allowed apps must still work without being asked about again.
+
+### If it says "0 tracked - declining to act"
+
+That is the new guard holding, and it means the store had not loaded when it ran.
+Send the log — it is not destructive, but I want to know the ordering is still off.
 
 ## 7. What to send
 

@@ -55,6 +55,80 @@ public sealed class DnsResolver : IDisposable
     private HttpClient? _http;
     private long _dohOk, _dohFail;
 
+    // WHY a DoH attempt failed, which until 0.99.83 was discarded entirely:
+    // every exception went through `catch { return null; }` and every non-2xx
+    // status through `return null`. Diagnostics could say "failures=2" and not
+    // one word about the cause, which is exactly the question anyone reading it
+    // needs answered. A counter without a reason is a fact you cannot act on.
+    private long _dohFailTransport, _dohFailHttp, _dohFailTimeout, _dohFailMalformed;
+    private long _droppedFailClosed;
+
+    /// <summary>Queries the resolver received and deliberately did not answer,
+    /// because the encrypted upstream failed and plaintext fallback is off.
+    /// Without this the drop is indistinguishable from the query never
+    /// arriving.</summary>
+    public long DroppedFailClosed => Interlocked.Read(ref _droppedFailClosed);
+    private string _dohLastError = "";
+    private string _dohFirstAttemptError = "";
+    private long _dohLastOkUtc;
+    private long _dohLastFailUtc;
+
+    /// <summary>Per-cause DoH failure tallies and the last error text.</summary>
+    public string DohFailureDetail
+    {
+        get
+        {
+            var parts = new List<string>(4);
+            void Add(string label, long n) { if (n > 0) parts.Add($"{label}={n}"); }
+            Add("transport", Interlocked.Read(ref _dohFailTransport));
+            Add("http", Interlocked.Read(ref _dohFailHttp));
+            Add("timeout", Interlocked.Read(ref _dohFailTimeout));
+            Add("malformed", Interlocked.Read(ref _dohFailMalformed));
+            string by = parts.Count == 0 ? "none" : string.Join(", ", parts);
+            string last = Volatile.Read(ref _dohLastError);
+            string first = Volatile.Read(ref _dohFirstAttemptError);
+            long okTicks = Volatile.Read(ref _dohLastOkUtc);
+            long attempts = Interlocked.Read(ref _dohOk) + Interlocked.Read(ref _dohFail);
+            // "never succeeded" reads as failure. With zero attempts nothing has
+            // been tried, which is a different fact and the one a reader needs
+            // when the whole line is about why lookups are not working.
+            string ok = okTicks != 0
+                ? $"last success {new DateTime(okTicks, DateTimeKind.Utc):HH:mm:ss}Z"
+                : attempts == 0
+                    ? "not attempted this session"
+                    : "attempted, never succeeded";
+            string s = $"by cause: {by}; {ok}";
+            if (last.Length > 0) s += $"; lastError=[{last}]";
+            if (first.Length > 0 && first != last) s += $"; firstAttemptError=[{first}]";
+            return s;
+        }
+    }
+
+    private void NoteDohFailure(string cause, string detail)
+    {
+        switch (cause)
+        {
+            case "http": Interlocked.Increment(ref _dohFailHttp); break;
+            case "timeout": Interlocked.Increment(ref _dohFailTimeout); break;
+            case "malformed": Interlocked.Increment(ref _dohFailMalformed); break;
+            default: Interlocked.Increment(ref _dohFailTransport); break;
+        }
+        Volatile.Write(ref _dohLastError, $"{cause}: {detail}");
+        Volatile.Write(ref _dohLastFailUtc, DateTime.UtcNow.Ticks);
+    }
+
+    /// <summary>Exception text worth reading: the innermost message carries the
+    /// cause (a socket error, a TLS failure), the outer one rarely does.</summary>
+    private static string Describe(Exception ex)
+    {
+        var inner = ex;
+        while (inner.InnerException != null) inner = inner.InnerException;
+        string s = inner == ex
+            ? $"{ex.GetType().Name}: {ex.Message}"
+            : $"{ex.GetType().Name} -> {inner.GetType().Name}: {inner.Message}";
+        return s.Length > 300 ? s[..300] : s;
+    }
+
     // Upstream answered, but with a failure code (SERVFAIL / REFUSED / ...).
     // Tracked separately from transport failures because the two need very
     // different diagnoses.
@@ -119,6 +193,24 @@ public sealed class DnsResolver : IDisposable
 
     /// <summary>Which loopback endpoints are actually bound, for diagnostics.</summary>
     public string ListenerStatus { get; private set; } = "not started";
+
+    /// <summary>Whether the resolver actually answers on loopback, established
+    /// automatically a moment after it starts.
+    ///
+    /// Binding a socket proves nothing. Across four sessions this resolver bound
+    /// successfully every time and answered nobody - once because the encrypted
+    /// upstream never worked, and once because its replies were sent and then
+    /// dropped on the way back. Both were only ever found by someone remembering
+    /// to press "Test DNS path" by hand, and in between, diagnostics reported a
+    /// healthy-looking listener. A component that can be broken and still look
+    /// started should say which it is without being asked.</summary>
+    public string SelfCheck { get; private set; } = "not run";
+
+    /// <summary>Set by the host so the self-check can state the enforcement
+    /// posture inline. A result that does not say whether the firewall was
+    /// blocking at the time cannot be interpreted later, and "later" is when
+    /// diagnostics are read.</summary>
+    public Func<string>? PostureProbe { get; set; }
 
     /// <summary>Upstream responses carrying a DNS failure code this session.</summary>
     public long UpstreamRefused => Interlocked.Read(ref _upstreamRefused);
@@ -367,6 +459,13 @@ public sealed class DnsResolver : IDisposable
             _dohFallback = dohFallback;
             Interlocked.Exchange(ref _dohOk, 0);
             Interlocked.Exchange(ref _dohFail, 0);
+            Interlocked.Exchange(ref _dohFailTransport, 0);
+            Interlocked.Exchange(ref _dohFailHttp, 0);
+            Interlocked.Exchange(ref _dohFailTimeout, 0);
+            Interlocked.Exchange(ref _dohFailMalformed, 0);
+            Interlocked.Exchange(ref _droppedFailClosed, 0);
+            Volatile.Write(ref _dohLastError, "");
+            Volatile.Write(ref _dohFirstAttemptError, "");
             Interlocked.Exchange(ref _upstreamRefused, 0);
             _cache.Clear();   // never carry answers across a configuration change
             if (_dohUrl.Length > 0)
@@ -444,8 +543,55 @@ public sealed class DnsResolver : IDisposable
 
             var token = _cts.Token;
             _ = Task.Run(() => Loop(listener, token));
+            _ = Task.Run(() => SelfCheckAsync(token));
             if (_listener6 != null)
                 _ = Task.Run(() => Loop(_listener6, token));
+        }
+    }
+
+    /// <summary>One round trip through the resolver's own listener, a moment
+    /// after start. Deliberately uses the real port-53 path rather than a raw
+    /// loopback probe: a reply from a high port arriving does not prove a reply
+    /// from :53 will, which is exactly the distinction that caught the return
+    /// path being dropped.</summary>
+    private async Task SelfCheckAsync(CancellationToken ct)
+    {
+        try
+        {
+            // Let the receive loop reach its first await before probing it.
+            await Task.Delay(400, ct);
+            if (ct.IsCancellationRequested || !Running) return;
+
+            var probes = await TestLoopbackPathAsync("gunwall-selfcheck.invalid");
+            var real = probes.FindAll(p => p.Endpoint.Contains(":53", StringComparison.Ordinal));
+            if (real.Count == 0) { SelfCheck = "inconclusive (no :53 probe ran)"; return; }
+
+            string posture = "";
+            try { posture = PostureProbe?.Invoke() ?? ""; } catch { }
+            if (posture.Length > 0) posture = $" [{posture}]";
+
+            var failed = real.FindAll(p => !p.Ok);
+            if (failed.Count == 0)
+            {
+                SelfCheck = "answers on loopback" + posture;
+                DiagnosticLog.Log("DNS resolver self-check: answers on loopback." + posture);
+                return;
+            }
+
+            SelfCheck = string.Join("; ", failed.ConvertAll(p => $"{p.Endpoint} {p.Detail}")) + posture;
+            // Logged as a warning line, because a resolver that binds and cannot
+            // answer is worse than one that failed to start: nothing looks wrong.
+            DiagnosticLog.Log(
+                "DNS resolver self-check FAILED - it is listening but not usable. " + SelfCheck
+                + " | Nothing pointed at this resolver will resolve names. Try it with "
+                + "GunWall's protection off to see whether GunWall itself is the cause; "
+                + "other filtering software on this PC is the other candidate.");
+        }
+        catch (OperationCanceledException) { /* stopping */ }
+        catch (Exception ex)
+        {
+            SelfCheck = $"could not run ({ex.GetType().Name})";
+            DiagnosticLog.LogException("DnsSelfCheck", ex);
         }
     }
 
@@ -455,6 +601,13 @@ public sealed class DnsResolver : IDisposable
         {
             if (!Running) return;
             Running = false;
+            // Cleared, or it keeps the value it had while running. A diagnostics
+            // export then reads "dnsRunning=False" on one line and
+            // "listening=[127.0.0.1:53 and [::1]:53]" on the next - two fields
+            // describing one subsystem, disagreeing, in the same bundle. A stale
+            // value is worse than a missing one: it is believed.
+            ListenerStatus = "stopped";
+            SelfCheck = "not run";
             try { _cts?.Cancel(); } catch { }
             try { _listener?.Close(); } catch { }
             try { _listener6?.Close(); } catch { }
@@ -827,6 +980,14 @@ public sealed class DnsResolver : IDisposable
             // exactly that: a failed encrypted lookup fails, rather than
             // silently going out in plaintext.
             if (_dohFallback) return await ForwardPlainAsync(query, ct);
+
+            // Counted, because returning null here is INVISIBLE otherwise. The
+            // caller sends nothing, so repliesSent does not move and sendFailures
+            // does not move either - the diagnostics read exactly as though no
+            // query had arrived. That is what "resolver received this query but
+            // sent no reply" looked like from the outside, with no field
+            // anywhere saying the resolver had decided not to answer.
+            Interlocked.Increment(ref _droppedFailClosed);
             return null;
         }
         return await ForwardPlainAsync(query, ct);
@@ -842,7 +1003,15 @@ public sealed class DnsResolver : IDisposable
     private async Task<byte[]?> ForwardDohAsync(byte[] query, CancellationToken ct)
     {
         var http = _http;
-        if (http == null) return null;
+        if (http == null)
+        {
+            // Found by the silent-failure check, not by reading the code. If the
+            // client was never built the resolver cannot do encrypted lookups at
+            // all, and saying nothing here would leave "failures=N, cause: none"
+            // - the exact shape of report that started this.
+            NoteDohFailure("transport", "no HTTP client - secure DNS never initialised");
+            return null;
+        }
 
         // One quick retry on the SAME warm client. A first attempt can lose the
         // race to open a cold TLS connection; the second reuses the now-open
@@ -859,10 +1028,18 @@ public sealed class DnsResolver : IDisposable
                 content.Headers.ContentType =
                     new System.Net.Http.Headers.MediaTypeHeaderValue("application/dns-message");
                 using var resp = await http.PostAsync(_dohUrl, content, perQuery.Token);
-                if (!resp.IsSuccessStatusCode) return null;   // a real HTTP error won't fix on retry
+                if (!resp.IsSuccessStatusCode)
+                {
+                    NoteDohFailure("http", $"HTTP {(int)resp.StatusCode} {resp.ReasonPhrase}");
+                    return null;   // a real HTTP error won't fix on retry
+                }
 
                 byte[] body = await resp.Content.ReadAsByteArrayAsync(perQuery.Token);
-                if (body.Length < 12) return null;
+                if (body.Length < 12)
+                {
+                    NoteDohFailure("malformed", $"reply was {body.Length} bytes, need at least 12");
+                    return null;
+                }
 
                 // HTTP 200 does NOT mean the lookup succeeded. A SERVFAIL or
                 // REFUSED arrives as a perfectly valid HTTP response carrying a
@@ -873,21 +1050,33 @@ public sealed class DnsResolver : IDisposable
                 {
                     Interlocked.Increment(ref _upstreamRefused);
                     if (attempt == 0) continue;   // a retry often lands on a healthy node
+                    NoteDohFailure("refused", "upstream returned SERVFAIL or REFUSED");
                     return null;                  // let the caller fall back
                 }
+                Volatile.Write(ref _dohLastOkUtc, DateTime.UtcNow.Ticks);
                 return body;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 return null;                                   // resolver is stopping
             }
-            catch when (attempt == 0)
+            catch (OperationCanceledException)
+            {
+                // Not the resolver stopping - this is the per-query deadline.
+                // Worth separating: a timeout means the upstream is unreachable,
+                // a reset means it answered and hung up.
+                if (attempt > 0) { NoteDohFailure("timeout", $"no response within the per-query deadline"); return null; }
+            }
+            catch (Exception ex) when (attempt == 0)
             {
                 // First attempt failed (cold connection, transient reset) - loop
-                // once more on the warm pool before giving up.
+                // once more on the warm pool before giving up. Recorded anyway:
+                // a retry that succeeds still says something about the upstream.
+                Volatile.Write(ref _dohFirstAttemptError, Describe(ex));
             }
-            catch
+            catch (Exception ex)
             {
+                NoteDohFailure("transport", Describe(ex));
                 return null;
             }
         }

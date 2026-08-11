@@ -752,6 +752,78 @@ public sealed class WfpEngine : IDisposable
     }
 
     /// <summary>
+    /// <summary>Every filter in GunWall's sublayer, including ones it has lost the
+    /// id for, obtained by asking Windows to list them.
+    ///
+    /// Orphans are the reason a reset could not return the machine to default:
+    /// a crash between installing a filter and saving its id, or a store cleared
+    /// before its filters were deleted, leaves a PERSISTENT filter in the kernel
+    /// that GunWall can no longer name. It keeps filtering forever, survives
+    /// reboots, and is why deleting the sublayer returns FWP_E_IN_USE.
+    ///
+    /// The obvious route is FwpmFilterEnum0, which means marshalling FWPM_FILTER0
+    /// by hand - a struct with a union and nested blobs whose layout would have to
+    /// be right first time on a machine this code cannot run on. Trap 2.5 was
+    /// exactly that mistake with a callback offset, and it killed a process
+    /// silently.
+    ///
+    /// So this asks netsh instead. `netsh wfp show filters` is shipped with
+    /// Windows, writes documented XML, and every filter in it carries its
+    /// subLayerKey and its filterId. Parsing XML is something this project can
+    /// verify; guessing a struct offset is not. FwpmFilterDeleteById0 is already
+    /// bound, so nothing new touches the kernel boundary at all.</summary>
+    public List<ulong> FindAllSublayerFilterIds()
+    {
+        var found = new List<ulong>();
+        string tmp = Path.Combine(Path.GetTempPath(), $"gunwall-wfp-{Guid.NewGuid():N}.xml");
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("netsh",
+                $"wfp show filters file=\"{tmp}\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using (var proc = System.Diagnostics.Process.Start(psi))
+            {
+                if (proc == null) return found;
+                if (!proc.WaitForExit(30000)) { try { proc.Kill(); } catch { } return found; }
+            }
+            if (!File.Exists(tmp)) return found;
+
+            string sub = SublayerKey.ToString("D");
+            var doc = System.Xml.Linq.XDocument.Load(tmp);
+
+            // Each <item> is one filter. Match on subLayerKey, then read filterId.
+            // Names are compared case-insensitively and without a namespace, so a
+            // schema change in casing does not silently match nothing.
+            foreach (var item in doc.Descendants()
+                         .Where(e => string.Equals(e.Name.LocalName, "item", StringComparison.OrdinalIgnoreCase)))
+            {
+                var key = item.Descendants().FirstOrDefault(e =>
+                    string.Equals(e.Name.LocalName, "subLayerKey", StringComparison.OrdinalIgnoreCase));
+                if (key == null) continue;
+                if (!key.Value.Trim().Trim('{', '}').Equals(sub, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var id = item.Descendants().FirstOrDefault(e =>
+                    string.Equals(e.Name.LocalName, "filterId", StringComparison.OrdinalIgnoreCase));
+                if (id != null && ulong.TryParse(id.Value.Trim(), out ulong v) && v != 0)
+                    found.Add(v);
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("FindAllSublayerFilterIds", ex);
+        }
+        finally
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+        }
+        return found;
+    }
+
     /// Tears down GunWall's sublayer. **Filters must already be gone.**
     ///
     /// WFP does not cascade: FwpmSubLayerDeleteByKey0 returns FWP_E_IN_USE

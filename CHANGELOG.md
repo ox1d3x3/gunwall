@@ -6,6 +6,294 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.93] — 2026-08-11
+
+### Fixed — 0.99.92's startup reconcile disarmed a protected machine
+The crash test worked, and it found a regression I introduced one release earlier.
+
+```
+Startup reconcile: 116 filter(s) in the sublayer, 0 tracked - removing 116 orphan(s)
+Filter integrity: expected=120, missing=112 (112 of 120 filters MISSING)
+```
+
+The kernel held 116 filters correctly — persistent, as designed, surviving the kill. The reconcile ran **from the window's field initialisers, before the store had loaded**, read `0 tracked`, concluded every live filter was an orphan, and deleted the lot.
+
+I identified this exact risk while writing it and dismissed it in a comment as *"correct behaviour too"* if the store were lost. It is not. **An empty answer from a component that is not ready is not an answer**, and a firewall that disarms itself because it briefly could not read its own notes is worse than one that leaves an orphan behind.
+
+Two guards, because either alone would have prevented it and neither alone is enough:
+
+- **Readiness.** The reconcile now runs from `Loaded`, after the store is read and posture applied, and refuses outright until told it is ready. Ordering was the whole bug.
+- **Zero tracked.** Nothing tracked against something live means this component cannot tell the two apart. It says so and touches nothing. The reset path is unaffected — there the user has explicitly asked for everything to go.
+
+Simulated against the real numbers: the 116/0 case now declines, and the genuine 847/4 case still removes 843.
+
+### Added
+- `reset-path` asserts both guards. Shown to fail with either removed.
+- Recorded as trap 2.20.
+---
+
+## [0.99.92] — 2026-08-11
+
+### Confirmed by Windows, not by GunWall
+A `netsh wfp show filters` dump from the repaired machine: **9,435 filters present, zero in GunWall's sublayer, zero mentions of GunWall.** The reset genuinely returned the machine to Windows defaults, and that is Windows saying so.
+
+The same dump verified the XML parser written for 0.99.91, which until now had only been checked against documentation. Real output confirms `<item>` entries carrying `filterId`, `subLayerKey` and `filterKey` — and that custom sublayers render as a **braced** GUID while well-known ones render as symbolic names like `FWPM_SUBLAYER_MPSSVC_WF`. The parser's `.Trim('{','}')` handles the braces; the symbolic form never matches a custom GUID, which is correct. Verified against 9,435 real records rather than assumed.
+
+### Added — orphans can no longer accumulate
+0.99.91 made orphaned filters **recoverable**. That is not the same as impossible, and the difference is what cost this project a week.
+
+GunWall now reconciles the kernel against its own store **at every startup**: every filter in its sublayer that the store cannot name is removed. The sublayer belongs to GunWall alone, so anything in it without an id is by definition something GunWall installed and lost track of.
+
+The scale this prevents, from the machine that found it: **843 orphans against 4 tracked filters.** Every reset before 0.99.81 discarded the ids first and then failed to delete the sublayer, orphaning the entire filter set — and being PERSISTENT they survived every reboot and every protection toggle. They blocked an antivirus's updates and a git client for days while every diagnostics bundle truthfully reported zero errors, because GunWall was reporting on the four it knew about.
+
+An orphan now survives at most until the next launch. Runs off the UI thread.
+
+### Added
+- `reset-path` asserts the reconcile exists **and** is called at startup — a method nobody calls is the state that let 843 accumulate.
+
+### Note
+That check first tested for the bare method name, which still matched after the method was renamed to `ReconcileOrphanFiltersX`, because the old name is a substring of the new one. Tenth time this session a check matched the neighbourhood instead of the thing. It now looks for the declaration.
+---
+
+## [0.99.91] — 2026-08-11
+
+### Remove all filtering now returns the machine to Windows defaults
+The remaining gap was orphaned filters: ones GunWall installed and later lost the id for — a crash between installing and saving, or a store cleared before its filters were deleted. They are PERSISTENT, so they keep filtering forever, survive reboots, and cannot be named by anything. That is what `FWP_E_IN_USE` on the sublayer delete has been reporting all along.
+
+I had been describing this as a limitation rather than fixing it, twice. The stated blocker was that reaching them needs `FwpmFilterEnum0`, which means marshalling `FWPM_FILTER0` — a struct with a union and nested blobs whose layout would have to be right first time on a machine this code cannot run on. Trap 2.5 was exactly that mistake with a callback offset and it killed a process silently.
+
+**That blocker was avoidable.** `netsh wfp show filters file=<path>` ships with Windows, writes documented XML, and every filter in it carries its `subLayerKey` and its `filterId`. GunWall runs elevated, so it can ask Windows for the list, match GunWall's own sublayer GUID, and delete each by id with `FwpmFilterDeleteById0` — which was already bound. **No new interop, no struct layout, nothing new at the kernel boundary.** Parsing XML is something this project can verify; guessing a struct offset is not.
+
+The reset now: removes every tracked filter, attempts the sublayer, and if that still reports in-use, asks Windows for whatever is left in the sublayer, removes that too, and retries. The log says which happened.
+
+### Added
+- `reset-path` asserts the sweep is wired in, **and** that `FwpmFilterEnum0` has not been declared — so the safe route cannot quietly be replaced by the unsafe one later.
+
+### Note
+The check's first version tested for the string `FwpmFilterEnum0` anywhere, and failed on the comment explaining why that route was avoided. Ninth time this session a check matched the neighbourhood instead of the thing. It now looks for a P/Invoke declaration.
+---
+
+## [0.99.90] — 2026-08-11
+
+### Fixed — turning the firewall off now actually turns it off
+This is the reported bug, and it was exactly as described: *"it is locking but leaving everything locked."*
+
+`SetStrictMode(false)` removed the zero-trust baseline, then removed filters for rules matching `Where(r => r.Status == AppStatus.Allowed)`.
+
+**That predicate skipped precisely the rules whose filters deny traffic.** Every explicitly blocked application kept its block filters. And nine further collections were never touched at all — lockdown, blocklists, blocklist WFP filters, domain-derived address blocks, entity reactive filters, system rules, blocked services, scope filters, and the per-rule lists on blocked entries.
+
+So "off" removed the permits and kept the denials, on a kernel that holds them persistently after the app closes. An off switch that leaves a machine locked by software that is no longer running is worse than no off switch, because the user has been told the problem is over.
+
+Protection-off now sweeps every filter collection the same way the reset does — reflectively over the store, so it cannot forget one and picks up any added later. **The rules themselves are kept**: the user asked to stop enforcing, not to lose their decisions, and re-engaging reinstalls from them.
+
+### Added
+- `reset-path` asserts the teardown is a sweep and that the `Allowed`-only predicate has not come back. Shown to fail on the code that shipped.
+- Recorded as trap 2.19.
+
+### Confirmed as correct, not a bug
+Persistence is deliberate and stays. Every filter carries `FWPM_FILTER_FLAG_PERSISTENT`, so a crash, a close or a reboot with the firewall left on keeps enforcing. That is what a kernel firewall must do. The two intended exits — the posture switch and Remove all filtering — are what must work, and one of them did not.
+
+### Still open — orphaned filters
+The reset removes every filter it has an id for. Filters whose ids were lost — a crash between installing and saving, or a store cleared before its filters were deleted — stay in the sublayer permanently, which is why the sublayer delete reports `FWP_E_IN_USE`. Clearing those needs `FwpmFilterEnum0`, and `FWPM_FILTER0` has to be verified against win32metadata before it is marshalled. **I will not author that struct layout from memory** — trap 2.5 is exactly that mistake and it killed a process silently.
+---
+
+## [0.99.89] — 2026-08-11
+
+0.99.88's two fixes worked: the WFP failure is now logged (`Errors this session: 1 distinct, 1 total`, with the stack) and `Rule targets:` reports. The dialog you saw is the new message doing its job — it was just aimed at the wrong cause.
+
+### Fixed
+- **The prompt can outlive the program it is about.** `update` is GitHub Desktop's Squirrel updater: it copies itself into a temporary folder, connects, and deletes the copy when it finishes. Answering the prompt after that asks the kernel to build a rule for a file that has gone — `ERROR_FILE_NOT_FOUND`.
+
+  The path is now checked **before** the WFP call rather than after it throws, and the message says what happened: the program has already closed, nothing was blocked that would not have been blocked anyway.
+
+- **`Rule targets:` reported `System` as an orphan.** `System` and `Idle` are kernel identities with no file behind them, and rules for them are valid — WFP accepts them. A check reporting a fault in something working correctly.
+
+### Fixed — the reset now removes everything GunWall changed
+A button captioned *"removes every filter GunWall has created… run this before uninstalling"* was leaving two system changes in place:
+
+- **The hosts file.** Blocklist categories are written there as `0.0.0.0` entries. Left behind after an uninstall, the machine keeps blocking those domains with nothing installed to explain it or undo it.
+- **Adapter DNS servers**, if the DNS redirect was ever used. Left behind, the PC keeps pointing at a resolver that is no longer running — a machine with no working DNS at all.
+
+Both were recorded and reversible. Neither was being reversed. The reset now clears the hosts block, restores every saved adapter, and flushes the DNS cache, logging each.
+
+### Added
+- `reset-path` asserts the reset clears the hosts file and restores adapter DNS. Shown to fail on both.
+
+### Note
+The hosts check first tested for `HostsFileService` anywhere in the reset — which `FlushDns` satisfied while the clearing call was gone. Seventh time this session a check matched the neighbourhood instead of the thing.
+
+### Still open — Kaspersky
+Not explained. `avp.exe` 21.26 allowed with four filters, strict mode on, no blocklists, no system rules, no domain blocks, 104/104 filters present. Nothing in the export accounts for it, and the packet log is the only place that names a blocked connection's process and reason.
+---
+
+## [0.99.88] — 2026-08-10
+
+### Correcting 0.99.87's diagnosis
+The shared-address defect was real and worth fixing, but it is **not** what is still breaking Kaspersky. The bundle shows `domainblock` entries: **0**. Those blocks were already gone and the machine is still broken, so 0.99.87's account was incomplete and stated with more confidence than the evidence carried.
+
+### What the bundle actually shows
+Two rules pointing at executables that no longer exist:
+
+| Rule | Path | Filters |
+|---|---|---|
+| `avp` | `Kaspersky Lab\Kaspersky 21.25\avp.exe` | **0** |
+| `GitHubDesktop` | `GitHubDesktop\app-3.5.12\GitHubDesktop.exe` | **0** |
+
+Both applications updated into new versioned folders — 21.26 and app-3.6.3, which have working rules with four filters each. The old entries stayed behind, list as **Allowed**, hold **no filters**, and throw `FwpmGetAppIdFromFileName0` with `0x00000002` (`ERROR_FILE_NOT_FOUND`) the moment anything tries to apply them. That is the error dialog.
+
+### Fixed
+- **An error dialog that the diagnostics denied.** `Allow_Click` showed the WFP failure and never logged it, so the bundle read `Errors this session: 0 distinct, 0 total` while the user was looking at an error. An error worth interrupting someone for is worth recording.
+
+- **The message named an API instead of a problem.** `FwpmGetAppIdFromFileName0 failed with code 0x00000002` now reads as what it means: the file this rule points at no longer exists, the application probably updated into a new folder, remove the old entry and allow the current one.
+
+- **Orphaned rules are now reported in every bundle.** `Rule targets:` lists any rule whose executable is missing, with its path and filter count. Two of these sat in a bundle looking exactly like working rules — allowed, present, and inert.
+
+### Still open
+Kaspersky's update failing is **not yet explained**. `avp.exe` 21.26 is allowed with four filters installed, strict mode is on, no blocklists are enabled, no system rules, no domain blocks, 136/136 filters present, zero errors. Whatever is blocking it is not visible in this bundle, and the packet log is the next place to look — it names the process and the reason per connection, which nothing in the export currently does.
+---
+
+## [0.99.87] — 2026-08-10
+
+**GunWall was the cause.** Kaspersky losing its update service and GitHub Desktop losing sign-in are the same defect.
+
+### The defect
+With "Watch system DNS lookups" on, a domain on the blocklist has its resolved address blocked in the kernel — `AddDomainReactiveBlock` → a **global /32 block, for every application, above every application rule**, persisted.
+
+That is correct for an address belonging to the blocked site. On a CDN edge it is catastrophic, because the address answers for thousands of unrelated names. The 12-hour log shows exactly this happening:
+
+| Blocked name | Address | Whose edge |
+|---|---|---|
+| `analytics.tiktok.com` | 23.211.125.229 | Akamai |
+| `sb.scorecardresearch.com` | 13.35.147.107 | AWS CloudFront |
+| `static.cloudflareinsights.com` | 104.16.80.73 | Cloudflare |
+| `mail-ads.google.com` | 192.178.187.19 | Google |
+| `c.bing.com` | 150.171.27.10 | Microsoft |
+
+Kaspersky Security Network and its database updates run on Akamai and CloudFront. GitHub Desktop's sign-in and `objects.githubusercontent.com` sit behind CDN fronts. Both were collateral.
+
+**And allowing the applications could never have helped** — the block is on the destination, so it outranks the application rules the user reaches for. That is why GitHub Desktop stayed broken after being set to Allow.
+
+### Fixed
+- **A shared address is no longer blanket-blocked.** GunWall already observed every DNS answer and was discarding what it needed: the map kept one name per address, last writer wins. It now tracks the distinct names each address has served, and `AddDomainReactiveBlock` refuses when an address has answered for more than one — logging the refusal and naming the other names seen there.
+
+  The blocklist still works. Lookups sent to GunWall's resolver still return NXDOMAIN for blocked names. Only the kernel-level address block, the part with collateral, is now withheld where the address is not the site's own.
+
+### Added
+- `silent-failure` extended: the sharing test must exist on both sides — the observation store must be able to report it, and the block path must consult it. Shown to fail on the behaviour that shipped.
+- Recorded as trap 2.18: enforcing a name-based decision at the address layer.
+
+### Note
+This one was not found by a check or by a log line saying "error". Every session reported 0 errors, 0 exceptions, filters intact. **The firewall was working exactly as designed and the design was wrong.** The only trace was six `Blocked domain enforced` lines that looked like the feature succeeding.
+---
+
+## [0.99.86] — 2026-08-10
+
+### Confirmed
+- **The self-check works.** It fired on its own, twice, without anyone pressing anything, and reported the failure both times. That is the fault that had been invisible across four sessions.
+- **Stale state is gone:** `selfCheck=[not run], listening=[stopped]` after stopping. Neither field claims a working resolver any more.
+- **The encrypted upstream is healthy:** `ok=2, failures=0, last success 09:37:25Z`. So the resolver resolves correctly and *still* cannot deliver the answer. The two faults were genuinely separate.
+
+### The gap this build closes
+The isolation test — the one experiment that separates "GunWall drops this" from "something else does" — was not run, and **the bundle could not have shown it either way, because enforcement posture was recorded nowhere.**
+
+Three sessions of DNS logs, and none of them said whether the firewall was blocking at the time. Every path test result in them is uninterpretable for that reason. That is a worse defect than the bug being chased.
+
+- **Posture is now a line in every export**: protection on or off, lockdown, snooze.
+- **Protection transitions are logged** as they happen, so a test done in the middle of a session can be placed against them.
+- **The resolver's self-check states the posture inline**, so that single line still means something read months later in a bundle with no memory of what was switched on.
+
+### Added
+- `silent-failure` extended: diagnostics must record posture, and `SetStrictMode` must log its transitions. Shown to fail on both.
+
+### Note — this build's check caught its own author
+The first version of the posture line put quotes inside an interpolation hole — `$"protection={(x ? "ON (a)" : "OFF")}"` — and `local-call` reported `ON` and `OFF` as undeclared methods. A **false positive**, from the string-stripping pairing quotes left to right.
+
+Left unfixed, and documented in the check instead. Matching C# interpolation properly needs a parser, and the alternative — allow-listing whichever words leak out — is how a check quietly stops failing. Hoisting the branch into a local is clearer code anyway, so the false positive is a nudge rather than an obstacle. Better a check that is honest about its edges than one filed down until it never complains.
+
+### What is still unknown
+**Who drops the reply.** GunWall installs no filter matching port 53 — verified against the engine and the manager — so it is unlikely to be the direct cause, but "unlikely" is not "ruled out". The next bundle can settle it in one line.
+---
+
+## [0.99.85] — 2026-08-10
+
+**12-hour soak on 0.99.84: 45,921 sample ticks, 0 sample errors, 0 detect errors, 0 exceptions, no benign faults, 239/239 filters present, 22,372 DNS events with 0 parse failures.** The first long run of this project and nothing drifted.
+
+The 0.99.84 wording fix is confirmed in the field: `not attempted this session` printed correctly for a session where Secure DNS was off.
+
+### The finding the soak buried
+One line, 12 hours before the summary block:
+
+> `127.0.0.1:53 FAIL resolver RECEIVED this query and SENT a reply, but the reply never arrived - the return path is being dropped`
+
+A **different** failure from the one chased in 0.99.83. Then, the resolver sent nothing because the encrypted upstream was dead. Here it forwards in plaintext, receives the query, sends the reply — `receivedV4=1, receivedV6=1, repliesSent=2, sendFailures=0` — and the reply never reaches the caller.
+
+Note what still worked in the same test: *"DNS-shaped reply from a high port OK"*. A reply from a high port arrives; a reply from **:53** does not. Something is dropping loopback traffic sourced from port 53 specifically. Anything pointed at this resolver would time out on every lookup.
+
+### Added
+- **The resolver now checks itself on start.** A moment after binding it runs one real round trip through its own `:53` listener and records whether it answers. Reported as `selfCheck=[...]` in every diagnostics bundle, and a failure is logged as a warning naming the next step.
+
+  **Binding proves nothing.** Across four sessions this resolver bound successfully every time and answered nobody — once because the upstream was dead, once because its replies were dropped — and both were found only because someone remembered to press *Test DNS path* by hand. In between, diagnostics reported a healthy-looking listener. A component that can be broken and still look started should say which it is without being asked.
+
+  Deliberately probes the real `:53` path rather than a raw loopback socket, because a reply from a high port arriving does not prove a reply from `:53` will — which is exactly the distinction that caught this.
+
+### Fixed
+- `Stop()` clears the self-check result as well as the listener status, or a stopped resolver would keep reporting that it answers.
+
+### Added — checks
+- `silent-failure` extended: the self-check must exist, must be started by `Start()` rather than only by a button, must reach diagnostics, and must be cleared on stop. Shown to fail on each.
+
+### Still unknown
+**Who** drops the reply. GunWall's own filters, Kaspersky, or PIA are all candidates and the bundle cannot yet distinguish them. The isolation step is in TESTING.md §6 and takes a minute.
+---
+
+## [0.99.84] — 2026-08-09
+
+Clean session on 0.99.83 — 0 errors, 150/150 filters, 22/22 layers, no benign faults, VirusTotal live. Two contradictions in that same log, both inside the diagnostics this thread is about.
+
+### Fixed
+- **`dnsRunning=False` and `listening=[127.0.0.1:53 and [::1]:53]` appeared in one export, one line apart.** `ListenerStatus` was assigned when the listener bound and never on stop, so it kept describing a listener that had gone.
+
+  A field describing a live state has to be cleared when that state ends. **A stale value is worse than a missing one, because it is believed** — and this is the third time this week a reading has cost more than it was worth by being confidently wrong: the tracking helper's caveat, the reset comment, and now this.
+
+- **"never succeeded" was printed after zero attempts.** With `ok=0, failures=0` nothing had been tried, which is a different fact from having tried and failed — and the reader looking at that line is asking exactly which one. Now `not attempted this session`, `attempted, never succeeded`, or `last success HH:mm:ssZ`.
+
+### Added
+- `silent-failure` extended: `Stop()` must clear `ListenerStatus`. Shown to fail on the version that shipped.
+
+### Note — the DoH failure reporting is still unproven
+0.99.83 added per-cause tallies and error text for encrypted lookups, and this session never exercised them: `receivedV4=0, receivedV6=0`, no query reached the resolver, so no DoH attempt was made. The line reads correctly for that state, but correct-when-idle is not evidence. **It has still never been run against a real failure**, and the earlier bundles' `failures=2` remains unexplained.
+---
+
+## [0.99.83] — 2026-08-09
+
+Two diagnostics bundles were submitted for "the DNS resolver takes GunWall offline". They contained the symptom and not one word of the cause. This release is mostly about that second fact.
+
+### The finding
+`Secure DNS: ok=0, failures=2, plaintextFallback=False` — **zero successful encrypted lookups, ever**, against both `1.1.1.2` and `1.1.1.1`. With fail-closed and no plaintext fallback, a query the resolver cannot answer is dropped rather than answered, which is why `DNS path test` read *"resolver received this query but sent no reply"* and why `repliesSent=0, sendFailures=0` — nothing was ever sent, so nothing could fail to send.
+
+The resolver is behaving as configured. The upstream is not working, and **the bundle does not say why**, which is the actual defect.
+
+### Fixed
+- **Every DoH failure discarded its own cause.** `catch { return null; }` swallowed exceptions; `if (!resp.IsSuccessStatusCode) return null;` swallowed the HTTP status; a short body returned silently. Four distinct failure modes collapsed into one integer.
+
+  Now recorded per cause — transport, http, timeout, malformed — with the last error text (innermost exception message, or the actual HTTP status), the first-attempt error when a retry was involved, and the time of the last success. Reported as its own diagnostics line, because a reader who sees `failures>0` has exactly one next question.
+
+- **A query dropped by fail-closed was invisible.** Returning null meant no reply was sent, so `repliesSent` did not move and `sendFailures` did not move — reading exactly as though no query had arrived. Counted now, and stated plainly: *"received and deliberately left unanswered — anything pointed at this resolver saw a DNS timeout, not an error."*
+
+- **A third silent path, found by the check rather than by reading.** `if (http == null) return null;` — if the HTTP client was never built, DoH cannot run at all and nothing said so. That produces `failures=N, cause: none`, the exact shape of report that started this.
+
+### Added
+- `silent-failure`: no return from the DoH path may discard its reason, and the reason must reach diagnostics. Shown to fail on the bare catch, the silent HTTP status, the uninitialised client, and on removing the diagnostics line.
+
+### Note — the check's first version had the same blind spot as the code
+It anchored its search on `\n\s*return null;`, so a return written mid-line — `if (!resp.IsSuccessStatusCode) return null;`, one of the two paths that actually shipped silent — was never examined. It passed. Sixth time this session a check has needed the real defect run through it before it was worth anything.
+
+The 300-character proximity window is a heuristic and is documented as one in the check: it asks whether a reason was recorded *nearby*, not whether this exact path records one.
+
+### Still unanswered
+**Why** the DoH request fails is not yet known — the counters that would say so did not exist until this build. The next bundle should name it: a TLS failure, a refused connection, a timeout, or an HTTP status. Candidates worth holding in mind are GunWall's own outbound to the resolver IP on 443, and PIA, which owns the default route and publishes `1.1.1.1` as its own DNS on its adapter.
+---
+
 ## [0.99.82] — 2026-08-09
 
 ### Verified on hardware

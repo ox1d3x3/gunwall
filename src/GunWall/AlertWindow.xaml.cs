@@ -177,13 +177,58 @@ public partial class AlertWindow : Window
         StopCountdown();
         // In alert mode this is a no-op (app already allowed by default);
         // in strict mode the callback creates persistent PERMIT filters.
+        // Checked BEFORE the WFP call, not after it throws. A prompt can outlive
+        // the process it is about - GitHub Desktop's updater copies itself into a
+        // temp folder, connects, and deletes itself - and asking the kernel to
+        // build a rule for a file that has gone produces an error code where a
+        // sentence belongs.
+        if (!GunWall.Services.FirewallManager.IsApplicablePath(_info.ExePath))
+        {
+            GunWall.Services.DiagnosticLog.Log(
+                $"Allow declined: {_info.ProcessName} no longer exists at {_info.ExePath}");
+            MessageBox.Show(
+                $"{_info.ProcessName} has already closed and its file is gone, so there is "
+                + "nothing left to write a rule for.\n\nThis is normal for updaters, which "
+                + "copy themselves to a temporary folder and delete it when they finish. "
+                + "Nothing was blocked that would not have been blocked anyway - the program "
+                + "had already stopped.",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            Close();
+            return;
+        }
+
         try { _onAllow?.Invoke(); }
         catch (Exception ex)
         {
-            MessageBox.Show($"Could not allow: {ex.Message}", "GunWall",
+            // LOGGED, not only shown. This dialog appeared on a machine whose
+            // diagnostics bundle then read "Errors this session: 0 distinct, 0
+            // total" - a failure the user watched happen and the log denied. An
+            // error worth interrupting someone for is worth recording.
+            Services.DiagnosticLog.LogException("AlertWindow/Allow", ex);
+            MessageBox.Show(ExplainRuleFailure("allow", ex), "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
         Close();
+    }
+
+    /// <summary>Turns a WFP failure into something the reader can act on.
+    ///
+    /// ERROR_FILE_NOT_FOUND out of FwpmGetAppIdFromFileName0 means precisely one
+    /// thing: the rule points at an executable that is no longer on disk. That
+    /// happens every time an application updates into a versioned folder -
+    /// Kaspersky 21.25 becoming 21.26, GitHub Desktop app-3.5.12 becoming
+    /// app-3.6.3 - and the raw message named an API nobody outside this project
+    /// has heard of.</summary>
+    private static string ExplainRuleFailure(string verb, Exception ex)
+    {
+        if (ex.Message.Contains("FwpmGetAppIdFromFileName0", StringComparison.Ordinal)
+            && ex.Message.Contains("0x00000002", StringComparison.Ordinal))
+            return $"Could not {verb} this program: the file it points at no longer "
+                 + "exists.\n\nThis usually means the application updated into a new "
+                 + "versioned folder, leaving the old rule behind. Open Applications, "
+                 + "find the entry with the old path, and remove it - then allow the "
+                 + "current one.";
+        return $"Could not {verb}: {ex.Message}";
     }
 
     private void Block_Click(object sender, RoutedEventArgs e)

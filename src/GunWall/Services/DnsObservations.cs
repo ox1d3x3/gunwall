@@ -39,6 +39,14 @@ public static class DnsObservations
     // machinery of a 128-bit key isn't worth it.
     private static readonly Dictionary<string, string> _v6 = new(StringComparer.OrdinalIgnoreCase);
 
+    // How many DISTINCT names each address has served. One name per address was
+    // enough for labelling a connection, and wrong for deciding whether to block
+    // one: a shared CDN address answers for thousands of names, and the map only
+    // remembered the last. Capped per address - the exact count stops mattering
+    // above two, and the point is only "is this address shared".
+    private static readonly Dictionary<uint, HashSet<string>> _v4Names = new();
+    private const int MaxNamesTracked = 8;
+
     private const int MaxEntries = 8192;
 
     private static long _fromResolver, _fromObserver, _names;
@@ -74,11 +82,18 @@ public static class DnsObservations
             // A single flush is simpler and safer than an LRU here: the memory
             // exists to answer "recently", and rebuilding it costs nothing but
             // a little time.
-            if (_v4.Count + _v6.Count > MaxEntries) { _v4.Clear(); _v6.Clear(); }
+            if (_v4.Count + _v6.Count > MaxEntries) { _v4.Clear(); _v6.Clear(); _v4Names.Clear(); }
 
             if (v4 != null)
                 foreach (uint ip in v4)
-                    if (ip != 0) { _v4[ip] = n; recorded = true; }
+                    if (ip != 0)
+                    {
+                        _v4[ip] = n;
+                        if (!_v4Names.TryGetValue(ip, out var set))
+                            _v4Names[ip] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        if (set.Count < MaxNamesTracked) set.Add(n);
+                        recorded = true;
+                    }
 
             if (v6 != null)
                 foreach (string ip in v6)
@@ -92,6 +107,32 @@ public static class DnsObservations
         Interlocked.Increment(ref _names);
         if (source == Source.Resolver) Interlocked.Increment(ref _fromResolver);
         else Interlocked.Increment(ref _fromObserver);
+    }
+
+    /// <summary>Distinct names seen resolving to this address. More than one
+    /// means it is shared - a CDN edge, not a host belonging to one site - and
+    /// blocking it because ONE of those names is on a blocklist takes every other
+    /// service on it down as collateral.</summary>
+    public static int NameCountForIp(string? ip)
+    {
+        string s = (ip ?? "").Trim();
+        if (s.Length == 0) return 0;
+        if (!System.Net.IPAddress.TryParse(s, out var addr)) return 0;
+        if (addr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return 0;
+        uint v = ToUInt32(addr);
+        lock (_gate) return _v4Names.TryGetValue(v, out var set) ? set.Count : 0;
+    }
+
+    /// <summary>Names seen on this address, for explaining a refusal.</summary>
+    public static string NamesForIp(string? ip)
+    {
+        string s = (ip ?? "").Trim();
+        if (s.Length == 0) return "";
+        if (!System.Net.IPAddress.TryParse(s, out var addr)) return "";
+        if (addr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return "";
+        uint v = ToUInt32(addr);
+        lock (_gate)
+            return _v4Names.TryGetValue(v, out var set) ? string.Join(", ", set) : "";
     }
 
     /// <summary>The name this address was resolved from, or "" if unknown.</summary>

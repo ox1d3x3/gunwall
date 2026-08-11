@@ -256,6 +256,17 @@ def check_local_calls():
     catches a deleted or renamed method, which is the actual failure, without
     needing to resolve types. Anything inherited or attribute-shaped is
     allow-listed by name, and the list is short enough to read.
+
+    KNOWN LIMITATION, found by this check firing on correct code in 0.99.86:
+    quotes nested inside an interpolation hole - `$"x={(b ? "ON (a)" : "OFF")}"`
+    - defeat the string stripping below, which pairs quotes left to right. The
+    text between the inner quotes is then scanned as if it were code, and
+    `ON (` reads as a call.
+
+    Left unfixed on purpose. Matching C# interpolation properly needs a parser,
+    and the alternative - allow-listing whatever words leak out - is how a check
+    stops failing. Writing the branch into a local first is clearer code anyway,
+    so a false positive here is a nudge rather than an obstacle.
     """
     import glob as _glob
     srcs = {f: Path(f).read_text(encoding="utf-8")
@@ -1319,6 +1330,243 @@ def check_fault_suppression():
         notes.append("fault-suppression: narrow (type + WPF frame), counted, dialog intact")
 
 
+def check_silent_failures():
+    """No DoH failure path may return without recording why.
+
+    The resolver reported `failures=2` across two diagnostics bundles and not one
+    word about the cause, because every exception went through
+    `catch { return null; }` and every non-2xx status through a bare `return
+    null`. The single fact needed to diagnose "GunWall goes offline when the
+    resolver is on" was thrown away at the point it was known.
+
+    A counter without a reason is a fact nobody can act on. This asserts that
+    the DoH path has no bare catch, and that each of its early returns is
+    preceded by a NoteDohFailure - so a new failure mode cannot be added silently.
+    """
+    before = len(failures)
+    src = (APP / "Services" / "DnsResolver.cs").read_text(encoding="utf-8")
+
+    doh = re.search(r"private async Task<byte\[\]\?> ForwardDohAsync.*?\n    \}", src, re.S)
+    if not doh:
+        fail("silent-failure", "ForwardDohAsync not found")
+        return
+    body = doh.group(0)
+
+    # A catch with no exception binding swallows the reason by construction.
+    for m in re.finditer(r"catch\s*(?:when[^{]*)?\{", body):
+        seg = body[m.start():m.start() + 400]
+        if "NoteDohFailure" not in seg and "return null;" in seg and "ct.IsCancellationRequested" not in seg:
+            fail("silent-failure",
+                 "ForwardDohAsync has a catch that returns without calling "
+                 "NoteDohFailure - the cause is discarded where it was known")
+            break
+
+    if "NoteDohFailure" not in body:
+        fail("silent-failure", "ForwardDohAsync never records a failure reason")
+
+    # Each early return in the DoH body should be accounted for: cancellation,
+    # a retry continue, or a recorded failure.
+    # Anywhere, not only at line start. The first version anchored on "\n\s*",
+    # so `if (!resp.IsSuccessStatusCode) return null;` - a return mid-line, and
+    # one of the two silent paths that shipped - was never even examined.
+    #
+    # The 300-character window is a heuristic and is stated as one: it asks
+    # whether a reason was recorded NEARBY, not whether this exact path records
+    # one. It catches a return that discards its cause outright, which is the
+    # failure that happened twice here.
+    for m in re.finditer(r"(return null;|continue;)", body):
+        window = body[max(0, m.start() - 300):m.start()]
+        if m.group(1) == "return null;" and "NoteDohFailure" not in window \
+                and "IsCancellationRequested" not in window:
+            line = src[:doh.start() + m.start()].count("\n") + 1
+            fail("silent-failure",
+                 f"DnsResolver.cs:{line} returns null from the DoH path with no "
+                 "NoteDohFailure in the preceding lines - another silent failure")
+
+    if "DohFailureDetail" not in src:
+        fail("silent-failure", "the failure detail is recorded but never exposed")
+
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    if "DohFailureDetail" not in mw:
+        fail("silent-failure",
+             "diagnostics report the failure count without the reason - which is "
+             "the state that made two bundles unreadable")
+
+    # A field describing a live state must be cleared when that state ends. The
+    # resolver's ListenerStatus was set on start and never on stop, so a bundle
+    # read "dnsRunning=False" beside "listening=[127.0.0.1:53 and [::1]:53]".
+    # Contradicting yourself in one export costs more than the field is worth.
+    stop = re.search(r"public void Stop\(\).*?\n    \}", src, re.S)
+    if not stop:
+        fail("silent-failure", "DnsResolver.Stop not found")
+    elif "ListenerStatus" not in stop.group(0):
+        fail("silent-failure",
+             "Stop() does not clear ListenerStatus, so diagnostics will report a "
+             "listener that is no longer listening alongside dnsRunning=False")
+    elif "SelfCheck" not in stop.group(0):
+        fail("silent-failure",
+             "Stop() does not clear SelfCheck - a stopped resolver would keep "
+             "reporting that it answers on loopback")
+
+    # Binding proves nothing. Two separate faults shipped behind a socket that
+    # bound successfully and answered nobody, and both were found only because
+    # someone pressed a button by hand.
+    if not re.search(r"private async Task SelfCheckAsync", src):
+        fail("silent-failure",
+             "the resolver has no automatic self-check - it can bind, answer "
+             "nothing, and report a healthy listener")
+    else:
+        start = re.search(r"public .*? Start\(.*?\n    \}", src, re.S)
+        if start and "SelfCheckAsync" not in start.group(0):
+            fail("silent-failure",
+                 "SelfCheckAsync exists but Start() never runs it, so it proves "
+                 "nothing unless someone calls it by hand - which is the state "
+                 "that let two resolver faults ship")
+        if "SelfCheck" not in mw:
+            fail("silent-failure",
+                 "the self-check result never reaches diagnostics, so a bundle "
+                 "still cannot say whether the resolver works")
+
+    # Enforcement posture is the control variable for every test in this project.
+    # A bundle that does not state it cannot separate "GunWall dropped this" from
+    # "something else did", which is exactly the question three sessions have been
+    # unable to answer from the logs alone.
+    if "Posture: protection=" not in mw:
+        fail("silent-failure",
+             "diagnostics do not record the enforcement posture - every path test "
+             "and self-check result in the bundle is uninterpretable without it")
+    fm = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+    setter = re.search(r"public void SetStrictMode\(bool enabled\).*?\n    \}", fm, re.S)
+    if setter and "DiagnosticLog.Log" not in setter.group(0):
+        fail("silent-failure",
+             "turning protection on or off leaves no trace in the log, so the "
+             "isolation test cannot be verified after the fact")
+
+    # A domain-derived block is a global /32 above every app rule. Installing one
+    # on a shared CDN address takes down every other service behind it, for every
+    # application, permanently, with nothing on screen saying why.
+    fm2 = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+    blk = re.search(r"public bool AddDomainReactiveBlock.*?\n    \}", fm2, re.S)
+    if not blk:
+        fail("silent-failure", "AddDomainReactiveBlock not found")
+    elif "NameCountForIp" not in blk.group(0):
+        fail("silent-failure",
+             "AddDomainReactiveBlock installs a global address block without "
+             "checking whether the address is shared - one tracker name then "
+             "blocks every other service on that CDN edge")
+
+    obs = (APP / "Services" / "DnsObservations.cs").read_text(encoding="utf-8")
+    if "NameCountForIp" not in obs:
+        fail("silent-failure",
+             "DnsObservations cannot report how many names an address served, so "
+             "sharing cannot be detected")
+
+    # An error worth interrupting someone for is worth recording. A "Could not
+    # allow" dialog appeared on a machine whose bundle then read "Errors this
+    # session: 0 distinct, 0 total".
+    aw = (APP / "AlertWindow.xaml.cs").read_text(encoding="utf-8")
+    allow = re.search(r"private void Allow_Click.*?\n    \}", aw, re.S)
+    if allow and "MessageBox.Show" in allow.group(0) and "LogException" not in allow.group(0):
+        fail("silent-failure",
+             "Allow_Click shows an error dialog without logging it - the user sees "
+             "a failure the diagnostics bundle denies happened")
+
+    # "Run this before uninstalling" has to mean it. Filters are not the only
+    # thing GunWall changes: it writes the hosts file and it can repoint adapter
+    # DNS, and neither was being undone.
+    fm3 = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+    reset = re.search(r"public bool RemoveAllFiltering\(\).*?\n    \}", fm3, re.S)
+    if reset:
+        r = reset.group(0)
+        # SetBlockedDomains specifically, not "HostsFileService" anywhere: the
+        # reset also calls FlushDns on the same class, which satisfied a substring
+        # test while the clearing call was gone. Seventh time this session a check
+        # matched the neighbourhood instead of the thing.
+        if "SetBlockedDomains" not in r:
+            fail("reset-path",
+                 "the reset does not clear the hosts file - domains stay blocked "
+                 "with nothing installed to explain or undo it")
+        # Tracked ids cannot reach an orphan. Without a sweep, "remove all
+        # filtering" leaves persistent filters enforcing forever with nothing able
+        # to name them - which is what FWP_E_IN_USE reports.
+        if "FindAllSublayerFilterIds" not in r:
+            fail("reset-path",
+                 "the reset never sweeps orphaned filters, so it cannot return the "
+                 "machine to Windows defaults - anything whose id was lost keeps "
+                 "filtering permanently")
+        eng2 = (APP / "Services" / "Wfp" / "WfpEngine.cs").read_text(encoding="utf-8")
+        # A DECLARATION, not the name anywhere: the method that replaced this
+        # approach explains in a comment why FwpmFilterEnum0 was avoided, and the
+        # first version of this check failed on that comment. Ninth time this
+        # session a check matched the neighbourhood instead of the thing.
+        nat = (APP / "Services" / "Wfp" / "WfpNative.cs").read_text(encoding="utf-8")
+        if re.search(r"extern\s+\w+\s+FwpmFilterEnum0", nat + eng2):
+            fail("reset-path",
+                 "FWPM_FILTER0 is being marshalled by hand. Its layout has not been "
+                 "verified against win32metadata and cannot be tested here - trap 2.5 "
+                 "was exactly this and it killed a process silently.")
+        # Recoverable is not the same as impossible. Without a startup reconcile,
+        # an orphan lives for the life of the installation; one machine reached 843
+        # against 4 tracked.
+        # The DECLARATION. Testing for the bare name passed when the method was
+        # renamed to ReconcileOrphanFiltersX, because the old name is a substring
+        # of the new one. Tenth time this session.
+        if not re.search(r'public int ReconcileOrphanFilters\(', fm3):
+            fail('reset-path',
+                 'no startup reconcile - orphaned filters would accumulate for the '
+                 'life of the installation instead of dying at the next launch')
+        # Deleting on the strength of an empty store is how 0.99.92 disarmed a
+        # protected machine. Both guards are asserted because either alone would
+        # have prevented it and neither alone is enough.
+        rec = re.search(r'public int ReconcileOrphanFilters\(\).*?\n    \}', fm3, re.S)
+        if rec:
+            if 'tracked.Count == 0' not in rec.group(0):
+                fail('reset-path',
+                     'the reconcile does not refuse when nothing is tracked - it '
+                     'would read an unloaded store as proof that every live filter '
+                     'is an orphan and delete the working set')
+            if 'ReconcileReady' not in rec.group(0):
+                fail('reset-path',
+                     'the reconcile does not check readiness, so it can run before '
+                     'the store has loaded')
+        elif 'ReconcileOrphanFilters' not in mw:
+            fail('reset-path',
+                 'ReconcileOrphanFilters exists but nothing calls it at startup, so '
+                 'it only runs if someone asks - which is the state that let 843 '
+                 'orphans accumulate')
+        if "RestoreAdapters" not in r:
+            fail("reset-path",
+                 "the reset does not restore adapter DNS - the PC would keep "
+                 "pointing at a resolver that is no longer running")
+
+    # OFF must mean nothing is enforced. It used to remove the baseline and the
+    # filters of ALLOWED rules only - so every explicitly blocked app kept its
+    # block filters, and lockdown, blocklists, domain blocks, system rules and
+    # blocked services were never touched. Turning the firewall off removed the
+    # permits and left the denials.
+    off = re.search(r"public void SetStrictMode\(bool enabled\).*?\n    \}", fm3, re.S)
+    if off:
+        o = off.group(0)
+        if "CollectFilterIds" not in o:
+            fail("reset-path",
+                 "turning protection off does not sweep every filter collection - "
+                 "blocked apps, system rules and blocklists would stay enforced on "
+                 "a kernel that keeps filtering after the app closes")
+        if re.search(r"Where\(r => r\.Status == AppStatus\.Allowed\)[\s\S]{0,200}RemoveFilters", o):
+            fail("reset-path",
+                 "protection-off still removes filters only for Allowed rules - the "
+                 "Where() skips exactly the rules whose filters deny traffic")
+
+    if "Rule targets:" not in mw:
+        fail("silent-failure",
+             "diagnostics never report rules pointing at a missing executable - "
+             "they list as Allowed, hold no filters, and throw when re-applied")
+
+    if len(failures) == before:
+        notes.append("silent-failure: causes recorded, resolver self-checks, posture logged, "
+                     "shared addresses spared, orphan rules reported")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -1363,6 +1611,7 @@ def main():
     check_preset_protocols()
     check_reset_path()
     check_fault_suppression()
+    check_silent_failures()
     check_version_consistency()
 
     for n in notes:
