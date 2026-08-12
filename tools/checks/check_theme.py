@@ -321,7 +321,8 @@ def check_local_calls():
         # 1. Instance members inherited from Window / FrameworkElement / Control,
         #    called unqualified from a code-behind class that derives from them.
         {"Activate", "BeginAnimation", "Close", "DragMove", "FindResource",
-         "TryFindResource", "Hide", "Show", "InitializeComponent"}
+         "TryFindResource", "Hide", "Show", "InitializeComponent",
+         "Shutdown"}   # Application.Shutdown, from the emergency-unblock path
         # 2. Attribute constructors, which are syntactically calls.
         | {"DllImport", "FieldOffset", "MarshalAs", "StructLayout"}
         # 3. Generic BCL types whose construction spans a line break, so the
@@ -1525,11 +1526,47 @@ def check_silent_failures():
                      'the reconcile does not refuse when nothing is tracked - it '
                      'would read an unloaded store as proof that every live filter '
                      'is an orphan and delete the working set')
+        # A rule holding filters is enforcing something; only inert ones may go.
+        prune = re.search(r'public int PruneDeadRules\(\).*?\n    \}', fm3, re.S)
+        if prune and 'FilterIds.Count == 0' not in prune.group(0):
+            fail('reset-path',
+                 'PruneDeadRules does not require the rule to hold no filters - it '
+                 'could drop a rule that is still enforcing, or one whose path is '
+                 'briefly unreachable')
+        if rec:
             if 'ReconcileReady' not in rec.group(0):
                 fail('reset-path',
                      'the reconcile does not check readiness, so it can run before '
                      'the store has loaded')
-        elif 'ReconcileOrphanFilters' not in mw:
+        # ORDERING, checked positionally. This is the one that would have caught
+        # 0.99.93: the reconcile was fired thirty lines ABOVE the Initialize() call
+        # that loads the store, in the same method, under a comment claiming the
+        # store was already loaded. The guards held, so nothing broke - but the
+        # feature never once ran, and a check asserting only that both exist saw
+        # nothing wrong for two releases.
+        if 'ReconcileOrphanFilters' in mw and '_firewall.Initialize()' in mw:
+            if mw.index('_firewall.Initialize()') > mw.index('ReconcileOrphanFilters'):
+                fail('reset-path',
+                     'the startup reconcile is fired before _firewall.Initialize(), '
+                     'which is where the store is loaded - it would read an empty '
+                     'store and decline to act on every run')
+        # And readiness must be owned by the object whose state it describes.
+        if 'MarkReconcileReady' in fm3:
+            fail('reset-path',
+                 'ReconcileReady is set by an external caller, so a caller can - and '
+                 'did - claim readiness before the store was loaded')
+        # NOT over-escaped. Written through a heredoc the first time, which turned
+        # the escapes into literal backslashes, so it matched nothing and the check
+        # skipped silently instead of failing. Eleventh time this session. The None
+        # branch below is what makes that impossible to repeat.
+        init = re.search("public void Initialize" + re.escape("()") + ".*?\n    }", fm3, re.S)
+        if init is None:
+            fail("reset-path", "could not locate FirewallManager.Initialize()")
+        elif "ReconcileReady = true" not in init.group(0):
+            fail('reset-path',
+                 'Initialize() does not mark reconcile readiness, so readiness is '
+                 'not tied to the store actually being loaded')
+        if 'ReconcileOrphanFilters' not in mw:
             fail('reset-path',
                  'ReconcileOrphanFilters exists but nothing calls it at startup, so '
                  'it only runs if someone asks - which is the state that let 843 '

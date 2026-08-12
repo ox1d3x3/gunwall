@@ -233,18 +233,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // The store is loaded and posture applied by the time Loaded fires, so the
-        // manager's view of its own filters is finally true. 0.99.92 ran this from
-        // the field initialisers instead, read "0 tracked" against 116 live
-        // filters, and deleted a protected machine's entire filter set. Ordering
-        // was the whole bug; the guards inside are the belt to this brace.
-        _firewall.MarkReconcileReady();
-        _ = System.Threading.Tasks.Task.Run(() =>
-        {
-            try { _firewall.ReconcileOrphanFilters(); }
-            catch (Exception ex) { Services.DiagnosticLog.LogException("StartupReconcile", ex); }
-        });
-
         // Apply the saved theme first so the whole window paints correctly.
         bool dark = _firewall.ThemeDark;
         if (ThemeToggle != null) ThemeToggle.IsChecked = !dark; // checked = light
@@ -256,6 +244,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             _firewall.Initialize();
             _engineReady = true;
+
+            // AFTER Initialize(), because that is where the store is read. Placed
+            // above it in 0.99.93 and 0.99.94, which is why the reconcile kept
+            // seeing an empty store and declining to act - the safety guard fired
+            // every single run, so the feature never ran at all.
+            _ = System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    _firewall.ReconcileOrphanFilters();
+                    // Dead rules go in the same pass: both are "things the store
+                    // says that the machine no longer agrees with".
+                    if (_firewall.PruneDeadRules() > 0)
+                        Dispatcher.Invoke(() => { try { RebuildAppsList(); } catch { } });
+                }
+                catch (Exception ex) { Services.DiagnosticLog.LogException("StartupReconcile", ex); }
+            });
             _firewall.EnsureSelfConnectivity(); // GunWall must not block its own update/list/VT traffic
             _firewall.ReapplyServiceBlocks();   // service rules survive an engine rebuild
             _firewall.LoadCategoryColors();      // apply any customised category dot colors
@@ -348,7 +353,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.93 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.96 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it

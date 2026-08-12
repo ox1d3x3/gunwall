@@ -311,6 +311,25 @@ are true. A zero on one side is a reason to stop, not a licence.
 refusal, because either alone would have prevented this and neither alone is
 sufficient.
 
+### 2.21 A readiness flag set by someone who cannot know
+
+`ReconcileReady` was set by the window's `Loaded` handler, under a comment stating
+that the store was loaded by then. It was not: `Initialize()` - which runs
+`_data = _store.Load()` - is called thirty lines FURTHER DOWN the same method.
+
+So the reconcile ran against an empty store on every launch. It never destroyed
+anything, because a second guard refused to act on zero tracked filters, and that
+is the only reason this looked like success. The feature simply never ran, for two
+releases, while the log printed a reassuring sentence about declining to act.
+
+**Rule:** a readiness flag belongs to the object whose state it describes, set at
+the moment that state becomes true. A caller cannot know when that is - and if the
+caller is the one who has to remember, the ordering is already a bug waiting.
+
+**Check:** `reset-path` asserts positionally that the reconcile call site appears
+after `Initialize()`, that no external `MarkReconcileReady` exists, and that
+`Initialize()` sets it.
+
 ---
 
 ## 3. Working agreements

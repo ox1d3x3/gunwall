@@ -204,33 +204,39 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.93
+## 6. This build — 0.99.96
 
-### First: your machine is currently short 112 filters
+One new thing, and it is the one worth testing carefully because it is the
+last-resort path.
 
-0.99.92 deleted them. The store still lists them, so integrity reports them missing.
-Fix before testing anything else:
+### The emergency unblock
 
-1. **Turn protection OFF**, then **ON**. That tears down what is left and rebuilds
-   from your rules.
-2. **Check filter integrity** — expect `N/N present, missing=0`.
+1. Protection **ON**, a few apps allowed. Note the count in
+   **Settings → Check filter integrity**.
+2. **Close GunWall entirely** (tray → exit, or end task).
+3. Open an **elevated** command prompt in GunWall's folder and run:
 
-### Then: repeat the crash test that found it
+   ```
+   GunWall.exe --unblock
+   ```
 
-3. Protection ON, allow two apps, confirm they work.
-4. **End task from Task Manager.**
-5. `netsh wfp show filters file=%TEMP%\a.xml` — note how many entries carry
-   `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`.
-6. **Reopen GunWall**, wait for the window, export diagnostics.
-7. `Startup reconcile:` must read **`all accounted for`** — NOT "removing N orphans".
-8. **Filter integrity must read `missing=0`.** This is the line that failed last time
-   and it is the one that matters.
-9. Your two allowed apps must still work without being asked about again.
+4. Expect printed output — a heading, then a line saying filtering was removed.
+   No window should appear.
+5. **Confirm independently:**
 
-### If it says "0 tracked - declining to act"
+   ```
+   netsh wfp show filters file=%TEMP%\gw.xml
+   ```
 
-That is the new guard holding, and it means the store had not loaded when it ran.
-Send the log — it is not destructive, but I want to know the ordering is still off.
+   Search that file for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`.
+   **Zero matches = the machine is genuinely clean.**
+6. Confirm internet works for everything, including anything that had no rule.
+7. Reopen GunWall. It should start with no filters and protection off, and the
+   startup reconcile should report nothing to clean.
+
+**If it prints nothing at all**, tell me — attaching to the parent console is the
+one part of this I cannot test from here, and a silent recovery tool is no better
+than none. Everything else about it would still have worked.
 
 ## 7. What to send
 

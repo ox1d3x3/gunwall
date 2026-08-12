@@ -6,6 +6,90 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.96] — 2026-08-12
+
+### Verified — the startup reconcile runs
+0.99.95's fix confirmed across two exports covering a force-kill and reopen:
+
+```
+18:21:25  Startup reconcile: 4 filter(s) in the sublayer, all accounted for.
+18:21:25  Startup reconcile: removed 6 rule(s) whose program no longer exists ...
+18:22:17  Startup reconcile: 36 filter(s) in the sublayer, all accounted for.
+          Rule targets: every rule points at a file that exists.
+          Filter integrity: 36/36 present, missing=0  →  later 100/100, missing=0
+```
+
+`0 tracked - declining to act` is gone. The store is loaded when the reconcile reads it, the six stale rules pruned and stayed pruned, and a force-kill left nothing orphaned. Zero errors in both exports.
+
+### Added — `GunWall.exe --unblock`
+The force-kill test also produced this, reported plainly: *"my whole internet was gone including VPN."*
+
+That is fail-closed working. It is also the state this project has no answer for: with GunWall not running, nothing can prompt, so a program without a rule fails and says nothing. Reopening GunWall fixes it — **but only if GunWall can still be opened.** If the window will not start, or the folder was deleted, or the person does not know GunWall is the cause, there was no way out at all.
+
+```
+GunWall.exe --unblock
+```
+
+Tears down every filter, restores the hosts file and adapter DNS, prints what it did, and exits without a window. Aliases `--panic` and `--reset`. It runs **before any UI is constructed**, so a fault in the interface cannot prevent recovery — which is the entire reason it exists. Exit codes: 0 clean, 1 something remained, 2 could not run.
+
+Documented at the top of the README rather than buried in the roadmap, because the person who needs it will be reading on another machine.
+
+### Note
+`local-call` flagged `Shutdown` as undeclared — `Application.Shutdown`, inherited, and exactly the false positive documented in that check when it was written. Allow-listed under the existing "inherited instance members" category rather than by adding a bare name, and re-verified afterwards that it still catches a genuine deletion.
+---
+
+## [0.99.95] — 2026-08-12
+
+### Fixed — the startup reconcile had never once run
+Reported as *"seems to work as intended"*, and the log said otherwise:
+
+```
+Startup reconcile: 28 filter(s) in the sublayer but 0 tracked - declining to act.
+```
+
+0.99.93 moved the reconcile into `OnLoaded` and set `MarkReconcileReady()` at the top of it, under a comment asserting *"the store is loaded and posture applied by the time Loaded fires."* **That comment was false.** `Initialize()` — which runs `_data = _store.Load()` — is called thirty lines further down the same method.
+
+So the reconcile fired against an empty store on every launch, saw zero tracked filters, and refused to act. Nothing was destroyed, because 0.99.93's second guard caught it — that guard is the only reason 28 live filters survived, and on 0.99.92 the same condition deleted 116. But the feature never ran, for two releases, while printing a reassuring sentence each time.
+
+Two consequences in the reported run: 28 filters are genuinely orphaned in the sublayer, and the six dead rules pruned in 0.99.94 came back, because `PruneDeadRules` shares the gate.
+
+**Readiness is now owned by `Initialize()` itself**, set immediately after the store loads. `MarkReconcileReady()` is gone — nothing outside the manager can claim readiness, because nothing outside it can know. The call site moved below `Initialize()`.
+
+### Added
+- `reset-path` now asserts **positionally** that the reconcile appears after `Initialize()` in the startup path, that no external setter exists, and that `Initialize()` sets the flag. The first two fail on the 0.99.93 layout exactly.
+- Recorded as trap 2.21.
+
+### Note — twelfth check this session to not test what it claimed
+The `Initialize()` assertion was written through a heredoc that over-escaped its regex into a literal backslash. It matched nothing, so it skipped silently and reported success on a tree with the flag removed. It now fails explicitly if the method cannot be located, which is the only version of this that cannot repeat.
+
+### Two checks existed and neither caught this
+`reset-path` already asserted the reconcile existed and was called at startup. Both were true. Nothing asserted the **order**, and order was the entire defect — the same shape as trap 2.12, where alignment inside a container was mistaken for a claim on space.
+---
+
+## [0.99.94] — 2026-08-11
+
+### The crash test passes
+Force-killed from Task Manager with two apps allowed, then reopened:
+
+```
+Startup reconcile: 108 filter(s) in the sublayer, all accounted for.
+Filter integrity: watch=True, expected=112, missing=0 (112/112 filters present)
+Errors this session: 0 distinct, 0 total
+```
+
+A `netsh` dump taken between the kill and the reopen shows **exactly 108** filters in GunWall's sublayer — the same number the reconcile then accounted for. Windows' view and GunWall's view agree to the filter. `missing=0` is the line that read `missing=112` one release ago.
+
+### Added
+- **Rules whose program no longer exists are dropped at startup.** That machine carried six at once — Edge WebView, GitHub Desktop 3.5.12, OneDrive, OneDrive.Sync.Service, Kaspersky 21.25 and FileCoAuth — all left behind by applications updating into versioned folders. They accumulate forever, they read as working rules in the list, and applying one throws `FwpmGetAppIdFromFileName0` / `ERROR_FILE_NOT_FOUND` at whoever pressed the button. That is the dialog reported two releases ago.
+
+  **Only rules holding no filters are removed.** One that still holds filters is enforcing something and is left to be looked at, which also spares a path that is merely unreachable for a moment — a removable drive, a network share. The cost of a wrong removal is an application being asked about again; the cost of leaving one is a line in a log. The conservative half of the test is the important half.
+
+  Simulated against all six real cases plus a live rule, a pseudo-process and a detached-drive path: six pruned, three kept.
+
+### Added — checks
+- `reset-path` asserts the no-filters condition on the prune. Shown to fail without it.
+---
+
 ## [0.99.93] — 2026-08-11
 
 ### Fixed — 0.99.92's startup reconcile disarmed a protected machine

@@ -45,6 +45,15 @@ public sealed class FirewallManager : IDisposable
             throw;
         }
         _data = _store.Load();
+        // Set HERE, by the thing that makes it true, not by a caller who has to
+        // remember the ordering. 0.99.93 put this in the window's Loaded handler
+        // thirty lines above the Initialize() call that loads the store, with a
+        // comment asserting the store was already loaded. It was not, and the
+        // reconcile read an empty store against 28 live filters.
+        //
+        // Readiness is a property of this object's state. Nothing outside it can
+        // know when that becomes true, so nothing outside it gets to say so.
+        ReconcileReady = true;
         LoadGeoIp();
         ReloadCustomList();
         ClearEntityReactiveBlocks(); // §1: drop last session's reactive geo-blocks; they re-form on demand
@@ -1553,8 +1562,6 @@ public sealed class FirewallManager : IDisposable
     /// nothing may be deleted on the strength of it.</summary>
     public bool ReconcileReady { get; private set; }
 
-    public void MarkReconcileReady() => ReconcileReady = true;
-
     public int ReconcileOrphanFilters()
     {
         // GUARD TWO. 0.99.92 fired this from the window's field initialisers, two
@@ -1612,6 +1619,45 @@ public sealed class FirewallManager : IDisposable
         catch (Exception ex)
         {
             DiagnosticLog.LogException("ReconcileOrphanFilters", ex);
+            return 0;
+        }
+    }
+
+    /// <summary>Drops rules whose executable is gone and which hold no filters.
+    ///
+    /// Applications that update into versioned folders leave these behind on every
+    /// release - one machine carried six at once, from Edge WebView, GitHub
+    /// Desktop, OneDrive twice, Kaspersky and FileCoAuth. They are inert, but they
+    /// accumulate forever, they clutter the list with entries that look like
+    /// working rules, and applying one throws FwpmGetAppIdFromFileName0 with
+    /// ERROR_FILE_NOT_FOUND at whoever pressed the button.
+    ///
+    /// Only rules holding NO filters are removed. One that still holds filters is
+    /// enforcing something and gets left alone to be looked at, and a path that is
+    /// merely unreachable for a moment - a removable drive, a network share - has
+    /// filters and so survives. The conservative half of the test is the important
+    /// half: the cost of a wrong removal is an application being asked about
+    /// again, and the cost of leaving one is a line in a log.</summary>
+    public int PruneDeadRules()
+    {
+        if (!ReconcileReady) return 0;
+        try
+        {
+            var dead = _data.Rules
+                .Where(r => r.FilterIds.Count == 0 && !IsApplicablePath(r.ExecutablePath))
+                .ToList();
+            if (dead.Count == 0) return 0;
+
+            foreach (var r in dead) _data.Rules.Remove(r);
+            _store.Save(_data);
+            DiagnosticLog.Log($"Startup reconcile: removed {dead.Count} rule(s) whose program no "
+                            + "longer exists and which held no filters - "
+                            + string.Join(", ", dead.Select(r => r.DisplayName)));
+            return dead.Count;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("PruneDeadRules", ex);
             return 0;
         }
     }

@@ -224,6 +224,32 @@ Then in GunWall: **Settings → Security & Privacy → GeoIP data source → Sel
 
 ---
 
+## If the machine is locked and GunWall will not open
+
+GunWall's filters are persistent by design — they keep enforcing after a crash, a
+close, or a reboot. If GunWall is not running, nothing can prompt, so a program
+without a rule fails silently.
+
+From an **elevated** command prompt, in GunWall's folder:
+
+```
+GunWall.exe --unblock
+```
+
+This removes every filter, restores the hosts file and any adapter DNS GunWall
+changed, prints what it did, and exits without opening a window. It runs before
+any interface is built, so a broken window cannot stop it.
+
+Verify it worked:
+
+```
+netsh wfp show filters file=%TEMP%\gw.xml
+```
+
+then search that file for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Zero matches
+means the machine is back to Windows defaults** — and that is Windows reporting
+it, not GunWall reporting on itself.
+
 ## Roadmap
 
 GunWall is not planned by version number. Work is grouped by what it touches and

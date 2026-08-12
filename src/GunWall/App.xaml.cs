@@ -12,6 +12,37 @@ public partial class App : Application
 
         DiagnosticLog.Log("App starting (OnStartup).");
 
+        // ------------------------------------------------ emergency recovery
+        //
+        // GunWall's filters are PERSISTENT by design: they keep enforcing after a
+        // crash, a close or a reboot, which is what a kernel firewall must do. The
+        // cost is that a machine can be left filtered by software that is not
+        // running - and with nothing running, nothing can prompt, so a program
+        // without a rule simply fails and says nothing.
+        //
+        // That state was reached during testing: the app was force-killed with
+        // protection on, and the machine lost every connection it had no rule for,
+        // including the VPN. Reopening GunWall fixes it - but only if GunWall can
+        // still be opened. If the window will not start, or the folder has been
+        // deleted, or the person does not know GunWall is the cause, there was no
+        // way out at all.
+        //
+        //     GunWall.exe --unblock
+        //
+        // is that way out. It tears down everything, restores the hosts file and
+        // adapter DNS, prints what it did, and exits without showing a window. It
+        // runs before any UI is constructed so a UI fault cannot prevent recovery,
+        // which is the whole point of it.
+        foreach (string arg in e.Args)
+        {
+            string a = arg.Trim().TrimStart('-', '/').ToLowerInvariant();
+            if (a is not ("unblock" or "panic" or "reset")) continue;
+
+            int code = RunEmergencyUnblock();
+            Shutdown(code);
+            return;
+        }
+
         // Surface unhandled UI-thread exceptions instead of silently dying,
         // and record them for the diagnostics bundle.
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -88,6 +119,53 @@ public partial class App : Application
     /// KeyNotFoundException thrown by GunWall's own code has neither and still
     /// gets the dialog, which is the point — this suppresses a known framework
     /// fault, not a class of exception.</summary>
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool AttachConsole(int processId);
+
+    /// <summary>Tears everything down with no window. Returns a process exit code:
+    /// 0 = clean, 1 = something remained, 2 = could not run at all.
+    ///
+    /// Deliberately writes to whatever console launched it, because the person
+    /// running this has no working GUI and probably no working network either.
+    /// A silent recovery tool is no better than none.</summary>
+    private static int RunEmergencyUnblock()
+    {
+        AttachConsole(-1);   // parent console, if any
+        void Say(string line) { try { Console.WriteLine(line); } catch { } }
+
+        Say("");
+        Say("GunWall emergency unblock");
+        Say("-------------------------");
+
+        FirewallManager? fw = null;
+        try
+        {
+            fw = new FirewallManager();
+            fw.Initialize();
+            bool complete = fw.RemoveAllFiltering();
+
+            Say(complete
+                ? "  All GunWall filtering removed. This machine is back to Windows defaults."
+                : "  GunWall's own filters and saved rules are gone, but its sublayer was kept "
+                  + "because something in it was not created by this installation.");
+            Say("  The hosts file and any adapter DNS GunWall changed have been restored.");
+            Say("");
+            Say("  Verify with:  netsh wfp show filters file=%TEMP%\\gw.xml");
+            Say("  then search that file for 8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00");
+            Say("");
+            return complete ? 0 : 1;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("EmergencyUnblock", ex);
+            Say($"  FAILED: {ex.Message}");
+            Say("  Run this from an elevated command prompt - it needs administrator rights.");
+            Say("");
+            return 2;
+        }
+        finally { try { fw?.Dispose(); } catch { } }
+    }
+
     private static bool IsWpfAutomationPeerFault(Exception ex)
     {
         if (ex is not System.Collections.Generic.KeyNotFoundException) return false;
