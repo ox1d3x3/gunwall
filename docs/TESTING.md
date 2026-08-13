@@ -204,23 +204,20 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.97
+## 6. This build — 0.99.98
 
-One fix, and it is confirmed by looking at the log after the fact rather than by
-watching the screen.
+Two small corrections to the recovery path. Both are read in the log, not on screen.
 
-1. Protection **ON**, allow an app or two. Make sure **Watch system DNS lookups**
-   is ON in Security.
-2. Close GunWall, run `GunWall.exe --unblock` from an elevated prompt.
-3. **Reopen GunWall normally**, wait a few seconds, **export diagnostics**.
-4. In `diagnostics.log`, check the launch AFTER the unblock:
-   - **PASS:** `DNS observer: watching Microsoft-Windows-DNS-Client`
-   - **FAIL:** `DNS observer NOT started: the previous attempt did not complete`
-     — that is the bug still present.
-5. The unblock itself should now appear as
-   `=== Emergency unblock requested from the command line ===` and
-   `=== Emergency unblock finished (complete=True) ===`, so it is no longer
-   mistakable for someone pressing the reset button.
+1. Protection ON, allow an app, **Watch system DNS lookups** on (DNS resolver page).
+2. Close GunWall, run `GunWall.exe --unblock`.
+3. **Before reopening**, run `netsh wfp show filters file=%TEMP%\gw.xml` and search
+   for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Expect zero.**
+4. Reopen GunWall, export diagnostics. In the log:
+   - The unblock run must **not** contain `DNS observer could not start ()`.
+   - The launch after it must contain
+     `DNS observer: watching Microsoft-Windows-DNS-Client`.
+5. If you dump the filters again now, **four matches is correct** — GunWall
+   permitting its own executable, nothing else.
 
 ## 7. What to send
 

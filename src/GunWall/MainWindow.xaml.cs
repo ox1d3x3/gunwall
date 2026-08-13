@@ -353,7 +353,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.97 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.98 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1109,7 +1109,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             if (_firewall.DnsObserveSystemLookups)
             {
-                if (!_dnsObserver.SessionActive && !_dnsObserver.Start())
+                // Not during a headless recovery run. Start() returns false there by
+                // design, and 0.99.97 logged that as "could not start ()" - a failure
+                // with an empty reason, which is the exact shape of message this
+                // release series has spent its time removing. Declining is not
+                // failing, and a blank parenthesis is not a cause.
+                if (!_dnsObserver.SessionActive
+                    && !_dnsObserver.Start()
+                    && !Services.DnsEventMonitorService.HeadlessRecovery)
                     Services.DiagnosticLog.Log(
                         $"DNS observer could not start ({_dnsObserver.LastError}); domain rules will " +
                         "only see lookups answered by GunWall's own resolver.");

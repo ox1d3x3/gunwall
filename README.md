@@ -250,6 +250,10 @@ then search that file for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Zero matches
 means the machine is back to Windows defaults** — and that is Windows reporting
 it, not GunWall reporting on itself.
 
+Check *before* reopening GunWall. Starting it again immediately installs four
+filters that permit GunWall's own executable, so **four matches after a restart is
+also correct** and does not mean anything else is being filtered.
+
 ## Roadmap
 
 GunWall is not planned by version number. Work is grouped by what it touches and

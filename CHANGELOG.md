@@ -6,6 +6,30 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.98] — 2026-08-13
+
+### Confirmed — the DNS observer survives a recovery run
+```
+18:22:29.067  App starting (OnStartup).
+18:22:29.074  === Emergency unblock requested from the command line ===
+18:22:29.205  === Emergency unblock finished (complete=True) ===
+18:22:58.706  DNS observer: watching Microsoft-Windows-DNS-Client
+```
+
+The launch after the unblock starts DNS watching cleanly. On 0.99.96 it refused and told the user to go and toggle a setting. The unblock also names itself now, so it is no longer mistakable for someone pressing the reset button.
+
+A `netsh` dump taken from the machine afterwards: **9,513 filters present, 4 in GunWall's sublayer** — the self-permit filters reinstalled when GunWall was reopened, and nothing else. The store confirms it: 0 rules, StrictMode false, SelfFilterIds 4.
+
+### Fixed
+- **`DNS observer could not start ()`** — a failure with an empty reason, logged during every recovery run. `Start()` returns false there by design; declining is not failing, and a blank parenthesis is not a cause. The caller no longer logs it under the recovery flag.
+
+  0.99.97's comment claimed this path was silent. It was not — the observer was silent and the caller was not, which is the same class of mistake as a comment describing what an API would do if it were kind.
+
+- **The verification instructions were wrong**, and produced exactly the confusion they were meant to prevent. Both the printed output and the README said to expect zero matches for GunWall's sublayer GUID. That is true **before** reopening GunWall; reopening reinstalls four self-permit filters, so a check afterwards finds four and looks like a failure.
+
+  Both now say to check before reopening, and that four after a restart is also correct.
+---
+
 ## [0.99.97] — 2026-08-13
 
 ### Confirmed — the emergency unblock works

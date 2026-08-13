@@ -162,8 +162,12 @@ public partial class App : Application
                   + "because something in it was not created by this installation.");
             Say("  The hosts file and any adapter DNS GunWall changed have been restored.");
             Say("");
-            Say("  Verify with:  netsh wfp show filters file=%TEMP%\\gw.xml");
+            Say("  Verify BEFORE reopening GunWall:");
+            Say("      netsh wfp show filters file=%TEMP%\\gw.xml");
             Say("  then search that file for 8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00");
+            Say("  Expect ZERO matches. Reopening GunWall first reinstalls four filters");
+            Say("  that permit GunWall's own executable, so four matches after a restart");
+            Say("  is also correct - and is not filtering of anything else.");
             Say("");
             return complete ? 0 : 1;
         }
