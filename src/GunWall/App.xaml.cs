@@ -130,6 +130,12 @@ public partial class App : Application
     /// A silent recovery tool is no better than none.</summary>
     private static int RunEmergencyUnblock()
     {
+        // Set FIRST, before anything is constructed. Everything that starts
+        // asynchronously during a normal launch is still starting when this
+        // process exits a tenth of a second later, and a half-started subsystem
+        // that never finishes looks exactly like a crash to its own guards.
+        DnsEventMonitorService.HeadlessRecovery = true;
+
         AttachConsole(-1);   // parent console, if any
         void Say(string line) { try { Console.WriteLine(line); } catch { } }
 
@@ -140,9 +146,15 @@ public partial class App : Application
         FirewallManager? fw = null;
         try
         {
+            DiagnosticLog.Log("=== Emergency unblock requested from the command line ===");
             fw = new FirewallManager();
             fw.Initialize();
             bool complete = fw.RemoveAllFiltering();
+            // Named explicitly. Without this the log shows the same "Reset:" lines a
+            // button press produces, and the only thing distinguishing them is the
+            // ABSENCE of a session-started line - which is not something anyone
+            // should have to notice.
+            DiagnosticLog.Log($"=== Emergency unblock finished (complete={complete}) ===");
 
             Say(complete
                 ? "  All GunWall filtering removed. This machine is back to Windows defaults."

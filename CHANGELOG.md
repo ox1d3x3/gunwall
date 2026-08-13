@@ -6,6 +6,38 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.97] — 2026-08-13
+
+### Confirmed — the emergency unblock works
+Console output and log agree, including the console printing, which was the one part that could not be tested from the development side:
+
+```
+18:12:15.715  App starting (OnStartup).
+18:12:15.756  Reset: removing 28 tracked filter(s) before the sublayer.
+18:12:15.840  Reset: complete - sublayer removed and store cleared.
+```
+
+**125 milliseconds**, no window, no session started, store afterwards holds zero rules. The reported test — two apps allowed, Edge left unapproved, force-killed, all connectivity gone, `--unblock`, connectivity restored — is exactly the path this exists for, and it worked end to end.
+
+The startup reconcile also passed three separate force-kill/reopen cycles in the same session: `112 filter(s) ... all accounted for`, `32 filter(s) ... all accounted for`. Nothing orphaned, zero errors.
+
+### Fixed — the recovery run broke the DNS observer
+Twenty-three seconds after the unblock:
+
+> `DNS observer NOT started: the previous attempt did not complete... Toggle 'Watch system DNS lookups' off and on to try again.`
+
+The observer sets a marker before touching anything native and clears it once its session is up, so that a crash mid-start is not repeated forever. `--unblock` tripped that guard on every run: the observer began starting at 18:12:15.999, **after** the unblock had finished its work, and the process exited before it completed. From the guard's point of view that is a crash.
+
+So the recovery tool left DNS watching disabled on the next real launch, and told the user to go and toggle a setting. **A recovery tool must not leave the thing it recovered in a worse state than it found it.**
+
+The recovery run now flags itself before anything is constructed, and the observer declines to start under that flag — silently, because nothing is started so nothing needs cleaning up, and because the person reading that output has an offline machine and does not need a second message.
+
+- The unblock also names itself in the log now. Previously its lines were identical to a button press, distinguishable only by the **absence** of a session-started line, which is not something anyone should have to notice.
+
+### Added
+- `recovery`: asserts the run flags itself, that the flag is set before construction rather than after, that the observer honours it, and that the run is identifiable in the log. Shown to fail on the shipped bug and on setting the flag too late.
+---
+
 ## [0.99.96] — 2026-08-12
 
 ### Verified — the startup reconcile runs

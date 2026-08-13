@@ -204,39 +204,23 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.96
+## 6. This build — 0.99.97
 
-One new thing, and it is the one worth testing carefully because it is the
-last-resort path.
+One fix, and it is confirmed by looking at the log after the fact rather than by
+watching the screen.
 
-### The emergency unblock
-
-1. Protection **ON**, a few apps allowed. Note the count in
-   **Settings → Check filter integrity**.
-2. **Close GunWall entirely** (tray → exit, or end task).
-3. Open an **elevated** command prompt in GunWall's folder and run:
-
-   ```
-   GunWall.exe --unblock
-   ```
-
-4. Expect printed output — a heading, then a line saying filtering was removed.
-   No window should appear.
-5. **Confirm independently:**
-
-   ```
-   netsh wfp show filters file=%TEMP%\gw.xml
-   ```
-
-   Search that file for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`.
-   **Zero matches = the machine is genuinely clean.**
-6. Confirm internet works for everything, including anything that had no rule.
-7. Reopen GunWall. It should start with no filters and protection off, and the
-   startup reconcile should report nothing to clean.
-
-**If it prints nothing at all**, tell me — attaching to the parent console is the
-one part of this I cannot test from here, and a silent recovery tool is no better
-than none. Everything else about it would still have worked.
+1. Protection **ON**, allow an app or two. Make sure **Watch system DNS lookups**
+   is ON in Security.
+2. Close GunWall, run `GunWall.exe --unblock` from an elevated prompt.
+3. **Reopen GunWall normally**, wait a few seconds, **export diagnostics**.
+4. In `diagnostics.log`, check the launch AFTER the unblock:
+   - **PASS:** `DNS observer: watching Microsoft-Windows-DNS-Client`
+   - **FAIL:** `DNS observer NOT started: the previous attempt did not complete`
+     — that is the bug still present.
+5. The unblock itself should now appear as
+   `=== Emergency unblock requested from the command line ===` and
+   `=== Emergency unblock finished (complete=True) ===`, so it is no longer
+   mistakable for someone pressing the reset button.
 
 ## 7. What to send
 

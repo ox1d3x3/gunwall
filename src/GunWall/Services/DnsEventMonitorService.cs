@@ -203,9 +203,33 @@ public sealed class DnsEventMonitorService : IDisposable
     /// <summary>True when the previous attempt to start never completed.</summary>
     public static bool PreviousAttemptFailed => MarkerPresent();
 
+    /// <summary>True while this process is the headless `--unblock` recovery run.
+    ///
+    /// The recovery path removes filters and exits in about a tenth of a second.
+    /// Anything that starts asynchronously behind it is still starting when the
+    /// process dies - which is indistinguishable, from the outside, from a crash.
+    ///
+    /// The DNS observer sets a marker before it touches anything native and clears
+    /// it once the session is up, precisely so a crash mid-start is not repeated on
+    /// the next launch. `--unblock` tripped that guard every time: the observer
+    /// started at 18:12:15.999, the process exited, and the next real launch at
+    /// 18:12:38 refused to start DNS watching and told the user to toggle a setting.
+    ///
+    /// A recovery tool must not leave the thing it recovered in a worse state than
+    /// it found it.</summary>
+    public static bool HeadlessRecovery { get; set; }
+
     public bool Start()
     {
         if (SessionActive) return true;
+
+        if (HeadlessRecovery)
+        {
+            // No log line: this is not a fault, and a recovery run's output is read
+            // by someone whose machine is offline. Nothing is started, so nothing
+            // needs cleaning up afterwards.
+            return false;
+        }
 
         if (MarkerPresent())
         {

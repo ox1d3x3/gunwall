@@ -1604,6 +1604,56 @@ def check_silent_failures():
                      "shared addresses spared, orphan rules reported")
 
 
+def check_recovery_path():
+    """The --unblock run must start nothing and identify itself.
+
+    It removes filters and exits in about a tenth of a second. Anything that
+    starts asynchronously behind it is still starting when the process dies -
+    which, from the outside, is indistinguishable from a crash.
+
+    That is not hypothetical: the first version tripped the DNS observer's own
+    crash guard on every run. The observer set its "starting" marker, the process
+    exited, and the next real launch refused to start DNS watching and told the
+    user to go toggle a setting. A recovery tool must not leave the thing it
+    recovered in a worse state than it found it.
+    """
+    before = len(failures)
+    app = (APP / "App.xaml.cs").read_text(encoding="utf-8")
+
+    body = re.search(r"private static int RunEmergencyUnblock\(\).*?\n    \}", app, re.S)
+    if not body:
+        fail("recovery", "RunEmergencyUnblock not found")
+        return
+    body = body.group(0)
+
+    if "HeadlessRecovery" not in body:
+        fail("recovery",
+             "the recovery run does not flag itself, so background subsystems start "
+             "behind it and are killed mid-start when it exits")
+    if "Emergency unblock" not in body:
+        fail("recovery",
+             "the recovery run is not named in the log - its lines are identical to "
+             "a button press, distinguishable only by what is missing")
+
+    # The flag has to be set before anything is constructed, or it is decoration.
+    fi = body.find("HeadlessRecovery")
+    ni = body.find("new FirewallManager")
+    if fi >= 0 and ni >= 0 and fi > ni:
+        fail("recovery",
+             "HeadlessRecovery is set after the manager is constructed - too late "
+             "for anything that starts during construction")
+
+    dns = (APP / "Services" / "DnsEventMonitorService.cs").read_text(encoding="utf-8")
+    st = re.search(r"public bool Start\(\).*?\n    \}", dns, re.S)
+    if st and "HeadlessRecovery" not in st.group(0):
+        fail("recovery",
+             "the DNS observer does not check HeadlessRecovery, so a recovery run "
+             "still starts it and still trips its crash guard")
+
+    if len(failures) == before:
+        notes.append("recovery: --unblock starts nothing and names itself in the log")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -1647,6 +1697,7 @@ def main():
     check_header_fit()
     check_preset_protocols()
     check_reset_path()
+    check_recovery_path()
     check_fault_suppression()
     check_silent_failures()
     check_version_consistency()
