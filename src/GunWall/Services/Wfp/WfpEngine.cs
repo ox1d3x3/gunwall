@@ -1579,16 +1579,80 @@ public sealed class WfpEngine : IDisposable
         }
     }
 
-    public List<ulong> AddGlobalRemoteIpBlock(string ipv4, string reason)
+    /// <summary>Blocks one remote address for every application.
+    ///
+    /// Handles v4 AND v6. Until 0.99.100 this returned an empty list for any IPv6
+    /// address and the caller reported "Blocked domain enforced" anyway - a block
+    /// that covered half the stack while saying it covered all of it. A site on a
+    /// CDN with AAAA records simply kept loading, and the log said it was blocked.
+    ///
+    /// That is the same failure as the IPv4-only port rules fixed in 0.99.80, and
+    /// it is the worse half of the pair: a rule that does not apply is visible, a
+    /// rule that applies to only one address family is not.</summary>
+    public List<ulong> AddGlobalRemoteIpBlock(string address, string reason)
     {
-        var ids = new List<ulong>(1);
+        var ids = new List<ulong>(2);
         EnsureReady();
-        if (!System.Net.IPAddress.TryParse(ipv4, out var ip) ||
-            ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
-            return ids;   // IPv4 only, as with the other reactive blocks
-        TryAdd(ids, () => AddRangeBlockFilterV4(
-            FWPM_LAYER_ALE_AUTH_CONNECT_V4, ipv4, 32, reason));
+        if (!System.Net.IPAddress.TryParse(address, out var ip)) return ids;
+
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            TryAdd(ids, () => AddRangeBlockFilterV4(
+                FWPM_LAYER_ALE_AUTH_CONNECT_V4, address, 32, reason));
+        }
+        else if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            byte[] addr16 = ip.GetAddressBytes();
+            if (addr16.Length != 16) return ids;
+            TryAdd(ids, () => AddRangeBlockFilterV6(
+                FWPM_LAYER_ALE_AUTH_CONNECT_V6, addr16, 128, reason));
+        }
         return ids;
+    }
+
+    /// <summary>A 1-condition block filter: remote IPv6 in base/prefix, all apps.
+    ///
+    /// Derived from AddAppRangeBlockFilterV6 by removing the app condition, rather
+    /// than written fresh: that layout is already proven on hardware, and the only
+    /// difference here is one fewer condition. Nothing about the FWP_V6_ADDR_MASK
+    /// marshalling is new or recalled.</summary>
+    private ulong AddRangeBlockFilterV6(Guid layer, byte[] addr16, byte prefix, string name)
+    {
+        var v6 = new FWP_V6_ADDR_AND_MASK { addr = addr16, prefixLength = prefix };
+        IntPtr v6Ptr = Marshal.AllocHGlobal(Marshal.SizeOf<FWP_V6_ADDR_AND_MASK>());
+        int condSize = Marshal.SizeOf<FWPM_FILTER_CONDITION0>();
+        IntPtr condArr = Marshal.AllocHGlobal(condSize);
+        try
+        {
+            Marshal.StructureToPtr(v6, v6Ptr, false);
+            var rangeCond = new FWPM_FILTER_CONDITION0
+            {
+                fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                matchType = FWP_MATCH_EQUAL,
+                conditionValue = new FWP_CONDITION_VALUE0 { type = FWP_V6_ADDR_MASK, value = (ulong)v6Ptr.ToInt64() }
+            };
+            Marshal.StructureToPtr(rangeCond, condArr, false);
+
+            var filter = new FWPM_FILTER0
+            {
+                layerKey = layer,
+                subLayerKey = SublayerKey,
+                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
+                numFilterConditions = 1,
+                filterCondition = condArr,
+                action = new FWPM_ACTION0 { type = FWP_ACTION_BLOCK },
+                displayData = new FWPM_DISPLAY_DATA0 { name = name, description = name }
+            };
+            uint r = FwpmFilterAdd0(_engine, ref filter, IntPtr.Zero, out ulong id);
+            if (r != ERROR_SUCCESS) throw new WfpException(nameof(FwpmFilterAdd0), r);
+            return id;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(condArr);
+            Marshal.FreeHGlobal(v6Ptr);
+        }
     }
 
     /// <summary>A single-condition block filter: remote IPv4 in base/prefix,

@@ -184,6 +184,24 @@ public static class IpScopeClassifier
     {
         if (Classify(ip) != "internet") return false;
         if (!IPAddress.TryParse(ip, out var addr)) return false;
+
+        // IPv6. Classify() above has already rejected loopback, fe80::/10 link-local
+        // and fc00::/7 unique-local, so what remains is multicast and the
+        // unspecified address. Added in 0.99.100: this returned false for every v6
+        // address, which meant domain-derived blocking never even considered an
+        // IPv6 connection - a site on a CDN with AAAA records kept loading while
+        // the log reported its v4 addresses as blocked.
+        if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            var v6 = addr.GetAddressBytes();
+            if (v6[0] == 0xFF) return false;                  // ff00::/8 multicast
+            bool allZero = true;
+            foreach (byte x in v6) if (x != 0) { allZero = false; break; }
+            if (allZero) return false;                        // ::
+            if (addr.IsIPv4MappedToIPv6) return false;        // handled as v4 instead
+            return true;
+        }
+
         if (addr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return false;
 
         var b = addr.GetAddressBytes();

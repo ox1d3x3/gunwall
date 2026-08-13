@@ -1719,8 +1719,36 @@ def check_allow_level():
     if setter and '"@@"' not in setter.group(0):
         fail("allow-level", "SetBlocklist does not parse the @@ allow prefix")
 
+    # v4/v6 parity for domain-derived blocking. A block that covers one family
+    # while reporting itself enforced is worse than one that fails outright: the
+    # failure is invisible and the log says success.
+    eng = (APP / "Services" / "Wfp" / "WfpEngine.cs").read_text(encoding="utf-8")
+    g = re.search(r"public List<ulong> AddGlobalRemoteIpBlock.*?\n    \}", eng, re.S)
+    if not g:
+        fail("allow-level", "AddGlobalRemoteIpBlock not found")
+    elif "InterNetworkV6" not in g.group(0):
+        fail("allow-level",
+             "domain-derived address blocks are IPv4-only - a site on a CDN with "
+             "AAAA records keeps loading while the log reports it blocked")
+
+    scope = (APP / "Services" / "AppRuleEngine.cs").read_text(encoding="utf-8")
+    sc = re.search(r"public static bool IsPublicUnicast.*?\n    \}", scope, re.S)
+    if sc and "InterNetworkV6" not in sc.group(0):
+        fail("allow-level",
+             "IsPublicUnicast rejects every IPv6 address, so an IPv6 connection is "
+             "never even considered for a domain block")
+
+    obs = (APP / "Services" / "DnsObservations.cs").read_text(encoding="utf-8")
+    # The DECLARATION, not the bare name: renaming the field to _v6NamesX still
+    # contains _v6Names as a substring and passed. Fourteenth time this session.
+    if not re.search(r"Dictionary<string,\s*HashSet<string>>\s+_v6Names\b", obs):
+        fail("allow-level",
+             "no per-address name set for IPv6, so 'nothing known' would read as "
+             "'not shared' and a v6 CDN edge could be blocked outright")
+
     if len(failures) == before:
-        notes.append("allow-level: @@ allows parsed, tested first, shared matcher")
+        notes.append("allow-level: @@ allows parsed, tested first, shared matcher; "
+                     "domain blocks cover v4 and v6")
 
 
 def check_version_consistency():

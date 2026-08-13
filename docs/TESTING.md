@@ -204,39 +204,39 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.99
+## 6. This build — 0.99.100
 
-Both changes are about the DNS blocklist. **Watch system DNS lookups** must be ON
-(DNS resolver page) for the first half to do anything.
+Testing an address-layer block against a CDN site is unreliable by nature. Use a
+stable host, and check the log rather than the browser.
 
-### A. The allow level (2 minutes)
+### Setup
+- **DNS resolver** page → tick **Watch system DNS lookups**.
+- In the **BLOCKLIST** card, clear the box, type ONE line: `ox1de.xyz`
+- Press **Apply blocklist**. (This wipes previous domain filters every time, so do
+  it once and then leave it alone.)
 
-1. **DNS resolver → blocklist box.** Add two lines:
+### The test
+1. Open a **new private/incognito window** — an existing tab holds a live
+   connection and a warm DNS cache, and neither is affected by a new filter.
+2. Visit `https://ox1de.xyz`.
+3. **Export diagnostics** and search `diagnostics.log` for `ox1de`.
 
-   ```
-   example-tracker.com
-   @@ssl.gstatic.com
-   ```
-2. Press **Apply blocklist**.
-3. The status line under the box should now say
-   `... domains blocked, 1 explicitly allowed.`
-4. Browse normally. Anything relying on `ssl.gstatic.com` must keep working even
-   though the ads/trackers preset also lists names under it.
-5. Remove the `@@` line, apply again — the count returns to zero allowed.
+**PASS:** two lines per address family, e.g.
+```
+Blocked domain enforced: ox1de.xyz -> 172.67.171.67
+Blocked domain enforced: ox1de.xyz -> 2606:4700:...
+```
+An IPv6 address appearing at all is the fix working — 0.99.99 could not produce one.
 
-### B. The address-layer refinement
+**FAIL:** only IPv4 addresses, ever.
 
-6. Leave the ads/trackers preset on and browse for ten minutes.
-7. **Alerts screen** — look for entries titled *"X was not blocked by address"*.
-   Each should name what it would have cut off, e.g. *"also serves github.com,
-   which you have not blocked."*
-8. **Export diagnostics.** Lines to expect:
-   - `Address <ip> serves only blocked names (...) - blocking the address.`
-     → a genuine tracker host, blocked again. This is the enforcement that came back.
-   - `... also serves <name> - not on your blocklist, so the address is left alone.`
-     → collateral avoided.
-9. **Confirm Kaspersky and GitHub still work.** They are the two that broke before,
-   and the whole point of the veto is that they cannot break this way again.
+4. The site may still load. **That is expected and not a bug** — Cloudflare rotates
+   addresses faster than GunWall can observe them. The log, not the browser, is
+   what this build changes.
+
+### If you want to see a block actually bite
+Use a host that does not sit behind a CDN. `example.com` works: one stable address,
+no rotation. Block it, open a private window, and it should genuinely fail.
 
 ## 7. What to send
 

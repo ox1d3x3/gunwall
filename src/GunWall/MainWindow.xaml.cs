@@ -357,7 +357,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.99 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.100 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1465,8 +1465,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 string remote = c.RemoteAddress;
                 if (string.IsNullOrEmpty(remote) || remote is "0.0.0.0" or "::") continue;
-                if (!System.Net.IPAddress.TryParse(remote, out var ip) ||
-                    ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                // v4 AND v6. Skipping v6 here meant a site on a CDN with AAAA
+                // records was never even considered for blocking, while the log
+                // reported the v4 half as "enforced".
+                if (!System.Net.IPAddress.TryParse(remote, out var ip)) continue;
+                if (ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork &&
+                    ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6) continue;
 
                 // Only ever block addresses that are actually out on the
                 // Internet. A global filter on loopback, a LAN address or a

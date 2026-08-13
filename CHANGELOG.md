@@ -6,6 +6,42 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.100] — 2026-08-13
+
+### Domain blocking was IPv4-only and said otherwise
+Reported as "my website is on the blocklist and loads normally." The log said it had been blocked:
+
+```
+18:52:20.817  Blocked domain enforced: www.ox1de.xyz -> 172.67.171.67
+18:52:42.082  Blocked domain enforced: www.ox1de.xyz -> 104.21.29.21
+```
+
+Both true, both IPv4, and the site is on Cloudflare with AAAA records on a machine with working IPv6. **The browser connected over IPv6, which was never blocked and never even considered.**
+
+Three separate places dropped it, and all three had to be fixed for any of it to work:
+
+- `AddGlobalRemoteIpBlock` returned an empty list for any IPv6 address — while the caller logged `Blocked domain enforced` regardless.
+- `IsPublicUnicast` returned false for every IPv6 address, so the enforcement loop skipped v6 connections before the engine was ever asked.
+- `DnsObservations` tracked names per address for IPv4 only, so the sharing veto saw "nothing known" for a v6 address — and **nothing known reads as not shared**, which would have let a v6 CDN edge be blocked outright.
+
+Same failure class as the IPv4-only port rules fixed in 0.99.80, and the worse half of the pair: a rule that does not apply is visible, a rule that applies to one address family is not.
+
+The IPv6 filter is derived from the existing per-app v6 range block by removing one condition, rather than written fresh — that layout is already proven on hardware and nothing about the `FWP_V6_ADDR_MASK` marshalling is new or recalled.
+
+`IsPublicUnicast`'s v6 branch rejects multicast, the unspecified address and IPv4-mapped forms; `Classify` already rejected loopback, `fe80::/10` and `fc00::/7`. Verified against all seven cases.
+
+### A limitation worth stating plainly
+Even with v6 covered, blocking a CDN-hosted domain by address is a losing race — Cloudflare rotates addresses, and GunWall can only block what it has observed. `www.ox1de.xyz` produced two different IPv4 addresses within two seconds. Address-layer blocking suits trackers on stable hosts; it will never reliably stop a large site behind a CDN. The roadmap item on preferring the application layer is the real answer.
+
+Also: pressing **Apply blocklist** tears down every domain-derived filter (`Blocklist changed: removed N`), so each edit restarts the observation from nothing.
+
+### Added
+- `allow-level` extended: the engine must handle `InterNetworkV6`, `IsPublicUnicast` must classify it, and a per-address v6 name set must exist. Shown to fail on all three.
+
+### Note — fourteenth check to not test what it claimed
+The v6 name-set assertion searched for the bare string `_v6Names`, which still matched after the field was renamed to `_v6NamesX`. It now tests the declaration.
+---
+
 ## [0.99.99] — 2026-08-13
 
 Both remaining user-facing gaps.

@@ -45,6 +45,8 @@ public static class DnsObservations
     // remembered the last. Capped per address - the exact count stops mattering
     // above two, and the point is only "is this address shared".
     private static readonly Dictionary<uint, HashSet<string>> _v4Names = new();
+    private static readonly Dictionary<string, HashSet<string>> _v6Names =
+        new(StringComparer.OrdinalIgnoreCase);
     private const int MaxNamesTracked = 8;
 
     private const int MaxEntries = 8192;
@@ -82,7 +84,7 @@ public static class DnsObservations
             // A single flush is simpler and safer than an LRU here: the memory
             // exists to answer "recently", and rebuilding it costs nothing but
             // a little time.
-            if (_v4.Count + _v6.Count > MaxEntries) { _v4.Clear(); _v6.Clear(); _v4Names.Clear(); }
+            if (_v4.Count + _v6.Count > MaxEntries) { _v4.Clear(); _v6.Clear(); _v4Names.Clear(); _v6Names.Clear(); }
 
             if (v4 != null)
                 foreach (uint ip in v4)
@@ -99,7 +101,14 @@ public static class DnsObservations
                 foreach (string ip in v6)
                 {
                     string k = (ip ?? "").Trim();
-                    if (k.Length > 0) { _v6[k] = n; recorded = true; }
+                    if (k.Length > 0)
+                    {
+                        _v6[k] = n;
+                        if (!_v6Names.TryGetValue(k, out var s6))
+                            _v6Names[k] = s6 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        if (s6.Count < MaxNamesTracked) s6.Add(n);
+                        recorded = true;
+                    }
                 }
         }
 
@@ -113,14 +122,30 @@ public static class DnsObservations
     /// means it is shared - a CDN edge, not a host belonging to one site - and
     /// blocking it because ONE of those names is on a blocklist takes every other
     /// service on it down as collateral.</summary>
-    public static int NameCountForIp(string? ip)
+    /// <summary>The name set for an address of either family, or null.
+    ///
+    /// One lookup shared by every caller. Written after v6 was found to be missing
+    /// from all three of them at once: the count, the list and the display each
+    /// returned "nothing known" for an IPv6 address, and "nothing known" reads as
+    /// "not shared" - which would have let a v6 CDN edge be blocked outright.</summary>
+    private static HashSet<string>? NamesFor(string? ip)
     {
         string s = (ip ?? "").Trim();
-        if (s.Length == 0) return 0;
-        if (!System.Net.IPAddress.TryParse(s, out var addr)) return 0;
-        if (addr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return 0;
-        uint v = ToUInt32(addr);
-        lock (_gate) return _v4Names.TryGetValue(v, out var set) ? set.Count : 0;
+        if (s.Length == 0) return null;
+        if (!System.Net.IPAddress.TryParse(s, out var addr)) return null;
+        if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            uint v = ToUInt32(addr);
+            return _v4Names.TryGetValue(v, out var s4) ? s4 : null;
+        }
+        if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            return _v6Names.TryGetValue(addr.ToString(), out var s6) ? s6 : null;
+        return null;
+    }
+
+    public static int NameCountForIp(string? ip)
+    {
+        lock (_gate) return NamesFor(ip)?.Count ?? 0;
     }
 
     /// <summary>Every distinct name seen resolving to this address.
@@ -130,16 +155,11 @@ public static class DnsObservations
     /// know WHICH names share it, so each can be tested against the blocklist.</summary>
     public static IReadOnlyList<string> NameListForIp(string? ip)
     {
-        string s = (ip ?? "").Trim();
-        if (s.Length == 0) return System.Array.Empty<string>();
-        if (!System.Net.IPAddress.TryParse(s, out var addr)) return System.Array.Empty<string>();
-        if (addr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
-            return System.Array.Empty<string>();
-        uint v = ToUInt32(addr);
         lock (_gate)
-            return _v4Names.TryGetValue(v, out var set)
-                ? new List<string>(set)
-                : (IReadOnlyList<string>)System.Array.Empty<string>();
+        {
+            var set = NamesFor(ip);
+            return set is null ? System.Array.Empty<string>() : new List<string>(set);
+        }
     }
 
     /// <summary>True when this address has served more names than GunWall kept.
@@ -153,13 +173,11 @@ public static class DnsObservations
     /// <summary>Names seen on this address, for explaining a refusal.</summary>
     public static string NamesForIp(string? ip)
     {
-        string s = (ip ?? "").Trim();
-        if (s.Length == 0) return "";
-        if (!System.Net.IPAddress.TryParse(s, out var addr)) return "";
-        if (addr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return "";
-        uint v = ToUInt32(addr);
         lock (_gate)
-            return _v4Names.TryGetValue(v, out var set) ? string.Join(", ", set) : "";
+        {
+            var set = NamesFor(ip);
+            return set is null ? "" : string.Join(", ", set);
+        }
     }
 
     /// <summary>The name this address was resolved from, or "" if unknown.</summary>
