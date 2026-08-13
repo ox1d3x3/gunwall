@@ -335,16 +335,38 @@ public sealed class DnsResolver : IDisposable
 
     /// <summary>Replace the set of blocked domains. Accepts plain domains, blank
     /// lines, comments, hosts-style lines, pasted URLs and wildcard forms.</summary>
+    /// <summary>Explicit allows, which beat any block. Same subdomain matching.</summary>
+    private volatile HashSet<string> _allow = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>How many names are explicitly allowed.</summary>
+    public int AllowedDomainCount => _allow.Count;
+
     public void SetBlocklist(IEnumerable<string>? domains)
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var allow = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (domains != null)
             foreach (var raw in domains)
             {
-                string d = NormalizeBlocklistEntry(raw, out _);
-                if (d.Length > 0) set.Add(d);
+                // "@@name" is an ALLOW, borrowed from the syntax every adblock list
+                // already uses, so the one text box gains a second level without a
+                // second control - and without anyone having to learn a convention
+                // they do not already know.
+                //
+                // This is the third level the roadmap asked for: today a category is
+                // on or off, and a curated list of 99,557 domains is all-or-nothing.
+                // One entry breaking one site should not mean turning the category
+                // off, and until now it did.
+                string line = (raw ?? "").Trim();
+                bool isAllow = line.StartsWith("@@", StringComparison.Ordinal);
+                if (isAllow) line = line[2..];
+
+                string d = NormalizeBlocklistEntry(line, out _);
+                if (d.Length == 0) continue;
+                if (isAllow) allow.Add(d); else set.Add(d);
             }
         _block = set;
+        _allow = allow;
         // A name resolved before the rule existed would keep being served from
         // cache, so the block would appear not to work at all.
         _cache.Clear();
@@ -364,6 +386,21 @@ public sealed class DnsResolver : IDisposable
         var set = _block;
         if (set.Count == 0 || string.IsNullOrEmpty(name)) return false;
         string n = name.TrimEnd('.').ToLowerInvariant();
+
+        // Allow wins, and is tested FIRST. A user who has written an allow has made
+        // a later and more specific decision than whatever curated list of a
+        // hundred thousand entries also matched; ordering it second would let the
+        // list overrule them.
+        if (MatchesWithParents(_allow, n)) return false;
+        return MatchesWithParents(set, n);
+    }
+
+    /// <summary>Exact match, or any parent domain - so example.com covers
+    /// ads.example.com. Shared by both levels so they cannot drift apart: an allow
+    /// that matched differently from a block would be worse than no allow.</summary>
+    private static bool MatchesWithParents(HashSet<string> set, string n)
+    {
+        if (set.Count == 0) return false;
         if (set.Contains(n)) return true;
         int idx = 0;
         while ((idx = n.IndexOf('.', idx)) >= 0)

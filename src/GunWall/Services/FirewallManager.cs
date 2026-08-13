@@ -1681,8 +1681,16 @@ public sealed class FirewallManager : IDisposable
         return System.IO.File.Exists(p);
     }
 
-    public bool AddDomainReactiveBlock(string domain, string remoteIp)
+    /// <summary>Tests a name against the active DNS blocklist. Supplied by the
+    /// host, because the blocklist lives in the resolver and this class must not
+    /// reach into it. Null means the question cannot be answered - which is
+    /// treated as "do not block", never as "not blocked".</summary>
+    public Func<string, bool>? DomainBlockTest { set => _isDomainBlocked = value; }
+    private Func<string, bool>? _isDomainBlocked;
+
+    public bool AddDomainReactiveBlock(string domain, string remoteIp, out string declined)
     {
+        declined = "";
         // A global /32 block, above every application rule. That is correct for an
         // address belonging to the blocked site and catastrophic for one it merely
         // shares: CDN edges answer for thousands of names, so blocking one tracker
@@ -1695,15 +1703,61 @@ public sealed class FirewallManager : IDisposable
         // Desktop's sign-in. Allowing those applications did nothing, because the
         // block is on the destination and outranks application rules.
         //
-        // So: if this address has been seen answering for more than one name, it is
-        // shared, and the domain does not get to speak for it.
-        int names = DnsObservations.NameCountForIp(remoteIp);
-        if (names > 1)
+        // 0.99.87 refused outright whenever an address had served more than one
+        // name. That stopped the collateral and gave away real enforcement with it:
+        // a host dedicated to two tracker names is exactly the thing a blocklist
+        // exists to stop, and it was being spared.
+        //
+        // The question is not "is this address shared" but "is it shared with
+        // anything the user wants to keep". So every name seen on the address is
+        // tested against the blocklist, and the address is blocked only when they
+        // are ALL blocked. One name the user has not asked to block is enough to
+        // veto it, because that name is the collateral.
+        var seen = DnsObservations.NameListForIp(remoteIp);
+        if (seen.Count > 1)
         {
-            EventLog($"Blocked domain {domain} resolved to {remoteIp}, which is shared with "
-                   + $"{names - 1} other name(s) - not blocking the address. "
-                   + $"Seen here: {DnsObservations.NamesForIp(remoteIp)}");
-            return false;
+            // Saturation first. The per-address name set is capped, so a busy CDN
+            // edge stops recording once it fills - and at that point "every name
+            // here is blocked" is unprovable rather than true. An incomplete
+            // answer must not be read as a positive one, which is the same
+            // mistake as reading an unloaded store as an empty one.
+            if (DnsObservations.NameListSaturated(remoteIp))
+            {
+                declined = $"{remoteIp} has served at least {seen.Count} different names, too "
+                         + "many to be sure they are all on your blocklist. The address was left "
+                         + "alone so nothing unrelated is cut off.";
+                EventLog($"Blocked domain {domain} resolved to {remoteIp}, which has served at "
+                       + $"least {seen.Count} names - too many to be sure they are all blocked, "
+                       + "so the address is left alone.");
+                return false;
+            }
+
+            var keep = new List<string>();
+            foreach (string n in seen)
+                if (!(_isDomainBlocked?.Invoke(n) ?? false)) keep.Add(n);
+
+            if (_isDomainBlocked is null)
+            {
+                declined = $"{remoteIp} is shared and GunWall could not check the other names "
+                         + "on it, so the address was left alone.";
+                EventLog($"Blocked domain {domain} resolved to shared address {remoteIp} and no "
+                       + "blocklist test is available - not blocking the address.");
+                return false;
+            }
+
+            if (keep.Count > 0)
+            {
+                declined = $"{remoteIp} also serves {string.Join(", ", keep)}, which you have "
+                         + "not blocked. Blocking the address would cut those off too, so it was "
+                         + $"left alone - {domain} is still blocked at the DNS layer.";
+                EventLog($"Blocked domain {domain} resolved to {remoteIp}, which also serves "
+                       + $"{string.Join(", ", keep)} - not on your blocklist, so the address is "
+                       + "left alone. The name itself is still blocked at the DNS layer.");
+                return false;
+            }
+
+            EventLog($"Address {remoteIp} serves only blocked names ({string.Join(", ", seen)}) "
+                   + "- blocking the address.");
         }
 
         var ids = _engine.AddGlobalRemoteIpBlock(remoteIp, $"Blocked domain: {domain}");

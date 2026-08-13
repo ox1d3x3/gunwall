@@ -123,6 +123,33 @@ public static class DnsObservations
         lock (_gate) return _v4Names.TryGetValue(v, out var set) ? set.Count : 0;
     }
 
+    /// <summary>Every distinct name seen resolving to this address.
+    ///
+    /// The list, not just the count. Counting was enough to answer "is this
+    /// shared"; deciding whether a shared address may still be blocked needs to
+    /// know WHICH names share it, so each can be tested against the blocklist.</summary>
+    public static IReadOnlyList<string> NameListForIp(string? ip)
+    {
+        string s = (ip ?? "").Trim();
+        if (s.Length == 0) return System.Array.Empty<string>();
+        if (!System.Net.IPAddress.TryParse(s, out var addr)) return System.Array.Empty<string>();
+        if (addr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return System.Array.Empty<string>();
+        uint v = ToUInt32(addr);
+        lock (_gate)
+            return _v4Names.TryGetValue(v, out var set)
+                ? new List<string>(set)
+                : (IReadOnlyList<string>)System.Array.Empty<string>();
+    }
+
+    /// <summary>True when this address has served more names than GunWall kept.
+    ///
+    /// The per-address set is capped, so a very busy CDN edge stops recording new
+    /// names once it fills. At that point "every name here is blocked" can no
+    /// longer be established - the evidence is incomplete, and an incomplete
+    /// answer must not be read as a positive one.</summary>
+    public static bool NameListSaturated(string? ip) => NameCountForIp(ip) >= MaxNamesTracked;
+
     /// <summary>Names seen on this address, for explaining a refusal.</summary>
     public static string NamesForIp(string? ip)
     {

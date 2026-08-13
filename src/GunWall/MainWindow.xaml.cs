@@ -170,6 +170,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // Lets the resolver name the enforcement posture in its own results, so a
         // self-check line still means something when it is read months later in a
         // bundle with no memory of what was switched on at the time.
+        // The manager decides whether a shared address may be blocked; only the
+        // resolver knows what is on the blocklist. Handing the test across keeps
+        // the two from reaching into each other.
+        _firewall.DomainBlockTest = n => { try { return _dnsResolver.IsBlocked(n); } catch { return false; } };
         _dnsResolver.PostureProbe = () =>
             _firewall.StrictMode ? "protection ON" : "protection OFF";
         AlertsList.ItemsSource = _notifications;
@@ -353,7 +357,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.98 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.99 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1197,7 +1201,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         DnsStartBtn.Content = on ? "Stop resolver" : "Start resolver";
         DnsResStatus.Text = on
             ? $"Listening on 127.0.0.1:{_dnsResolver.Port}, forwarding to {_dnsResolver.UpstreamLabel}. "
-              + $"{_dnsResolver.BlockedDomainCount} domains blocked."
+              + $"{_dnsResolver.BlockedDomainCount} domains blocked"
+              + (_dnsResolver.AllowedDomainCount > 0
+                    ? $", {_dnsResolver.AllowedDomainCount} explicitly allowed."
+                    : ".")
               + (_dnsResolver.SecureDns
                     ? $" Queries are encrypted; {(_dnsResolver.DohFallbackAllowed ? "plaintext fallback allowed" : "no plaintext fallback")}."
                     : "")
@@ -1475,7 +1482,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
                 if (!_domainBlocked.Add(remote)) continue;    // one filter per address
 
-                if (_firewall.AddDomainReactiveBlock(domain, remote))
+                if (!_firewall.AddDomainReactiveBlock(domain, remote, out string declined))
+                {
+                    // Told, not just logged. Someone who blocks a domain and then
+                    // watches traffic to it continue is owed the reason - and the
+                    // reason is a deliberate decision GunWall made on their behalf,
+                    // which is exactly the kind of thing that must not be silent.
+                    if (declined.Length > 0)
+                        Notify("info", $"{domain} was not blocked by address",
+                               declined, "security");
+                }
+                else
                 {
                     // Tear the session down too: a new filter stops the next
                     // connection but not one already established.

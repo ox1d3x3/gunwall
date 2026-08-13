@@ -204,20 +204,39 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.98
+## 6. This build — 0.99.99
 
-Two small corrections to the recovery path. Both are read in the log, not on screen.
+Both changes are about the DNS blocklist. **Watch system DNS lookups** must be ON
+(DNS resolver page) for the first half to do anything.
 
-1. Protection ON, allow an app, **Watch system DNS lookups** on (DNS resolver page).
-2. Close GunWall, run `GunWall.exe --unblock`.
-3. **Before reopening**, run `netsh wfp show filters file=%TEMP%\gw.xml` and search
-   for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Expect zero.**
-4. Reopen GunWall, export diagnostics. In the log:
-   - The unblock run must **not** contain `DNS observer could not start ()`.
-   - The launch after it must contain
-     `DNS observer: watching Microsoft-Windows-DNS-Client`.
-5. If you dump the filters again now, **four matches is correct** — GunWall
-   permitting its own executable, nothing else.
+### A. The allow level (2 minutes)
+
+1. **DNS resolver → blocklist box.** Add two lines:
+
+   ```
+   example-tracker.com
+   @@ssl.gstatic.com
+   ```
+2. Press **Apply blocklist**.
+3. The status line under the box should now say
+   `... domains blocked, 1 explicitly allowed.`
+4. Browse normally. Anything relying on `ssl.gstatic.com` must keep working even
+   though the ads/trackers preset also lists names under it.
+5. Remove the `@@` line, apply again — the count returns to zero allowed.
+
+### B. The address-layer refinement
+
+6. Leave the ads/trackers preset on and browse for ten minutes.
+7. **Alerts screen** — look for entries titled *"X was not blocked by address"*.
+   Each should name what it would have cut off, e.g. *"also serves github.com,
+   which you have not blocked."*
+8. **Export diagnostics.** Lines to expect:
+   - `Address <ip> serves only blocked names (...) - blocking the address.`
+     → a genuine tracker host, blocked again. This is the enforcement that came back.
+   - `... also serves <name> - not on your blocklist, so the address is left alone.`
+     → collateral avoided.
+9. **Confirm Kaspersky and GitHub still work.** They are the two that broke before,
+   and the whole point of the veto is that they cannot break this way again.
 
 ## 7. What to send
 

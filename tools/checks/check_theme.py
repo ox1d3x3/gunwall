@@ -1450,11 +1450,31 @@ def check_silent_failures():
     blk = re.search(r"public bool AddDomainReactiveBlock.*?\n    \}", fm2, re.S)
     if not blk:
         fail("silent-failure", "AddDomainReactiveBlock not found")
-    elif "NameCountForIp" not in blk.group(0):
-        fail("silent-failure",
-             "AddDomainReactiveBlock installs a global address block without "
-             "checking whether the address is shared - one tracker name then "
-             "blocks every other service on that CDN edge")
+    else:
+        body_blk = blk.group(0)
+        # A sharing test of some kind must exist.
+        if "NameListForIp" not in body_blk and "NameCountForIp" not in body_blk:
+            fail("silent-failure",
+                 "AddDomainReactiveBlock installs a global address block without "
+                 "checking whether the address is shared - one tracker name then "
+                 "blocks every other service on that CDN edge")
+        # And it must be able to VETO. 0.99.99 relaxed the rule from "never block a
+        # shared address" to "block it only when every name on it is blocked",
+        # which is only safe while an unblocked name still stops it.
+        if "NameListForIp" in body_blk:
+            if "keep.Count > 0" not in body_blk:
+                fail("silent-failure",
+                     "the shared-address rule has no veto - a name the user never "
+                     "asked to block would not stop the address being blocked")
+            if "NameListSaturated" not in body_blk:
+                fail("silent-failure",
+                     "no saturation guard: the per-address name set is capped, so "
+                     "'every name here is blocked' can be unprovable rather than "
+                     "true, and an incomplete answer would be read as a positive")
+            if "_isDomainBlocked is null" not in body_blk:
+                fail("silent-failure",
+                     "no handling for a missing blocklist test - an unanswerable "
+                     "question would read as 'not blocked' and permit the block")
 
     obs = (APP / "Services" / "DnsObservations.cs").read_text(encoding="utf-8")
     if "NameCountForIp" not in obs:
@@ -1654,6 +1674,55 @@ def check_recovery_path():
         notes.append("recovery: --unblock starts nothing and names itself in the log")
 
 
+def check_allow_level():
+    """An explicit allow must beat a block, and match the same way.
+
+    Two failures are possible and both are quiet. If the allow is tested after the
+    block, a curated list of a hundred thousand entries silently overrules a
+    decision the user made deliberately and later. If the two levels match
+    differently - one exact, one with parents - then @@example.com would not cover
+    ads.example.com while the block did, and the allow would appear simply not to
+    work.
+    """
+    before = len(failures)
+    src = (APP / "Services" / "DnsResolver.cs").read_text(encoding="utf-8")
+
+    body = re.search(r"public bool IsBlocked\(string name\).*?\n    \}", src, re.S)
+    if not body:
+        fail("allow-level", "IsBlocked not found")
+        return
+    body = body.group(0)
+
+    # Compare where each set is TESTED, not where it is mentioned. The first
+    # version compared bare names and found "var set = _block;" at the top of the
+    # method - the variable capture, not the test - so it reported the block being
+    # checked first on correct code. Thirteenth time this session a check matched
+    # the neighbourhood instead of the thing.
+    allow_test = re.search(r"MatchesWithParents\(\s*_allow", body)
+    block_test = re.search(r"MatchesWithParents\(\s*(?:set|_block)", body)
+    if allow_test is None:
+        fail("allow-level",
+             "IsBlocked never tests the allow set - an explicit allow would do "
+             "nothing at all")
+    elif block_test is not None and allow_test.start() > block_test.start():
+        fail("allow-level",
+             "the block set is tested before the allow set, so a preset entry "
+             "overrules a decision the user made deliberately and later")
+
+    # Both levels must use the same matcher, or they drift.
+    if body.count("MatchesWithParents") < 2:
+        fail("allow-level",
+             "allow and block do not share one matcher - @@example.com could stop "
+             "covering ads.example.com while the block still did")
+
+    setter = re.search(r"public void SetBlocklist.*?\n    \}", src, re.S)
+    if setter and '"@@"' not in setter.group(0):
+        fail("allow-level", "SetBlocklist does not parse the @@ allow prefix")
+
+    if len(failures) == before:
+        notes.append("allow-level: @@ allows parsed, tested first, shared matcher")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -1698,6 +1767,7 @@ def main():
     check_preset_protocols()
     check_reset_path()
     check_recovery_path()
+    check_allow_level()
     check_fault_suppression()
     check_silent_failures()
     check_version_consistency()

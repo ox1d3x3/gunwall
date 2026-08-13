@@ -6,6 +6,37 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.99] — 2026-08-13
+
+Both remaining user-facing gaps.
+
+### Recovered the enforcement 0.99.87 gave away
+That release stopped a real disaster — one tracker name kernel-blocking a Cloudflare edge took Kaspersky's updates and GitHub Desktop offline for days — by refusing to block **any** address seen serving more than one name. It also spared a host serving two tracker names, which is precisely what a blocklist exists to stop.
+
+The question was never "is this address shared" but **"is it shared with anything the user wants to keep."** Every name seen on the address is now tested against the blocklist, and the address is blocked only when they are all blocked. One name the user has not asked to block vetoes it, because that name is the collateral.
+
+Two guards on top:
+- **Saturation.** The per-address name set is capped, so a busy CDN edge stops recording once full. At that point "every name here is blocked" is unprovable rather than true, and an incomplete answer must not read as a positive one — the same mistake as reading an unloaded store as an empty one.
+- **No blocklist test available** vetoes too. An unanswerable question is never "not blocked".
+
+Simulated against the real incident: a dedicated tracker host is blocked again, a host serving two blocked trackers is blocked, and both the Akamai and Cloudflare edges still decline — naming `ksn.kaspersky.com` and `github.com` as what they would have cut off.
+
+### Made it visible
+A withheld block was a log line. Now it raises an Alert saying which service would have been cut off and that the domain is still blocked at the DNS layer. **Someone who blocks a domain and then watches traffic to it continue is owed the reason** — especially when the reason is a decision GunWall made on their behalf.
+
+### Added the allow level
+`@@example.com` in the blocklist box permits a name even when a category or preset blocks it. Borrowed from the syntax every adblock list already uses, so the existing text box gains a second level without a second control and without anyone learning a new convention.
+
+This is the third level the roadmap asked for. A curated preset is 99,557 entries and was all-or-nothing: one entry breaking one site meant turning the whole category off. Allows are tested **before** blocks — a decision the user made deliberately and later should not be overruled by a list — and both levels share one matcher, so `@@example.com` covers `ads.example.com` exactly as a block would.
+
+### Added — checks
+- `silent-failure` extended: the shared-address rule must have a veto, a saturation guard, and handling for a missing test. Shown to fail on each, and on removing the sharing test entirely.
+- `allow-level`: allows must be parsed, tested first, and share the block's matcher. Shown to fail on all three.
+
+### Note — thirteenth check to not test what it claimed
+`allow-level` first compared where `_allow` and `_block` were *mentioned*, and found `var set = _block;` at the top of the method — the variable capture, not the test — so it reported the block being checked first on correct code. It now compares where each is tested.
+---
+
 ## [0.99.98] — 2026-08-13
 
 ### Confirmed — the DNS observer survives a recovery run
