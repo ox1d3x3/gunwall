@@ -10,12 +10,17 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-3FB868?style=flat-square)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/filtering%20path-no%20dependencies-3DA9FC?style=flat-square)](#-privacy--security)
-[![Status](https://img.shields.io/badge/release-beta-E0A53F?style=flat-square)](#roadmap)
+[![Dependencies](https://img.shields.io/badge/filtering%20path-no%20dependencies-3DA9FC?style=flat-square)](#privacy-security)
+[![Status](https://img.shields.io/badge/release-beta-E0A53F?style=flat-square)](#project-status)
+[![Latest release](https://img.shields.io/github/v/release/ox1d3x3/gunwall?style=flat-square&color=3FB868&include_prereleases&label=latest)](https://github.com/ox1d3x3/gunwall/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/ox1d3x3/gunwall/total?style=flat-square&color=3DA9FC&label=downloads)](https://github.com/ox1d3x3/gunwall/releases)
+[![Issues](https://img.shields.io/github/issues/ox1d3x3/gunwall?style=flat-square&color=E0A53F)](https://github.com/ox1d3x3/gunwall/issues)
 
 *Deny every app by default. See exactly where your traffic goes, app by app and country by country. Decide who may reach the Internet, the LAN, or nothing at all — in a fast, modern interface with no accounts, no telemetry, and nothing between you and the kernel.*
 
-**[github.com/ox1d3x3/gunwall](https://github.com/ox1d3x3/gunwall)**
+### [⬇ Download the latest beta](https://github.com/ox1d3x3/gunwall/releases/latest)
+
+*One portable `.exe`. No installer, no account, no telemetry. Run it as administrator and it works.*
 
 </div>
 
@@ -35,9 +40,33 @@ It is a **single portable executable**. The filtering path — the WFP engine, t
 
 ## Project status
 
-GunWall is in **beta**. The filtering engine, monitoring, metering, DNS and rule subsystems are functional and in daily use, but this is still software under active development rather than a hardened, certified security product. It runs as a single elevated process and does not yet implement service isolation or code signing.
+**GunWall is in public beta and is doing its job.** The filtering engine, rule
+evaluation, monitoring, metering and DNS subsystems are complete and in daily use
+on real hardware. Enforcement is verified against the kernel rather than against
+GunWall's own reporting — you can confirm it independently at any time with
+`netsh wfp show filters`, and the README shows you how.
 
-Test it in a safe environment first, and don't rely on it as your only defense on a high-risk machine.
+**What that means in practice**
+
+- Every filter GunWall installs is **persistent**: closing the app, a crash, or a
+  reboot does not stop enforcement. That is what a firewall must do.
+- Because of that, there are exactly two ways to stop filtering, and **both are
+  verified to return the machine to Windows defaults**: the protection switch, and
+  *Remove all GunWall filtering*.
+- If GunWall will not open at all, `GunWall.exe --unblock` restores the machine
+  from a command prompt without the interface. See
+  [If the machine is locked](#if-the-machine-is-locked-and-gunwall-will-not-open).
+
+**What beta still means**
+
+It runs as a single elevated process. There is no service isolation, no code
+signing and no installer yet — those are the last items before 1.0. It has been
+soak-tested for 11 hours at a time with zero errors, but on a small number of
+machines. Your Windows build, your VPN and your antivirus are combinations nobody
+has tried yet.
+
+Use it. Report what breaks. Don't make it the only thing standing between a
+high-risk machine and the Internet just yet.
 
 ---
 
@@ -107,6 +136,22 @@ Test it in a safe environment first, and don't rely on it as your only defense o
 - **Windows 10 (2004+) or Windows 11**, 64-bit
 - **Administrator privileges** — WFP cannot add or remove filters otherwise. The manifest requests elevation automatically.
 
+### Download (recommended)
+
+1. Go to **[Releases](https://github.com/ox1d3x3/gunwall/releases/latest)** and
+   download `GunWall.exe`.
+2. Right-click → **Run as administrator**. There is no installer and nothing is
+   written outside the folder you run it from.
+3. Windows SmartScreen will warn you, because the build is not code-signed yet —
+   signing is a pre-1.0 item. Choose **More info → Run anyway**, or verify the
+   checksum published with the release first.
+
+**Removing it.** GunWall is portable, but its filters live in the Windows kernel
+and persist by design. **Use *Settings → Remove all GunWall filtering* before
+deleting the folder** — otherwise the machine keeps enforcing rules with nothing
+installed to manage them. If that already happened, see
+[If the machine is locked](#if-the-machine-is-locked-and-gunwall-will-not-open).
+
 ### Build from source
 
 Prerequisites: **Visual Studio 2022** (17.8+) with the **.NET desktop development** workload, or the standalone [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
@@ -138,6 +183,17 @@ GunWall starts in **monitoring only** — it observes traffic and changes nothin
 1. Watch the Dashboard and Apps list for a few minutes to see what your machine actually talks to.
 2. Enable **Zero-Trust mode** when you're ready to start approving apps.
 3. Optionally enable **precise metering** (Settings → experimental) for kernel-measured per-app bandwidth.
+
+**Expect prompts, and expect to be busy for the first ten minutes.** Default-deny
+means every program asks once. Approve the ones you recognise; the ones you do not
+are the point of the exercise.
+
+**Two settings worth knowing about before you turn protection on:**
+
+| Setting | Why it matters |
+|---|---|
+| *Settings → Popup stays open for* | Defaults to **Never**, so a prompt waits for you. If you set a timeout, anything you do not answer in that window gets a **permanent** rule — including programs you needed. |
+| *Settings → Run GunWall when Windows starts* | Off by default. With it off, filters still enforce after a reboot but nothing can prompt you, so new programs fail silently until you open GunWall. |
 
 > **Antivirus note:** a firewall legitimately performs the same low-level operations malware does — modifying the hosts file, changing DNS, creating packet filters, terminating processes. Some behavioral engines may flag an **unsigned** build with a generic heuristic detection, especially when run from a `Downloads` folder. Build in **Release**, run from a stable folder, and add GunWall to your antivirus exclusions if needed. Code signing is the long-term fix.
 
@@ -271,8 +327,9 @@ this section is about what exists and what is still open.
 | **Kernel coverage** | 16 WFP layers wired and verified on hardware, v4 and v6 · kernel layer self-test · filter tamper detection with self-healing |
 | **Visibility** | Connection inspector · live packet log · throughput graph · activity feed · per-app metering from ETW · traffic by app, host, protocol and country · LAN scanner |
 | **App trust** | Authenticode signature verification · SHA-256 tamper detection · VirusTotal hash lookup · per-app properties and notes |
-| **DNS** | Built-in resolver · DNS-over-HTTPS with a fail-closed default · CNAME-cloaking defence · domain heuristics · filtering-DNS selection |
-| **Blocking** | Telemetry and update blocklists with WFP fallback when the hosts file is unavailable · ads and trackers via filtering DNS |
+| **DNS** | Built-in resolver · DNS-over-HTTPS with a fail-closed default · CNAME-cloaking defence · domain heuristics · filtering-DNS selection · resolver self-check on start |
+| **Blocking** | Telemetry and update blocklists with WFP fallback when the hosts file is unavailable · ads and trackers via filtering DNS · explicit `@@` allow entries that override any list · domain blocks enforced **per application**, so blocking a tracker cannot cut off anything else sharing its address |
+| **Recovery** | Reset returns the machine to Windows defaults, including the hosts file and adapter DNS · orphaned filters reconciled at every start · `--unblock` command-line recovery when the interface cannot be opened |
 | **Management** | Profiles · versioned backups · Windows Firewall import · diagnostics export · run at startup · close to tray · notification centre |
 
 ### What is open
@@ -280,21 +337,35 @@ this section is about what exists and what is still open.
 Grouped by risk rather than order. The full list, with detail, is in
 [`ROADMAP.md`](ROADMAP.md).
 
-**No kernel risk** — three-level blocklist control with an explicit allow level ·
-per-network trust profiles · list view modes and further interface options ·
-remaining colour-category customisation · pico and subsystem process
-identification.
+**No kernel risk** — per-category blocklist controls in the interface · an extra
+curated list · excluding chosen apps from blocklists · per-network trust profiles ·
+list view modes and further interface options · remaining colour-category
+customisation · pico and subsystem process identification.
 
-**Touches the filter set** — connect-redirection and discard layers · quick rule
-toggles for Windows Update and IPv6 transition · true filter tamper *prevention*,
-which needs a privilege split first because an elevated user process cannot lock
-out other administrators without locking out itself.
+**Touches the filter set** — connect-redirection and discard layers · true filter
+tamper *prevention*, which needs a privilege split first because an elevated user
+process cannot lock out other administrators without locking out itself.
 
 **Needs a guaranteed recovery path before it can ship** — boot-time filters ·
 Windows Update service repair · compressed and encrypted profile formats.
 
 **Before 1.0** — service split and privilege separation · code signing, an
 installer and auto-update · multi-language interface.
+
+### Known limitations
+
+Stated plainly, because you will meet them:
+
+- **Blocking a domain hosted on a large CDN is unreliable.** GunWall blocks the
+  addresses it has observed a name resolve to; Cloudflare and similar services
+  rotate faster than that. Domain blocking works well against trackers on stable
+  hosts. It will not reliably stop a major website.
+- **A closed GunWall cannot prompt.** Filters persist, so an unapproved program is
+  correctly denied — but with the app shut, there is no prompt and no way to grant
+  access, and the program simply fails. Enable *Run at startup* if that matters.
+- **No code signing yet**, so SmartScreen and some antivirus heuristics will
+  complain about an unsigned binary performing firewall operations.
+- **Single elevated process.** Service isolation is a pre-1.0 item.
 
 ---
 
@@ -310,6 +381,28 @@ installer and auto-update · multi-language interface.
 | [`docs/HANDOVER.md`](docs/HANDOVER.md) | What keeps going wrong, what stops it now, and the deviations that are deliberate |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Build setup, conventions, and the rules for touching kernel interop |
 | [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability, and the guarantees GunWall intends to hold |
+
+---
+
+## Reporting a problem
+
+Beta feedback is the most useful thing you can send. What makes a report
+actionable:
+
+1. **Settings → Export diagnostics (.zip)** — it contains the session log,
+   your settings with secrets removed, the active rules and your network
+   configuration. **No browsing history and no personal data.**
+2. **Describe what you saw, not what you think caused it.** "The firewall says it
+   is off when it is on" once led straight to a bug that turned out to be invisible
+   text — a diagnosis would have sent us the wrong way.
+3. **A full-window screenshot** if it is visual. A crop hides what an element is
+   being measured against.
+
+Open an issue at
+**[github.com/ox1d3x3/gunwall/issues](https://github.com/ox1d3x3/gunwall/issues)**.
+
+If something is badly broken and you need the machine working *now*, run
+`GunWall.exe --unblock` first, then report — recovery does not destroy the log.
 
 ---
 

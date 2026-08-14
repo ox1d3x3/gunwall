@@ -1746,9 +1746,40 @@ def check_allow_level():
              "no per-address name set for IPv6, so 'nothing known' would read as "
              "'not shared' and a v6 CDN edge could be blocked outright")
 
+    # The app layer must be TRIED FIRST. Scoped to one executable a block carries
+    # no collateral, so the ordering is the entire point: reversed, the global
+    # filter lands first and the app-scoped one never runs.
+    # Read locally. The first version borrowed `mw` from another check's scope and
+    # died with a NameError, which the runner surfaced as a crash rather than a
+    # failure - a check that cannot run is not a check that passes.
+    mwtxt = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    loop = re.search(r"private void EnforceBlockedDomains.*?\n    \}", mwtxt, re.S)
+    if not loop:
+        fail("allow-level", "EnforceBlockedDomains not found")
+    else:
+        lt = loop.group(0)
+        ai = lt.find("AddAppDomainBlock")
+        gi = lt.find("AddDomainReactiveBlock")
+        if ai < 0:
+            fail("allow-level",
+                 "the enforcement loop never tries the app-scoped block, so every "
+                 "domain block is global and carries collateral it need not")
+        elif gi >= 0 and ai > gi:
+            fail("allow-level",
+                 "the global address block is attempted before the app-scoped one - "
+                 "reversed, the form with collateral always wins")
+
+    # And the teardown must know about it, or these become orphans.
+    fmtxt = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+    clr = re.search(r"public int ClearDomainReactiveBlocks.*?\n    \}", fmtxt, re.S)
+    if clr and "appdomainblock|" not in clr.group(0):
+        fail("allow-level",
+             "ClearDomainReactiveBlocks does not remove app-scoped domain filters - "
+             "one per (app, address) pair would be orphaned on every blocklist edit")
+
     if len(failures) == before:
         notes.append("allow-level: @@ allows parsed, tested first, shared matcher; "
-                     "domain blocks cover v4 and v6")
+                     "domain blocks cover v4 and v6; app layer preferred")
 
 
 def check_version_consistency():

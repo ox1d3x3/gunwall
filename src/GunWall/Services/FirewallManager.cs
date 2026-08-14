@@ -1688,6 +1688,34 @@ public sealed class FirewallManager : IDisposable
     public Func<string, bool>? DomainBlockTest { set => _isDomainBlocked = value; }
     private Func<string, bool>? _isDomainBlocked;
 
+    /// <summary>Blocks the application that asked for a blocked name from reaching
+    /// the address it resolved to.
+    ///
+    /// Preferred over the global form whenever the process is known, because it
+    /// carries no collateral: the filter names one executable, so a tracker a
+    /// browser fetched cannot affect anything else on the machine even when the
+    /// address is a shared CDN edge.
+    ///
+    /// That removes the whole reason the global path needs a sharing veto. Here the
+    /// address may be shared with a hundred other services and it does not matter -
+    /// none of them is this process reaching this name.</summary>
+    public bool AddAppDomainBlock(string exePath, string domain, string remoteIp)
+    {
+        if (string.IsNullOrWhiteSpace(exePath) || !IsApplicablePath(exePath)) return false;
+
+        string key = $"appdomainblock|{exePath.ToLowerInvariant()}|{remoteIp}";
+        if (_data.ScopeFilters.ContainsKey(key)) return true;   // already in place
+
+        var ids = _engine.AddAppRemoteIpBlock(exePath, remoteIp, $"Blocked domain {domain}");
+        if (ids.Count == 0) return false;
+
+        _data.ScopeFilters[key] = ids;
+        _store.Save(_data);
+        EventLog($"Blocked domain enforced for one app: {System.IO.Path.GetFileName(exePath)} "
+               + $"-> {remoteIp} ({domain}). Other applications are unaffected.");
+        return true;
+    }
+
     public bool AddDomainReactiveBlock(string domain, string remoteIp, out string declined)
     {
         declined = "";
@@ -1774,7 +1802,15 @@ public sealed class FirewallManager : IDisposable
     public int ClearDomainReactiveBlocks()
     {
         int removed = 0;
-        foreach (var key in _data.ScopeFilters.Keys.Where(k => k.StartsWith("domainblock|", StringComparison.Ordinal)).ToList())
+        // BOTH prefixes. The app-scoped form was added in 0.99.101 and a teardown
+        // that only knew the global one would have left a filter per (app, address)
+        // pair behind on every blocklist edit - the exact way 843 orphans
+        // accumulated, arriving by a new route.
+        bool IsDomainDerived(string k) =>
+            k.StartsWith("domainblock|", StringComparison.Ordinal)
+            || k.StartsWith("appdomainblock|", StringComparison.Ordinal);
+
+        foreach (var key in _data.ScopeFilters.Keys.Where(IsDomainDerived).ToList())
         {
             try { _engine.RemoveFilters(_data.ScopeFilters[key]); removed += _data.ScopeFilters[key].Count; }
             catch { }

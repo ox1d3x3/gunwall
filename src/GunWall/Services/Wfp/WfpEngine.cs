@@ -1701,18 +1701,43 @@ public sealed class WfpEngine : IDisposable
         }
     }
 
-    public List<ulong> AddAppRemoteIpBlock(string exePath, string ipv4)
+    /// <summary>Blocks one application from reaching one address. Both families.
+    ///
+    /// This is the narrow form of a domain block, and the one that should be
+    /// preferred whenever the application is known. A global address block is
+    /// correct only when the address belongs to the blocked site alone; scoped to
+    /// the process that asked for the name, the same block carries **no collateral
+    /// at all** - a tracker fetched by a browser cannot take an antivirus's update
+    /// service offline, because the filter names the browser.
+    ///
+    /// That is not a hypothetical improvement. It is the exact failure this project
+    /// spent a fortnight on, and the reason 0.99.87 had to give away enforcement to
+    /// stop it.
+    ///
+    /// The label is passed in rather than built here, so a domain-derived block can
+    /// say which domain it came from instead of only naming an address.</summary>
+    public List<ulong> AddAppRemoteIpBlock(string exePath, string address, string? label = null)
     {
-        var ids = new List<ulong>(1);
+        var ids = new List<ulong>(2);
         EnsureReady();
-        if (!System.Net.IPAddress.TryParse(ipv4, out var ip) ||
-            ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
-            return ids; // IPv4 only
+        if (!System.Net.IPAddress.TryParse(address, out var ip)) return ids;
+        string name = label ?? ("Entity block: " + address);
+
         IntPtr appIdPtr = GetAppId(exePath, out FWP_BYTE_BLOB blob);
         try
         {
-            TryAdd(ids, () => AddAppRangeBlockFilterV4(
-                FWPM_LAYER_ALE_AUTH_CONNECT_V4, blob, ipv4, 32, "Entity block: " + ipv4));
+            if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            {
+                TryAdd(ids, () => AddAppRangeBlockFilterV4(
+                    FWPM_LAYER_ALE_AUTH_CONNECT_V4, blob, address, 32, name));
+            }
+            else if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            {
+                byte[] addr16 = ip.GetAddressBytes();
+                if (addr16.Length == 16)
+                    TryAdd(ids, () => AddAppRangeBlockFilterV6(
+                        FWPM_LAYER_ALE_AUTH_CONNECT_V6, blob, addr16, 128, name));
+            }
         }
         finally { FreeAppId(appIdPtr); }
         return ids;

@@ -204,39 +204,40 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.100
+## 6. This build — 0.99.101
 
-Testing an address-layer block against a CDN site is unreliable by nature. Use a
-stable host, and check the log rather than the browser.
+The change is *which* filter gets built, so the log is the test, not the browser.
 
 ### Setup
 - **DNS resolver** page → tick **Watch system DNS lookups**.
-- In the **BLOCKLIST** card, clear the box, type ONE line: `ox1de.xyz`
-- Press **Apply blocklist**. (This wipes previous domain filters every time, so do
-  it once and then leave it alone.)
+- **BLOCKLIST** card → clear the box, type one line: `example.com`
+- Press **Apply blocklist** once, then leave it alone.
 
 ### The test
-1. Open a **new private/incognito window** — an existing tab holds a live
-   connection and a warm DNS cache, and neither is affected by a new filter.
-2. Visit `https://ox1de.xyz`.
-3. **Export diagnostics** and search `diagnostics.log` for `ox1de`.
+1. Open a **private/incognito window** and visit `https://example.com`.
+2. **Export diagnostics**, search `diagnostics.log` for `example.com`.
 
-**PASS:** two lines per address family, e.g.
+**PASS** — lines naming the browser:
 ```
-Blocked domain enforced: ox1de.xyz -> 172.67.171.67
-Blocked domain enforced: ox1de.xyz -> 2606:4700:...
+Blocked domain enforced for one app: msedge.exe -> 104.20.23.154 (example.com).
+Other applications are unaffected.
 ```
-An IPv6 address appearing at all is the fix working — 0.99.99 could not produce one.
 
-**FAIL:** only IPv4 addresses, ever.
+**FAIL** — the old global form only:
+```
+Blocked domain enforced: example.com -> 104.20.23.154
+```
 
-4. The site may still load. **That is expected and not a bug** — Cloudflare rotates
-   addresses faster than GunWall can observe them. The log, not the browser, is
-   what this build changes.
+3. **Alerts** should show *"Blocked domain reached: example.com"* saying only that
+   browser is affected.
 
-### If you want to see a block actually bite
-Use a host that does not sit behind a CDN. `example.com` works: one stable address,
-no rotation. Block it, open a private window, and it should genuinely fail.
+### The point of the change
+4. While `example.com` is blocked for your browser, confirm **Kaspersky updates and
+   a GitHub push still work.** They always should now — the filter names one
+   executable and cannot reach them even if the address were shared.
+5. Press **Apply blocklist** again with the box emptied. The log should show
+   `Cleared N blocked-domain filter(s)` and the site should work again. If the count
+   is 0 while filters existed, the teardown missed the new prefix.
 
 ## 7. What to send
 

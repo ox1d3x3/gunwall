@@ -357,7 +357,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.100 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.101 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1301,6 +1301,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             int cleared = _firewall.ClearDomainReactiveBlocks();
             _domainBlocked.Clear();
+            _appDomainBlocked.Clear();
             if (cleared > 0)
                 Services.DiagnosticLog.Log($"Blocklist changed: removed {cleared} blocked-domain filter(s).");
         }
@@ -1415,6 +1416,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// is up - without it "never resolved" would accuse everything.
     /// </summary>
     private readonly HashSet<string> _domainBlocked = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>"exePath|address" pairs already filtered at the app layer.</summary>
+    private readonly HashSet<string> _appDomainBlocked = new(StringComparer.OrdinalIgnoreCase);
 
     private int _tamperTick;
     private const int TamperCheckEverySeconds = 30;
@@ -1483,6 +1486,37 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 string domain = Services.DnsObservations.DomainForIp(remote);
                 if (domain.Length == 0) continue;
                 if (!_dnsResolver.IsBlocked(domain)) continue;
+
+                // APP LAYER FIRST. A filter naming one executable has no collateral
+                // at all, so a shared CDN address is safe to block here - which is
+                // the whole difficulty the global path has to reason about and
+                // sometimes decline over.
+                //
+                // Keyed by app+address rather than address alone, so a second
+                // application reaching the same blocked name gets its own filter
+                // instead of being silently covered by the first one's.
+                if (!string.IsNullOrEmpty(c.ExePath))
+                {
+                    if (!_appDomainBlocked.Add($"{c.ExePath}|{remote}")) continue;
+                    if (_firewall.AddAppDomainBlock(c.ExePath, domain, remote))
+                    {
+                        try
+                        {
+                            if (c.Protocol == "TCP")
+                                Services.ConnectionService.CloseTcpConnection(
+                                    c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
+                        }
+                        catch { }
+                        Notify("warn", $"Blocked domain reached: {domain}",
+                               $"{c.ProcessName} was blocked from reaching {remote}, which belongs "
+                               + $"to {domain} on your DNS blocklist. Only {c.ProcessName} is "
+                               + "affected - nothing else on this PC is cut off.", "security");
+                        continue;
+                    }
+                    // Fall through to the global path only if the app-scoped filter
+                    // could not be built - a program that has already exited, for
+                    // instance.
+                }
 
                 if (!_domainBlocked.Add(remote)) continue;    // one filter per address
 

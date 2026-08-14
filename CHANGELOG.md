@@ -6,6 +6,36 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.101] — 2026-08-13
+
+### Domain blocks are now scoped to the application that asked
+Every problem this project chased for a fortnight came from one decision: a **name**-based block enforced **globally** at the address layer. It took Kaspersky's updates and GitHub Desktop offline, forced the 0.99.87 retreat that gave away real enforcement, needed the 0.99.99 veto to partly recover it, and still could not win against a CDN.
+
+A connection carries the executable that made it. So a blocked name is now enforced as *"**this application** may not reach that address"* rather than *"nobody may reach that address"*.
+
+Scoped to one process, the filter carries **no collateral at all**. A tracker a browser fetched cannot affect an antivirus, because the filter names the browser. That dissolves the class rather than mitigating it:
+
+| Case | Before | Now |
+|---|---|---|
+| msedge → scorecardresearch on an Akamai edge | declined, tracker not blocked | **msedge blocked**, nothing else affected |
+| brave → cloudflareinsights on a Cloudflare edge | declined, tracker not blocked | **brave blocked**, nothing else affected |
+| Process unknown, address serves one name | global block | global block, unchanged |
+| Process unknown, address shared | declined | declined, unchanged |
+
+**The enforcement 0.99.87 gave away is fully back for every case where the process is known** — which is the common case — and the sharing veto now only guards the global fallback, reached only when the process cannot be identified.
+
+Both address families, reusing the per-app range filters already proven on hardware. Keyed by (app, address), so a second application reaching the same blocked name gets its own filter instead of being silently covered by the first one's.
+
+### Also fixed
+- **The teardown learned the new key prefix.** `ClearDomainReactiveBlocks` removed only `domainblock|` entries; without `appdomainblock|` it would have left one filter per (app, address) pair behind on every blocklist edit — the exact way 843 orphans accumulated, arriving by a new route.
+
+### Added
+- `allow-level` extended: the app-scoped block must exist, must be attempted **before** the global one, and the teardown must remove it. Shown to fail on each — including on the ordering being reversed, which is the whole point of the change.
+
+### Note — two scope errors in one check edit
+The new assertions borrowed `mw` and `fm3` from other checks' local scope and died with `NameError`. The runner surfaced that as a crash rather than a failure, which is at least loud — **a check that cannot run is not a check that passes** — but it is twice in one edit, and the sixteenth and seventeenth time this session a check has not done what it claimed.
+---
+
 ## [0.99.100] — 2026-08-13
 
 ### Domain blocking was IPv4-only and said otherwise
