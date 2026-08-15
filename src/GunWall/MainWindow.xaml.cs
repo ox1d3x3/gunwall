@@ -357,7 +357,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.103 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.104 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -766,8 +766,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             var arc = new System.Windows.Shapes.Path
             {
                 Data = geo,
-                Stroke = new SolidColorBrush(Color.FromArgb((byte)(0x46 + 0x50 * share), arcColor.R, arcColor.G, arcColor.B)),
-                StrokeThickness = 0.9 + 1.4 * share,
+                // FULLY OPAQUE, and volume is no longer encoded here.
+                //
+                // The alpha used to run 0x46..0x96 by share, so the quietest arcs
+                // sat at 1.45:1 against the land - barely above the contrast the
+                // map itself was just fixed for, and invisible for exactly the
+                // connections a person is most likely to be looking for. Faint
+                // does not read as "less traffic", it reads as "not there".
+                //
+                // Volume is already carried by the destination dot, whose radius
+                // grows with share. Encoding the same fact twice bought nothing
+                // and cost legibility, so the arc is now a constant, readable
+                // line and the dot remains the single volume signal.
+                Stroke = new SolidColorBrush(arcColor),
+                StrokeThickness = 1.1 + 0.7 * share,
                 StrokeDashArray = new DoubleCollection { 2.2, 4.4 },
                 StrokeDashCap = PenLineCap.Round,
                 IsHitTestVisible = false

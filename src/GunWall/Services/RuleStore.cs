@@ -22,23 +22,77 @@ public sealed class RuleStore
 
     public RuleStore()
     {
-        // Save the profile in the application's own folder (portable) so the
-        // user's allow/block choices live alongside GunWall. If that folder
-        // isn't writable (e.g. installed read-only), fall back to ProgramData.
+        // WHERE THE PROFILE LIVES, and why it moved in 0.99.104.
+        //
+        // It used to sit in the application's own folder. That reads as "portable"
+        // and behaves as "deleted on every update": publishing a new build over the
+        // same directory, or unzipping a new version beside the old one, loses
+        // every allow and block decision the user ever made. On a firewall that
+        // means every application is asked about again from scratch, and anything
+        // that does not prompt is silently denied.
+        //
+        // So the default is now ProgramData - one machine-wide profile that
+        // survives replacing the executable. ProgramData rather than LocalAppData
+        // because GunWall always runs elevated and its rules apply to the whole
+        // machine, not to whoever happened to launch it.
+        //
+        // Portable mode is still available and is now DELIBERATE: create a file
+        // named "portable.txt" next to GunWall.exe and the profile lives beside it
+        // again. Opt-in, because the cost of getting this wrong by accident is the
+        // user's entire configuration.
         string appDir = AppContext.BaseDirectory;
         string portableDir = Path.Combine(appDir, "GunWallData");
+        string sharedDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "GunWall");
 
-        if (IsWritable(appDir))
+        bool portableRequested = File.Exists(Path.Combine(appDir, "portable.txt"));
+
+        if (portableRequested && IsWritable(appDir))
         {
             _dir = portableDir;
         }
         else
         {
-            _dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                "GunWall");
+            _dir = sharedDir;
+            // One-time rescue for anyone upgrading from a build that stored the
+            // profile next to the exe: carry it across rather than silently
+            // starting empty. Copy, not move - if this build is rolled back, the
+            // old one still finds its data where it left it.
+            TryMigrateLegacyProfile(portableDir, sharedDir);
         }
         _file = Path.Combine(_dir, "rules.json");
+    }
+
+    /// <summary>Copies a profile left beside the executable into the shared
+    /// folder, once, if the shared folder has none.
+    ///
+    /// Guarded on the DESTINATION being empty rather than on a marker file, so it
+    /// cannot overwrite a profile the user has since built up - and so a rollback
+    /// followed by a re-upgrade does not clobber newer decisions with older ones.</summary>
+    private static void TryMigrateLegacyProfile(string legacyDir, string targetDir)
+    {
+        try
+        {
+            string legacyRules = Path.Combine(legacyDir, "rules.json");
+            string targetRules = Path.Combine(targetDir, "rules.json");
+            if (!File.Exists(legacyRules) || File.Exists(targetRules)) return;
+
+            Directory.CreateDirectory(targetDir);
+            foreach (string src in Directory.GetFiles(legacyDir))
+            {
+                string dst = Path.Combine(targetDir, Path.GetFileName(src));
+                if (!File.Exists(dst)) File.Copy(src, dst);
+            }
+            Services.DiagnosticLog.Log(
+                $"Profile migrated: found an existing profile at {legacyDir} and copied it to "
+                + $"{targetDir}, which survives replacing the executable. The original was left "
+                + "in place and is no longer read.");
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("TryMigrateLegacyProfile", ex);
+        }
     }
 
     private static bool IsWritable(string dir)

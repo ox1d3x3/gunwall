@@ -183,7 +183,16 @@ public static class DiagnosticLog
     {
         try
         {
-            string dir = Path.Combine(AppContext.BaseDirectory, "GunWallData");
+            // Must match RuleStore's choice, or the log written before Init() runs
+            // lands in a different folder from the one the diagnostics bundle
+            // collects - and the earliest lines, which are the ones describing
+            // startup, would be the ones that go missing.
+            string appDir = AppContext.BaseDirectory;
+            string dir = File.Exists(Path.Combine(appDir, "portable.txt"))
+                ? Path.Combine(appDir, "GunWallData")
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "GunWall");
             Directory.CreateDirectory(dir);
             _path = Path.Combine(dir, "diagnostics.log");
         }

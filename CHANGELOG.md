@@ -6,6 +6,30 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.104] — 2026-08-15
+
+### Updates no longer destroy the user's configuration
+The profile was stored in the application's own folder. That reads as "portable" and behaves as **"deleted on every update"**: publishing a new build over the same directory, or unzipping a new version beside the old one, loses every allow and block decision ever made. On a firewall that means every application is asked about again from scratch — and anything that does not prompt is silently denied.
+
+- **Default is now `%ProgramData%\GunWall`**, which survives replacing the executable. ProgramData rather than LocalAppData because GunWall always runs elevated and its rules apply to the whole machine, not to whoever launched it.
+- **Portable mode is now deliberate**: create `portable.txt` next to `GunWall.exe` and the profile lives beside it again. Opt-in, because the cost of getting this wrong by accident is the user's entire configuration.
+- **Existing profiles are migrated once**, on first run. Guarded on the destination being empty, so it cannot overwrite decisions made since — and it **copies rather than moves**, so rolling back to an older build still finds its data where it left it.
+- `DiagnosticLog`'s own fallback path follows the same rule, or the earliest startup lines would be written to a folder the diagnostics bundle never reads.
+
+### Connection arcs are opaque
+The arc alpha ran `0x46..0x96` by traffic share, so the quietest arcs sat at **1.45:1** against the newly-lightened land — barely above the contrast the map itself was just fixed for, and faintest for exactly the connections someone is most likely hunting for. **Faint does not read as "less traffic", it reads as "not there".**
+
+Volume is already carried by the destination dot, whose radius grows with share. Encoding the same fact twice bought nothing and cost legibility, so the arc is a constant readable line and the dot remains the single volume signal. Thickness still varies slightly, which is a hint rather than the whole message.
+
+### Added
+- `profile-path`: the profile must default to a shared location, portable must be opt-in via a marker, the legacy profile must be migrated, the migration must not overwrite a newer profile or move rather than copy, and the log path must agree. Shown to fail on all five.
+
+### Roadmap
+- **Complete IP and country coverage** added, with the three causes found: the bundled GeoIP table is IPv4-only so every v6 destination resolves to nothing; the map draws only the top ten countries; and addresses outside the 532k ranges render blank rather than as "unknown".
+
+  Also recorded there: switching a VPN's exit country will not change the map, and that is correct — it plots where traffic is going **to**, not the tunnel it travels through.
+---
+
 ## [0.99.103] — 2026-08-15
 
 0.99.102's regression test passed on hardware: packet log verdicts read correctly on ordinary traffic, 144/144 filters, zero errors.

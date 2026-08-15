@@ -204,21 +204,38 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.103
+## 6. This build — 0.99.104
 
-Purely visual. Thirty seconds.
+### A. The upgrade path — the important one
 
-1. **Traffic** page → look at the **CONNECTION MAP** card.
-2. The continents should be **clearly darker than the card** in dark theme and
-   **clearly greyer** in light theme, with a visible coastline outline around each
-   landmass.
-3. **Switch themes** (sun/moon icon, top right) and look again. Both should read.
-4. The map must still sit **behind** the red connection arcs and dots — if it
-   competes with them for attention it has gone too far the other way, and I want
-   to know.
+This is the first build designed to be upgraded INTO, so test it as an upgrade.
 
-**PASS:** you can see where the continents are without leaning in.
-**FAIL:** it still looks like one flat panel, or the map now dominates the data.
+1. **Before building**, note roughly how many apps are listed under **Applications**
+   and pick one you have allowed.
+2. Build and publish 0.99.104 **into the folder you already use**.
+3. Run it. **Settings → About** — the profile path should now read
+   `C:\ProgramData\GunWall`, not a path inside the publish folder.
+4. **Applications must still list your previous rules**, including the app you noted.
+   Nothing should be asking for approval again.
+5. **Export diagnostics** and look for:
+   `Profile migrated: found an existing profile at ... and copied it to C:\ProgramData\GunWall`
+   That line appears once, on the first run only.
+
+**FAIL:** Applications is empty, or everything starts prompting again. Stop and tell
+me — do not re-approve, because the old profile is still on disk and recoverable.
+
+6. **Then publish again over the top**, run, and confirm the rules are still there.
+   That is the behaviour you asked for and the whole point of the change.
+
+### B. The map (30 seconds)
+
+7. **Traffic** page. The connection arcs should now be **solid red and clearly
+   visible** in both themes, including the thin ones to quiet countries.
+8. The dots should still grow with traffic volume — that is now the only thing
+   encoding volume.
+
+**FAIL:** arcs still fade out for low-traffic countries, or they now overwhelm the
+map beneath them.
 
 ## 7. What to send
 

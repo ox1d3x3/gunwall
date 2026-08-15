@@ -1912,6 +1912,67 @@ def check_map_contrast():
         notes.append("map-contrast: land and coastline separate from the card, both themes")
 
 
+def check_profile_survives_update():
+    """The profile must not live where an update overwrites it.
+
+    It used to sit in the application's own folder, which reads as "portable" and
+    behaves as "deleted on every update": republishing over the same directory, or
+    unzipping a new build beside the old one, loses every allow and block decision
+    the user has made. On a firewall that means every application is asked about
+    again, and anything that does not prompt is silently denied.
+
+    Three things are asserted. The migration matters as much as the location: a
+    correct new default that silently starts empty is still a user losing their
+    configuration.
+    """
+    before = len(failures)
+    store = (APP / "Services" / "RuleStore.cs").read_text(encoding="utf-8")
+
+    ctor = re.search(r"public RuleStore\(\).*?\n    \}", store, re.S)
+    if not ctor:
+        fail("profile-path", "RuleStore constructor not found")
+        return
+    body = ctor.group(0)
+
+    if "CommonApplicationData" not in body:
+        fail("profile-path",
+             "the profile does not default to a shared location, so replacing the "
+             "executable destroys every rule the user has made")
+    if "portable.txt" not in body:
+        fail("profile-path",
+             "portable mode is not opt-in via a marker - if it is inferred from "
+             "anything else, an update can silently land back in the app folder")
+    if "TryMigrateLegacyProfile" not in body:
+        fail("profile-path",
+             "no migration from the old location, so upgrading users start with an "
+             "empty profile - correct storage, same lost configuration")
+
+    mig = re.search(r"TryMigrateLegacyProfile\(string legacyDir, string targetDir\).*?\n    \}",
+                    store, re.S)
+    if mig:
+        m = mig.group(0)
+        if "File.Exists(targetRules)" not in m:
+            fail("profile-path",
+                 "the migration does not check whether the destination already has "
+                 "a profile - it could overwrite newer decisions with older ones")
+        if "File.Move" in m or "Directory.Move" in m:
+            fail("profile-path",
+                 "the migration moves rather than copies; a rollback to the previous "
+                 "build would then find nothing where it left its data")
+
+    # The log has its own path fallback and must agree, or startup lines are
+    # written to a folder the diagnostics bundle never reads.
+    dl = (APP / "Services" / "DiagnosticLog.cs").read_text(encoding="utf-8")
+    tid = re.search(r"private static void TryInitDefault.*?\n    \}", dl, re.S)
+    if tid and "CommonApplicationData" not in tid.group(0):
+        fail("profile-path",
+             "DiagnosticLog's fallback path does not follow RuleStore, so the "
+             "earliest startup lines land in a different folder from the bundle")
+
+    if len(failures) == before:
+        notes.append("profile-path: shared by default, portable opt-in, legacy profile migrated")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -1959,6 +2020,7 @@ def main():
     check_allow_level()
     check_kernel_verdict()
     check_map_contrast()
+    check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()
     check_version_consistency()
