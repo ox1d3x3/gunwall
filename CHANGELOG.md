@@ -6,6 +6,35 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.102] — 2026-08-14
+
+### The packet log now records what happened, not what GunWall would have decided
+Its verdict came entirely from `ExplainVerdict` — GunWall's own rule evaluation. So a connection **Windows Firewall, an antivirus or a VPN client had just discarded appeared as `Allowed`**, because GunWall's rules would have allowed it.
+
+That is the screen three separate investigations here depended on. *"Watch the packet log and press Update"* could never have distinguished "GunWall is blocking this" from "something else is" — the exact question that cost days on Kaspersky, on the DNS return path, and on the GitHub push.
+
+The kernel's real verdict was already arriving on every event and being thrown away:
+
+```csharp
+ConnectionEvent?.Invoke(new Event(..., /*dropped*/ false, /*direction*/ 0));
+```
+
+It is now read, and where the two disagree the **disagreement is reported**:
+
+- Kernel dropped it, GunWall would not have → **"Blocked by something else - not GunWall"**
+- GunWall holds a blocking rule, kernel let it through → the reason gains *"kernel allowed it - filter may be missing"*, which means a filter is absent or outranked
+
+### Done without new interop
+The original comment here was right to refuse to marshal `FWPM_NET_EVENT1`: its union layout varies by OS version and a wrong offset dereferences garbage. That refusal stands.
+
+Only the `type` integer is read — 4 bytes at the offset immediately after the header, a layout this file already depends on being correct, since the same header yields valid app paths, addresses and ports on hardware daily. **No pointer is followed**, so the worst case is a wrong number rather than an access violation. The offset was checked arithmetically (88 bytes on x64), and a value outside the enum range is refused rather than believed — claiming a drop that did not happen is worse than missing one.
+
+This also replaces the planned discard-layer work, which would have needed two new layer GUIDs. Same diagnostic outcome, no new kernel surface. The remaining half — attributing a drop to the specific filter that caused it — does need the union, and is left open rather than rushed.
+
+### Added
+- `kernel-verdict`: the verdict must be read, the union must **not** be marshalled, no pointer may be dereferenced, the range bound must exist, and the disagreement must reach the log. Shown to fail on all four — including on the dangerous shortcut of marshalling the union.
+---
+
 ## [0.99.101] — 2026-08-13
 
 ### Domain blocks are now scoped to the application that asked

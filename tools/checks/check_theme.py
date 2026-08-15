@@ -1782,6 +1782,64 @@ def check_allow_level():
                      "domain blocks cover v4 and v6; app layer preferred")
 
 
+def check_kernel_verdict():
+    """The packet log must record what happened, not only what GunWall would do.
+
+    `NetEventMonitor` hardcoded `dropped: false` on every event, so a connection
+    Windows Firewall or an antivirus had just discarded appeared as **Allowed** -
+    because the verdict shown came entirely from GunWall's own rule evaluation.
+    Three separate investigations here turned on "is GunWall blocking this", and
+    the one screen that should have answered it could not.
+
+    Two things are asserted, and the second matters more than the first:
+
+    1. The kernel verdict is read at all.
+    2. The FWPM_NET_EVENT1 union is still **not** marshalled. The original comment
+       was right that its layout varies by OS version and a wrong offset would
+       dereference garbage; only the `type` integer is read, no pointer is
+       followed, and an out-of-range value is refused rather than believed.
+    """
+    before = len(failures)
+    mon = (APP / "Services" / "Wfp" / "NetEventMonitor.cs").read_text(encoding="utf-8")
+
+    if re.search(r"/\*dropped\*/\s*false", mon):
+        fail("kernel-verdict",
+             "the monitor still reports every event as allowed - a connection "
+             "dropped by anything other than GunWall would read as Allowed")
+    if "ReadVerdict" not in mon:
+        fail("kernel-verdict", "no kernel verdict is read from the event")
+        return
+
+    rv = re.search(r"private static bool ReadVerdict.*?\n    \}", mon, re.S)
+    if rv:
+        body = rv.group(0)
+        # The safety property. Marshalling the union is the failure mode the
+        # original author avoided deliberately, and undoing that would trade a
+        # readable log for a process crash.
+        if "FWPM_NET_EVENT1" in body or "FWPM_NET_EVENT_CLASSIFY_DROP1" in body:
+            fail("kernel-verdict",
+                 "ReadVerdict marshals the event union, whose layout varies by OS "
+                 "version - a wrong offset dereferences garbage and takes the "
+                 "process with it. Read the type integer only.")
+        if "PtrToStructure" in body:
+            fail("kernel-verdict",
+                 "ReadVerdict dereferences a pointer; only a bounded integer read "
+                 "is safe at an offset this file infers rather than knows")
+        if "FWPM_NET_EVENT_TYPE_MAX" not in body:
+            fail("kernel-verdict",
+                 "no sanity bound on the type value - an offset that does not hold "
+                 "on some Windows build would produce invented verdicts")
+
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    if "Blocked by something else" not in mw:
+        fail("kernel-verdict",
+             "the packet log never reports a drop caused by something other than "
+             "GunWall, so the log still cannot answer the question it exists for")
+
+    if len(failures) == before:
+        notes.append("kernel-verdict: real drop/allow read, union not marshalled")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -1827,6 +1885,7 @@ def main():
     check_reset_path()
     check_recovery_path()
     check_allow_level()
+    check_kernel_verdict()
     check_fault_suppression()
     check_silent_failures()
     check_version_consistency()

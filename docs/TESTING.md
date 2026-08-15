@@ -204,40 +204,44 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.101
+## 6. This build — 0.99.102
 
-The change is *which* filter gets built, so the log is the test, not the browser.
+The change is what the **Packet log** REASON column says. Two tests.
 
-### Setup
-- **DNS resolver** page → tick **Watch system DNS lookups**.
-- **BLOCKLIST** card → clear the box, type one line: `example.com`
-- Press **Apply blocklist** once, then leave it alone.
+### A. Normal traffic still reads correctly (1 minute)
 
-### The test
-1. Open a **private/incognito window** and visit `https://example.com`.
-2. **Export diagnostics**, search `diagnostics.log` for `example.com`.
+1. Protection ON. Open **Packet log**, leave the filter box empty.
+2. Browse for a minute.
+3. Rows should look as before — `Allowed / App rule - Allow`, and
+   `Blocked / Zero-Trust - no allow rule yet` for anything unapproved.
 
-**PASS** — lines naming the browser:
-```
-Blocked domain enforced for one app: msedge.exe -> 104.20.23.154 (example.com).
-Other applications are unaffected.
-```
+**FAIL** if everything suddenly reads Blocked, or if reasons now carry
+*"kernel allowed it - filter may be missing"* on ordinary allowed traffic. Either
+would mean the verdict is being read from the wrong place, and I want to know
+immediately.
 
-**FAIL** — the old global form only:
-```
-Blocked domain enforced: example.com -> 104.20.23.154
-```
+### B. A drop caused by something else (the point of the build)
 
-3. **Alerts** should show *"Blocked domain reached: example.com"* saying only that
-   browser is affected.
+This needs a drop GunWall did not cause. Easiest reliable way:
 
-### The point of the change
-4. While `example.com` is blocked for your browser, confirm **Kaspersky updates and
-   a GitHub push still work.** They always should now — the filter names one
-   executable and cannot reach them even if the address were shared.
-5. Press **Apply blocklist** again with the box emptied. The log should show
-   `Cleared N blocked-domain filter(s)` and the site should work again. If the count
-   is 0 while filters existed, the teardown missed the new prefix.
+4. **Windows Defender Firewall → Advanced settings → Outbound Rules → New Rule**
+   → Program → browse to a program you have already **allowed** in GunWall (Brave
+   or Edge) → **Block the connection** → name it `test-block`.
+5. In GunWall, keep that program **Allowed**. The two now disagree deliberately.
+6. Try to browse with it, and watch the **Packet log**.
+
+**PASS:** rows for that program read
+`Blocked` with reason **"Blocked by something else - not GunWall"**.
+
+**FAIL:** they read `Allowed` — which is what 0.99.101 and every build before it
+would have shown.
+
+7. **Delete the `test-block` rule in Windows Firewall afterwards.**
+
+### If you would rather not touch Windows Firewall
+Skip test B and just run A, then send the diagnostics. Test A alone confirms the
+verdict is not being misread, which is the regression risk; test B confirms the
+new capability.
 
 ## 7. What to send
 

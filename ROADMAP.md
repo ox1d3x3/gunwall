@@ -60,6 +60,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 
 ### Kernel hardening
 *Touches the WFP filter set. Every item here needs hardware verification and a removal path before it ships.*
+- ◐ **Kernel verdict visibility** — ✅ the packet log now records what the kernel actually did, not only what GunWall would have decided, and names a drop caused by anything else on the machine. Achieved by reading the existing net-event verdict rather than adding discard layers, which needed no new GUIDs and no new struct layouts. Remaining: attributing the drop to the specific filter, which does need the event union.
 - ◐ **Expanded WFP layers** — **16 layers wired and verified on hardware**: outbound connect, inbound accept, listen, **resource assignment** (bind, TCP *and* UDP), inbound/outbound transport, outbound ICMP error, and **IP forwarding** — each v4 and v6. Shipped as opt-in, removable rules through the fault-tolerant filter path.
   - ✅ **Kernel layer self-test** — probes every layer *and condition* the kernel accepts, using a permit filter at weight 0 that is non-persistent and deleted immediately. This surfaced three incorrect WFP identifiers that had been failing silently, including one that had disabled IPv4 stealth-mode ICMP suppression entirely.
   - Remaining: ALE_CONNECT_REDIRECT and the matching *_DISCARD* layers (v4/v6).

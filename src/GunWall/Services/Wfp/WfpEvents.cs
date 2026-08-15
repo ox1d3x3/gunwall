@@ -25,6 +25,11 @@ internal static class WfpEvents
 
     // FWPM_NET_EVENT_TYPE
     internal const uint FWPM_NET_EVENT_TYPE_CLASSIFY_DROP = 3;
+    /// <summary>Highest value the FWPM_NET_EVENT_TYPE enum is known to take.
+    /// Used as a sanity bound: a value above this means the offset the type is
+    /// read from does not hold on this Windows build, and the verdict is then
+    /// reported as unknown rather than guessed.</summary>
+    internal const uint FWPM_NET_EVENT_TYPE_MAX = 10;
 
     // Engine option indices (FWPM_ENGINE_OPTION enum).
     internal const uint FWPM_ENGINE_COLLECT_NET_EVENTS = 0;     // FWPM_ENGINE_OPTION value index

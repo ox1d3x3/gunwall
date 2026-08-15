@@ -357,7 +357,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.101 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.102 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2682,6 +2682,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             string appName = System.IO.Path.GetFileNameWithoutExtension(e.AppPath);
             string reason = _firewall.ExplainVerdict(e.AppPath, e.RemoteAddress ?? "",
                 e.RemotePort, e.Protocol, outbound: true, out bool blocked);
+
+            // Where GunWall's opinion and the kernel's record disagree, the
+            // DISAGREEMENT is the useful fact - and until 0.99.102 it could not
+            // even be observed, because the kernel's verdict was discarded and the
+            // log showed only what GunWall would have decided.
+            //
+            // The kernel dropped it and GunWall would not have: something else on
+            // this machine is filtering. Windows Firewall, an antivirus, a VPN
+            // client. Saying "Allowed" there is not merely unhelpful, it points
+            // the reader at the wrong program - which is what three separate
+            // investigations here lost days to.
+            if (e.Dropped && !blocked)
+            {
+                blocked = true;
+                reason = "Blocked by something else - not GunWall";
+            }
+            else if (!e.Dropped && blocked)
+            {
+                // GunWall holds a rule that should have stopped this and the
+                // kernel let it through. Rare, and worth knowing about: it means a
+                // filter is missing or outranked.
+                reason += " (kernel allowed it - filter may be missing)";
+            }
             LogPacket(new PacketLogEntry
             {
                 AppName = appName,

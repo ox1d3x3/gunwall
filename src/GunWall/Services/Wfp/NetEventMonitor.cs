@@ -115,12 +115,51 @@ public sealed class NetEventMonitor : IDisposable
 
             ConnectionEvent?.Invoke(new Event(
                 NtToDosPath(appPath), proto, remote, h.remotePort, local, h.localPort,
-                /*dropped*/ false, /*direction*/ 0));
+                ReadVerdict(eventPtr), /*direction*/ 0));
         }
         catch
         {
             // Swallow everything — a throw here would tear down the process.
         }
+    }
+
+    /// <summary>The KERNEL's verdict on this event: true when it was dropped.
+    ///
+    /// This was hardcoded to false until 0.99.102, so every event - including one
+    /// Windows Firewall or a third-party filter had just discarded - was reported
+    /// as allowed. The packet log then showed a verdict taken purely from
+    /// GunWall's own rules, which is an opinion about what GunWall would do, not
+    /// a record of what happened. That is why "watch the packet log and press
+    /// Update" could not distinguish "GunWall blocked this" from "something else
+    /// did" - the question three separate investigations turned on.
+    ///
+    /// SAFETY, because the original comment here was right to be cautious. The
+    /// full FWPM_NET_EVENT1 union is NOT marshalled: its layout varies by OS
+    /// version and a wrong offset would dereference garbage. Only the `type`
+    /// field is read - a 4-byte integer sitting immediately after the header, at
+    /// an offset this file already relies on being correct, since the same header
+    /// layout produces valid app paths, addresses and ports on this machine every
+    /// day. No pointer is followed, so the worst case is a wrong number rather
+    /// than an access violation.
+    ///
+    /// And a wrong number is refused rather than believed: anything outside the
+    /// documented enum range is treated as "not established" and reported as
+    /// not-dropped, because claiming a drop that did not happen is worse than
+    /// missing one.</summary>
+    private static bool ReadVerdict(IntPtr eventPtr)
+    {
+        try
+        {
+            int typeOffset = Marshal.SizeOf<FWPM_NET_EVENT_HEADER1>();
+            uint type = unchecked((uint)Marshal.ReadInt32(eventPtr, typeOffset));
+
+            // FWPM_NET_EVENT_TYPE has a small, contiguous range. A value outside
+            // it means the offset assumption does not hold on this build, and the
+            // honest answer is then "unknown", not a guess.
+            if (type > FWPM_NET_EVENT_TYPE_MAX) return false;
+            return type == FWPM_NET_EVENT_TYPE_CLASSIFY_DROP;
+        }
+        catch { return false; }
     }
 
     private static string ReadAppId(FWP_BYTE_BLOB blob)
