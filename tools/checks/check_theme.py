@@ -1840,6 +1840,78 @@ def check_kernel_verdict():
         notes.append("kernel-verdict: real drop/allow read, union not marshalled")
 
 
+def _relative_luminance(hexcolor):
+    h = hexcolor.lstrip("#")
+    if len(h) == 8:      # #AARRGGBB
+        h = h[2:]
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    def f(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+
+
+def _contrast(a, b):
+    la, lb = _relative_luminance(a), _relative_luminance(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def check_map_contrast():
+    """The world map must be distinguishable from the card it sits on.
+
+    Reported as "the map almost blends with the theme", and it was worse than
+    that: the land was #171A1E on a #101215 card in dark, and #F4F5F7 on #FAFBFC
+    in light - **1.07:1 and 1.05:1**. Not low contrast, effectively no contrast.
+    A shape at 1.05:1 is not a faint shape, it is an invisible one.
+
+    Computed from the palettes rather than compared against fixed values, so
+    changing a background is caught as readily as changing the map. Both
+    thresholds are deliberately modest: this is a decorative backdrop with live
+    data drawn on top, and a map that competes with its own markers is its own
+    kind of failure.
+    """
+    before = len(failures)
+    LAND_ON_CARD = 1.35    # the landmass must read as a distinct surface
+    COAST_ON_LAND = 1.5    # the coastline is what makes the shape legible
+
+    for theme, card_key in (("Theme.Dark.xaml", "BgCard"), ("Theme.Light.xaml", "BgCard")):
+        text = (APP / "Themes" / theme).read_text(encoding="utf-8")
+
+        def colour(key):
+            m = re.search(rf'x:Key="{key}"\s+Color="(#[0-9A-Fa-f]{{6,8}})"', text)
+            return m.group(1) if m else None
+
+        land, border, card = colour("MapLand"), colour("MapBorder"), colour(card_key)
+        if not all((land, border, card)):
+            fail("map-contrast", f"{theme}: MapLand, MapBorder or {card_key} not found")
+            continue
+
+        c1 = _contrast(land, card)
+        if c1 < LAND_ON_CARD:
+            fail("map-contrast",
+                 f"{theme}: map land {land} on card {card} is {c1:.2f}:1, under "
+                 f"{LAND_ON_CARD} - the map disappears into the panel")
+        c2 = _contrast(border, land)
+        if c2 < COAST_ON_LAND:
+            fail("map-contrast",
+                 f"{theme}: coastline {border} on land {land} is {c2:.2f}:1, under "
+                 f"{COAST_ON_LAND} - the landmass has no readable edge")
+
+    # A sub-pixel stroke does not draw. The map Grid is 1000x500 inside a Viewbox
+    # capped at 320px tall, so anything here is scaled to about 0.64x.
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+    m = re.search(r'WorldMapData\.LandPathData.*?StrokeThickness="([\d.]+)"', xaml, re.S)
+    if not m:
+        fail("map-contrast", "could not read the map path's StrokeThickness")
+    elif float(m.group(1)) * 0.64 < 0.75:
+        fail("map-contrast",
+             f"map stroke {m.group(1)} scales to {float(m.group(1)) * 0.64:.2f}px in the "
+             "Viewbox - under a pixel, so the coastline does not render")
+
+    if len(failures) == before:
+        notes.append("map-contrast: land and coastline separate from the card, both themes")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -1886,6 +1958,7 @@ def main():
     check_recovery_path()
     check_allow_level()
     check_kernel_verdict()
+    check_map_contrast()
     check_fault_suppression()
     check_silent_failures()
     check_version_consistency()

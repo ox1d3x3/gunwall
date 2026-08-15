@@ -204,44 +204,21 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.102
+## 6. This build — 0.99.103
 
-The change is what the **Packet log** REASON column says. Two tests.
+Purely visual. Thirty seconds.
 
-### A. Normal traffic still reads correctly (1 minute)
+1. **Traffic** page → look at the **CONNECTION MAP** card.
+2. The continents should be **clearly darker than the card** in dark theme and
+   **clearly greyer** in light theme, with a visible coastline outline around each
+   landmass.
+3. **Switch themes** (sun/moon icon, top right) and look again. Both should read.
+4. The map must still sit **behind** the red connection arcs and dots — if it
+   competes with them for attention it has gone too far the other way, and I want
+   to know.
 
-1. Protection ON. Open **Packet log**, leave the filter box empty.
-2. Browse for a minute.
-3. Rows should look as before — `Allowed / App rule - Allow`, and
-   `Blocked / Zero-Trust - no allow rule yet` for anything unapproved.
-
-**FAIL** if everything suddenly reads Blocked, or if reasons now carry
-*"kernel allowed it - filter may be missing"* on ordinary allowed traffic. Either
-would mean the verdict is being read from the wrong place, and I want to know
-immediately.
-
-### B. A drop caused by something else (the point of the build)
-
-This needs a drop GunWall did not cause. Easiest reliable way:
-
-4. **Windows Defender Firewall → Advanced settings → Outbound Rules → New Rule**
-   → Program → browse to a program you have already **allowed** in GunWall (Brave
-   or Edge) → **Block the connection** → name it `test-block`.
-5. In GunWall, keep that program **Allowed**. The two now disagree deliberately.
-6. Try to browse with it, and watch the **Packet log**.
-
-**PASS:** rows for that program read
-`Blocked` with reason **"Blocked by something else - not GunWall"**.
-
-**FAIL:** they read `Allowed` — which is what 0.99.101 and every build before it
-would have shown.
-
-7. **Delete the `test-block` rule in Windows Firewall afterwards.**
-
-### If you would rather not touch Windows Firewall
-Skip test B and just run A, then send the diagnostics. Test A alone confirms the
-verdict is not being misread, which is the regression risk; test B confirms the
-new capability.
+**PASS:** you can see where the continents are without leaning in.
+**FAIL:** it still looks like one flat panel, or the map now dominates the data.
 
 ## 7. What to send
 

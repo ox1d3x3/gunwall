@@ -6,6 +6,36 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.103] — 2026-08-15
+
+0.99.102's regression test passed on hardware: packet log verdicts read correctly on ordinary traffic, 144/144 filters, zero errors.
+
+### The connection map was not faint, it was invisible
+Reported as "almost blends with the theme". Measured against the card it sits on:
+
+| | Land | Card | Contrast |
+|---|---|---|---|
+| Dark | `#171A1E` | `#101215` | **1.07:1** |
+| Light | `#F4F5F7` | `#FAFBFC` | **1.05:1** |
+
+A surface at 1.05:1 is not a subtle shape. It is one flat colour with a shape drawn on it in the same colour.
+
+- **Dark:** land `#2A303A` (1.41:1), coastline `#454F5C` (1.60:1 against the land)
+- **Light:** land `#D2D9E2` (1.37:1), coastline `#9FA9B7` (1.67:1)
+
+**And the coastline was never drawing at all.** `StrokeThickness="0.4"` inside a 1000×500 Grid in a Viewbox capped at 320px is scaled to roughly 0.64x — a quarter of a pixel. The stroke was chosen at design size and never checked against the size it renders at. Now 1.5, which lands just under a pixel.
+
+Both thresholds are deliberately modest. This is a backdrop with live markers and arcs drawn over it; a map that competes with its own data is its own kind of failure.
+
+### Added
+- `map-contrast`, which **computes** the ratios from the palettes rather than comparing against fixed values, so changing a card background is caught as readily as changing the map. It also multiplies the stroke by the Viewbox scale and rejects anything that lands under a pixel.
+
+  Shown to fail on five defects: each theme's original land colour, a coastline collapsed toward the land, the sub-pixel stroke, and — the one worth having — a **background** change that swallows a perfectly good map.
+
+### Note
+Both of the author's first colour choices were rejected by this check after it was written: light land at 1.26:1 and a 1.1px stroke landing at 0.70px. The values shipped are the ones that passed, not the ones that looked right in a hex editor.
+---
+
 ## [0.99.102] — 2026-08-14
 
 ### The packet log now records what happened, not what GunWall would have decided

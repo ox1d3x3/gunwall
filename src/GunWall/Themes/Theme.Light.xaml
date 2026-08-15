@@ -49,8 +49,8 @@
     <SolidColorBrush x:Key="AccentSoft" Color="#1AD92C11" />
     <SolidColorBrush x:Key="GraphCursor" Color="#660D0F12" />
     <SolidColorBrush x:Key="SelectionFill" Color="#1AD92C11" />
-    <SolidColorBrush x:Key="MapLand" Color="#F4F5F7" />
-    <SolidColorBrush x:Key="MapBorder" Color="#DCDFE4" />
+    <SolidColorBrush x:Key="MapLand" Color="#D2D9E2" />
+    <SolidColorBrush x:Key="MapBorder" Color="#9FA9B7" />
 
     <!-- Chart series, SPEC.md section 9: download is the brand, upload is the
          TEXT colour - which is why these live here and not in the shared

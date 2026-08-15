@@ -1442,8 +1442,16 @@
                                    FontSize="11" FontWeight="SemiBold" Margin="2,0,0,10" />
                         <Viewbox Stretch="Uniform" MaxHeight="320" HorizontalAlignment="Stretch">
                             <Grid Width="1000" Height="500">
+                                <!-- StrokeThickness 1.1, not 0.4. The Grid is 1000x500
+                                     inside a Viewbox capped at 320px tall, so everything
+                                     here is scaled to roughly 0.64x: a 0.4 stroke landed
+                                     at a quarter of a pixel and simply did not draw on
+                                     most displays. The coastline is what makes a
+                                     landmass readable at this size, so it has to survive
+                                     the scale rather than be chosen at design size. -->
                                 <Path Data="{Binding Source={x:Static svc:WorldMapData.LandPathData}}"
-                                      Fill="{DynamicResource MapLand}" Stroke="{DynamicResource MapBorder}" StrokeThickness="0.4" />
+                                      Fill="{DynamicResource MapLand}" Stroke="{DynamicResource MapBorder}"
+                                      StrokeThickness="1.5" />
                                 <Canvas x:Name="MapMarkers" Width="1000" Height="500" />
                             </Grid>
                         </Viewbox>
