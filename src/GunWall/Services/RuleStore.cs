@@ -40,27 +40,13 @@ public sealed class RuleStore
         // named "portable.txt" next to GunWall.exe and the profile lives beside it
         // again. Opt-in, because the cost of getting this wrong by accident is the
         // user's entire configuration.
-        string appDir = AppContext.BaseDirectory;
-        string portableDir = Path.Combine(appDir, "GunWallData");
-        string sharedDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "GunWall");
+        // ProfilePaths owns this decision; RuleStore only asks. Keeping a second
+        // copy here is what let three other call sites drift away from it.
+        string legacyDir = Path.Combine(AppContext.BaseDirectory, "GunWallData");
+        _dir = ProfilePaths.DataFolder;
+        if (!string.Equals(_dir, legacyDir, StringComparison.OrdinalIgnoreCase))
+            TryMigrateLegacyProfile(legacyDir, _dir);
 
-        bool portableRequested = File.Exists(Path.Combine(appDir, "portable.txt"));
-
-        if (portableRequested && IsWritable(appDir))
-        {
-            _dir = portableDir;
-        }
-        else
-        {
-            _dir = sharedDir;
-            // One-time rescue for anyone upgrading from a build that stored the
-            // profile next to the exe: carry it across rather than silently
-            // starting empty. Copy, not move - if this build is rolled back, the
-            // old one still finds its data where it left it.
-            TryMigrateLegacyProfile(portableDir, sharedDir);
-        }
         _file = Path.Combine(_dir, "rules.json");
     }
 

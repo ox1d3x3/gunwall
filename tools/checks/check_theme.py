@@ -1934,14 +1934,23 @@ def check_profile_survives_update():
         return
     body = ctor.group(0)
 
-    if "CommonApplicationData" not in body:
+    # The decision now lives in ProfilePaths, so that is where it is checked. The
+    # first version of this looked for CommonApplicationData inside RuleStore and
+    # failed the moment the logic was correctly moved somewhere shared - a check
+    # asserting an implementation rather than a property.
+    paths = (APP / "Services" / "ProfilePaths.cs").read_text(encoding="utf-8")
+    if "CommonApplicationData" not in paths:
         fail("profile-path",
-             "the profile does not default to a shared location, so replacing the "
+             "ProfilePaths does not default to a shared location, so replacing the "
              "executable destroys every rule the user has made")
-    if "portable.txt" not in body:
+    if "portable.txt" not in paths and "PortableMarker" not in paths:
         fail("profile-path",
              "portable mode is not opt-in via a marker - if it is inferred from "
              "anything else, an update can silently land back in the app folder")
+    if "ProfilePaths" not in body:
+        fail("profile-path",
+             "RuleStore does not use the shared path decision, so it can drift "
+             "from every other caller as it did before")
     if "TryMigrateLegacyProfile" not in body:
         fail("profile-path",
              "no migration from the old location, so upgrading users start with an "
@@ -1964,10 +1973,26 @@ def check_profile_survives_update():
     # written to a folder the diagnostics bundle never reads.
     dl = (APP / "Services" / "DiagnosticLog.cs").read_text(encoding="utf-8")
     tid = re.search(r"private static void TryInitDefault.*?\n    \}", dl, re.S)
-    if tid and "CommonApplicationData" not in tid.group(0):
+    if tid and "ProfilePaths" not in tid.group(0):
         fail("profile-path",
-             "DiagnosticLog's fallback path does not follow RuleStore, so the "
-             "earliest startup lines land in a different folder from the bundle")
+             "DiagnosticLog's fallback path does not use ProfilePaths, so the "
+             "earliest startup lines can land in a different folder from the bundle")
+
+    # And nothing may write user data beside the executable again. That is the
+    # defect this check exists for: the profile moved, three call sites did not,
+    # and their files were destroyed on every upgrade and orphaned on uninstall.
+    import glob as _g
+    for f in _g.glob(str(APP / "**" / "*.cs"), recursive=True):
+        name = Path(f).name
+        if name in ("ProfilePaths.cs", "RuleStore.cs"):
+            continue      # they compute or migrate from it, deliberately
+        text = Path(f).read_text(encoding="utf-8")
+        for m in re.finditer(r"AppContext\.BaseDirectory", text):
+            line = text[:m.start()].count("\n") + 1
+            fail("profile-path",
+                 f"{name}:{line} builds a path from AppContext.BaseDirectory - "
+                 "anything written there is destroyed by an upgrade and left "
+                 "behind by an uninstall. Use ProfilePaths.File(...).")
 
     if len(failures) == before:
         notes.append("profile-path: shared by default, portable opt-in, legacy profile migrated")

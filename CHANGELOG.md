@@ -6,6 +6,29 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.112] — 2026-08-16
+
+### Three files were still being written beside the executable
+Found from a report that the uninstaller left files behind. It had, and the leftovers were the symptom rather than the fault.
+
+Moving the profile to `%ProgramData%\GunWall` in 0.99.104 updated two places that decided where data lives and missed three call sites that had made the same decision independently:
+
+| File | What it holds |
+|---|---|
+| `usage-history.json` | the user's per-application traffic history |
+| `dns-blocklist-preset.txt` | a 99,000-domain blocklist they chose to download |
+| `GunWallData\dns-observer.starting` | the DNS observer's crash marker |
+
+Left in the application folder these were **destroyed by every upgrade that replaced the executable** and **left behind by every uninstall**, because the installer never installed them and could not know they existed. The leftover files were the visible half; the lost history was the half nobody would notice.
+
+- All three now live in the data folder, and **existing copies are migrated on first run** — copied, never over a newer file, so a rollback still finds its data.
+- **`ProfilePaths` is now the single place that decides**, and `RuleStore` and `DiagnosticLog` ask it rather than repeating the logic. Three implementations of one rule is a rule with two exceptions waiting to be found.
+
+### Added
+- `profile-path` now **fails on any use of `AppContext.BaseDirectory` outside `ProfilePaths`**, which is what would have caught this at the time. Shown to fail on a reintroduced stray write.
+- The same check no longer asserts *where* `RuleStore` puts things but *that* it asks `ProfilePaths` — the previous version tested an implementation and broke the moment the logic was correctly moved somewhere shared.
+---
+
 ## [0.99.111] — 2026-08-16
 
 ### The uninstaller is now findable
@@ -21,10 +44,15 @@ prevent.
 - **A Start Menu entry**, *Uninstall GunWall*, alongside the application shortcut.
 - **`UninstallDisplayName` and `UninstallDisplayIcon`**, so the Add/Remove Programs
   entry is named and has an icon rather than appearing as a bare path.
-- **`Uninstallable` and `CreateUninstallRegKey` stated explicitly.** Both are Inno
-  defaults, written out because the uninstaller carries this installer's whole
-  safety guarantee, and a default that changed quietly would take that guarantee
-  with it.
+- **`Uninstallable`, `CreateUninstallRegKey` and `UninstallFilesDir` stated
+  explicitly.** All three are Inno defaults, written out because the uninstaller
+  carries this installer's whole safety guarantee, and a default that changed
+  quietly would take that guarantee with it.
+
+The uninstaller was always written to the application folder; it is simply named
+`unins000.exe` rather than `uninstall.exe`, which reads like a temporary file and
+sorts to the bottom of a directory listing. The Start Menu entry is the fix for
+that — renaming Inno's uninstaller is not supported and not worth working around.
 ---
 
 ## [0.99.110] — 2026-08-16

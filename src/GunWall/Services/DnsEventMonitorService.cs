@@ -180,8 +180,10 @@ public sealed class DnsEventMonitorService : IDisposable
     // before the session is touched and cleared once it has run without
     // incident, so a launch that finds the marker still present skips the
     // observer instead of repeating the crash.
-    private static string MarkerPath =>
-        System.IO.Path.Combine(AppContext.BaseDirectory, "GunWallData", "dns-observer.starting");
+    // Follows the data folder too. Left in the application folder this marker
+    // could survive an upgrade that changed the very code it guards, and disable
+    // the observer on a build where the crash it recorded no longer exists.
+    private static string MarkerPath => ProfilePaths.File("dns-observer.starting");
 
     private static bool MarkerPresent()
     { try { return System.IO.File.Exists(MarkerPath); } catch { return false; } }

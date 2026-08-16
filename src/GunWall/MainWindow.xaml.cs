@@ -31,8 +31,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private readonly ObservableCollection<NetworkScanner.Device> _devices = new();
     private readonly NetworkStatsService _stats = new();
     private readonly AppUsageService _usage = new();   // approximate per-app data usage
+    // In the data folder, not beside the executable. This is the user's traffic
+    // history: written there it was destroyed by every upgrade that replaced the
+    // application, and left behind by every uninstall.
     private static string UsageHistoryPath =>
-        System.IO.Path.Combine(AppContext.BaseDirectory, "usage-history.json");
+        Services.ProfilePaths.File("usage-history.json");
     private readonly ObservableCollection<CountryStat> _trafficCountries = new();
     private readonly ObservableCollection<AppStat> _trafficApps = new();
 
@@ -166,6 +169,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         TrafficCountries.ItemsSource = _trafficCountries;
         TrafficApps.ItemsSource = _trafficApps;
         DnsLog.ItemsSource = _dnsLog;
+        // Carry across anything an older build wrote beside the executable, before
+        // anything reads or overwrites it. Copies, and never over a newer file.
+        Services.ProfilePaths.MigrateStrayFile("usage-history.json");
+        Services.ProfilePaths.MigrateStrayFile("dns-blocklist-preset.txt");
+
         _dnsResolver.Query += OnDnsQuery;
         // Lets the resolver name the enforcement posture in its own results, so a
         // self-check line still means something when it is read months later in a
@@ -357,7 +365,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.111 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.112 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1287,8 +1295,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // JSON config stays small; the user's manual lines remain separate.
     private const string DnsPresetUrl =
         "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
+    // Same reasoning: a 99,000-domain list the user chose to download should not
+    // have to be fetched again after every update.
     private static string DnsPresetPath =>
-        System.IO.Path.Combine(AppContext.BaseDirectory, "dns-blocklist-preset.txt");
+        Services.ProfilePaths.File("dns-blocklist-preset.txt");
     private static readonly System.Net.Http.HttpClient _dnsPresetHttp =
         new() { Timeout = TimeSpan.FromSeconds(90) };
 

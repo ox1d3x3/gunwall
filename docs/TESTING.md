@@ -204,34 +204,53 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.111
+## 6. This build — 0.99.112
 
-Rebuild the installer and reinstall over the current copy.
+### A. The migration (2 minutes)
 
-1. **Start Menu → GunWall** should now hold three entries: **GunWall**,
-   **GunWall on GitHub**, and **Uninstall GunWall**.
-2. **Settings → Apps → Installed apps** should list **GunWall** with its icon.
-3. In the installed folder, the uninstaller is **`unins000.exe`** — that is Inno
-   Setup's name for it, not `uninstall.exe`. It should be present alongside
-   `unins000.dat`.
+1. **Before installing**, look in your current install folder:
 
-### Then the uninstall test, which is the point
+   ```
+   dir "C:\MOD-x\1.Tools\GunWall"
+   ```
 
-4. Turn protection **on** and approve an app so there are filters to remove.
-5. Note the count in **Settings → Check filter integrity**.
-6. **Uninstall using the new Start Menu entry.** Answer **No** when asked about
-   deleting your saved rules.
-7. Verify from an admin prompt:
+   Note whether `usage-history.json` or `dns-blocklist-preset.txt` are there.
+2. Rebuild the installer and **install over the top**.
+3. Start GunWall, then check:
+
+   ```
+   dir "C:\ProgramData\GunWall"
+   ```
+
+   **PASS:** those files are now there, and **Traffic → Data usage by app** still
+   shows your history.
+4. **Export diagnostics** — the log should carry a `Migrated ...` line for each
+   file that moved.
+
+### B. The uninstall leaves nothing behind
+
+5. Turn protection **on**, approve an app.
+6. **Uninstall** via Start Menu → Uninstall GunWall. Answer **No** to deleting
+   saved rules.
+7. Check the install folder:
+
+   ```
+   dir "C:\MOD-x\1.Tools\GunWall"
+   ```
+
+   **PASS:** the folder is gone, or holds nothing but `unins000.*` pending a
+   restart.
+   **FAIL:** `usage-history.json`, `dns-blocklist-preset.txt` or a `GunWallData`
+   folder remain — tell me which.
+8. Confirm the kernel is clean:
 
    ```
    netsh wfp show filters file=%TEMP%\gw.xml
    ```
 
-   Search for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Expect zero matches.**
-
-**FAIL:** filters remain, or the uninstaller reported success without running the
-teardown. Either is serious — tell me, and recover with `GunWall.exe --unblock`
-from a copy of the executable.
+   Search for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Expect zero.**
+9. `C:\ProgramData\GunWall` **should still exist** — you chose to keep your rules.
+   Reinstall and they come back.
 
 ## 7. What to send
 

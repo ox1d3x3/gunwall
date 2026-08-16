@@ -98,6 +98,10 @@ Uninstallable=yes
 CreateUninstallRegKey=yes
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExe}
+; Inno's default, stated for the same reason as the two above: this is where
+; unins000.exe is written, and it is the file that removes GunWall's kernel
+; filters. It belongs beside the application, not somewhere a user has to find.
+UninstallFilesDir={app}
 
 ; Not code-signed by choice; the release publishes a SHA-256 instead.
 ; See README → "Verifying what you downloaded".
