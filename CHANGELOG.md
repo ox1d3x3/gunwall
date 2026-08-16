@@ -1,3 +1,12 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="branding/png/banner-slim-dark.png">
+  <img src="branding/png/banner-slim-light.png" alt="GunWall" width="100%">
+</picture>
+
+</div>
+
 # Changelog
 
 All notable changes to GunWall are recorded here. Format follows
@@ -23,6 +32,12 @@ Documentation. No code changed.
 - **Roadmap rewritten as a plan.** It had accumulated the reasoning behind individual fixes, which belongs in this file. Each entry now says what works and what remains.
 
 - `docs/RELEASE-NOTES.md` and `branding/png/banner-square.png` added.
+
+- **Banner artwork across every document.** A hero banner heads the README and a
+  slim banner heads each of the other ten, each shipping as a dark and a light
+  variant and served through a `<picture>` element so the correct one appears
+  according to the reader's theme. `branding/README.md` documents the set and the
+  markup.
 
 - **`TESTING.md` rewritten in a neutral voice.** It had been written as one person addressing another — "what I cannot check", "tell me which" — and carried a per-build checklist that goes stale the moment a release ships. It now describes what the check suite can and cannot establish, and keeps one short section for build-specific checks that says so plainly when there are none.
 

@@ -3,6 +3,27 @@
 A 4x4 modular grid: 15 cells filled, one held blank (zero knowledge), one red (the packet
 under inspection — zero trust). Geometry only. No gradients, no radius, no bevels.
 
+## Banners
+
+| Asset | Size | Use |
+|---|---|---|
+| `png/banner-hero-{dark,light}.png` | 2560×600 | Repository landing page |
+| `png/banner-slim-{dark,light}.png` | 2560×320 | Header for every other document |
+| `png/social-preview-{dark,light}.png` | 2560×1280 | GitHub social preview (Settings → General → Social preview) |
+| `png/poster-square-red.png` | 1280×1280 | Square format for social posts |
+
+Each banner ships as a dark and a light variant. Documents reference them through
+a `<picture>` element so the correct one is served according to the reader's
+theme:
+
+```html
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="branding/png/banner-slim-dark.png">
+  <img src="branding/png/banner-slim-light.png" alt="GunWall" width="100%">
+</picture>
+```
+
+
 ## Contents
 
 svg/

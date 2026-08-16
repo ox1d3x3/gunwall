@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="branding/png/banner-square.png" alt="GunWall — Guard Your Net Firewall" width="440"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="branding/png/banner-hero-dark.png">
+  <img src="branding/png/banner-hero-light.png" alt="GunWall — Guard Your Net Firewall" width="100%">
+</picture>
 
 ### Know what your PC talks to. Decide who gets through.
 

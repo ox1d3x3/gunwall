@@ -1,3 +1,12 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../branding/png/banner-slim-dark.png">
+  <img src="../branding/png/banner-slim-light.png" alt="GunWall" width="100%">
+</picture>
+
+</div>
+
 # GunWall 0.99.109 — first public beta
 
 A zero-trust application firewall for Windows 11, built directly on the Windows

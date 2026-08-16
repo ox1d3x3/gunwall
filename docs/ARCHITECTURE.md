@@ -1,3 +1,12 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../branding/png/banner-slim-dark.png">
+  <img src="../branding/png/banner-slim-light.png" alt="GunWall" width="100%">
+</picture>
+
+</div>
+
 # GunWall — Architecture
 
 This document describes how GunWall is **actually built** — the current state of

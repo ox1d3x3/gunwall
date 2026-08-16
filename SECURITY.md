@@ -1,3 +1,12 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="branding/png/banner-slim-dark.png">
+  <img src="branding/png/banner-slim-light.png" alt="GunWall" width="100%">
+</picture>
+
+</div>
+
 # Security Policy
 
 GunWall is a firewall. A defect in it can expose the machine it is meant to

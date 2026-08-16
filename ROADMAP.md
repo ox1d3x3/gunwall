@@ -1,3 +1,12 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="branding/png/banner-slim-dark.png">
+  <img src="branding/png/banner-slim-light.png" alt="GunWall" width="100%">
+</picture>
+
+</div>
+
 # GunWall Roadmap
 
 This document tracks GunWall's path to **full feature parity with mature reference firewalls** on the Windows Filtering Platform, and beyond. It is exhaustive: every capability a complete WFP firewall is expected to have is listed, marked ✅ done, ◐ partial, or ☐ planned.
