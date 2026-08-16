@@ -70,6 +70,7 @@ public sealed class FirewallManager : IDisposable
     public bool GeoIpLoaded => _geo.Loaded;
     public int GeoIpRangeCount => _geo.RangeCount;
     private string GeoIpCachePath => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v4.tsv");
+    private string GeoIpCachePathV6 => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v6.tsv");
 
     // GeoIP source selection: "local" (downloaded table) or "api" (self-hosted server).
     public string GeoIpMode => _data.GeoIpMode == "api" ? "api" : "local";
@@ -83,6 +84,9 @@ public sealed class FirewallManager : IDisposable
         if (GeoIpApiActive) { _geo.EnableApi(GeoIpApiUrl); return; }
         _geo.DisableApi();
         try { _geo.LoadFromFile(GeoIpCachePath); } catch { }
+        // Separate try: a corrupt or missing v6 file must not stop the v4 table
+        // loading. Partial coverage beats none.
+        try { _geo.LoadV6FromFile(GeoIpCachePathV6); } catch { }
     }
 
     /// <summary>Switch the GeoIP source at runtime and persist the choice.</summary>
@@ -355,6 +359,23 @@ public sealed class FirewallManager : IDisposable
     {
         GeoIpService.DownloadDatabase(GeoIpCachePath);
         _geo.LoadFromFile(GeoIpCachePath);
+
+        // v6 after v4, and failing softly. Every IPv6 destination resolved to
+        // nothing before 0.99.106 because there was no v6 table at all; if this
+        // half cannot be fetched the user is no worse off than they were.
+        try
+        {
+            GeoIpService.DownloadDatabaseV6(GeoIpCachePathV6);
+            _geo.LoadV6FromFile(GeoIpCachePathV6);
+            DiagnosticLog.Log($"GeoIP: {_geo.RangeCount:N0} IPv4 ranges, "
+                            + $"{_geo.RangeCountV6:N0} IPv6 ranges loaded.");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Log("GeoIP: the IPv4 table loaded but the IPv6 table could not be "
+                            + $"downloaded ({ex.GetType().Name}). IPv6 destinations will show no "
+                            + "country until it is retried.");
+        }
         return _geo.RangeCount;
     }
 
@@ -713,6 +734,74 @@ public sealed class FirewallManager : IDisposable
     /// a reset that forgets one leaves filters behind and fails exactly the same
     /// way. A walk cannot forget one, and it picks up any collection added
     /// later without this method being touched again.</summary>
+    /// <summary>Puts every preference back to its default while keeping rules,
+    /// filters and enforcement state untouched.
+    ///
+    /// Done by field KIND rather than by listing setters, because a hand-written
+    /// list of thirty-odd preferences is a thing to forget - and the one forgotten
+    /// is the one the user was trying to reset. Collections hold rules, filter ids,
+    /// known apps and saved adapter DNS, so they are preserved wholesale; scalars
+    /// are preferences and go back to a fresh StoreData's values.
+    ///
+    /// Except for the scalars that are STATE rather than preference. Resetting
+    /// StrictMode would silently switch protection off from a button captioned
+    /// "reset settings", and resetting the DNS-redirect flags would leave the
+    /// machine pointed at a resolver GunWall no longer believes it configured.
+    /// Those are named, and named is right here: the list is short, each entry has
+    /// a reason, and getting it wrong disarms a firewall.</summary>
+    public int ResetSettingsToDefaults()
+    {
+        var fresh = new StoreData();
+        var keep = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "StrictMode",          // protection on/off - not a preference
+            "LockdownEngaged",     // ditto
+            "DnsRedirectActive",   // adapters are actually pointed at us
+            "VirusTotalApiKey",    // the user's own credential, not a default
+
+            // Names verified against StoreData rather than written from memory. A
+            // keep-list entry matching no property protects nothing and fails
+            // silently - the first draft guarded "CustomListPath", which does not
+            // exist, while the real "CustomBlocklistPath" sat in the reset set and
+            // would have taken the user's chosen list file with it.
+            "CustomBlocklistPath", // a path they chose; losing it loses the list
+            "DnsGamingSession",    // a live session, not a preference
+        };
+
+        // Every keep-list entry must name a real property, checked rather than
+        // trusted, because the failure mode above is invisible.
+        var known = new HashSet<string>(
+            typeof(StoreData).GetProperties().Select(pi => pi.Name), StringComparer.Ordinal);
+        foreach (string k in keep)
+            if (!known.Contains(k))
+                DiagnosticLog.Log($"Settings reset: keep-list names '{k}', which is not a "
+                                + "StoreData property - it protects nothing.");
+
+        int changed = 0;
+        foreach (var prop in typeof(StoreData).GetProperties())
+        {
+            if (!prop.CanRead || !prop.CanWrite) continue;
+            if (prop.DeclaringType != typeof(StoreData)) continue;
+            if (keep.Contains(prop.Name)) continue;
+
+            var t = prop.PropertyType;
+            // Collections are rules, filter ids and machine state. Never reset.
+            bool scalar = t.IsPrimitive || t.IsEnum || t == typeof(string) || t == typeof(decimal);
+            if (!scalar) continue;
+
+            object? now = prop.GetValue(_data);
+            object? def = prop.GetValue(fresh);
+            if (Equals(now, def)) continue;
+            prop.SetValue(_data, def);
+            changed++;
+        }
+
+        _store.Save(_data);
+        EventLog($"Settings reset: {changed} preference(s) returned to default. "
+               + "Rules, filters and protection state were not touched.");
+        return changed;
+    }
+
     public bool RemoveAllFiltering()
     {
         var ids = new HashSet<ulong>();

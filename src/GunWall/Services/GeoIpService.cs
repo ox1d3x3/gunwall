@@ -39,6 +39,40 @@ public sealed class GeoIpService
     }
 
     // Parallel, sorted-by-start arrays for cache-friendly binary search.
+    // IPv6, added in 0.99.106. Every v6 destination previously resolved to nothing
+    // - the table was v4-only - so the map, the country tables and the Connections
+    // LOCATION column all under-reported by however much of a machine's traffic
+    // happens to be v6. On a network with working IPv6 that can be most of it.
+    //
+    // UInt128 rather than a pair of ulongs: .NET 8 has it, it compares correctly
+    // without hand-written carry logic, and hand-written comparison of a 128-bit
+    // value split across two words is exactly the kind of arithmetic that is wrong
+    // once and then wrong forever in a table nobody re-reads.
+    private UInt128[] _start6 = Array.Empty<UInt128>();
+    private UInt128[] _end6 = Array.Empty<UInt128>();
+    private int[] _asn6 = Array.Empty<int>();
+    private string[] _country6 = Array.Empty<string>();
+    private string[] _owner6 = Array.Empty<string>();
+
+    /// <summary>True when the IPv6 table has been loaded as well as the v4 one.</summary>
+    public bool LoadedV6 => _start6.Length > 0;
+    public int RangeCountV6 => _start6.Length;
+
+    /// <summary>Packs an IPv6 address into a comparable 128-bit integer, most
+    /// significant byte first, matching the ordering the table is sorted in.</summary>
+    private static bool TryToUInt128(string ip, out UInt128 value)
+    {
+        value = default;
+        if (!System.Net.IPAddress.TryParse(ip, out var a)) return false;
+        if (a.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6) return false;
+        byte[] b = a.GetAddressBytes();
+        if (b.Length != 16) return false;
+        UInt128 v = 0;
+        foreach (byte x in b) v = (v << 8) | x;
+        value = v;
+        return true;
+    }
+
     private uint[] _start = Array.Empty<uint>();
     private uint[] _end = Array.Empty<uint>();
     private int[] _asn = Array.Empty<int>();
@@ -85,6 +119,66 @@ public sealed class GeoIpService
         url = (url ?? "").Trim();
         while (url.EndsWith("/")) url = url[..^1];
         return url;
+    }
+
+    /// <summary>The v6 half of Lookup. Same binary search, 128-bit keys.</summary>
+    private GeoInfo LookupV6(string ip)
+    {
+        if (!LoadedV6) return new GeoInfo("", 0, "");
+        if (!TryToUInt128(ip, out UInt128 addr)) return new GeoInfo("", 0, "");
+
+        int lo = 0, hi = _start6.Length - 1, found = -1;
+        while (lo <= hi)
+        {
+            int mid = (int)(((uint)lo + (uint)hi) >> 1);
+            if (_start6[mid] <= addr) { found = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        if (found < 0 || addr > _end6[found]) return new GeoInfo("", 0, "");
+        return new GeoInfo(_country6[found], _asn6[found], _owner6[found]);
+    }
+
+    /// <summary>Parse an iptoasn IPv6 TSV into the v6 lookup arrays.
+    ///
+    /// The v6 file gives the range bounds as ADDRESSES ("2001:200::" ...) rather
+    /// than as the pre-packed integers the v4-u32 file uses, so each bound is
+    /// parsed rather than read as a number. Rows that do not parse are skipped
+    /// rather than guessed at - a wrong range would attribute traffic to the wrong
+    /// country silently, which is worse than showing nothing.</summary>
+    public void LoadV6FromText(string tsv)
+    {
+        var starts = new List<UInt128>();
+        var ends = new List<UInt128>();
+        var asns = new List<int>();
+        var countries = new List<string>();
+        var owners = new List<string>();
+
+        using var reader = new StringReader(tsv);
+        string? line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (line.Length == 0) continue;
+            string[] f = line.Split('\t');
+            if (f.Length < 4) continue;
+            if (!TryToUInt128(f[0], out UInt128 s6)) continue;
+            if (!TryToUInt128(f[1], out UInt128 e6)) continue;
+            if (e6 < s6) continue;
+            int.TryParse(f[2], out int asn);
+            starts.Add(s6); ends.Add(e6); asns.Add(asn);
+            countries.Add(f[3]);
+            owners.Add(f.Length > 4 ? f[4] : "");
+        }
+
+        // Sorted by start, because the lookup is a binary search and the file's
+        // ordering is not something to take on trust.
+        int[] order = Enumerable.Range(0, starts.Count).ToArray();
+        Array.Sort(order, (x, y) => starts[x].CompareTo(starts[y]));
+
+        _start6 = order.Select(i => starts[i]).ToArray();
+        _end6 = order.Select(i => ends[i]).ToArray();
+        _asn6 = order.Select(i => asns[i]).ToArray();
+        _country6 = order.Select(i => countries[i]).ToArray();
+        _owner6 = order.Select(i => owners[i]).ToArray();
     }
 
     /// <summary>Parse the iptoasn TSV text into the sorted lookup arrays.</summary>
@@ -139,8 +233,12 @@ public sealed class GeoIpService
         if (string.IsNullOrEmpty(ip)) return new GeoInfo("", 0, "");
         if (IsPrivateOrReserved(ip)) return new GeoInfo("", 0, ""); // LAN/loopback/reserved: no public answer
         if (_apiBase.Length > 0) return LookupApi(ip);  // self-hosted API mode (async + cached)
+        // v6 FIRST, and independently of the v4 table's state. Written the other
+        // way round at first, which gated every v6 answer behind `Loaded` - a v4
+        // flag - so a machine holding only the v6 table would have resolved
+        // nothing while reporting a loaded database.
+        if (!TryToUInt32(ip, out uint addr)) return LookupV6(ip);
         if (!Loaded) return new GeoInfo("", 0, "");
-        if (!TryToUInt32(ip, out uint addr)) return new GeoInfo("", 0, ""); // IPv6 / invalid
 
         // Greatest start <= addr, then confirm addr falls within that range's end.
         int lo = 0, hi = _start.Length - 1, found = -1;
@@ -172,6 +270,11 @@ public sealed class GeoIpService
         if (File.Exists(path)) LoadFromText(File.ReadAllText(path));
     }
 
+    public void LoadV6FromFile(string path)
+    {
+        if (File.Exists(path)) LoadV6FromText(File.ReadAllText(path));
+    }
+
     /// <summary>
     /// Download + gunzip the free CC0 iptoasn IPv4 dataset to the given cache path.
     /// Returns the number of bytes written. Throws on network/IO failure (callers
@@ -180,6 +283,23 @@ public sealed class GeoIpService
     public static long DownloadDatabase(string destTsvPath)
     {
         const string url = "https://iptoasn.com/data/ip2asn-v4-u32.tsv.gz";
+        return Fetch(url, destTsvPath);
+    }
+
+    /// <summary>Downloads the IPv6 half of the same CC0 dataset.
+    ///
+    /// A separate call rather than a flag, so a v6 failure cannot take the v4
+    /// table down with it: the caller keeps whatever it managed to get. Losing v6
+    /// coverage means some destinations show no country; losing v4 as well would
+    /// mean almost none do.</summary>
+    public static long DownloadDatabaseV6(string destTsvPath)
+    {
+        const string url = "https://iptoasn.com/data/ip2asn-v6.tsv.gz";
+        return Fetch(url, destTsvPath);
+    }
+
+    private static long Fetch(string url, string destTsvPath)
+    {
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(3) };
         using var netStream = client.GetStreamAsync(url).GetAwaiter().GetResult();
         using var gz = new GZipStream(netStream, CompressionMode.Decompress);
