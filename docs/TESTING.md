@@ -204,49 +204,34 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.109
+## 6. This build — 0.99.111
 
-### First: remove the broken install
+Rebuild the installer and reinstall over the current copy.
 
-The 0.99.108 install is missing its native libraries and cannot start. It also
-never ran, so it installed no filters and there is nothing to tear down.
+1. **Start Menu → GunWall** should now hold three entries: **GunWall**,
+   **GunWall on GitHub**, and **Uninstall GunWall**.
+2. **Settings → Apps → Installed apps** should list **GunWall** with its icon.
+3. In the installed folder, the uninstaller is **`unins000.exe`** — that is Inno
+   Setup's name for it, not `uninstall.exe`. It should be present alongside
+   `unins000.dat`.
 
-1. **Add/Remove Programs → GunWall → Uninstall.**
-2. It may warn that GunWall could not be started to remove its filters. **That is
-   correct and expected here** — the binary is broken. Answer **Yes** to continue.
-3. Delete `C:\MOD-x\1.Tools\GunWall` if anything remains.
+### Then the uninstall test, which is the point
 
-### Then: rebuild and reinstall
-
-4. Publish again to `C:\Users\TAMGG\Downloads\1.Gunwall-Installer\x64`.
-5. Open `tools\installer\GunWall.iss` in the **Inno Setup IDE** and press **F9**.
-   No arguments needed now — the path is the default.
-6. **Check the installed folder.** It must contain the DLLs and `Assets`, not just
-   `GunWall.exe`:
+4. Turn protection **on** and approve an app so there are filters to remove.
+5. Note the count in **Settings → Check filter integrity**.
+6. **Uninstall using the new Start Menu entry.** Answer **No** when asked about
+   deleting your saved rules.
+7. Verify from an admin prompt:
 
    ```
-   dir "C:\MOD-x\1.Tools\GunWall"
+   netsh wfp show filters file=%TEMP%\gw.xml
    ```
 
-   **PASS:** eight or more entries including `wpfgfx_cor3.dll` and `Assets`.
-   **FAIL:** only `GunWall.exe` — the wildcard did not take.
+   Search for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Expect zero matches.**
 
-7. **GunWall starts.** Turn protection on, approve an app.
-
-### Then: the uninstaller test that matters
-
-8. Note the filter count in **Settings → Check filter integrity**.
-9. **Uninstall.** It should NOT warn this time — the binary works, so the teardown
-   runs. Answer **No** when asked about deleting your rules.
-10. Verify, in an admin prompt:
-
-    ```
-    netsh wfp show filters file=%TEMP%\gw.xml
-    ```
-
-    Search for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Expect zero matches.**
-
-11. **Reinstall.** Your rules should come back.
+**FAIL:** filters remain, or the uninstaller reported success without running the
+teardown. Either is serious — tell me, and recover with `GunWall.exe --unblock`
+from a copy of the executable.
 
 ## 7. What to send
 

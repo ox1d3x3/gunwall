@@ -36,14 +36,8 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 *Managed C# throughout. No kernel risk.*
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
 - ✅ **Service & network-app categorization** — connections name the hosted service, and services can be blocked individually by their own identity.
-- ◐ **Complete IP and country coverage for every connection** — ✅ **IPv6 GeoIP**, the largest of the three gaps: the table was IPv4-only, so every v6 destination resolved to nothing. Remaining: — some connections show no country, so the map and the country tables under-report. Three causes found so far, in order of size:
-  - **The local GeoIP table is IPv4-only** (`geoip-v4.tsv`). Every IPv6 destination resolves to nothing. The self-hosted API mode already answers v6, so the gap is the bundled data rather than the lookup.
-  - **The map draws only the top ten countries**, so quiet destinations never appear on it even when the Connections table knows them.
-  - **Addresses outside the 532k ranges** return empty and are shown blank rather than as "unknown", which reads as a failure rather than a limit.
-
-  Note on VPNs: switching the VPN's exit country will not change the map, and that is correct — the map plots the destinations traffic is going **to**, not the tunnel it travels through. A dedicated "where am I exiting from" readout would be a separate feature, and is worth considering.
-
-- ◐ **Richer network scan** — ✅ likely OS from ping TTL · ✅ **gateway detection** from the routing table, which is a fact rather than a guess · ✅ **NetBIOS names** for devices with no reverse-DNS record · ✅ **randomised-MAC detection**, so a phone shows why its vendor is unknown. Remaining: **vendor from the MAC OUI**, which needs a downloadable lookup table rather than data written from memory, and **mDNS/Bonjour names** for Apple and IoT devices.
+- ◐ **Complete country coverage** — ✅ IPv6 GeoIP, which was the largest gap. Remaining: showing more than the top ten countries on the map, and labelling addresses outside the dataset as *unknown* rather than leaving the cell blank.
+- ◐ **Network scan** — ✅ likely OS from reply TTL, gateway identification from the routing table, NetBIOS names where reverse DNS has none, and randomised-MAC detection. Remaining: vendor identification from the MAC OUI, and mDNS names for Apple and IoT devices.
 
 - ☐ **Pico / subsystem process support** — identify WSL and other minimal-process traffic.
 - ✅ **App icons in the list** — each executable's icon is shown in the Application column.
@@ -58,18 +52,14 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 - ✅ **Fullscreen-silent mode** — approval popups are held back while a fullscreen app/game/presentation is foreground (detected via the OS notification-state signal), and appear once it ends.
 - ✅ **Confirmation prompts** — confirm-before-clearing the Activity / Packets logs, and an always-confirm-on-exit option (on top of the existing active-firewall exit warning).
 - ✅ **Notification exclusions** — alerts are categorised (security, protection changes, network, rules) and each category can be silenced independently. *(GunWall currently raises a single new-app approval prompt, so this waits on having multiple notification categories to exclude.)*
-- ◐ **Address-layer enforcement of name-based blocks** — with *Watch system DNS lookups* on, a blocked domain also has the address it resolved to blocked in the kernel. Correct for an address belonging to the blocked site, destructive on a shared one: a CDN edge answers for thousands of names, and blocking one tracker took an antivirus's update service and a git client offline for days, above every application rule, with nothing on screen explaining it.
-  - ✅ **Block only when every name on the address is blocked.** 0.99.87 refused outright on any shared address, which also spared hosts serving two tracker names — exactly what a blocklist is for. The test is now "is it shared with anything the user wants to keep": one unblocked name vetoes, and a saturated name set (too many names to be sure) also vetoes, because an incomplete answer must not read as a positive one.
-  - ✅ **Show it.** A withheld block now raises an Alert naming the service it would have cut off, instead of only a log line.
-  - ☐ **Per-domain override** — let the user force the address block anyway, with the collateral spelled out.
-  - ✅ **Prefer the app layer where the app is known** — a connection carries its executable, so a blocked name is now enforced as *this application may not reach that address*. Scoped to one process the filter carries **no collateral at all**, so a shared CDN edge is safe to block: the sharing veto only applies to the global fallback, which is now reached only when the process cannot be identified.
-- ◐ **3-level blocklist control** — ✅ the allow level: `@@name` in the blocklist box permits a name even when a category or preset blocks it, using the syntax adblock lists already use, so one bad entry in a hundred-thousand-domain list no longer means turning the category off. Allows are tested before blocks and share the same subdomain matching. Remaining: per-category allow/block/disable in the UI, an **"extra" curated list**, and **exclude-apps-from-blocklist**.
+- ◐ **Domain blocking beyond the application layer** — a blocked domain is enforced against the application that requested it, which carries no collateral. Where the process cannot be identified, GunWall falls back to a global address block and withholds it if the address serves anything the user has not blocked. Remaining: a **per-domain override** for forcing the global block deliberately, with the consequences stated.
+- ◐ **Blocklist controls** — ✅ an allow level: `@@name` permits a name even when a category or preset blocks it, using the syntax adblock lists already use. Remaining: per-category allow/block/disable in the interface, an additional curated list, and excluding chosen applications from blocklists.
 - ✅ **Logging upgrades** *(complete)* — blocked/allowed events to the **Windows Event Log** (toggle), a configurable **log-size limit** (live-row cap + CSV rotation size), and a separate **error log viewer** with deduplicated entries.
 - ◐ **View & tray niceties** — ✅ autosize columns, **tray single-click**, and **UI size / zoom**. Remaining: list view modes (details / icon / tile) and icon sizes.
 
 ### Kernel hardening
 *Touches the WFP filter set. Every item here needs hardware verification and a removal path before it ships.*
-- ◐ **Kernel verdict visibility** — ✅ the packet log now records what the kernel actually did, not only what GunWall would have decided, and names a drop caused by anything else on the machine. Achieved by reading the existing net-event verdict rather than adding discard layers, which needed no new GUIDs and no new struct layouts. Remaining: attributing the drop to the specific filter, which does need the event union.
+- ◐ **Kernel verdict visibility** — ✅ the packet log records what the kernel did, not only what GunWall would have decided, and names a drop caused by other software on the machine. Remaining: attributing that drop to the specific filter responsible.
 - ◐ **Expanded WFP layers** — **16 layers wired and verified on hardware**: outbound connect, inbound accept, listen, **resource assignment** (bind, TCP *and* UDP), inbound/outbound transport, outbound ICMP error, and **IP forwarding** — each v4 and v6. Shipped as opt-in, removable rules through the fault-tolerant filter path.
   - ✅ **Kernel layer self-test** — probes every layer *and condition* the kernel accepts, using a permit filter at weight 0 that is non-persistent and deleted immediately. This surfaced three incorrect WFP identifiers that had been failing silently, including one that had disabled IPv4 stealth-mode ICMP suppression entirely.
   - Remaining: ALE_CONNECT_REDIRECT and the matching *_DISCARD* layers (v4/v6).
@@ -83,7 +73,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 - ☐ **Compressed / encrypted profile formats** — alongside today's plain JSON.
 
 ### Localization
-- ◐ **Installation and updates** — ✅ an **Inno Setup installer** (`tools/installer/GunWall.iss`, free and open-source) whose **uninstaller runs `--unblock` before removing anything**, so a machine cannot be left filtering by software that is gone. It keeps the profile in ProgramData across upgrades and asks before deleting it. ✅ the update check now resolves the release's installer asset rather than pointing at the releases page. Remaining: **downloading and launching that installer from inside the application**, which needs the installer to exist first — it now does.
+- ◐ **Installation and updates** — ✅ an installer whose uninstaller removes all filtering before deleting anything, keeps the profile across upgrades, and asks before removing it. ✅ the update check resolves the release's installer asset. Remaining: downloading and launching that installer from inside the application.
 
 - ☐ **Multi-language UI** — externalize strings and ship language packs.
 

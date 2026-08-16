@@ -8,6 +8,31 @@ not.
 Security vulnerabilities go through [`SECURITY.md`](SECURITY.md), **not** the
 public issue tracker.
 
+## Building
+
+Prerequisites: **Visual Studio 2022** (17.8+) with the **.NET desktop development** workload, or the standalone [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+
+**Visual Studio**
+
+1. Open `GunWall.sln`.
+2. Set configuration **Release**, platform **x64**.
+3. **Build → Build Solution** (`Ctrl+Shift+B`).
+4. The executable appears in `src/GunWall/bin/Release/net8.0-windows/GunWall.exe`.
+
+**Command line**
+
+```powershell
+dotnet build GunWall.sln -c Release
+```
+
+Single self-contained executable:
+
+```powershell
+dotnet publish src/GunWall/GunWall.csproj -c Release -r win-x64 ^
+    --self-contained true -p:PublishSingleFile=true
+```
+
+
 ## Getting set up
 
 **Requirements**

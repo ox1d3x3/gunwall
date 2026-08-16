@@ -20,7 +20,7 @@
 
 ### [⬇ Download the latest beta](https://github.com/ox1d3x3/gunwall/releases/latest)
 
-*One portable `.exe`. No installer, no account, no telemetry. Run it as administrator and it works.*
+*Installer or portable executable. No account, no telemetry, no ads.*
 
 </div>
 
@@ -40,39 +40,36 @@ It is a **single portable executable**. The filtering path — the WFP engine, t
 
 ## Project status
 
-**GunWall is in public beta and is doing its job.** The filtering engine, rule
-evaluation, monitoring, metering and DNS subsystems are complete and in daily use
-on real hardware. Enforcement is verified against the kernel rather than against
-GunWall's own reporting — you can confirm it independently at any time with
-`netsh wfp show filters`, and the README shows you how.
+**GunWall is in public beta and is in daily use as a primary firewall.**
 
-**What that means in practice**
+The filtering engine, rule evaluation, monitoring, metering, DNS and blocklist
+subsystems are complete. Enforcement is verified against the Windows kernel rather
+than against GunWall's own reporting — you can confirm it yourself at any time
+with `netsh wfp show filters`, and this README shows you how.
 
-- Every filter GunWall installs is **persistent**: closing the app, a crash, or a
-  reboot does not stop enforcement. That is what a firewall must do.
-- Because of that, there are exactly two ways to stop filtering, and **both are
-  verified to return the machine to Windows defaults**: the protection switch, and
-  *Remove all GunWall filtering*.
-- If GunWall will not open at all, `GunWall.exe --unblock` restores the machine
-  from a command prompt without the interface. See
-  [If the machine is locked](#if-the-machine-is-locked-and-gunwall-will-not-open).
+**What you should know before installing**
+
+- Filters are **persistent**. Closing GunWall, a crash, or a reboot does not stop
+  enforcement. That is what a firewall must do.
+- There are exactly two ways to stop filtering, and both return the machine to
+  Windows defaults: the **protection switch**, and **Remove all GunWall
+  filtering**. The uninstaller runs the second one for you.
+- If GunWall will not start at all, `GunWall.exe --unblock` restores the machine
+  from a command prompt without the interface.
 
 **What beta still means**
 
-It runs as a single elevated process, with no service isolation — that is the last
-architectural item before 1.0, and it is what stands between GunWall and true
-tamper *prevention* as opposed to tamper detection.
+GunWall runs as a single elevated process. Service isolation is the last
+architectural item before 1.0, and it is what separates tamper *detection* from
+tamper *prevention*.
 
-GunWall is **deliberately not code-signed**: a certificate is a recurring cost this
-free MIT project will not pass on to anyone or beg for. Verify the published
-SHA-256 instead, which proves rather more than a signature does.
+It is **deliberately not code-signed**: a certificate is a recurring cost this
+free MIT project will not pass on or ask for. Each release publishes a SHA-256
+instead, which you can check against source you can read.
 
-It has been soak-tested for eleven hours at a stretch with zero errors, and every
-recovery path is verified against the kernel rather than against GunWall's own
-reporting — but on a small number of machines. Your Windows build, your VPN and
-your antivirus are combinations nobody has tried.
-
-Use it as your firewall. Report what breaks.
+It has been soak-tested for eleven hours at a stretch with no errors, but on a
+small number of machines. Your Windows build, your VPN and your security software
+are combinations nobody has tried.
 
 ## Features
 
@@ -182,30 +179,6 @@ deleting the folder** — otherwise the machine keeps enforcing rules with nothi
 installed to manage them. If that already happened, see
 [If the machine is locked](#if-the-machine-is-locked-and-gunwall-will-not-open).
 
-### Build from source
-
-Prerequisites: **Visual Studio 2022** (17.8+) with the **.NET desktop development** workload, or the standalone [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
-
-**Visual Studio**
-
-1. Open `GunWall.sln`.
-2. Set configuration **Release**, platform **x64**.
-3. **Build → Build Solution** (`Ctrl+Shift+B`).
-4. The executable appears in `src/GunWall/bin/Release/net8.0-windows/GunWall.exe`.
-
-**Command line**
-
-```powershell
-dotnet build GunWall.sln -c Release
-```
-
-Single self-contained executable:
-
-```powershell
-dotnet publish src/GunWall/GunWall.csproj -c Release -r win-x64 ^
-    --self-contained true -p:PublishSingleFile=true
-```
-
 ### First run
 
 GunWall starts in **monitoring only** — it observes traffic and changes nothing until you turn protection on. A good first session:
@@ -265,48 +238,16 @@ Full details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
-## GeoIP data source (optional, self-hosted)
+## GeoIP data (optional)
 
-GunWall labels connections with their **country and network operator (ASN)** and uses that for country/ASN rules. Choose the source under **Settings → Security & Privacy → GeoIP data source**:
+Country and network-operator lookups use the free CC0 dataset from
+[iptoasn.com](https://iptoasn.com), downloaded on request from
+**Connections → Download GeoIP data**. Nothing is sent anywhere: the tables are
+stored locally and every lookup is answered on your machine.
 
-- **Local database** *(default)* — GunWall downloads the free, public-domain [iptoasn](https://iptoasn.com) IPv4 table on demand and resolves addresses entirely on your machine. No server, no setup.
-- **Self-hosted API server** — GunWall asks a small HTTP service you run yourself. Nothing to download, always fresh, and it resolves **IPv6** too. Lookups are cached, so each address is fetched only once.
-
-> GunWall ships with **no** API URL and never contacts anyone else's server. In API mode you point it at your own endpoint — nothing is hard-coded and there is no shared default host.
-
-### Running your own server
-
-The service is [`jedisct1/iptoasn-webservice`](https://github.com/jedisct1/iptoasn-webservice) (BSD-2-Clause). It refreshes the dataset itself and answers `GET /v1/as/ip/<ip>` with JSON. The stock image targets an older Rust toolchain; this two-stage Dockerfile builds cleanly on current Docker:
-
-```dockerfile
-FROM rust:bookworm AS builder
-RUN git clone --depth 1 https://github.com/jedisct1/iptoasn-webservice.git /build
-WORKDIR /build
-RUN cargo build --release
-
-FROM debian:bookworm-slim
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /build/target/release/iptoasn-webservice /usr/local/bin/iptoasn-webservice
-EXPOSE 53661
-ENTRYPOINT ["iptoasn-webservice", "--listen", "0.0.0.0:53661"]
-```
-
-Build and run it (mapping host port `53662` to the container's `53661`):
-
-```bash
-docker build -t iptoasn .
-docker run -d --name iptoasn --restart unless-stopped -p 53662:53661 iptoasn
-```
-
-Confirm it's up — this should report Google, `AS15169`, `US`:
-
-```bash
-curl -H "Accept: application/json" http://YOUR_SERVER:53662/v1/as/ip/8.8.8.8
-```
-
-Then in GunWall: **Settings → Security & Privacy → GeoIP data source → Self-hosted API server**, enter `http://YOUR_SERVER:53662`, click **Test**, then **Save**.
+If you would rather run your own lookup service, GunWall can query a self-hosted
+[iptoasn-webservice](https://github.com/jedisct1/iptoasn-webservice) instead —
+set the address under **Settings → GeoIP data source**.
 
 ---
 
@@ -342,66 +283,36 @@ also correct** and does not mean anything else is being filtered.
 
 ## Roadmap
 
-GunWall is not planned by version number. Work is grouped by what it touches and
-how risky it is; things land when they are ready and verified on hardware, not on
-a schedule. [`CHANGELOG.md`](CHANGELOG.md) records what shipped and when —
-this section is about what exists and what is still open.
+### Working today
 
-### What works today
+Zero-trust default-deny with first-connection prompts · ordered custom rules
+matching on address, port, protocol, domain, country and ASN · per-application
+domain blocking · a curated system-rule library · lockdown and snooze · live
+connections, packet log and per-application metering · a connection map · a local
+DNS resolver with DNS-over-HTTPS and blocklists · Authenticode and hash
+verification · VirusTotal lookups · network scanning with device identification ·
+rule profiles · full diagnostics export · verified recovery to Windows defaults.
 
-| Area | Capability |
-|---|---|
-| **Enforcement** | Zero-trust default-deny with persistent per-app approval · lockdown · stealth mode · directional, timed and silent rules · critical-process protection |
-| **Rules** | Custom rules by address, CIDR, port, protocol and direction · manual IP blocklist · curated system-rule library · ordered per-app entity rules with presets |
-| **Scopes** | Block device-local, LAN, incoming, Internet, P2P/direct, and listening sockets — per application |
-| **Kernel coverage** | 16 WFP layers wired and verified on hardware, v4 and v6 · kernel layer self-test · filter tamper detection with self-healing |
-| **Visibility** | Connection inspector · live packet log · throughput graph · activity feed · per-app metering from ETW · traffic by app, host, protocol and country · LAN scanner |
-| **App trust** | Authenticode signature verification · SHA-256 tamper detection · VirusTotal hash lookup · per-app properties and notes |
-| **DNS** | Built-in resolver · DNS-over-HTTPS with a fail-closed default · CNAME-cloaking defence · domain heuristics · filtering-DNS selection · resolver self-check on start |
-| **Blocking** | Telemetry and update blocklists with WFP fallback when the hosts file is unavailable · ads and trackers via filtering DNS · explicit `@@` allow entries that override any list · domain blocks enforced **per application**, so blocking a tracker cannot cut off anything else sharing its address |
-| **Recovery** | Reset returns the machine to Windows defaults, including the hosts file and adapter DNS · orphaned filters reconciled at every start · `--unblock` command-line recovery when the interface cannot be opened |
-| **Management** | Profiles · versioned backups · Windows Firewall import · diagnostics export · run at startup · close to tray · notification centre |
+### In progress
 
-### What is open
+Per-category blocklist controls · IPv6 country coverage for the map · MAC vendor
+identification · mDNS device names · attributing a kernel drop to the specific
+filter that caused it · list view modes.
 
-Grouped by risk rather than order. The full list, with detail, is in
-[`ROADMAP.md`](ROADMAP.md).
+### Planned
 
-**No kernel risk** — per-category blocklist controls in the interface · an extra
-curated list · excluding chosen apps from blocklists · per-network trust profiles ·
-list view modes and further interface options · remaining colour-category
-customisation · pico and subsystem process identification.
+Pico and WSL process identification · connect-redirection and discard layers ·
+tamper *prevention*, which requires the service split · per-network trust
+profiles · boot-time filters · Windows Update repair · encrypted profiles ·
+one-click update from inside the application · multi-language interface.
 
-**Touches the filter set** — connect-redirection and discard layers · true filter
-tamper *prevention*, which needs a privilege split first because an elevated user
-process cannot lock out other administrators without locking out itself.
+### Deliberately not planned
 
-**Needs a guaranteed recovery path before it can ship** — boot-time filters ·
-Windows Update service repair · compressed and encrypted profile formats.
+**Code signing.** A certificate is a recurring cost this project will not pass on
+or ask for; the published SHA-256 proves more, against source you can read. A
+donated open-source certificate would be used gladly, but nothing waits on it.
 
-**Before 1.0** — service split and privilege separation · one-click update from
-inside the application · multi-language interface.
-
-**Deliberately not planned** — code signing. A certificate is a recurring cost this
-project will not pass on or beg for; the published SHA-256 proves more, against
-public source. If someone donates an open-source certificate it will be used
-gladly, but nothing here waits on it.
-
-### Known limitations
-
-Stated plainly, because you will meet them:
-
-- **Blocking a domain hosted on a large CDN is unreliable.** GunWall blocks the
-  addresses it has observed a name resolve to; Cloudflare and similar services
-  rotate faster than that. Domain blocking works well against trackers on stable
-  hosts. It will not reliably stop a major website.
-- **A closed GunWall cannot prompt.** Filters persist, so an unapproved program is
-  correctly denied — but with the app shut, there is no prompt and no way to grant
-  access, and the program simply fails. Enable *Run at startup* if that matters.
-- **Not code-signed**, by choice, so SmartScreen and some antivirus heuristics
-  will complain about an unsigned binary performing firewall operations. Verify
-  the published SHA-256 instead.
-- **Single elevated process.** Service isolation is a pre-1.0 item.
+Full detail, grouped by area and risk, is in [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -409,13 +320,14 @@ Stated plainly, because you will meet them:
 
 | Document | What it covers |
 |---|---|
+| [`docs/RELEASE-NOTES.md`](docs/RELEASE-NOTES.md) | What is in the current release, in plain terms |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in every release |
 | [`ROADMAP.md`](ROADMAP.md) | What is open, grouped by area and risk |
 | [`ROADMAP_ADVANCED.md`](ROADMAP_ADVANCED.md) | Deeper design notes for the zero-trust features |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How GunWall is built: the WFP engine, filter weights, persistence, DNS, metering |
 | [`docs/TESTING.md`](docs/TESTING.md) | How to verify a build, and what to capture when something looks wrong |
-| [`docs/HANDOVER.md`](docs/HANDOVER.md) | What keeps going wrong, what stops it now, and the deviations that are deliberate |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Build setup, conventions, and the rules for touching kernel interop |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Building from source, conventions, and the rules for touching kernel interop |
+| [`docs/HANDOVER.md`](docs/HANDOVER.md) | Maintainer notes: known failure patterns and the checks that catch them |
 | [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability, and the guarantees GunWall intends to hold |
 
 ---

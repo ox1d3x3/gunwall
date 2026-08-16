@@ -90,6 +90,15 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ; uninstaller needs it too — see the note above about why that matters.
 PrivilegesRequired=admin
 
+; Uninstaller. These are Inno's defaults, stated explicitly because the uninstaller
+; is the whole reason this installer exists — it is what removes GunWall's kernel
+; filters before the files go. A default that changed silently would take the
+; safety guarantee with it.
+Uninstallable=yes
+CreateUninstallRegKey=yes
+UninstallDisplayName={#AppName}
+UninstallDisplayIcon={app}\{#AppExe}
+
 ; Not code-signed by choice; the release publishes a SHA-256 instead.
 ; See README → "Verifying what you downloaded".
 
@@ -125,6 +134,15 @@ Source: "..\..\LICENSE";    DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{group}\{#AppName}";        Filename: "{app}\{#AppExe}"
 Name: "{group}\GunWall on GitHub"; Filename: "{#AppUrl}"
+
+; A Start Menu entry for the uninstaller.
+;
+; Inno names the executable "unins000.exe", not "uninstall.exe", and drops it in
+; the application folder — which is neither obvious nor guessable. Normally that
+; does not matter because Add/Remove Programs is the expected route, but for this
+; application it does: the uninstaller is the only thing that removes GunWall's
+; kernel filters, so it must be easy to find rather than merely present.
+Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]

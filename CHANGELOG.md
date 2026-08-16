@@ -6,6 +6,40 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.111] — 2026-08-16
+
+### The uninstaller is now findable
+Inno Setup names its uninstaller `unins000.exe` and leaves it in the application
+folder — neither obvious nor guessable, and easy to conclude is missing.
+
+For most applications that does not matter, because Add/Remove Programs is the
+expected route. For this one it does: **the uninstaller is the only thing that
+removes GunWall's kernel filters before the files go.** Anyone who cannot find it
+may delete the folder instead, which is exactly the outcome the installer exists to
+prevent.
+
+- **A Start Menu entry**, *Uninstall GunWall*, alongside the application shortcut.
+- **`UninstallDisplayName` and `UninstallDisplayIcon`**, so the Add/Remove Programs
+  entry is named and has an icon rather than appearing as a bare path.
+- **`Uninstallable` and `CreateUninstallRegKey` stated explicitly.** Both are Inno
+  defaults, written out because the uninstaller carries this installer's whole
+  safety guarantee, and a default that changed quietly would take that guarantee
+  with it.
+---
+
+## [0.99.110] — 2026-08-16
+
+Documentation, for the first published release. No code changed.
+
+### Added
+- **`docs/RELEASE-NOTES.md`** — what the release contains, in plain terms: what GunWall does, the four verified ways to stop it filtering, what to know before installing, and the known limitations stated rather than implied.
+
+### Changed
+- **README rewritten for users rather than for the people building it.** Build instructions moved to `CONTRIBUTING.md`, where someone compiling from source will look for them. The self-hosted GeoIP walkthrough reduced to a pointer, since it is an operator task and not a product feature. Project status now describes what GunWall is rather than apologising for what it is not.
+- **Roadmap rewritten as a plan.** It had accumulated the reasoning behind individual fixes — which release changed what, and which incident prompted it. That belongs in the changelog. Each entry now says what works, what remains, and nothing about how it came to be that way.
+- The download tagline claimed "no installer", which stopped being true one release ago.
+---
+
 ## [0.99.109] — 2026-08-16
 
 Two installer defects, reported from a real install that completed successfully and produced an application that would not start.
