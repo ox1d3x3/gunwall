@@ -56,6 +56,26 @@ It is a **single portable executable**. The filtering path — the WFP engine, t
 
 ---
 
+## Installing
+
+**[Download the latest release](https://github.com/ox1d3x3/gunwall/releases/latest)**
+
+- **`GunWall-<version>-setup.exe`** — installer. Recommended, because its
+  uninstaller removes GunWall's kernel filters before deleting anything.
+- **`GunWall.exe`** — portable. Run as administrator.
+
+Requires Windows 10 (2004+) or Windows 11, 64-bit, with administrator rights.
+Windows SmartScreen will warn you: GunWall is not code-signed, deliberately —
+verify the published SHA-256 instead.
+
+> **Before deleting a portable copy**, run *Settings → Remove all GunWall
+> filtering*. The filters live in the Windows kernel and outlive the folder.
+
+**Full instructions, first-run walkthrough and every screen explained:**
+**[User Guide](docs/DOCUMENTATION.md)**
+
+---
+
 ## Project status
 
 **GunWall is in public beta and is in daily use as a primary firewall.**
@@ -145,26 +165,6 @@ are combinations nobody has tried.
 - **Run at startup** — launch with Windows, elevated, without a UAC prompt, via a scheduled task.
 - **Close to tray** — closing minimizes to the tray; a true exit warns if filtering is still active.
 - **Themes** — matching dark and light themes with an animated switch.
-
----
-
-## Installing
-
-**[Download the latest release](https://github.com/ox1d3x3/gunwall/releases/latest)**
-
-- **`GunWall-<version>-setup.exe`** — installer. Recommended, because its
-  uninstaller removes GunWall's kernel filters before deleting anything.
-- **`GunWall.exe`** — portable. Run as administrator.
-
-Requires Windows 10 (2004+) or Windows 11, 64-bit, with administrator rights.
-Windows SmartScreen will warn you: GunWall is not code-signed, deliberately —
-verify the published SHA-256 instead.
-
-> **Before deleting a portable copy**, run *Settings → Remove all GunWall
-> filtering*. The filters live in the Windows kernel and outlive the folder.
-
-**Full instructions, first-run walkthrough and every screen explained:**
-**[User Guide](docs/DOCUMENTATION.md)**
 
 ---
 
