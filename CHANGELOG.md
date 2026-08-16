@@ -6,6 +6,25 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.113] — 2026-08-16
+
+Documentation. No code changed.
+
+### Added
+- **`docs/DOCUMENTATION.md`** — the full user guide, in nineteen chapters across three parts:
+
+  **Getting started** — what to expect before installing, both installation routes, a first-ten-minutes walkthrough, and the rule-evaluation model.
+
+  **Daily use** — the connection prompt read field by field, then every screen: Applications, Rules, Security and blocklists, the DNS resolver, the monitoring screens, Windows services, and the network scanner.
+
+  **Reference** — every setting, profiles and lockdown, a step-by-step procedure for *"something is blocked and should not be"*, all three recovery routes with independent verification, uninstalling, how to file a useful report, and a FAQ.
+
+  It documents what the application actually contains — screens, controls and settings were read from the source rather than recalled — and states limitations plainly where they exist: CDN-hosted domains cannot be blocked reliably, per-application byte counts are estimated unless precise metering is enabled, and the OS guess in the network scanner is a guess.
+
+### Changed
+- **README reduced from 467 lines to 318**, and turned back into what a landing page is for: what GunWall is, what it does, how to get it, and where to read more. The installation walkthrough, the recovery procedures and the architecture summary moved into the guide or the architecture document, each replaced by a short statement and a link.
+---
+
 ## [0.99.112] — 2026-08-16
 
 ### Note — the first version of ProfilePaths did not compile

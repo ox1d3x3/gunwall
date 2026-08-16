@@ -132,73 +132,21 @@ are combinations nobody has tried.
 
 ## Installing
 
-### Requirements
+**[Download the latest release](https://github.com/ox1d3x3/gunwall/releases/latest)**
 
-- **Windows 10 (2004+) or Windows 11**, 64-bit
-- **Administrator privileges** — WFP cannot add or remove filters otherwise. The manifest requests elevation automatically.
+- **`GunWall-<version>-setup.exe`** — installer. Recommended, because its
+  uninstaller removes GunWall's kernel filters before deleting anything.
+- **`GunWall.exe`** — portable. Run as administrator.
 
-### Install (recommended)
+Requires Windows 10 (2004+) or Windows 11, 64-bit, with administrator rights.
+Windows SmartScreen will warn you: GunWall is not code-signed, deliberately —
+verify the published SHA-256 instead.
 
-1. Go to **[Releases](https://github.com/ox1d3x3/gunwall/releases/latest)** and
-   download `GunWall-<version>-setup.exe`.
-2. Run it. It installs to Program Files, offers to start GunWall with Windows, and
-   registers an uninstaller.
+> **Before deleting a portable copy**, run *Settings → Remove all GunWall
+> filtering*. The filters live in the Windows kernel and outlive the folder.
 
-   **The uninstaller is the reason to prefer it.** GunWall's filters live in the
-   Windows kernel and persist after the application is gone, so deleting a folder
-   leaves a machine still filtering with nothing installed to manage it. The
-   uninstaller runs the full teardown first. Your rules and settings are kept
-   unless you ask for them to be removed.
-
-### Or run it portable
-
-1. Download `GunWall.exe` from the same release.
-2. Right-click → **Run as administrator**. Nothing is written outside the folder
-   you run it from — but read **Removing it** below before deleting anything.
-3. **Windows SmartScreen will warn you.** GunWall is not code-signed — a
-   certificate costs money every year, and this is a free MIT project that would
-   rather not charge for one or beg for it. Choose **More info → Run anyway**, or
-   verify the SHA-256 checksum published with each release first, which proves the
-   file is the one that was built from this source.
-
-**Verifying what you downloaded.** Each release lists the SHA-256 of the
-executable. Check it before running:
-
-```
-certutil -hashfile GunWall.exe SHA256
-```
-
-If that matches the published value, the file is byte-for-byte the one built from
-this source. That is a stronger guarantee than a code-signing certificate gives
-you — a signature says *someone paid for a certificate*, a checksum against public
-source says *this is that source, compiled*.
-
-**Removing it.** GunWall is portable, but its filters live in the Windows kernel
-and persist by design. **Use *Settings → Remove all GunWall filtering* before
-deleting the folder** — otherwise the machine keeps enforcing rules with nothing
-installed to manage them. If that already happened, see
-[If the machine is locked](#if-the-machine-is-locked-and-gunwall-will-not-open).
-
-### First run
-
-GunWall starts in **monitoring only** — it observes traffic and changes nothing until you turn protection on. A good first session:
-
-1. Watch the Dashboard and Apps list for a few minutes to see what your machine actually talks to.
-2. Enable **Zero-Trust mode** when you're ready to start approving apps.
-3. Optionally enable **precise metering** (Settings → experimental) for kernel-measured per-app bandwidth.
-
-**Expect prompts, and expect to be busy for the first ten minutes.** Default-deny
-means every program asks once. Approve the ones you recognise; the ones you do not
-are the point of the exercise.
-
-**Two settings worth knowing about before you turn protection on:**
-
-| Setting | Why it matters |
-|---|---|
-| *Settings → Popup stays open for* | Defaults to **Never**, so a prompt waits for you. If you set a timeout, anything you do not answer in that window gets a **permanent** rule — including programs you needed. |
-| *Settings → Run GunWall when Windows starts* | Off by default. With it off, filters still enforce after a reboot but nothing can prompt you, so new programs fail silently until you open GunWall. |
-
-> **Antivirus note:** a firewall legitimately performs the same low-level operations malware does — modifying the hosts file, changing DNS, creating packet filters, terminating processes. Some behavioral engines may flag an **unsigned** build with a generic heuristic detection, especially when run from a `Downloads` folder. Build in **Release**, run from a stable folder, and add GunWall to your antivirus exclusions if needed. This is the trade that comes with an unsigned open-source binary, and it is a deliberate one — the source is here to read and build yourself.
+**Full instructions, first-run walkthrough and every screen explained:**
+**[User Guide](docs/DOCUMENTATION.md)**
 
 ---
 
@@ -216,25 +164,17 @@ GunWall is designed so that **nothing happens to your data without your say-so**
 
 ## How it works
 
-GunWall runs as an independent filtering layer and does **not** modify your existing Windows Firewall rules.
+GunWall runs as an independent filtering layer on the Windows Filtering Platform
+and **does not modify your existing Windows Firewall rules**. Both apply; either
+can block a connection.
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  WPF UI — dashboard · apps · traffic · connections ·      │
-│  packets · DNS · rules · security · network · settings    │
-├──────────────────────────────────────────────────────────┤
-│  Event-driven detection loop + background sampler         │
-│  FirewallManager · AppRuleEngine · RuleStore (JSON)       │
-│  DnsResolver · GeoIP · ETW meter · usage & stats services │
-├──────────────────────────────────────────────────────────┤
-│  WfpEngine → fwpuclnt.dll   ·   WinVerifyTrust            │
-│  ETW (advapi32) · hosts file · DNS · scheduled task       │
-└──────────────────────────────────────────────────────────┘
-```
+Every outbound connection is evaluated in a fixed order — lockdown, explicit
+blocks, explicit allows, your custom rules in your order, then a default-deny
+baseline. The first match wins.
 
-Detection is **event-driven** off the WFP kernel event stream, not polling. Blocking an app adds persistent WFP filters (outbound + inbound, IPv4 + IPv6) keyed to the executable; Zero-Trust adds a base block plus per-app permits. Entity rules (country, ASN, scope) are enforced **reactively** — GunWall evaluates a connection when it appears and installs a matching filter. Filter IDs are persisted so every filter can be cleanly removed later, even across restarts.
-
-Full details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+See [How GunWall decides](docs/DOCUMENTATION.md#4-how-gunwall-decides) for the
+full model, and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the engine
+internals.
 
 ---
 
@@ -253,33 +193,31 @@ set the address under **Settings → GeoIP data source**.
 
 ## If the machine is locked and GunWall will not open
 
-GunWall's filters are persistent by design — they keep enforcing after a crash, a
-close, or a reboot. If GunWall is not running, nothing can prompt, so a program
-without a rule fails silently.
-
-From an **elevated** command prompt, in GunWall's folder:
+GunWall's filters are persistent by design, so a machine can be left filtering by
+an application that will not start. From an **elevated** command prompt in
+GunWall's folder:
 
 ```
 GunWall.exe --unblock
 ```
 
 This removes every filter, restores the hosts file and any adapter DNS GunWall
-changed, prints what it did, and exits without opening a window. It runs before
-any interface is built, so a broken window cannot stop it.
+changed, and exits without opening a window.
 
-Verify it worked:
+Confirm it worked — with Windows, not with GunWall:
 
 ```
 netsh wfp show filters file=%TEMP%\gw.xml
 ```
 
-then search that file for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Zero matches
-means the machine is back to Windows defaults** — and that is Windows reporting
-it, not GunWall reporting on itself.
+Search that file for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Zero matches means
+the machine is back to Windows defaults.** Four matches after restarting GunWall
+is also correct — those permit GunWall's own executable.
 
-Check *before* reopening GunWall. Starting it again immediately installs four
-filters that permit GunWall's own executable, so **four matches after a restart is
-also correct** and does not mean anything else is being filtered.
+Every recovery route is covered in
+[Recovery](docs/DOCUMENTATION.md#16-recovery).
+
+---
 
 ## Roadmap
 
@@ -320,6 +258,7 @@ Full detail, grouped by area and risk, is in [`ROADMAP.md`](ROADMAP.md).
 
 | Document | What it covers |
 |---|---|
+| [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) | **The user guide** — installing, configuring, every screen, troubleshooting |
 | [`docs/RELEASE-NOTES.md`](docs/RELEASE-NOTES.md) | What is in the current release, in plain terms |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in every release |
 | [`ROADMAP.md`](ROADMAP.md) | What is open, grouped by area and risk |
