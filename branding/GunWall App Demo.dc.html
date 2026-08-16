@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #141414; }
+  * { box-sizing: border-box; }
+  a { color: var(--gw-ac, #4cc2ff); text-decoration: none; }
+  a:hover { color: var(--gw-ac-hi, #78d0ff); text-decoration: underline; }
+  ::selection { background: rgba(76,194,255,0.3); }
+  .gw-scroll::-webkit-scrollbar { width: 10px; }
+  .gw-scroll::-webkit-scrollbar-thumb { background: var(--gw-stroke, #3d3d3d); border-radius: 5px; }
+  .gw-scroll::-webkit-scrollbar-track { background: transparent; }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; padding: 28px; display: flex; align-items: flex-start; justify-content: center; background: var(--gw-desk, radial-gradient(120% 120% at 15% 0%, #2a3340 0%, #141414 55%, #0e0e0e 100%)); font-family: 'Inter Tight', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;">
+
+  <div style="width: 100%; max-width: 1420px; height: 900px; display: flex; flex-direction: column; overflow: hidden; border-radius: 8px; border: 1px solid var(--gw-stroke, #3a3a3a); background: var(--gw-bg, #202020); box-shadow: 0 32px 64px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);">
+
+    <div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding-left: 14px; background: var(--gw-titlebar, #1d1d1d); border-bottom: 1px solid var(--gw-stroke-soft, #2b2b2b);">
+      <svg width="16" height="16" viewBox="0 0 96 96" fill="none" style="flex-shrink: 0;">
+        <g fill="var(--gw-mark, #f3f2f2)"><rect x="0" y="0" width="30" height="30"></rect><rect x="33" y="0" width="30" height="30"></rect><rect x="0" y="33" width="30" height="30"></rect><rect x="66" y="33" width="30" height="30"></rect><rect x="0" y="66" width="30" height="30"></rect><rect x="33" y="66" width="30" height="30"></rect><rect x="66" y="66" width="30" height="30"></rect></g>
+        <rect x="66" y="0" width="30" height="30" fill="#ec3013"></rect>
+        <rect x="34" y="34" width="28" height="28" stroke="var(--gw-mark, #f3f2f2)" stroke-width="2.5"></rect>
+      </svg>
+      <div style="font-size: 12px; font-weight: 500; color: var(--gw-text2, #d0d0d0); letter-spacing: 0.01em;">GunWall Security Center</div>
+      <div style="margin-left: auto; display: flex; align-items: stretch; height: 100%;">
+        <div style="width: 46px; display: flex; align-items: center; justify-content: center; color: var(--gw-text2, #d0d0d0);" style-hover="background: var(--gw-hover, rgba(255,255,255,0.06))">
+          <svg width="11" height="11" viewBox="0 0 12 12"><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1"></line></svg>
+        </div>
+        <div style="width: 46px; display: flex; align-items: center; justify-content: center; color: var(--gw-text2, #d0d0d0);" style-hover="background: var(--gw-hover, rgba(255,255,255,0.06))">
+          <svg width="11" height="11" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"></rect></svg>
+        </div>
+        <div style="width: 46px; display: flex; align-items: center; justify-content: center; color: var(--gw-text2, #d0d0d0);" style-hover="background: #c42b1c; color: #ffffff">
+          <svg width="11" height="11" viewBox="0 0 12 12"><line x1="1.5" y1="1.5" x2="10.5" y2="10.5" stroke="currentColor" stroke-width="1"></line><line x1="10.5" y1="1.5" x2="1.5" y2="10.5" stroke="currentColor" stroke-width="1"></line></svg>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex: 1; min-height: 0; display: flex;">
+
+      <div style="width: 252px; flex-shrink: 0; display: flex; flex-direction: column; padding: 6px 6px 12px; gap: 2px; background: var(--gw-nav, #1d1d1d); border-right: 1px solid var(--gw-stroke-soft, #2b2b2b);">
+
+        <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; margin-bottom: 6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gw-text2, #d0d0d0)" stroke-width="1.7" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </div>
+
+        <div onClick="{{ goDashboard }}" style="{{ navDashboard }}" style-hover="filter: brightness(1.25)">
+          <div style="{{ navBarDashboard }}"></div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+          <span>Overview</span>
+        </div>
+
+        <div onClick="{{ goRules }}" style="{{ navRules }}" style-hover="filter: brightness(1.25)">
+          <div style="{{ navBarRules }}"></div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="flex-shrink: 0;"><line x1="4" y1="7" x2="20" y2="7"></line><circle cx="9" cy="7" r="2.4" fill="var(--gw-nav, #1d1d1d)"></circle><line x1="4" y1="13" x2="20" y2="13"></line><circle cx="16" cy="13" r="2.4" fill="var(--gw-nav, #1d1d1d)"></circle><line x1="4" y1="19" x2="20" y2="19"></line><circle cx="7" cy="19" r="2.4" fill="var(--gw-nav, #1d1d1d)"></circle></svg>
+          <span>Policies</span>
+          <span style="{{ rulesCountStyle }}">148</span>
+        </div>
+
+        <div onClick="{{ goTraffic }}" style="{{ navTraffic }}" style-hover="filter: brightness(1.25)">
+          <div style="{{ navBarTraffic }}"></div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+          <span>Live traffic</span>
+        </div>
+
+        <div onClick="{{ goIdentity }}" style="{{ navIdentity }}" style-hover="filter: brightness(1.25)">
+          <div style="{{ navBarIdentity }}"></div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="10" cy="8" r="3.4"></circle><path d="M4 20c0-3.4 2.7-5.6 6-5.6 1.2 0 2.3.3 3.2.8"></path><polyline points="15 18 17.5 20.5 22 15.5"></polyline></svg>
+          <span>Identity</span>
+        </div>
+
+        <div onClick="{{ goVault }}" style="{{ navVault }}" style-hover="filter: brightness(1.25)">
+          <div style="{{ navBarVault }}"></div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="8" cy="15" r="4"></circle><path d="M10.8 12.2 20 3"></path><path d="M17 3h4v4"></path></svg>
+          <span>Zero-knowledge vault</span>
+        </div>
+
+        <div style="height: 1px; background: var(--gw-stroke-soft, #2b2b2b); margin: 8px 12px;"></div>
+
+        <div onClick="{{ goLogs }}" style="{{ navLogs }}" style-hover="filter: brightness(1.25)">
+          <div style="{{ navBarLogs }}"></div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><rect x="4" y="3" width="16" height="18"></rect><line x1="8" y1="8" x2="16" y2="8"></line><line x1="8" y1="12" x2="16" y2="12"></line><line x1="8" y1="16" x2="13" y2="16"></line></svg>
+          <span>Audit log</span>
+        </div>
+
+        <div style="margin-top: auto; display: flex; flex-direction: column; gap: 2px;">
+          <div onClick="{{ toggleTheme }}" style="display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px 0 15px; border-radius: 5px; cursor: pointer; font-size: 13.5px; color: var(--gw-text2, #d0d0d0);" style-hover="background: var(--gw-hover, rgba(255,255,255,0.06))">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="2" x2="12" y2="4"></line><line x1="12" y1="20" x2="12" y2="22"></line><line x1="2" y1="12" x2="4" y2="12"></line><line x1="20" y1="12" x2="22" y2="12"></line><line x1="5" y1="5" x2="6.5" y2="6.5"></line><line x1="17.5" y1="17.5" x2="19" y2="19"></line><line x1="19" y1="5" x2="17.5" y2="6.5"></line><line x1="6.5" y1="17.5" x2="5" y2="19"></line></svg>
+            <span>{{ themeLabel }}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px 0 15px; border-radius: 5px; cursor: pointer; font-size: 13.5px; color: var(--gw-text2, #d0d0d0);" style-hover="background: var(--gw-hover, rgba(255,255,255,0.06))">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="flex-shrink: 0;"><line x1="4" y1="8" x2="20" y2="8"></line><circle cx="15" cy="8" r="2.4" fill="var(--gw-nav, #1d1d1d)"></circle><line x1="4" y1="16" x2="20" y2="16"></line><circle cx="9" cy="16" r="2.4" fill="var(--gw-nav, #1d1d1d)"></circle></svg>
+            <span>Settings</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="gw-scroll" style="flex: 1; min-width: 0; overflow-y: auto; background: var(--gw-content, #202020);">
+
+        <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+        <div style="padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 20px;">
+
+          <div style="display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div style="font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gw-text3, #949494);">Perimeter · edge-lon-04</div>
+              <div style="font-size: 30px; font-weight: 600; letter-spacing: -0.02em; color: var(--gw-text, #ffffff);">Overview</div>
+            </div>
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px 0 12px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--gw-text, #ffffff); background: var(--gw-ctl, #2d2d2d); border: 1px solid var(--gw-stroke, #3a3a3a);" style-hover="background: var(--gw-ctl-hi, #343434)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><polyline points="20 4 20 8 16 8"></polyline></svg>
+                Re-scan
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px 0 12px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--gw-ac-fg, #002138); background: var(--gw-ac, #4cc2ff); border: 1px solid rgba(255,255,255,0.07);" style-hover="filter: brightness(1.08)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21s7.5-3.8 7.5-9.5V5.3L12 2.5 4.5 5.3v6.2C4.5 17.2 12 21 12 21z"></path><polyline points="9 11.8 11.4 14.2 15.4 9.6"></polyline></svg>
+                Enforce now
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 5px; background: var(--gw-info, rgba(76,194,255,0.09)); border: 1px solid var(--gw-info-stroke, rgba(76,194,255,0.28));">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gw-ac, #4cc2ff)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="12" cy="12" r="9.2"></circle><polyline points="8.2 12.2 11 15 16 9.4"></polyline></svg>
+            <div style="font-size: 13.5px; color: var(--gw-text, #ffffff);"><span style="font-weight: 600;">Vault sealed.</span> <span style="color: var(--gw-text2, #d0d0d0);">All 148 policies verified against attestation keys 4 minutes ago. No plaintext left the enclave.</span></div>
+            <div style="margin-left: auto; font-size: 13px; font-weight: 500; color: var(--gw-ac, #4cc2ff); cursor: pointer; flex-shrink: 0;">Proof log</div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+            <div style="padding: 16px 18px 18px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--gw-text3, #949494);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gw-red, #ff99a4)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><line x1="6" y1="18" x2="18" y2="6"></line></svg>
+                Blocked today
+              </div>
+              <div style="font-size: 32px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; color: var(--gw-text, #ffffff);">12,481</div>
+              <div style="font-size: 12px; color: var(--gw-text3, #949494);"><span style="color: var(--gw-red, #ff99a4); font-weight: 600;">+18%</span> vs. yesterday</div>
+            </div>
+            <div style="padding: 16px 18px 18px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--gw-text3, #949494);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gw-green, #6ccb5f)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12.5 9.5 18 20 6.5"></polyline></svg>
+                Allowed sessions
+              </div>
+              <div style="font-size: 32px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; color: var(--gw-text, #ffffff);">1.24M</div>
+              <div style="font-size: 12px; color: var(--gw-text3, #949494);">99.2% verified in &lt; 3&thinsp;ms</div>
+            </div>
+            <div style="padding: 16px 18px 18px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--gw-text3, #949494);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gw-ac, #4cc2ff)" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="13" x2="20" y2="13"></line><line x1="4" y1="19" x2="20" y2="19"></line></svg>
+                Active policies
+              </div>
+              <div style="font-size: 32px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; color: var(--gw-text, #ffffff);">148</div>
+              <div style="font-size: 12px; color: var(--gw-text3, #949494);">6 pending review</div>
+            </div>
+            <div style="padding: 16px 18px 18px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--gw-text3, #949494);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gw-ac, #4cc2ff)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7.5-3.8 7.5-9.5V5.3L12 2.5 4.5 5.3v6.2C4.5 17.2 12 21 12 21z"></path></svg>
+                Trust posture
+              </div>
+              <div style="display: flex; align-items: baseline; gap: 6px;">
+                <div style="font-size: 32px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; color: var(--gw-text, #ffffff);">98</div>
+                <div style="font-size: 14px; color: var(--gw-text3, #949494);">/ 100</div>
+              </div>
+              <div style="height: 4px; border-radius: 2px; background: var(--gw-track, #3a3a3a); overflow: hidden;"><div style="width: 98%; height: 100%; background: var(--gw-green, #6ccb5f);"></div></div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); gap: 12px;">
+
+            <div style="padding: 18px 20px 20px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 18px;">
+              <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                <div style="font-size: 15px; font-weight: 600; color: var(--gw-text, #ffffff);">Inspected flows · last 24 hours</div>
+                <div style="display: flex; align-items: center; gap: 14px; margin-left: auto; font-size: 12px; color: var(--gw-text3, #949494);">
+                  <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 9px; height: 9px; border-radius: 2px; background: var(--gw-ac, #4cc2ff);"></span>Allowed</div>
+                  <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 9px; height: 9px; border-radius: 2px; background: var(--gw-red, #ff99a4);"></span>Blocked</div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: flex-end; gap: 5px; height: 190px;">
+                <sc-for list="{{ bars }}" as="b" hint-placeholder-count="24">
+                  <div style="{{ b.colStyle }}" style-hover="opacity: 0.75">
+                    <div style="{{ b.blockStyle }}"></div>
+                    <div style="{{ b.allowStyle }}"></div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--gw-text3, #949494); border-top: 1px solid var(--gw-stroke-soft, #303030); padding-top: 10px;">
+                <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>now</span>
+              </div>
+            </div>
+
+            <div style="padding: 18px 20px 20px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 16px;">
+              <div style="font-size: 15px; font-weight: 600; color: var(--gw-text, #ffffff);">Top denied origins</div>
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <sc-for list="{{ origins }}" as="o" hint-placeholder-count="5">
+                  <div style="display: flex; flex-direction: column; gap: 7px;">
+                    <div style="display: flex; align-items: baseline; gap: 10px; font-size: 13px;">
+                      <span style="font-weight: 500; color: var(--gw-text, #ffffff); font-variant-numeric: tabular-nums;">{{ o.ip }}</span>
+                      <span style="color: var(--gw-text3, #949494); font-size: 12px;">{{ o.geo }}</span>
+                      <span style="margin-left: auto; color: var(--gw-text2, #d0d0d0); font-variant-numeric: tabular-nums;">{{ o.hits }}</span>
+                    </div>
+                    <div style="height: 4px; border-radius: 2px; background: var(--gw-track, #3a3a3a); overflow: hidden;">
+                      <div style="{{ o.barStyle }}"></div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); overflow: hidden;">
+            <div style="display: flex; align-items: center; gap: 12px; padding: 16px 20px;">
+              <div style="font-size: 15px; font-weight: 600; color: var(--gw-text, #ffffff);">Recent decisions</div>
+              <div style="display: flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 500; color: var(--gw-green, #6ccb5f); background: var(--gw-green-bg, rgba(108,203,95,0.12));">
+                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--gw-green, #6ccb5f);"></span>Streaming
+              </div>
+              <div style="margin-left: auto; font-size: 13px; font-weight: 500; color: var(--gw-ac, #4cc2ff); cursor: pointer;">Open audit log</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 92px minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.4fr) 110px; gap: 0; font-size: 11.5px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gw-text3, #949494); padding: 0 20px 8px; border-bottom: 1px solid var(--gw-stroke-soft, #303030);">
+              <div>Time</div><div>Source</div><div>Destination</div><div>Policy</div><div>Verdict</div>
+            </div>
+            <sc-for list="{{ events }}" as="e" hint-placeholder-count="6">
+              <div style="display: grid; grid-template-columns: 92px minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.4fr) 110px; align-items: center; padding: 11px 20px; font-size: 13px; color: var(--gw-text2, #d0d0d0); border-bottom: 1px solid var(--gw-stroke-soft, #292929);" style-hover="background: var(--gw-hover, rgba(255,255,255,0.04))">
+                <div style="font-variant-numeric: tabular-nums; color: var(--gw-text3, #949494);">{{ e.time }}</div>
+                <div style="font-variant-numeric: tabular-nums; color: var(--gw-text, #ffffff);">{{ e.src }}</div>
+                <div style="font-variant-numeric: tabular-nums;">{{ e.dst }}</div>
+                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ e.policy }}</div>
+                <div><span style="{{ e.verdictStyle }}">{{ e.verdict }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isRules }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 20px;">
+
+          <div style="display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div style="font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gw-text3, #949494);">Zero trust · deny by default</div>
+              <div style="font-size: 30px; font-weight: 600; letter-spacing: -0.02em; color: var(--gw-text, #ffffff);">Policies</div>
+            </div>
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; height: 32px; width: 230px; padding: 0 12px; border-radius: 4px; background: var(--gw-ctl, #2d2d2d); border: 1px solid var(--gw-stroke, #3a3a3a); border-bottom-color: var(--gw-underline, #4a4a4a);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gw-text3, #949494)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="16" y1="16" x2="21" y2="21"></line></svg>
+                <span style="font-size: 13px; color: var(--gw-text3, #949494);">Search policies</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px 0 12px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--gw-ac-fg, #002138); background: var(--gw-ac, #4cc2ff);" style-hover="filter: brightness(1.08)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                New policy
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div style="display: flex; padding: 3px; border-radius: 5px; background: var(--gw-ctl, #2d2d2d); border: 1px solid var(--gw-stroke, #3a3a3a); gap: 2px;">
+              <div onClick="{{ setFilterAll }}" style="{{ segAll }}">All 148</div>
+              <div onClick="{{ setFilterDeny }}" style="{{ segDeny }}">Deny 91</div>
+              <div onClick="{{ setFilterReview }}" style="{{ segReview }}">Needs review 6</div>
+            </div>
+            <div style="margin-left: auto; font-size: 12.5px; color: var(--gw-text3, #949494);">Last compiled 4 min ago · SHA 9f2c…41ab</div>
+          </div>
+
+          <div style="border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); overflow: hidden;">
+            <div style="display: grid; grid-template-columns: 54px minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1.1fr) 118px 96px; align-items: center; padding: 12px 20px; font-size: 11.5px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gw-text3, #949494); border-bottom: 1px solid var(--gw-stroke-soft, #303030);">
+              <div>On</div><div>Policy</div><div>Principal</div><div>Target</div><div>Action</div><div style="text-align: right;">Matches</div>
+            </div>
+            <sc-for list="{{ rules }}" as="r" hint-placeholder-count="8">
+              <div style="display: grid; grid-template-columns: 54px minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1.1fr) 118px 96px; align-items: center; padding: 13px 20px; font-size: 13px; color: var(--gw-text2, #d0d0d0); border-bottom: 1px solid var(--gw-stroke-soft, #292929);" style-hover="background: var(--gw-hover, rgba(255,255,255,0.04))">
+                <div onClick="{{ r.toggle }}" style="{{ r.trackStyle }}"><div style="{{ r.knobStyle }}"></div></div>
+                <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+                  <span style="font-weight: 500; color: var(--gw-text, #ffffff); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.name }}</span>
+                  <span style="font-size: 11.5px; color: var(--gw-text3, #949494);">{{ r.zone }}</span>
+                </div>
+                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.principal }}</div>
+                <div style="font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.target }}</div>
+                <div><span style="{{ r.actionStyle }}">{{ r.action }}</span></div>
+                <div style="text-align: right; font-variant-numeric: tabular-nums;">{{ r.hits }}</div>
+              </div>
+            </sc-for>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 13px 20px; font-size: 12.5px; color: var(--gw-text3, #949494);">
+              <span>Showing 8 of 148</span>
+              <span style="margin-left: auto; color: var(--gw-ac, #4cc2ff); font-weight: 500; cursor: pointer;">Load more</span>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isTraffic }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 20px;">
+          <div style="display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div style="font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gw-text3, #949494);">Inline inspection · 3,204 open flows</div>
+              <div style="font-size: 30px; font-weight: 600; letter-spacing: -0.02em; color: var(--gw-text, #ffffff);">Live traffic</div>
+            </div>
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--gw-text, #ffffff); background: var(--gw-ctl, #2d2d2d); border: 1px solid var(--gw-stroke, #3a3a3a);" style-hover="background: var(--gw-ctl-hi, #343434)">Pause stream</div>
+              <div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--gw-text, #ffffff); background: var(--gw-ctl, #2d2d2d); border: 1px solid var(--gw-stroke, #3a3a3a);" style-hover="background: var(--gw-ctl-hi, #343434)">Export PCAP</div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+            <div style="padding: 16px 18px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 8px;">
+              <div style="font-size: 12.5px; font-weight: 500; color: var(--gw-text3, #949494);">Throughput</div>
+              <div style="font-size: 26px; font-weight: 600; letter-spacing: -0.02em; color: var(--gw-text, #ffffff);">8.4 Gb/s</div>
+            </div>
+            <div style="padding: 16px 18px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 8px;">
+              <div style="font-size: 12.5px; font-weight: 500; color: var(--gw-text3, #949494);">Decision latency p99</div>
+              <div style="font-size: 26px; font-weight: 600; letter-spacing: -0.02em; color: var(--gw-text, #ffffff);">2.7 ms</div>
+            </div>
+            <div style="padding: 16px 18px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 8px;">
+              <div style="font-size: 12.5px; font-weight: 500; color: var(--gw-text3, #949494);">Unattested devices</div>
+              <div style="font-size: 26px; font-weight: 600; letter-spacing: -0.02em; color: var(--gw-red, #ff99a4);">3</div>
+            </div>
+          </div>
+
+          <div style="border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); overflow: hidden;">
+            <div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) 92px 110px 100px 118px; align-items: center; padding: 12px 20px; font-size: 11.5px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gw-text3, #949494); border-bottom: 1px solid var(--gw-stroke-soft, #303030);">
+              <div>Principal</div><div>Destination</div><div>Proto</div><div>Bytes</div><div>Attested</div><div>State</div>
+            </div>
+            <sc-for list="{{ flows }}" as="f" hint-placeholder-count="9">
+              <div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) 92px 110px 100px 118px; align-items: center; padding: 12px 20px; font-size: 13px; color: var(--gw-text2, #d0d0d0); border-bottom: 1px solid var(--gw-stroke-soft, #292929);" style-hover="background: var(--gw-hover, rgba(255,255,255,0.04))">
+                <div style="color: var(--gw-text, #ffffff); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ f.principal }}</div>
+                <div style="font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ f.dst }}</div>
+                <div>{{ f.proto }}</div>
+                <div style="font-variant-numeric: tabular-nums;">{{ f.bytes }}</div>
+                <div>{{ f.attested }}</div>
+                <div><span style="{{ f.stateStyle }}">{{ f.state }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isOther }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gw-text3, #949494);">Not in this demo yet</div>
+            <div style="font-size: 30px; font-weight: 600; letter-spacing: -0.02em; color: var(--gw-text, #ffffff);">{{ otherTitle }}</div>
+          </div>
+          <div style="padding: 40px; border-radius: 7px; background: var(--gw-card, #2b2b2b); border: 1px solid var(--gw-stroke, #383838); display: flex; flex-direction: column; gap: 12px; align-items: flex-start;">
+            <svg width="28" height="28" viewBox="0 0 96 96" fill="none">
+              <g fill="var(--gw-text3, #949494)"><rect x="0" y="0" width="30" height="30"></rect><rect x="33" y="0" width="30" height="30"></rect><rect x="0" y="33" width="30" height="30"></rect><rect x="66" y="33" width="30" height="30"></rect><rect x="0" y="66" width="30" height="30"></rect><rect x="33" y="66" width="30" height="30"></rect><rect x="66" y="66" width="30" height="30"></rect></g>
+              <rect x="66" y="0" width="30" height="30" fill="#ec3013"></rect>
+              <rect x="34" y="34" width="28" height="28" stroke="var(--gw-text3, #949494)" stroke-width="2.5"></rect>
+            </svg>
+            <div style="font-size: 15px; font-weight: 600; color: var(--gw-text, #ffffff);">{{ otherTitle }} is next on the build list</div>
+            <div style="font-size: 13.5px; line-height: 1.6; max-width: 520px; color: var(--gw-text2, #d0d0d0);">Overview, Policies and Live traffic are built out. Tell me which of these to design next and I'll add it to the same shell.</div>
+            <div onClick="{{ goDashboard }}" style="margin-top: 6px; display: flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--gw-ac-fg, #002138); background: var(--gw-ac, #4cc2ff);" style-hover="filter: brightness(1.08)">Back to Overview</div>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+    </div>
+
+    <div style="height: 30px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px; font-size: 11.5px; background: var(--gw-titlebar, #1d1d1d); border-top: 1px solid var(--gw-stroke-soft, #2b2b2b); color: var(--gw-text3, #949494);">
+      <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--gw-green, #6ccb5f);"></span>Enforcing · deny by default</div>
+      <div>Enclave attested · TPM 2.0</div>
+      <div style="margin-left: auto; font-variant-numeric: tabular-nums;">v1.0.0 · build 2481</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1480,&quot;height&quot;:980},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#4cc2ff&quot;,&quot;options&quot;:[&quot;#4cc2ff&quot;,&quot;#0067c0&quot;,&quot;#60cdff&quot;,&quot;#ec3013&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Appearance&quot;}}">
+const DARK = {
+  '--gw-desk': 'radial-gradient(120% 120% at 15% 0%, #2a3340 0%, #141414 55%, #0e0e0e 100%)',
+  '--gw-bg': '#202020', '--gw-titlebar': '#1d1d1d', '--gw-nav': '#1d1d1d', '--gw-content': '#202020',
+  '--gw-card': '#2b2b2b', '--gw-ctl': '#2d2d2d', '--gw-ctl-hi': '#343434',
+  '--gw-stroke': '#383838', '--gw-stroke-soft': '#2e2e2e', '--gw-underline': '#4a4a4a',
+  '--gw-text': '#ffffff', '--gw-text2': '#d0d0d0', '--gw-text3': '#949494',
+  '--gw-hover': 'rgba(255,255,255,0.055)', '--gw-track': '#3a3a3a', '--gw-mark': '#f3f2f2',
+  '--gw-ac': '#4cc2ff', '--gw-ac-fg': '#002138', '--gw-ac-hi': '#78d0ff',
+  '--gw-ac-bg': 'rgba(76,194,255,0.13)', '--gw-info': 'rgba(76,194,255,0.09)', '--gw-info-stroke': 'rgba(76,194,255,0.28)',
+  '--gw-red': '#ff99a4', '--gw-red-bg': 'rgba(255,153,164,0.13)',
+  '--gw-green': '#6ccb5f', '--gw-green-bg': 'rgba(108,203,95,0.13)',
+  '--gw-amber': '#fce100', '--gw-amber-bg': 'rgba(252,225,0,0.13)',
+  '--gw-neutral-bg': 'rgba(255,255,255,0.07)'
+};
+const LIGHT = {
+  '--gw-desk': 'radial-gradient(120% 120% at 15% 0%, #dfe6ef 0%, #d2d2d2 55%, #c4c4c4 100%)',
+  '--gw-bg': '#f3f3f3', '--gw-titlebar': '#f0f0f0', '--gw-nav': '#f0f0f0', '--gw-content': '#f3f3f3',
+  '--gw-card': '#ffffff', '--gw-ctl': '#fdfdfd', '--gw-ctl-hi': '#f5f5f5',
+  '--gw-stroke': '#e2e2e2', '--gw-stroke-soft': '#e8e8e8', '--gw-underline': '#c8c8c8',
+  '--gw-text': '#1a1a1a', '--gw-text2': '#4a4a4a', '--gw-text3': '#6f6f6f',
+  '--gw-hover': 'rgba(0,0,0,0.045)', '--gw-track': '#e6e6e6', '--gw-mark': '#201e1d',
+  '--gw-ac': '#0067c0', '--gw-ac-fg': '#ffffff', '--gw-ac-hi': '#0055a3',
+  '--gw-ac-bg': 'rgba(0,103,192,0.1)', '--gw-info': 'rgba(0,103,192,0.07)', '--gw-info-stroke': 'rgba(0,103,192,0.22)',
+  '--gw-red': '#c42b1c', '--gw-red-bg': 'rgba(196,43,28,0.09)',
+  '--gw-green': '#0f7b0f', '--gw-green-bg': 'rgba(15,123,15,0.1)',
+  '--gw-amber': '#9d5d00', '--gw-amber-bg': 'rgba(157,93,0,0.1)',
+  '--gw-neutral-bg': 'rgba(0,0,0,0.055)'
+};
+
+const RULES = [
+  ['Deny all inbound, default', 'perimeter / wan', 'any', '0.0.0.0/0', 'Deny', '4.1M', true],
+  ['Payments enclave · mTLS only', 'segment / pci', 'svc:checkout', '10.42.8.0/24', 'Verify', '812k', true],
+  ['Contractor laptops → SaaS', 'identity / external', 'group:contractors', 'saas allowlist', 'Verify', '64.2k', true],
+  ['Block unattested devices', 'posture / global', 'device:!tpm', 'any', 'Deny', '1.2k', true],
+  ['Admin plane, break-glass', 'segment / mgmt', 'group:sre-oncall', '10.0.0.0/28', 'Allow', '318', false],
+  ['Egress to sanctioned regions', 'perimeter / egress', 'any', 'geo:allowlist', 'Allow', '2.9M', true],
+  ['Legacy SMB, deprecate 15 Aug', 'segment / office', 'subnet:office', '10.20.4.0/22', 'Deny', '9.8k', false],
+  ['DNS exfil heuristics', 'inspection / dns', 'any', 'udp/53', 'Deny', '41.7k', true]
+];
+const ORIGINS = [
+  ['185.220.101.42', 'Amsterdam, NL', '3,912', 100],
+  ['45.155.205.18', 'Sofia, BG', '2,604', 67],
+  ['104.28.196.7', 'Ashburn, US', '1,881', 48],
+  ['91.240.118.203', 'Kyiv, UA', '1,344', 35],
+  ['203.0.113.77', 'Singapore, SG', '860', 22]
+];
+const EVENTS = [
+  ['14:22:08', '10.20.4.19', '185.220.101.42', 'Deny all inbound, default', 'Blocked'],
+  ['14:22:07', 'svc:checkout', '10.42.8.11', 'Payments enclave · mTLS only', 'Verified'],
+  ['14:22:05', '10.20.7.88', 'udp/53', 'DNS exfil heuristics', 'Blocked'],
+  ['14:22:03', 'u:a.okafor', 'saas allowlist', 'Contractor laptops → SaaS', 'Verified'],
+  ['14:22:01', '10.20.4.201', '10.20.4.0/22', 'Legacy SMB, deprecate 15 Aug', 'Blocked'],
+  ['14:21:58', 'device:LT-4471', 'any', 'Block unattested devices', 'Quarantined']
+];
+const FLOWS = [
+  ['svc:checkout', '10.42.8.11:8443', 'mTLS', '4.2 MB', 'Yes', 'Verified'],
+  ['u:m.haddad', 'vault.gunwall.int', 'QUIC', '812 KB', 'Yes', 'Verified'],
+  ['device:LT-4471', '10.20.4.0/22', 'SMB', '0 B', 'No', 'Quarantined'],
+  ['u:a.okafor', 'files.acme-saas.com', 'TLS 1.3', '18.9 MB', 'Yes', 'Verified'],
+  ['svc:ledger', '10.42.8.24:5432', 'mTLS', '96.4 MB', 'Yes', 'Verified'],
+  ['10.20.7.88', '185.220.101.42:443', 'TLS 1.3', '0 B', 'No', 'Blocked'],
+  ['svc:notify', 'api.postmark.io', 'TLS 1.3', '340 KB', 'Yes', 'Verified'],
+  ['u:r.silva', 'desk.gunwall.int', 'RDP', '2.1 MB', 'Partial', 'Inspecting'],
+  ['10.20.4.19', 'udp/53', 'DNS', '1.4 KB', 'Yes', 'Blocked']
+];
+const BARS = [22,18,15,12,10,9,14,26,44,58,66,71,68,74,79,72,64,55,48,52,60,49,36,28];
+const BLOCKED = [6,4,3,3,2,2,4,7,11,9,8,14,10,9,22,13,9,7,6,8,10,7,5,4];
+
+class Component extends DCLogic {
+  state = { page: 'dashboard', theme: null, filter: 'all', off: {} };
+
+  get theme() { return this.state.theme || this.props.theme || 'dark'; }
+
+  applyTheme() {
+    const vars = this.theme === 'light' ? LIGHT : DARK;
+    const accent = this.props.accent;
+    const root = document.documentElement.style;
+    Object.entries(vars).forEach(([k, v]) => root.setProperty(k, v));
+    if (accent) {
+      root.setProperty('--gw-ac', accent);
+      root.setProperty('--gw-ac-fg', this.theme === 'light' ? '#ffffff' : '#002138');
+      root.setProperty('--gw-ac-bg', 'color-mix(in srgb, ' + accent + ' 14%, transparent)');
+      root.setProperty('--gw-info', 'color-mix(in srgb, ' + accent + ' 9%, transparent)');
+      root.setProperty('--gw-info-stroke', 'color-mix(in srgb, ' + accent + ' 30%, transparent)');
+    }
+  }
+  componentDidMount() { this.applyTheme(); }
+  componentDidUpdate() { this.applyTheme(); }
+
+  nav(active) {
+    return {
+      position: 'relative', display: 'flex', alignItems: 'center', gap: '12px',
+      height: '38px', padding: '0 12px 0 15px', borderRadius: '5px', cursor: 'pointer',
+      fontSize: '13.5px', fontWeight: active ? 600 : 400,
+      color: 'var(--gw-text)',
+      background: active ? 'var(--gw-hover)' : 'transparent'
+    };
+  }
+  navBar(active) {
+    return {
+      position: 'absolute', left: '-9px', top: '50%', transform: 'translateY(-50%)',
+      width: '3px', height: active ? '17px' : '0px', borderRadius: '2px',
+      background: 'var(--gw-ac)', transition: 'height 140ms ease'
+    };
+  }
+  pill(fg, bg) {
+    return {
+      display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: '4px',
+      fontSize: '11.5px', fontWeight: 600, letterSpacing: '0.01em',
+      color: 'var(' + fg + ')', background: 'var(' + bg + ')'
+    };
+  }
+  verdictPill(v) {
+    if (v === 'Blocked') return this.pill('--gw-red', '--gw-red-bg');
+    if (v === 'Verified') return this.pill('--gw-green', '--gw-green-bg');
+    if (v === 'Quarantined') return this.pill('--gw-amber', '--gw-amber-bg');
+    if (v === 'Inspecting') return this.pill('--gw-ac', '--gw-ac-bg');
+    if (v === 'Deny') return this.pill('--gw-red', '--gw-red-bg');
+    if (v === 'Allow') return this.pill('--gw-green', '--gw-green-bg');
+    return this.pill('--gw-ac', '--gw-ac-bg');
+  }
+  seg(active) {
+    return {
+      display: 'flex', alignItems: 'center', height: '26px', padding: '0 12px',
+      borderRadius: '4px', fontSize: '12.5px', cursor: 'pointer',
+      fontWeight: active ? 600 : 400,
+      color: active ? 'var(--gw-ac-fg)' : 'var(--gw-text2)',
+      background: active ? 'var(--gw-ac)' : 'transparent'
+    };
+  }
+  go(page) { return () => this.setState({ page }); }
+
+  renderVals() {
+    const p = this.state.page;
+    const max = 90;
+    const bars = BARS.map((a, i) => {
+      const blocked = BLOCKED[i];
+      return {
+        colStyle: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '2px', height: '100%', cursor: 'default' },
+        blockStyle: { height: (blocked / max * 100) + '%', background: 'var(--gw-red)', borderRadius: '2px 2px 0 0' },
+        allowStyle: { height: (a / max * 100) + '%', background: 'var(--gw-ac)', borderRadius: blocked ? '0' : '2px 2px 0 0' }
+      };
+    });
+    const titles = { identity: 'Identity', vault: 'Zero-knowledge vault', logs: 'Audit log' };
+    const filtered = RULES.filter(r => {
+      if (this.state.filter === 'deny') return r[4] === 'Deny';
+      if (this.state.filter === 'review') return r[6] === false;
+      return true;
+    });
+    return {
+      isDashboard: p === 'dashboard', isRules: p === 'rules', isTraffic: p === 'traffic',
+      isOther: p === 'identity' || p === 'vault' || p === 'logs',
+      otherTitle: titles[p] || '',
+      goDashboard: this.go('dashboard'), goRules: this.go('rules'), goTraffic: this.go('traffic'),
+      goIdentity: this.go('identity'), goVault: this.go('vault'), goLogs: this.go('logs'),
+      navDashboard: this.nav(p === 'dashboard'), navRules: this.nav(p === 'rules'),
+      navTraffic: this.nav(p === 'traffic'), navIdentity: this.nav(p === 'identity'),
+      navVault: this.nav(p === 'vault'), navLogs: this.nav(p === 'logs'),
+      navBarDashboard: this.navBar(p === 'dashboard'), navBarRules: this.navBar(p === 'rules'),
+      navBarTraffic: this.navBar(p === 'traffic'), navBarIdentity: this.navBar(p === 'identity'),
+      navBarVault: this.navBar(p === 'vault'), navBarLogs: this.navBar(p === 'logs'),
+      rulesCountStyle: { marginLeft: 'auto', fontSize: '11.5px', fontVariantNumeric: 'tabular-nums', color: 'var(--gw-text3)' },
+      themeLabel: this.theme === 'light' ? 'Dark theme' : 'Light theme',
+      toggleTheme: () => this.setState({ theme: this.theme === 'light' ? 'dark' : 'light' }),
+      segAll: this.seg(this.state.filter === 'all'),
+      segDeny: this.seg(this.state.filter === 'deny'),
+      segReview: this.seg(this.state.filter === 'review'),
+      setFilterAll: () => this.setState({ filter: 'all' }),
+      setFilterDeny: () => this.setState({ filter: 'deny' }),
+      setFilterReview: () => this.setState({ filter: 'review' }),
+      bars,
+      origins: ORIGINS.map(([ip, geo, hits, pct]) => ({
+        ip, geo, hits,
+        barStyle: { width: pct + '%', height: '100%', background: pct > 60 ? 'var(--gw-red)' : 'var(--gw-ac)' }
+      })),
+      events: EVENTS.map(([time, src, dst, policy, verdict]) => ({
+        time, src, dst, policy, verdict, verdictStyle: this.verdictPill(verdict)
+      })),
+      flows: FLOWS.map(([principal, dst, proto, bytes, attested, state]) => ({
+        principal, dst, proto, bytes, attested, state, stateStyle: this.verdictPill(state)
+      })),
+      rules: filtered.map(([name, zone, principal, target, action, hits, defOn]) => {
+        const on = this.state.off[name] === undefined ? defOn : !this.state.off[name];
+        return {
+          name, zone, principal, target, action, hits,
+          actionStyle: this.verdictPill(action),
+          toggle: () => this.setState(s => ({ off: Object.assign({}, s.off, { [name]: on }) })),
+          trackStyle: {
+            width: '38px', height: '20px', borderRadius: '10px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', padding: '2px',
+            transition: 'background 140ms ease',
+            background: on ? 'var(--gw-ac)' : 'transparent',
+            border: '1px solid ' + (on ? 'transparent' : 'var(--gw-underline)')
+          },
+          knobStyle: {
+            width: '14px', height: '14px', borderRadius: '50%',
+            transform: on ? 'translateX(18px)' : 'translateX(2px)',
+            transition: 'transform 140ms cubic-bezier(0.2,0,0,1)',
+            background: on ? 'var(--gw-ac-fg)' : 'var(--gw-text2)'
+          }
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
