@@ -204,38 +204,34 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.104
+## 6. This build — 0.99.106
 
-### A. The upgrade path — the important one
+### A. Network scan (1 minute)
 
-This is the first build designed to be upgraded INTO, so test it as an upgrade.
+1. **Network scan → Scan network.** Two new columns after LIKELY OS.
+2. **`10.10.0.1` (your router)** must now read **Router (gateway)** under LIKELY OS
+   and **Gateway** under NOTE — not "Linux / macOS / Android".
+3. **More devices should show a HOST name** than the one you had. Windows machines
+   and your ZimaOS box are the likely ones to appear.
+4. **Phones should show "Randomised MAC"** under NOTE.
 
-1. **Before building**, note roughly how many apps are listed under **Applications**
-   and pick one you have allowed.
-2. Build and publish 0.99.104 **into the folder you already use**.
-3. Run it. **Settings → About** — the profile path should now read
-   `C:\ProgramData\GunWall`, not a path inside the publish folder.
-4. **Applications must still list your previous rules**, including the app you noted.
-   Nothing should be asking for approval again.
-5. **Export diagnostics** and look for:
-   `Profile migrated: found an existing profile at ... and copied it to C:\ProgramData\GunWall`
-   That line appears once, on the first run only.
+**FAIL:** the router still reads Linux/macOS/Android, or the scan now hangs — the
+NetBIOS query adds up to 0.9s per unresolved device and runs in parallel, so the
+scan should not feel slower.
 
-**FAIL:** Applications is empty, or everything starts prompting again. Stop and tell
-me — do not re-approve, because the old profile is still on disk and recoverable.
+### B. IPv6 GeoIP (2 minutes)
 
-6. **Then publish again over the top**, run, and confirm the rules are still there.
-   That is the behaviour you asked for and the whole point of the change.
+5. **Connections → Download GeoIP data.** It now fetches two files.
+6. **Export diagnostics** and look for:
+   `GeoIP: N IPv4 ranges, M IPv6 ranges loaded.` — **M must be greater than zero.**
+7. **Connections page**, look for any row whose REMOTE is an IPv6 address
+   (contains colons). Its LOCATION should now show a country and ASN instead of
+   being blank.
+8. **Traffic → the country table** should account for more destinations than before.
 
-### B. The map (30 seconds)
-
-7. **Traffic** page. The connection arcs should now be **solid red and clearly
-   visible** in both themes, including the thin ones to quiet countries.
-8. The dots should still grow with traffic volume — that is now the only thing
-   encoding volume.
-
-**FAIL:** arcs still fade out for low-traffic countries, or they now overwhelm the
-map beneath them.
+**FAIL:** M is zero, or v6 rows still show no country. If the log says the IPv6
+table could not be downloaded, that is the soft-failure path working — send it and
+I will look at the URL.
 
 ## 7. What to send
 

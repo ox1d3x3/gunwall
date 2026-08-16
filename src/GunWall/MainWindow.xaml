@@ -2417,7 +2417,9 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="HOST" Width="280" DisplayMemberBinding="{Binding Host}" />
+                                <GridViewColumn Header="HOST" Width="240" DisplayMemberBinding="{Binding Host}" />
+                                <GridViewColumn Header="LIKELY OS" Width="200" DisplayMemberBinding="{Binding Os}" />
+                                <GridViewColumn Header="NOTE" Width="160" DisplayMemberBinding="{Binding Kind}" />
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -3063,6 +3065,19 @@
                             <Button Content="Remove all GunWall filtering"
                                     Style="{StaticResource ActionButton}" HorizontalAlignment="Left"
                                     Click="RemoveAll_Click" />
+
+                            <!-- Deliberately the SECOND thing here, and deliberately
+                                 described as keeping the rules. The two are easy to
+                                 confuse and only one of them is destructive to the
+                                 ruleset, so the wording has to carry that difference
+                                 rather than the button label alone. -->
+                            <TextBlock Text="RESET SETTINGS" Style="{StaticResource SectionLabel}"
+                                       Margin="0,22,0,0" />
+                            <TextBlock Text="Puts every preference back to its default - theme, colours, font, interface scale, alert categories, popup timeout, logging and DNS options. Your application rules, custom rules and blocklists are kept, and filtering is not touched."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <Button Content="Reset settings to defaults"
+                                    Style="{StaticResource ActionButton}" HorizontalAlignment="Left"
+                                    Click="ResetSettings_Click" />
                         </StackPanel>
                     </Border>
 

@@ -59,8 +59,11 @@ GunWall's own reporting — you can confirm it independently at any time with
 
 **What beta still means**
 
-It runs as a single elevated process. There is no service isolation, no code
-signing and no installer yet — those are the last items before 1.0. It has been
+It runs as a single elevated process, with no service isolation yet — that is the
+last architectural item before 1.0. GunWall is **deliberately not code-signed and
+has no installer**: a certificate is a recurring cost this project will not pass
+on to anyone, and a portable executable is a design choice rather than a gap. It
+has been
 soak-tested for 11 hours at a time with zero errors, but on a small number of
 machines. Your Windows build, your VPN and your antivirus are combinations nobody
 has tried yet.
@@ -142,9 +145,23 @@ high-risk machine and the Internet just yet.
    download `GunWall.exe`.
 2. Right-click → **Run as administrator**. There is no installer and nothing is
    written outside the folder you run it from.
-3. Windows SmartScreen will warn you, because the build is not code-signed yet —
-   signing is a pre-1.0 item. Choose **More info → Run anyway**, or verify the
-   checksum published with the release first.
+3. **Windows SmartScreen will warn you.** GunWall is not code-signed — a
+   certificate costs money every year, and this is a free MIT project that would
+   rather not charge for one or beg for it. Choose **More info → Run anyway**, or
+   verify the SHA-256 checksum published with each release first, which proves the
+   file is the one that was built from this source.
+
+**Verifying what you downloaded.** Each release lists the SHA-256 of the
+executable. Check it before running:
+
+```
+certutil -hashfile GunWall.exe SHA256
+```
+
+If that matches the published value, the file is byte-for-byte the one built from
+this source. That is a stronger guarantee than a code-signing certificate gives
+you — a signature says *someone paid for a certificate*, a checksum against public
+source says *this is that source, compiled*.
 
 **Removing it.** GunWall is portable, but its filters live in the Windows kernel
 and persist by design. **Use *Settings → Remove all GunWall filtering* before
@@ -195,7 +212,7 @@ are the point of the exercise.
 | *Settings → Popup stays open for* | Defaults to **Never**, so a prompt waits for you. If you set a timeout, anything you do not answer in that window gets a **permanent** rule — including programs you needed. |
 | *Settings → Run GunWall when Windows starts* | Off by default. With it off, filters still enforce after a reboot but nothing can prompt you, so new programs fail silently until you open GunWall. |
 
-> **Antivirus note:** a firewall legitimately performs the same low-level operations malware does — modifying the hosts file, changing DNS, creating packet filters, terminating processes. Some behavioral engines may flag an **unsigned** build with a generic heuristic detection, especially when run from a `Downloads` folder. Build in **Release**, run from a stable folder, and add GunWall to your antivirus exclusions if needed. Code signing is the long-term fix.
+> **Antivirus note:** a firewall legitimately performs the same low-level operations malware does — modifying the hosts file, changing DNS, creating packet filters, terminating processes. Some behavioral engines may flag an **unsigned** build with a generic heuristic detection, especially when run from a `Downloads` folder. Build in **Release**, run from a stable folder, and add GunWall to your antivirus exclusions if needed. This is the trade that comes with an unsigned open-source binary, and it is a deliberate one — the source is here to read and build yourself.
 
 ---
 
@@ -349,8 +366,14 @@ process cannot lock out other administrators without locking out itself.
 **Needs a guaranteed recovery path before it can ship** — boot-time filters ·
 Windows Update service repair · compressed and encrypted profile formats.
 
-**Before 1.0** — service split and privilege separation · code signing, an
-installer and auto-update · multi-language interface.
+**Before 1.0** — service split and privilege separation · multi-language
+interface.
+
+**Deliberately not planned** — code signing and an installer. A certificate is a
+recurring cost, and GunWall stays portable by design: one executable, no registry
+entries, no install state, updated by replacing the file. If someone donates an
+open-source signing certificate it will be used gladly, but nothing here is
+waiting on it.
 
 ### Known limitations
 
@@ -363,8 +386,9 @@ Stated plainly, because you will meet them:
 - **A closed GunWall cannot prompt.** Filters persist, so an unapproved program is
   correctly denied — but with the app shut, there is no prompt and no way to grant
   access, and the program simply fails. Enable *Run at startup* if that matters.
-- **No code signing yet**, so SmartScreen and some antivirus heuristics will
-  complain about an unsigned binary performing firewall operations.
+- **Not code-signed**, by choice, so SmartScreen and some antivirus heuristics
+  will complain about an unsigned binary performing firewall operations. Verify
+  the published SHA-256 instead.
 - **Single elevated process.** Service isolation is a pre-1.0 item.
 
 ---

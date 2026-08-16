@@ -36,12 +36,14 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 *Managed C# throughout. No kernel risk.*
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
 - ✅ **Service & network-app categorization** — connections name the hosted service, and services can be blocked individually by their own identity.
-- ☐ **Complete IP and country coverage for every connection** — some connections show no country, so the map and the country tables under-report. Three causes found so far, in order of size:
+- ◐ **Complete IP and country coverage for every connection** — ✅ **IPv6 GeoIP**, the largest of the three gaps: the table was IPv4-only, so every v6 destination resolved to nothing. Remaining: — some connections show no country, so the map and the country tables under-report. Three causes found so far, in order of size:
   - **The local GeoIP table is IPv4-only** (`geoip-v4.tsv`). Every IPv6 destination resolves to nothing. The self-hosted API mode already answers v6, so the gap is the bundled data rather than the lookup.
   - **The map draws only the top ten countries**, so quiet destinations never appear on it even when the Connections table knows them.
   - **Addresses outside the 532k ranges** return empty and are shown blank rather than as "unknown", which reads as a failure rather than a limit.
 
   Note on VPNs: switching the VPN's exit country will not change the map, and that is correct — the map plots the destinations traffic is going **to**, not the tunnel it travels through. A dedicated "where am I exiting from" readout would be a separate feature, and is worth considering.
+
+- ◐ **Richer network scan** — ✅ likely OS from ping TTL · ✅ **gateway detection** from the routing table, which is a fact rather than a guess · ✅ **NetBIOS names** for devices with no reverse-DNS record · ✅ **randomised-MAC detection**, so a phone shows why its vendor is unknown. Remaining: **vendor from the MAC OUI**, which needs a downloadable lookup table rather than data written from memory, and **mDNS/Bonjour names** for Apple and IoT devices.
 
 - ☐ **Pico / subsystem process support** — identify WSL and other minimal-process traffic.
 - ✅ **App icons in the list** — each executable's icon is shown in the Application column.

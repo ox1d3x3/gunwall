@@ -6,6 +6,54 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.106] — 2026-08-16
+
+### Network scan
+The reported scan showed nine devices, **one hostname**, and the router labelled *"Linux / macOS / Android"* — technically right, since OpenWrt is Linux, and useless.
+
+- **Gateways are now identified from the routing table** and shown as **Router (gateway)**. The machine already holds this fact; a fact beats an inference wherever one is available. The TTL guess is overridden for those rows.
+- **NetBIOS name lookup** when reverse DNS returns nothing. A PTR record only exists if the router bothered to publish one — on a home network it usually did not — whereas Windows machines, NAS boxes and printers all answer a node status query about themselves. The query is 50 bytes built by hand and **every length in the reply is bounds-checked before it is read**, because a reply is unauthenticated data from an unknown device on the local network.
+- **Randomised MACs are named as such.** Bit 1 of the first octet is the locally-administered flag, so this is computed from the address rather than looked up. Every modern phone randomises its MAC per network, which is why vendor lookups return nothing for them — and *"Randomised MAC"* explains that, where a blank cell reads as a failure rather than as a privacy feature working correctly.
+
+Vendor-from-OUI is deliberately **not** included. It needs a real lookup table, and writing thirty OUI prefixes from memory is precisely the kind of recalled data this project does not ship. It stays on the roadmap as needing a downloadable file.
+
+### IPv6 GeoIP
+The GeoIP table was IPv4-only, so **every IPv6 destination resolved to nothing** — the map, the country tables and the Connections `LOCATION` column all under-reported by however much of a machine's traffic happens to be v6.
+
+A parallel 128-bit table now loads from the same CC0 iptoasn dataset. `UInt128` rather than a pair of `ulong`s: it compares correctly without hand-written carry logic, and a 128-bit comparison split across two words is the kind of arithmetic that is wrong once and then wrong forever in a table nobody re-reads. Verified against real Cloudflare and Google prefixes.
+
+The v6 download fails **softly**: if it cannot be fetched the v4 table is kept and the log says so. Losing v6 coverage means some destinations show no country; losing v4 as well would mean almost none do.
+
+**A bug caught while wiring it:** the v6 lookup was placed behind `if (!Loaded)` — a v4 flag — so a machine holding only the v6 table would have resolved nothing while reporting a loaded database. The v6 path is now independent.
+---
+
+## [0.99.105] — 2026-08-16
+
+0.99.104 confirmed on hardware: 208/208 filters, zero errors, every rule pointing at a real file.
+
+### Added — Reset settings to defaults
+Under *Settings → Reset firewall*, beside *Remove all GunWall filtering*, because the two were easy to confuse and only one of them is destructive to the ruleset. The wording carries that difference rather than the button label alone: **rules, custom rules and blocklists are kept, and filtering is not touched.**
+
+Implemented **by field kind, not by listing setters**. A hand-written list of thirty-odd preferences is a thing to forget, and the one forgotten is the one the user was trying to reset. Collections hold rules, filter ids, known apps and saved adapter DNS, so they are preserved wholesale; scalars are preferences and return to a fresh `StoreData`'s values. 35 preferences reset.
+
+Six scalars are **state, not preference**, and are named explicitly: `StrictMode` and `LockdownEngaged` — resetting those would silently switch protection off from a button captioned "reset settings" — plus `DnsRedirectActive`, the VirusTotal key, the chosen blocklist path and the live gaming session.
+
+**The first draft of that list was wrong**, and a simulation against the real `StoreData` caught it: it guarded `CustomListPath`, which does not exist, while the real `CustomBlocklistPath` sat in the reset set and would have taken the user's chosen list file with it. A keep-list entry that matches no property protects nothing and does so silently, so the code now logs any entry that names nothing.
+
+### Added — likely OS in the network scan
+The scan pings every address to force an ARP exchange, and **the reply was being thrown away**. It carries the sender's remaining TTL, which is the one identifying signal in that exchange that costs nothing to collect.
+
+Common stacks start at 64, 128 or 255 and each hop subtracts one, so rounding up recovers the original: **Linux / macOS / Android**, **Windows**, or **Router / embedded**. On a LAN the hop count is zero or one, which makes it reliable enough to show.
+
+It is a guess and is labelled *LIKELY OS*. TTL can be changed by policy, a hardened host may lie, and 64 covers four operating systems — so the label names the family it can actually distinguish rather than inventing precision. Anything unrecognised shows **blank**, not a nearest match: a confident wrong answer about what is on someone's network is worse than an empty cell.
+
+### Note — an honest limitation in the reset
+Theme, interface scale and font are re-applied immediately. The remaining settings controls are populated once during startup and there is no routine to repopulate them, so the dialog says plainly that a restart is needed for those checkboxes to show their new values — the settings themselves are already saved. A reset whose own settings page disagrees with it would be worse than one that asks for a restart.
+
+### Roadmap
+- **Richer network scan** — remaining: vendor from the MAC OUI, open-port fingerprinting for a more specific OS answer, and NetBIOS/mDNS names for devices with no reverse-DNS record.
+---
+
 ## [0.99.104] — 2026-08-15
 
 ### Updates no longer destroy the user's configuration

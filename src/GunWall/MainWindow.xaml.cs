@@ -357,7 +357,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.104 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.106 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4759,6 +4759,43 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         RefreshSwatches();
         RebuildAppsList(); // re-evaluate the dot brushes with the new colors
         if (ColorStatus != null) ColorStatus.Text = "Colors applied.";
+    }
+
+    private void ResetSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var answer = MessageBox.Show(
+            "Put every preference back to its default?\n\n"
+            + "Theme, colours, font, interface scale, alert categories, popup timeout, "
+            + "logging and DNS options will be reset.\n\n"
+            + "Your application rules, custom rules and blocklists are KEPT, and "
+            + "filtering is not touched.",
+            "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+
+        try
+        {
+            int n = _firewall.ResetSettingsToDefaults();
+
+            // Only the three that can be re-applied to a live window are applied
+            // here. The rest of the settings controls are populated once during
+            // startup and there is no routine to repopulate them, so they would
+            // still be showing the old values - and a reset whose own settings
+            // page disagrees with it is worse than one that asks for a restart.
+            // Said plainly rather than papered over.
+            ApplyTheme(_firewall.ThemeDark);
+            ApplyUiZoom();
+            ApplyUiFont(_firewall.UiFontFamily);
+
+            MessageBox.Show(
+                n == 0
+                    ? "Everything was already at its defaults."
+                    : $"{n} setting(s) reset. Your rules, blocklists and filtering are unchanged.\n\n"
+                      + "Theme, scale and font have been applied now. Restart GunWall for the "
+                      + "remaining checkboxes on this page to show their new values - the settings "
+                      + "themselves are already saved.",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
     }
 
     private void ResetColors_Click(object sender, RoutedEventArgs e)
