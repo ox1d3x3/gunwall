@@ -38,6 +38,24 @@ It is a **single portable executable**. The filtering path — the WFP engine, t
 
 ---
 
+## Project documentation
+
+| Document | What it covers |
+|---|---|
+| [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) | **The user guide** — installing, configuring, every screen, troubleshooting |
+| [`docs/RELEASE-NOTES.md`](docs/RELEASE-NOTES.md) | What is in the current release, in plain terms |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in every release |
+| [`ROADMAP.md`](ROADMAP.md) | What is open, grouped by area and risk |
+| [`ROADMAP_ADVANCED.md`](ROADMAP_ADVANCED.md) | Deeper design notes for the zero-trust features |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How GunWall is built: the WFP engine, filter weights, persistence, DNS, metering |
+| [`docs/TESTING.md`](docs/TESTING.md) | How to verify a build, and what to capture when something looks wrong |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Building from source, conventions, and the rules for touching kernel interop |
+| [`docs/HANDOVER.md`](docs/HANDOVER.md) | Maintainer notes: known failure patterns and the checks that catch them |
+| [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability, and the guarantees GunWall intends to hold |
+
+
+---
+
 ## Project status
 
 **GunWall is in public beta and is in daily use as a primary firewall.**
@@ -251,23 +269,6 @@ or ask for; the published SHA-256 proves more, against source you can read. A
 donated open-source certificate would be used gladly, but nothing waits on it.
 
 Full detail, grouped by area and risk, is in [`ROADMAP.md`](ROADMAP.md).
-
----
-
-## Project documentation
-
-| Document | What it covers |
-|---|---|
-| [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) | **The user guide** — installing, configuring, every screen, troubleshooting |
-| [`docs/RELEASE-NOTES.md`](docs/RELEASE-NOTES.md) | What is in the current release, in plain terms |
-| [`CHANGELOG.md`](CHANGELOG.md) | What changed in every release |
-| [`ROADMAP.md`](ROADMAP.md) | What is open, grouped by area and risk |
-| [`ROADMAP_ADVANCED.md`](ROADMAP_ADVANCED.md) | Deeper design notes for the zero-trust features |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How GunWall is built: the WFP engine, filter weights, persistence, DNS, metering |
-| [`docs/TESTING.md`](docs/TESTING.md) | How to verify a build, and what to capture when something looks wrong |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Building from source, conventions, and the rules for touching kernel interop |
-| [`docs/HANDOVER.md`](docs/HANDOVER.md) | Maintainer notes: known failure patterns and the checks that catch them |
-| [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability, and the guarantees GunWall intends to hold |
 
 ---
 
