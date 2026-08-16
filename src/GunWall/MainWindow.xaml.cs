@@ -357,7 +357,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.106 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.107 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4959,7 +4959,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Services.DiagnosticLog.BenignFaultSummary());
         Services.DiagnosticLog.Log(
             $"GeoIP: mode={(_firewall.GeoIpApiActive ? "api" : "local")}, " +
-            $"ranges={_firewall.GeoIpRangeCount:N0}, active={_firewall.GeoIpActive}" +
+            $"rangesV4={_firewall.GeoIpRangeCount:N0}, rangesV6={_firewall.GeoIpRangeCountV6:N0}, "
+            + $"active={_firewall.GeoIpActive}" +
             (_firewall.GeoIpActive ? "" : "  WARNING: no country/ASN data - those rules cannot match"));
         var tamper = _firewall.CheckIntegrity(repair: false);
         // Rules whose executable is gone. An application that updates into a

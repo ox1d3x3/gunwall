@@ -204,34 +204,48 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.106
+## 6. This build — 0.99.107
 
-### A. Network scan (1 minute)
+### A. Build the installer
 
-1. **Network scan → Scan network.** Two new columns after LIKELY OS.
-2. **`10.10.0.1` (your router)** must now read **Router (gateway)** under LIKELY OS
-   and **Gateway** under NOTE — not "Linux / macOS / Android".
-3. **More devices should show a HOST name** than the one you had. Windows machines
-   and your ZimaOS box are the likely ones to appear.
-4. **Phones should show "Randomised MAC"** under NOTE.
+1. Install **Inno Setup 6** (free): https://jrsoftware.org/isinfo.php
+2. Publish GunWall in **Release** to
+   `src\GunWall\bin\x64\Release\net8.0-windows\publish\win-x64\` — the same
+   profile settings you already use.
+3. Run: `iscc tools\installer\GunWall.iss`
+4. Output lands in `dist\GunWall-<version>-setup.exe`.
 
-**FAIL:** the router still reads Linux/macOS/Android, or the scan now hangs — the
-NetBIOS query adds up to 0.9s per unresolved device and runs in parallel, so the
-scan should not feel slower.
+**FAIL:** the script cannot find the executable — check the publish path above
+matches yours exactly, and tell me what yours is.
 
-### B. IPv6 GeoIP (2 minutes)
+### B. Install over your existing setup — the important test
 
-5. **Connections → Download GeoIP data.** It now fetches two files.
-6. **Export diagnostics** and look for:
-   `GeoIP: N IPv4 ranges, M IPv6 ranges loaded.` — **M must be greater than zero.**
-7. **Connections page**, look for any row whose REMOTE is an IPv6 address
-   (contains colons). Its LOCATION should now show a country and ASN instead of
-   being blank.
-8. **Traffic → the country table** should account for more destinations than before.
+5. **Note your rule count** under Applications first.
+6. Run the installer while GunWall is **running**. It should offer to close it,
+   and say plainly that closing does not stop filtering.
+7. After install: **Applications must still list every rule.** The profile lives in
+   ProgramData and the installer must not have touched it.
+8. Start menu entry exists; if you ticked startup, check
+   `HKLM\...\CurrentVersion\Run` has a `GunWall` value.
 
-**FAIL:** M is zero, or v6 rows still show no country. If the log says the IPv6
-table could not be downloaded, that is the soft-failure path working — send it and
-I will look at the URL.
+### C. The uninstaller — the reason this build exists
+
+9. **Note the filter count** in Settings → Check filter integrity.
+10. **Uninstall from Add/Remove Programs.**
+11. It should ask whether to delete your saved rules — **answer No**.
+12. **Verify the machine is clean**, in an admin prompt:
+
+    ```
+    netsh wfp show filters file=%TEMP%\gw.xml
+    ```
+
+    Search for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Expect zero matches.**
+
+**PASS:** zero. The uninstaller ran the teardown before removing files.
+**FAIL:** filters remain — tell me immediately, and run `GunWall.exe --unblock`
+from a copy of the executable to recover.
+
+13. **Reinstall.** Your rules should come back, because you chose to keep them.
 
 ## 7. What to send
 

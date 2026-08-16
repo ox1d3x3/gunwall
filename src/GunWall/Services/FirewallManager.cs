@@ -69,6 +69,10 @@ public sealed class FirewallManager : IDisposable
     public GeoIpService GeoIp => _geo;
     public bool GeoIpLoaded => _geo.Loaded;
     public int GeoIpRangeCount => _geo.RangeCount;
+    /// <summary>IPv6 ranges loaded. Reported separately because a single "ranges"
+    /// number that silently means "IPv4 only" is the kind of half-truth this log
+    /// exists to eliminate.</summary>
+    public int GeoIpRangeCountV6 => _geo.RangeCountV6;
     private string GeoIpCachePath => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v4.tsv");
     private string GeoIpCachePathV6 => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v6.tsv");
 

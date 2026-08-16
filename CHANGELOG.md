@@ -6,6 +6,34 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.107] — 2026-08-16
+
+0.99.106 confirmed: `GeoIP: 532,785 IPv4 ranges, 181,347 IPv6 ranges loaded`, the gateway identified as **Router (gateway)** rather than guessed at, a NetBIOS name recovered where reverse DNS had none, and randomised MACs named.
+
+### Added — an installer, for one reason
+`tools/installer/GunWall.iss`, built with Inno Setup, which is free and open-source. Convenience is **not** the reason it exists.
+
+GunWall's filters live in the Windows kernel and are marked persistent, so they keep enforcing after the application is closed, crashed or deleted. **Deleting the folder leaves a machine filtering traffic with nothing installed to manage or explain it** — the worst failure this project has, and one a portable build cannot fix on its own.
+
+The uninstaller runs `GunWall.exe --unblock` **before removing a single file**: every filter torn down, the sublayer cleared, the hosts file and adapter DNS restored. Everything else — shortcuts, Add/Remove Programs, upgrade in place — is incidental.
+
+It also:
+- **Never touches the profile on upgrade.** It lives in ProgramData precisely so replacing the application does not disturb it, and the installer honours that.
+- **Asks before deleting the profile on uninstall**, defaulting to keeping it, so a reinstall restores the user's rules. Deleting it silently would be indefensible; keeping it silently would leave data on a machine someone believes is clean.
+- **Offers run-at-startup checked**, because filters persist while nothing can prompt — a new program is then correctly denied and simply fails, with nothing on screen explaining why. Running at startup is what keeps the deny-with-a-prompt contract intact across a reboot.
+
+**A bug caught before it shipped:** the first draft gated the running-instance check on `CheckForMutexes('GunWallSingleInstance')`, a mutex GunWall does not create. It would have returned false every time, and the installer would have tried to overwrite a running executable — failing at the file copy, after the uninstall entry was already written. Checked against the source rather than assumed, and replaced with a process-name test.
+
+### Added — the update check finds the installer
+It reported the releases page, which is a correct answer and a poor one: it asks someone to work out which of several files they want, and the wrong choice is a firewall that does not upgrade cleanly. It now resolves the release's `-setup.exe` asset, falling back to the page when a release carries none.
+
+### Fixed
+- **Diagnostics reported only the IPv4 range count.** A single `ranges=532,785` that silently means "IPv4 only" is the kind of half-truth this log exists to eliminate. Now `rangesV4=` and `rangesV6=`.
+
+### Docs
+- The README stops hedging. GunWall is described as usable as your firewall, with the recovery paths verified against the kernel rather than against its own reporting, and the remaining beta caveats stated as what they are: one architectural item, no signing by choice, and a small number of test machines.
+---
+
 ## [0.99.106] — 2026-08-16
 
 ### Network scan

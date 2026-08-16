@@ -59,19 +59,20 @@ GunWall's own reporting — you can confirm it independently at any time with
 
 **What beta still means**
 
-It runs as a single elevated process, with no service isolation yet — that is the
-last architectural item before 1.0. GunWall is **deliberately not code-signed and
-has no installer**: a certificate is a recurring cost this project will not pass
-on to anyone, and a portable executable is a design choice rather than a gap. It
-has been
-soak-tested for 11 hours at a time with zero errors, but on a small number of
-machines. Your Windows build, your VPN and your antivirus are combinations nobody
-has tried yet.
+It runs as a single elevated process, with no service isolation — that is the last
+architectural item before 1.0, and it is what stands between GunWall and true
+tamper *prevention* as opposed to tamper detection.
 
-Use it. Report what breaks. Don't make it the only thing standing between a
-high-risk machine and the Internet just yet.
+GunWall is **deliberately not code-signed**: a certificate is a recurring cost this
+free MIT project will not pass on to anyone or beg for. Verify the published
+SHA-256 instead, which proves rather more than a signature does.
 
----
+It has been soak-tested for eleven hours at a stretch with zero errors, and every
+recovery path is verified against the kernel rather than against GunWall's own
+reporting — but on a small number of machines. Your Windows build, your VPN and
+your antivirus are combinations nobody has tried.
+
+Use it as your firewall. Report what breaks.
 
 ## Features
 
@@ -139,12 +140,24 @@ high-risk machine and the Internet just yet.
 - **Windows 10 (2004+) or Windows 11**, 64-bit
 - **Administrator privileges** — WFP cannot add or remove filters otherwise. The manifest requests elevation automatically.
 
-### Download (recommended)
+### Install (recommended)
 
 1. Go to **[Releases](https://github.com/ox1d3x3/gunwall/releases/latest)** and
-   download `GunWall.exe`.
-2. Right-click → **Run as administrator**. There is no installer and nothing is
-   written outside the folder you run it from.
+   download `GunWall-<version>-setup.exe`.
+2. Run it. It installs to Program Files, offers to start GunWall with Windows, and
+   registers an uninstaller.
+
+   **The uninstaller is the reason to prefer it.** GunWall's filters live in the
+   Windows kernel and persist after the application is gone, so deleting a folder
+   leaves a machine still filtering with nothing installed to manage it. The
+   uninstaller runs the full teardown first. Your rules and settings are kept
+   unless you ask for them to be removed.
+
+### Or run it portable
+
+1. Download `GunWall.exe` from the same release.
+2. Right-click → **Run as administrator**. Nothing is written outside the folder
+   you run it from — but read **Removing it** below before deleting anything.
 3. **Windows SmartScreen will warn you.** GunWall is not code-signed — a
    certificate costs money every year, and this is a free MIT project that would
    rather not charge for one or beg for it. Choose **More info → Run anyway**, or
@@ -366,14 +379,13 @@ process cannot lock out other administrators without locking out itself.
 **Needs a guaranteed recovery path before it can ship** — boot-time filters ·
 Windows Update service repair · compressed and encrypted profile formats.
 
-**Before 1.0** — service split and privilege separation · multi-language
-interface.
+**Before 1.0** — service split and privilege separation · one-click update from
+inside the application · multi-language interface.
 
-**Deliberately not planned** — code signing and an installer. A certificate is a
-recurring cost, and GunWall stays portable by design: one executable, no registry
-entries, no install state, updated by replacing the file. If someone donates an
-open-source signing certificate it will be used gladly, but nothing here is
-waiting on it.
+**Deliberately not planned** — code signing. A certificate is a recurring cost this
+project will not pass on or beg for; the published SHA-256 proves more, against
+public source. If someone donates an open-source certificate it will be used
+gladly, but nothing here waits on it.
 
 ### Known limitations
 

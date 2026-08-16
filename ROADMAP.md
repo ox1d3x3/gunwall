@@ -83,6 +83,8 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 - ☐ **Compressed / encrypted profile formats** — alongside today's plain JSON.
 
 ### Localization
+- ◐ **Installation and updates** — ✅ an **Inno Setup installer** (`tools/installer/GunWall.iss`, free and open-source) whose **uninstaller runs `--unblock` before removing anything**, so a machine cannot be left filtering by software that is gone. It keeps the profile in ProgramData across upgrades and asks before deleting it. ✅ the update check now resolves the release's installer asset rather than pointing at the releases page. Remaining: **downloading and launching that installer from inside the application**, which needs the installer to exist first — it now does.
+
 - ☐ **Multi-language UI** — externalize strings and ship language packs.
 
 ---
