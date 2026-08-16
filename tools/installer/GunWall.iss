@@ -40,7 +40,10 @@
 ; somewhere else - which is everyone who uses the Visual Studio publish dialog and
 ; picks their own folder.
 #ifndef PublishDir
-  #define PublishDir "..\..\src\GunWall\bin\x64\Release\net8.0-windows\publish\win-x64"
+  ; The maintainer's local publish folder, so a plain compile in the Inno Setup
+  ; IDE works with no arguments. Anyone else passes /DPublishDir - the guard
+  ; below names the problem if they forget.
+  #define PublishDir "C:\Users\TAMGG\Downloads\1.Gunwall-Installer\x64"
 #endif
 
 ; Fail early and say why, rather than emitting an installer around a missing file.
@@ -98,7 +101,19 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Name: "startup";     Description: "Start GunWall when Windows starts (recommended — see below)"; GroupDescription: "Startup:"
 
 [Files]
-Source: "{#AddBackslash(PublishDir)}{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+; THE WHOLE PUBLISH OUTPUT, not just the executable.
+;
+; A .NET single-file WPF publish is not actually a single file: the native
+; libraries stay beside it - D3DCompiler_47_cor3.dll, PenImc_cor3.dll,
+; PresentationNative_cor3.dll, vcruntime140_cor3.dll, wpfgfx_cor3.dll - along
+; with an Assets folder. Copying only GunWall.exe produced an installer that
+; completed happily and left an application that could not start at all.
+;
+; Wildcarded rather than listed, because a list of five DLL names is a list to
+; forget the sixth of, and the publish output is the authority on its own contents.
+Source: "{#AddBackslash(PublishDir)}*"; DestDir: "{app}"; \
+    Flags: ignoreversion recursesubdirs createallsubdirs; \
+    Excludes: "*.pdb,*.xml"
 Source: "..\..\README.md";  DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE";    DestDir: "{app}"; Flags: ignoreversion
 
@@ -115,15 +130,6 @@ Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExe}"; Tasks: desktopic
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start GunWall now"; \
     Flags: nowait postinstall skipifsilent runascurrentuser
-
-[UninstallRun]
-; THE POINT OF THIS FILE.
-;
-; Runs before any file is deleted. `--unblock` removes every filter, clears the
-; sublayer, restores the hosts file and any adapter DNS GunWall changed, and
-; exits without opening a window. RunOnceId keeps it to a single execution.
-Filename: "{app}\{#AppExe}"; Parameters: "--unblock"; \
-    RunOnceId: "GunWallUnblock"; Flags: waituntilterminated runhidden
 
 [Code]
 const
@@ -180,6 +186,48 @@ begin
     else
       RegDeleteValue(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'GunWall');
   end;
+end;
+
+{ THE POINT OF THIS FILE, and it has to be checked rather than fired and forgotten.
+
+  GunWall's filters live in the Windows kernel and are marked persistent, so they
+  keep enforcing after the application is gone. Removing the files without first
+  removing the filters leaves a machine filtering traffic with nothing installed to
+  manage or explain it.
+
+  This was an [UninstallRun] entry, which runs the command and ignores its result.
+  If --unblock had failed - a corrupt binary, a missing dependency, elevation
+  refused - the uninstall would have carried on and deleted the only thing capable
+  of undoing the damage. The exit code is now read: 0 clean, 1 filters remained,
+  anything else a failure to run at all. }
+function InitializeUninstall(): Boolean;
+var
+  ResultCode: Integer;
+  Exe: String;
+begin
+  Result := True;
+  Exe := ExpandConstant('{app}\{#AppExe}');
+  if not FileExists(Exe) then Exit;   { nothing to run; let the uninstall proceed }
+
+  if not Exec(Exe, '--unblock', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Result := MsgBox('GunWall could not be started to remove its firewall filters.'#13#10#13#10
+      + 'Those filters live in the Windows kernel and will KEEP FILTERING after '
+      + 'GunWall is uninstalled, with nothing left to undo them.'#13#10#13#10
+      + 'Uninstall anyway?', mbError, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+    Exit;
+  end;
+
+  if ResultCode = 1 then
+    MsgBox('GunWall removed its own filters, but some filters in its sublayer were '
+      + 'not created by this installation and were left in place.'#13#10#13#10
+      + 'They are inactive without rules behind them, and a restart clears any that '
+      + 'were not persistent.', mbInformation, MB_OK)
+  else if ResultCode <> 0 then
+    Result := MsgBox('Removing GunWall''s firewall filters failed (code '
+      + IntToStr(ResultCode) + ').'#13#10#13#10
+      + 'Those filters will KEEP FILTERING after GunWall is uninstalled.'#13#10#13#10
+      + 'Uninstall anyway?', mbError, MB_YESNO or MB_DEFBUTTON2) = IDYES;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

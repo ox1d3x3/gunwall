@@ -204,36 +204,41 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.107
+## 6. This build — 0.99.109
 
-### A. Build the installer
+### First: remove the broken install
 
-1. Install **Inno Setup** (free, current version is 7.x): https://jrsoftware.org/isdl.php
-2. Publish GunWall in **Release** to
-   `src\GunWall\bin\x64\Release\net8.0-windows\publish\win-x64\` — the same
-   profile settings you already use.
-3. Run: `iscc tools\installer\GunWall.iss`
-4. Output lands in `dist\GunWall-<version>-setup.exe`.
+The 0.99.108 install is missing its native libraries and cannot start. It also
+never ran, so it installed no filters and there is nothing to tear down.
 
-**FAIL:** the script cannot find the executable — check the publish path above
-matches yours exactly, and tell me what yours is.
+1. **Add/Remove Programs → GunWall → Uninstall.**
+2. It may warn that GunWall could not be started to remove its filters. **That is
+   correct and expected here** — the binary is broken. Answer **Yes** to continue.
+3. Delete `C:\MOD-x\1.Tools\GunWall` if anything remains.
 
-### B. Install over your existing setup — the important test
+### Then: rebuild and reinstall
 
-5. **Note your rule count** under Applications first.
-6. Run the installer while GunWall is **running**. It should offer to close it,
-   and say plainly that closing does not stop filtering.
-7. After install: **Applications must still list every rule.** The profile lives in
-   ProgramData and the installer must not have touched it.
-8. Start menu entry exists; if you ticked startup, check
-   `HKLM\...\CurrentVersion\Run` has a `GunWall` value.
+4. Publish again to `C:\Users\TAMGG\Downloads\1.Gunwall-Installer\x64`.
+5. Open `tools\installer\GunWall.iss` in the **Inno Setup IDE** and press **F9**.
+   No arguments needed now — the path is the default.
+6. **Check the installed folder.** It must contain the DLLs and `Assets`, not just
+   `GunWall.exe`:
 
-### C. The uninstaller — the reason this build exists
+   ```
+   dir "C:\MOD-x\1.Tools\GunWall"
+   ```
 
-9. **Note the filter count** in Settings → Check filter integrity.
-10. **Uninstall from Add/Remove Programs.**
-11. It should ask whether to delete your saved rules — **answer No**.
-12. **Verify the machine is clean**, in an admin prompt:
+   **PASS:** eight or more entries including `wpfgfx_cor3.dll` and `Assets`.
+   **FAIL:** only `GunWall.exe` — the wildcard did not take.
+
+7. **GunWall starts.** Turn protection on, approve an app.
+
+### Then: the uninstaller test that matters
+
+8. Note the filter count in **Settings → Check filter integrity**.
+9. **Uninstall.** It should NOT warn this time — the binary works, so the teardown
+   runs. Answer **No** when asked about deleting your rules.
+10. Verify, in an admin prompt:
 
     ```
     netsh wfp show filters file=%TEMP%\gw.xml
@@ -241,11 +246,7 @@ matches yours exactly, and tell me what yours is.
 
     Search for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Expect zero matches.**
 
-**PASS:** zero. The uninstaller ran the teardown before removing files.
-**FAIL:** filters remain — tell me immediately, and run `GunWall.exe --unblock`
-from a copy of the executable to recover.
-
-13. **Reinstall.** Your rules should come back, because you chose to keep them.
+11. **Reinstall.** Your rules should come back.
 
 ## 7. What to send
 

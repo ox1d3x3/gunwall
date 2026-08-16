@@ -6,6 +6,28 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.109] — 2026-08-16
+
+Two installer defects, reported from a real install that completed successfully and produced an application that would not start.
+
+### Fixed — the installer shipped one file out of eight
+It copied `GunWall.exe` and nothing else. **A .NET single-file WPF publish is not actually a single file:** the native libraries stay beside it — `D3DCompiler_47_cor3.dll`, `PenImc_cor3.dll`, `PresentationNative_cor3.dll`, `vcruntime140_cor3.dll`, `wpfgfx_cor3.dll` — along with an `Assets` folder. Without them the process cannot start at all.
+
+The installer completed happily, wrote its uninstall entry, and left a broken application. Now wildcarded over the whole publish output, `.pdb` and `.xml` excluded — wildcarded rather than listed, because a list of five DLL names is a list to forget the sixth of.
+
+### Fixed — the uninstaller never checked whether the teardown worked
+This is the worse of the two.
+
+`[UninstallRun]` runs a command and **ignores its result**. So if `--unblock` had failed — a corrupt binary, missing dependencies, elevation refused — the uninstall would have continued and deleted the only thing capable of undoing the damage, leaving a machine filtering in the kernel with nothing installed to stop it.
+
+That is precisely the failure the installer exists to prevent, and it was implemented in a way that could not detect it. **Ironically it would have failed on this very build**: the broken install could not start, so its teardown could not have run, and nothing would have said so.
+
+Replaced with `InitializeUninstall`, which reads the exit code — 0 clean, 1 filters remained, anything else a failure to run — and on failure **stops and asks**, spelling out that the filters will keep enforcing after GunWall is gone.
+
+### Changed
+- `PublishDir` now defaults to the maintainer's local publish folder, so pressing Compile in the Inno Setup IDE works with no arguments. Anyone else passes `/DPublishDir`, and the existing compile-time guard names the problem if they forget.
+---
+
 ## [0.99.108] — 2026-08-16
 
 ### The installer script no longer assumes the repository layout
