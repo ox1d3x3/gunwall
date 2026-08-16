@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace GunWall.Services;
 
 /// <summary>Decides, in one place, where GunWall keeps its data.
@@ -41,8 +43,13 @@ public static class ProfilePaths
         }
     }
 
-    /// <summary>A file inside the data folder, creating the folder if needed.</summary>
-    public static string File(string name)
+    /// <summary>A file inside the data folder, creating the folder if needed.
+    ///
+    /// Named FileIn rather than File: a static method called File in a class that
+    /// also calls System.IO.File shadows the type at every use site inside it, and
+    /// the compiler reports that as "File.Exists is a method, which is not valid in
+    /// the given context" — accurate and thoroughly unhelpful.</summary>
+    public static string FileIn(string name)
     {
         string dir = DataFolder;
         try { Directory.CreateDirectory(dir); } catch { }
@@ -60,9 +67,9 @@ public static class ProfilePaths
         try
         {
             string legacy = Path.Combine(AppContext.BaseDirectory, name);
-            string target = File(name);
-            if (!System.IO.File.Exists(legacy) || System.IO.File.Exists(target)) return;
-            System.IO.File.Copy(legacy, target);
+            string target = FileIn(name);
+            if (!File.Exists(legacy) || File.Exists(target)) return;
+            File.Copy(legacy, target);
             DiagnosticLog.Log($"Migrated {name} from the application folder to {DataFolder}, "
                             + "where replacing the executable will not remove it.");
         }

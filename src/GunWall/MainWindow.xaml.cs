@@ -35,7 +35,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // history: written there it was destroyed by every upgrade that replaced the
     // application, and left behind by every uninstall.
     private static string UsageHistoryPath =>
-        Services.ProfilePaths.File("usage-history.json");
+        Services.ProfilePaths.FileIn("usage-history.json");
     private readonly ObservableCollection<CountryStat> _trafficCountries = new();
     private readonly ObservableCollection<AppStat> _trafficApps = new();
 
@@ -1298,7 +1298,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Same reasoning: a 99,000-domain list the user chose to download should not
     // have to be fetched again after every update.
     private static string DnsPresetPath =>
-        Services.ProfilePaths.File("dns-blocklist-preset.txt");
+        Services.ProfilePaths.FileIn("dns-blocklist-preset.txt");
     private static readonly System.Net.Http.HttpClient _dnsPresetHttp =
         new() { Timeout = TimeSpan.FromSeconds(90) };
 

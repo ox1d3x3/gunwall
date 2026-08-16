@@ -1994,8 +1994,33 @@ def check_profile_survives_update():
                  "anything written there is destroyed by an upgrade and left "
                  "behind by an uninstall. Use ProfilePaths.File(...).")
 
+    # A member whose name is also a BCL type shadows that type inside its own
+    # class. ProfilePaths declared `File(string)` and every `File.Exists` in the
+    # same file then resolved to the method, which the compiler reports as
+    # "File.Exists is a method, which is not valid in the given context" - accurate
+    # and thoroughly unhelpful. Cheap to check, easy to reintroduce.
+    SHADOWS = {"File", "Path", "Directory", "Environment", "Convert", "Buffer", "Type"}
+    for f in _g.glob(str(APP / "**" / "*.cs"), recursive=True):
+        text = Path(f).read_text(encoding="utf-8")
+        for m in re.finditer(r"\b(?:public|private|internal)\s+(?:static\s+)?"
+                             r"[\w<>\[\]?]+\s+(\w+)\s*\(", text):
+            name = m.group(1)
+            if name not in SHADOWS:
+                continue
+            # Only a conflict if the same file ALSO uses the type. IValueConverter
+            # requires a method called Convert, and flagging that is how a check
+            # earns the right to be ignored - the first version reported twelve
+            # such and not one was a defect.
+            if not re.search(rf"\b{name}\.\w", text):
+                continue
+            line = text[:m.start()].count("\n") + 1
+            fail("profile-path",
+                 f"{Path(f).name}:{line} declares a member named '{name}' while the "
+                 f"same file uses {name}.something - the member shadows the type")
+
     if len(failures) == before:
-        notes.append("profile-path: shared by default, portable opt-in, legacy profile migrated")
+        notes.append("profile-path: shared by default, portable opt-in, legacy profile "
+                     "migrated, no stray writes, no shadowed BCL types")
 
 
 def check_version_consistency():

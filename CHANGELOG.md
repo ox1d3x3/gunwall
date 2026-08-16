@@ -8,6 +8,24 @@ All notable changes to GunWall are recorded here. Format follows
 
 ## [0.99.112] — 2026-08-16
 
+### Note — the first version of ProfilePaths did not compile
+Two mistakes in one small file, reported as seven build errors.
+
+It declared a method named `File`, which **shadows `System.IO.File` inside its own
+class** — so every `File.Exists` in that file resolved to the method. The compiler
+says *"File.Exists is a method, which is not valid in the given context"*, which is
+accurate and thoroughly unhelpful. Renamed to `FileIn`.
+
+It also omitted `using System.IO;`, which every other file in that folder declares
+explicitly. Neither error can occur on a machine that cannot compile WPF, so both
+were caught by the maintainer's build rather than here.
+
+`profile-path` now rejects a member whose name shadows a BCL type **when the same
+file also uses that type**. The first version of that check omitted the second
+condition and reported twelve conflicts, none of them defects — `IValueConverter`
+requires a method called `Convert`. A check that fires on correct code is how a
+check earns the right to be ignored.
+
 ### Three files were still being written beside the executable
 Found from a report that the uninstaller left files behind. It had, and the leftovers were the symptom rather than the fault.
 
