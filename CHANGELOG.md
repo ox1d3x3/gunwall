@@ -10,40 +10,29 @@ All notable changes to GunWall are recorded here. Format follows
 
 Documentation. No code changed.
 
-### Added
-- **`docs/DOCUMENTATION.md`** — the full user guide, in nineteen chapters across three parts:
+### Documentation
 
-  **Getting started** — what to expect before installing, both installation routes, a first-ten-minutes walkthrough, and the rule-evaluation model.
+- **A full user guide, `docs/DOCUMENTATION.md`** — nineteen chapters in three parts. *Getting started*: what to expect before installing, both installation routes, a first-ten-minutes walkthrough, and the rule-evaluation model. *Daily use*: the connection prompt read field by field, then every screen in turn. *Reference*: every setting, a step-by-step for "something is blocked and should not be", all three recovery routes with independent verification, uninstalling, and a FAQ.
 
-  **Daily use** — the connection prompt read field by field, then every screen: Applications, Rules, Security and blocklists, the DNS resolver, the monitoring screens, Windows services, and the network scanner.
+  Screens, controls and settings were read from the source rather than recalled, and limitations are stated where a reader meets them rather than buried: CDN-hosted domains cannot be blocked reliably, per-application byte counts are estimated unless precise metering is enabled, and the operating-system guess in the network scanner is a guess.
 
-  **Reference** — every setting, profiles and lockdown, a step-by-step procedure for *"something is blocked and should not be"*, all three recovery routes with independent verification, uninstalling, how to file a useful report, and a FAQ.
+- **README rewritten as a landing page**, 467 lines down to 235, with the square poster as its banner. It opens with the problem rather than the implementation, groups features by what a person wants — control, visibility, privacy, trust — and adds a *What GunWall will never do* section, because for a firewall the promises matter as much as the features.
 
-  It documents what the application actually contains — screens, controls and settings were read from the source rather than recalled — and states limitations plainly where they exist: CDN-hosted domains cannot be blocked reliably, per-application byte counts are estimated unless precise metering is enabled, and the OS guess in the network scanner is a guess.
+  Everything answering *how* rather than *what* moved into the guide. Build instructions moved to `CONTRIBUTING.md`, where someone compiling from source will look for them.
 
-### Changed
-- **README reduced from 467 lines to 318**, and turned back into what a landing page is for: what GunWall is, what it does, how to get it, and where to read more. The installation walkthrough, the recovery procedures and the architecture summary moved into the guide or the architecture document, each replaced by a short statement and a link.
+- **Roadmap rewritten as a plan.** It had accumulated the reasoning behind individual fixes, which belongs in this file. Each entry now says what works and what remains.
+
+- `docs/RELEASE-NOTES.md` and `branding/png/banner-square.png` added.
+
+- **`TESTING.md` rewritten in a neutral voice.** It had been written as one person addressing another — "what I cannot check", "tell me which" — and carried a per-build checklist that goes stale the moment a release ships. It now describes what the check suite can and cannot establish, and keeps one short section for build-specific checks that says so plainly when there are none.
+
+- **Collaboration-specific references removed** from the maintainer documents. Passages describing a particular machine and toolchain now describe the constraint itself, which is what future readers need.
+
+- Every link, cross-file anchor and image path across all eleven markdown files verified — anchors resolved against the target file's actual headings rather than assumed.
+
 ---
 
 ## [0.99.112] — 2026-08-16
-
-### Note — the first version of ProfilePaths did not compile
-Two mistakes in one small file, reported as seven build errors.
-
-It declared a method named `File`, which **shadows `System.IO.File` inside its own
-class** — so every `File.Exists` in that file resolved to the method. The compiler
-says *"File.Exists is a method, which is not valid in the given context"*, which is
-accurate and thoroughly unhelpful. Renamed to `FileIn`.
-
-It also omitted `using System.IO;`, which every other file in that folder declares
-explicitly. Neither error can occur on a machine that cannot compile WPF, so both
-were caught by the maintainer's build rather than here.
-
-`profile-path` now rejects a member whose name shadows a BCL type **when the same
-file also uses that type**. The first version of that check omitted the second
-condition and reported twelve conflicts, none of them defects — `IValueConverter`
-requires a method called `Convert`. A check that fires on correct code is how a
-check earns the right to be ignored.
 
 ### Three files were still being written beside the executable
 Found from a report that the uninstaller left files behind. It had, and the leftovers were the symptom rather than the fault.
@@ -64,6 +53,26 @@ Left in the application folder these were **destroyed by every upgrade that repl
 ### Added
 - `profile-path` now **fails on any use of `AppContext.BaseDirectory` outside `ProfilePaths`**, which is what would have caught this at the time. Shown to fail on a reintroduced stray write.
 - The same check no longer asserts *where* `RuleStore` puts things but *that* it asks `ProfilePaths` — the previous version tested an implementation and broke the moment the logic was correctly moved somewhere shared.
+
+### Note — the first version of ProfilePaths did not compile
+Two mistakes in one small file, reported as seven build errors.
+
+It declared a method named `File`, which **shadows `System.IO.File` inside its own
+class** — so every `File.Exists` in that file resolved to the method. The compiler
+says *"File.Exists is a method, which is not valid in the given context"*, which is
+accurate and thoroughly unhelpful. Renamed to `FileIn`.
+
+It also omitted `using System.IO;`, which every other file in that folder declares
+explicitly. Neither error can occur on a machine that cannot compile WPF, so both
+were caught by the maintainer's build rather than here.
+
+`profile-path` now rejects a member whose name shadows a BCL type **when the same
+file also uses that type**. The first version of that check omitted the second
+condition and reported twelve conflicts, none of them defects — `IValueConverter`
+requires a method called `Convert`. A check that fires on correct code is how a
+check earns the right to be ignored.
+
+
 ---
 
 ## [0.99.111] — 2026-08-16

@@ -1,15 +1,17 @@
 # Verifying a build
 
-This exists because of a structural problem in how GunWall is developed: the code
-is authored in a Linux container that **cannot compile WPF and cannot render a
-single pixel of it**. Everything checked before a release is a proxy. The build on
-X1 is the only place the software actually exists.
+GunWall is a WPF application whose filtering engine runs in the Windows kernel.
+Neither can be exercised by static analysis: the check suite in `tools/checks`
+reads source and can prove a great deal about it, but **it cannot render a pixel
+or install a filter**. Everything verified before a release is a proxy for the
+thing itself.
 
-So the screenshots are not a courtesy. They are the test suite.
+A build actually running on Windows is therefore the only complete test, and
+screenshots and diagnostics exports from it are evidence rather than courtesy.
 
-The list below is ordered so that the cheapest, highest-yield checks come first.
+The sections below are ordered so the cheapest, highest-yield checks come first.
 If time is short, do section 1 and stop — it catches the failure modes that have
-actually shipped.
+actually reached users.
 
 ---
 
@@ -119,41 +121,47 @@ Screens where something specific is worth a look:
 
 ---
 
-## 3. What to send, and in what form
+## 3. Reporting results
 
-**Screenshots.** Full window, not cropped — the sidebar and top bar are part of
-what is being checked, and cropping has hidden real problems. If something looks
-wrong in a small area, send the full window *and* a crop.
+**Full-window screenshots**, not crops — the sidebar and top bar are part of what
+is being checked, and cropping has hidden real problems. If something looks wrong
+in a small area, send the full window *and* a crop. Both themes, if the change
+touched colour.
 
-**Diagnostics export** after any release that touched sampling, WFP, DNS or
+**A diagnostics export** after any release that touched sampling, WFP, DNS or
 metering. Its value is the error section: zero sample-loop errors is the signal
 that a threading change held.
 
 **Say what you did.** "Switched themes, then opened Connections" is worth more
-than the screenshot alone, because it says which state the shot is showing.
+than the screenshot alone, because it establishes which state the shot shows.
 
-**Say what looks wrong in your own words.** Do not translate it into what you
-think the cause is. "The firewall says it is off when it is on" was a more useful
-report than a correct diagnosis would have been — the actual cause was invisible
-text, which no amount of looking at the toggle would have found.
+**Describe what looks wrong in plain terms**, rather than translating it into a
+presumed cause. "The firewall says it is off when it is on" proved more useful
+than a correct diagnosis would have been — the actual fault was invisible text,
+which no amount of examining the toggle would have found.
+
+**If a check reported success and the build is still wrong, say so.** A check that
+passes on a broken build is a worse problem than the bug it missed, and the
+pattern is recorded in [`HANDOVER.md`](HANDOVER.md) §2.10 each time it occurs.
 
 ---
 
-## 4. What I cannot check, and therefore what only you can
+## 4. What automated checks cannot establish
 
-Stated plainly so the division is clear:
+The check suite reads source. It cannot run the application, so the division is
+worth stating plainly:
 
-| I can verify | Only the build can |
+| The checks establish | Only running the build establishes |
 |---|---|
 | XAML is well-formed | That it renders |
 | Every `x:Name` the code touches exists | That the layout is not broken |
 | Every resource key resolves | That the colours are right |
 | No `StaticResource` against a swapped palette | That a theme switch repaints |
 | Icon geometry parses | That an icon looks like the thing it depicts |
-| Version consistent across four files | That it runs |
+| Version consistent across four files | That it starts at all |
 
-Anything in the right column that I state as fact is a claim I cannot support.
-When I say "this should work", read it as exactly that.
+Anything in the right column asserted as fact before a build has run is an
+unsupported claim. "This should work" means exactly that and nothing more.
 
 ---
 
@@ -204,63 +212,14 @@ Both were shipped repeatedly without ever being looked at.
 
 ---
 
-## 6. This build — 0.99.112
+## 6. Verifying the current build
 
-### A. The migration (2 minutes)
+Each release adds a short, specific checklist here covering what changed in it —
+the standing checks above cover everything else. When a build introduces no
+user-visible change, this section says so rather than inventing steps.
 
-1. **Before installing**, look in your current install folder:
+*No build-specific checks are outstanding.*
 
-   ```
-   dir "C:\MOD-x\1.Tools\GunWall"
-   ```
+---
 
-   Note whether `usage-history.json` or `dns-blocklist-preset.txt` are there.
-2. Rebuild the installer and **install over the top**.
-3. Start GunWall, then check:
-
-   ```
-   dir "C:\ProgramData\GunWall"
-   ```
-
-   **PASS:** those files are now there, and **Traffic → Data usage by app** still
-   shows your history.
-4. **Export diagnostics** — the log should carry a `Migrated ...` line for each
-   file that moved.
-
-### B. The uninstall leaves nothing behind
-
-5. Turn protection **on**, approve an app.
-6. **Uninstall** via Start Menu → Uninstall GunWall. Answer **No** to deleting
-   saved rules.
-7. Check the install folder:
-
-   ```
-   dir "C:\MOD-x\1.Tools\GunWall"
-   ```
-
-   **PASS:** the folder is gone, or holds nothing but `unins000.*` pending a
-   restart.
-   **FAIL:** `usage-history.json`, `dns-blocklist-preset.txt` or a `GunWallData`
-   folder remain — tell me which.
-8. Confirm the kernel is clean:
-
-   ```
-   netsh wfp show filters file=%TEMP%\gw.xml
-   ```
-
-   Search for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. **Expect zero.**
-9. `C:\ProgramData\GunWall` **should still exist** — you chose to keep your rules.
-   Reinstall and they come back.
-
-## 7. What to send
-
-Full-window screenshots, both themes if the change touches colour. For a layout
-bug, the whole window — a crop hides what the element is being measured against.
-
-Describe what you **see**, not what you think causes it. "The firewall says it is
-off when it is on" led to a bug that turned out to be invisible text; no amount of
-looking at the toggle would have found it.
-
-If a check reported success and the build is still wrong, say so plainly. A check
-that passes on a broken build is a worse problem than the bug, and it is recorded
-in `HANDOVER.md` §2.10 when it happens.
+<div align="center"><sub>Guard your network. Bismillah.</sub></div>
