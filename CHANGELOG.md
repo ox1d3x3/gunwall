@@ -6,12 +6,37 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.108] — 2026-08-16
+
+### The installer script no longer assumes the repository layout
+It read the published executable from a path hard-coded to the repo's own
+`bin\x64\Release\...\publish\win-x64`. Anyone using the Visual Studio publish
+dialog picks their own folder, so for them it simply would not compile — which is
+everyone except whoever wrote it.
+
+`PublishDir` and `OutDir` are now preprocessor parameters with the repo path as the
+default:
+
+```
+iscc /DPublishDir="C:\Users\You\Downloads\1.Gunwall-Installer\x64" tools\installer\GunWall.iss
+```
+
+It also **fails at compile time with a readable message** if `GunWall.exe` is not
+in that folder, rather than building an installer around a missing file.
+
+### Note — Inno Setup version
+The header said 6. **7.1.0 was released on 12 August 2026**, four days before this
+build, and was not in the author's knowledge. Corrected to 7.x, with a note that
+6.3 or later also compiles it, since `ArchitecturesAllowed=x64compatible` is the
+only version-sensitive directive in the file.
+---
+
 ## [0.99.107] — 2026-08-16
 
 0.99.106 confirmed: `GeoIP: 532,785 IPv4 ranges, 181,347 IPv6 ranges loaded`, the gateway identified as **Router (gateway)** rather than guessed at, a NetBIOS name recovered where reverse DNS had none, and randomised MACs named.
 
 ### Added — an installer, for one reason
-`tools/installer/GunWall.iss`, built with Inno Setup, which is free and open-source. Convenience is **not** the reason it exists.
+`tools/installer/GunWall.iss`, built with **Inno Setup 7.x** (6.3 or later also compiles it), which is free and open-source. Convenience is **not** the reason it exists.
 
 GunWall's filters live in the Windows kernel and are marked persistent, so they keep enforcing after the application is closed, crashed or deleted. **Deleting the folder leaves a machine filtering traffic with nothing installed to manage or explain it** — the worst failure this project has, and one a portable build cannot fix on its own.
 

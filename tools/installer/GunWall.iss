@@ -1,7 +1,12 @@
-; GunWall installer — Inno Setup 6
+; GunWall installer — Inno Setup 7.x (6.3+ also works)
 ;
 ; Build:  iscc tools\installer\GunWall.iss
 ; Inno Setup is free and open-source: https://jrsoftware.org/isinfo.php
+;
+; Version note: 7.x is current and is what to install. Nothing below uses a 7-only
+; feature — the sections and Pascal scripting here have been stable for years —
+; but ArchitecturesAllowed=x64compatible requires 6.3 or later, so anything older
+; than that will refuse to compile this file.
 ;
 ; ---------------------------------------------------------------------------
 ; WHY THIS EXISTS
@@ -24,6 +29,30 @@
 ; incidental.
 ; ---------------------------------------------------------------------------
 
+; WHERE THE PUBLISHED EXECUTABLE IS.
+;
+; Override it when your publish folder is not the repo default:
+;
+;   iscc /DPublishDir="C:\Users\You\Downloads\1.Gunwall-Installer\x64" tools\installer\GunWall.iss
+;
+; A parameter rather than a hard-coded path, because the first version assumed the
+; repository layout and would simply fail to compile for anyone publishing
+; somewhere else - which is everyone who uses the Visual Studio publish dialog and
+; picks their own folder.
+#ifndef PublishDir
+  #define PublishDir "..\..\src\GunWall\bin\x64\Release\net8.0-windows\publish\win-x64"
+#endif
+
+; Fail early and say why, rather than emitting an installer around a missing file.
+#if !FileExists(AddBackslash(PublishDir) + "GunWall.exe")
+  #error GunWall.exe was not found in PublishDir. Publish the project first, then pass /DPublishDir="<your publish folder>" to iscc.
+#endif
+
+; Where the finished installer is written. Overridable for the same reason.
+#ifndef OutDir
+  #define OutDir "..\..\dist"
+#endif
+
 #define AppName        "GunWall"
 #define AppPublisher   "ox1d3x3"
 #define AppUrl         "https://github.com/ox1d3x3/gunwall"
@@ -32,7 +61,7 @@
 ; Read the version straight from the built binary, so the installer cannot claim
 ; a version the executable does not have. One source of truth, checked by the
 ; build rather than typed here.
-#define AppVersion GetVersionNumbersString("..\..\src\GunWall\bin\x64\Release\net8.0-windows\publish\win-x64\" + AppExe)
+#define AppVersion GetVersionNumbersString(AddBackslash(PublishDir) + AppExe)
 
 [Setup]
 AppId={{9F2C41AB-7E33-4D58-9C1E-0B7A6D5E4F21}
@@ -46,7 +75,7 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\..\LICENSE
-OutputDir=..\..\dist
+OutputDir={#OutDir}
 OutputBaseFilename=GunWall-{#AppVersion}-setup
 Compression=lzma2/max
 SolidCompression=yes
@@ -69,8 +98,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Name: "startup";     Description: "Start GunWall when Windows starts (recommended — see below)"; GroupDescription: "Startup:"
 
 [Files]
-Source: "..\..\src\GunWall\bin\x64\Release\net8.0-windows\publish\win-x64\{#AppExe}"; \
-    DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AddBackslash(PublishDir)}{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\README.md";  DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE";    DestDir: "{app}"; Flags: ignoreversion
 

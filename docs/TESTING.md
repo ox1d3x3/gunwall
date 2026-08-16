@@ -208,7 +208,7 @@ Both were shipped repeatedly without ever being looked at.
 
 ### A. Build the installer
 
-1. Install **Inno Setup 6** (free): https://jrsoftware.org/isinfo.php
+1. Install **Inno Setup** (free, current version is 7.x): https://jrsoftware.org/isdl.php
 2. Publish GunWall in **Release** to
    `src\GunWall\bin\x64\Release\net8.0-windows\publish\win-x64\` — the same
    profile settings you already use.
