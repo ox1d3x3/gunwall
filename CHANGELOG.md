@@ -33,6 +33,13 @@ Documentation. No code changed.
 
 - `docs/RELEASE-NOTES.md` and `branding/png/banner-square.png` added.
 
+- **Banner artwork across every document**, with the statistics on it corrected
+  against the source: the hero banner had claimed four WFP filter layers where the
+  engine uses sixteen, and the social preview had claimed 41,000 blocked domains
+  where the shipped preset carries 99,557. Both understated the product, and a
+  number on a banner that disagrees with the application is a number nobody should
+  trust.
+
 - **Banner artwork across every document.** A hero banner heads the README and a
   slim banner heads each of the other ten, each shipping as a dark and a light
   variant and served through a `<picture>` element so the correct one appears
