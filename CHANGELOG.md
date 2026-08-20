@@ -17,6 +17,53 @@ All notable changes to GunWall are recorded here. Format follows
 
 ## [0.99.114] — 2026-08-16
 
+### Fixed — the IPv4-only assumptions left behind by the IPv6 work
+Three stale guards. Two were found by reading a screenshot of the Security screen;
+the third by then sweeping every `AddressFamily.InterNetwork` test in the project
+rather than stopping at the two that happened to be photographed.
+
+- **Country and ASN blocking ignored every IPv6 connection.** `ApplyEntityBlocks`
+  gated on `AddressFamily.InterNetwork` because, when it was written, the GeoIP
+  table was IPv4-only and the engine could not express a v6 address block. Both
+  were fixed; this guard was not, so the rules silently did nothing on v6 while
+  the interface claimed they were enforced. The "IPv4 only" note in that panel was
+  accurate and is now removed because the limitation is gone.
+
+- **The GeoIP status lines reported one number.** "Using local database (532,892
+  ranges)" silently meant IPv4 only — the same half-truth the diagnostics line
+  carried before 0.99.113. Both now show the IPv4 and IPv6 counts separately.
+
+- **"Block direct connections" let IPv6 through entirely.** The scope blocks
+  addresses that were never resolved via DNS, which is how peer-to-peer and
+  direct connections are identified — and it accepted IPv4 only, behind its own
+  hand-rolled private-range test. An application under that scope could reach any
+  IPv6 address it liked, unresolved and unblocked, while the interface reported
+  the scope as enforced.
+
+  Both halves of the chain already handled v6: the observation table records v6
+  answers, and per-application address blocks have installed v6 filters since
+  0.99.101. Only the guard was stopping it. It now delegates to
+  `IsPublicUnicast`, which covers both families and is what the rest of the
+  enforcement path uses — a second private-range test was how this one drifted.
+
+**The sweep also confirmed what is correctly IPv4-only**, so it is on record:
+ARP-based network scanning, the custom-rule validator (the rule engine takes v4
+literals, so accepting v6 would let users write rules that cannot apply), and the
+GeoIP v4 packer, which must reject v6 precisely so the caller falls through to the
+v6 table.
+
+### Added
+- `address-family`: the enforcement paths must handle both families or route
+  through `IsPublicUnicast`, and no hand-rolled IPv4 private-range test may remain
+  in an enforcement path. None of these three defects produced an error, so
+  nothing could have caught them — shown to fail on the reverted guard and on a
+  reinstated private-range test.
+
+- **Screenshots in the README** — a dashboard hero shot served as a dark/light
+  pair through `<picture>`, and a four-panel gallery covering Traffic, Security,
+  Activity and Settings. `docs/screenshots/README.md` records what each capture
+  shows and how to retake them.
+
 ### Added — screen shortcuts in the tray menu
 Right-clicking the tray icon now offers **Applications**, **Connections**,
 **Activity**, **Security** and **Settings** alongside the existing entries. Each

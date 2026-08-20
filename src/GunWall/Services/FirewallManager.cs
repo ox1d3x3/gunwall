@@ -525,8 +525,13 @@ public sealed class FirewallManager : IDisposable
         // Enforcement is IPv4-only (the WFP block path is v4). An IPv6 remote can still
         // be *enriched* in the connection list, but we can't install a block for it yet,
         // so bail before claiming one.
-        if (!System.Net.IPAddress.TryParse(remoteIp, out var ipAddr) ||
-            ipAddr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+        // v4 AND v6. This gated on IPv4 because the GeoIP table was IPv4-only and
+        // the engine could not express a v6 address block. Both were fixed, and
+        // this guard was left behind - so country and ASN rules silently ignored
+        // every IPv6 connection while the interface claimed they were enforced.
+        if (!System.Net.IPAddress.TryParse(remoteIp, out var ipAddr)) return null;
+        if (ipAddr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork &&
+            ipAddr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
             return null;
 
         var geo = _geo.Lookup(remoteIp);

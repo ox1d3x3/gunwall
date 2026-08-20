@@ -2495,7 +2495,7 @@
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
                                 <TextBlock Text="COUNTRY &amp; ASN BLOCKING" Style="{StaticResource SectionLabel}" />
-                                <TextBlock Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. IPv4 only. Set up a GeoIP data source above first."
+                                <TextBlock Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. Set up a GeoIP data source above first."
                                            Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                     <ComboBox x:Name="EntityTypeCombo" Width="130" Margin="0,0,8,0" SelectedIndex="0">

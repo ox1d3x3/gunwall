@@ -2066,6 +2066,55 @@ def check_tray_menu():
         notes.append(f"tray-menu: every shortcut maps to one of {len(tags)} screens")
 
 
+def check_enforcement_address_family():
+    """Enforcement paths must not silently exclude IPv6.
+
+    Three separate guards survived the IPv6 work because each was written when the
+    GeoIP table was IPv4-only and the engine could not express a v6 address block.
+    Both were fixed; the guards were not. Country and ASN rules ignored every IPv6
+    connection, and the "block direct connections" scope let an application reach
+    any v6 address unblocked — security features that silently applied to half the
+    internet while the interface said they were enforced.
+
+    None of it errored, so nothing caught it. It was found by reading a screenshot.
+
+    This asserts that the enforcement paths either handle both families or route
+    through IsPublicUnicast, which handles both. Deliberately narrow: plenty of
+    IPv4-only code is correct — ARP is v4 by nature, the custom-rule engine takes
+    v4 literals, and the GeoIP v4 packer must reject v6 so the caller falls through
+    to the v6 table.
+    """
+    before = len(failures)
+
+    paths = {
+        ("Services/FirewallManager.cs", "ApplyEntityBlocks"): "country and ASN rules",
+        ("Services/Wfp/WfpEngine.cs", "AddGlobalRemoteIpBlock"): "domain-derived address blocks",
+        ("Services/Wfp/WfpEngine.cs", "AddAppRemoteIpBlock"): "per-application address blocks",
+    }
+    for (rel, method), what in paths.items():
+        text = (APP / rel).read_text(encoding="utf-8")
+        m = re.search(rf"{method}\(.*?\n    \}}", text, re.S)
+        if not m:
+            fail("address-family", f"{method} not found in {rel}")
+            continue
+        if "InterNetworkV6" not in m.group(0):
+            fail("address-family",
+                 f"{method} handles IPv4 only, so {what} silently do nothing on an "
+                 "IPv6 connection while the interface reports them enforced")
+
+    # The direct-connection scope must use the shared classifier rather than its
+    # own private-range test, which is how it stayed v4-only.
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    if re.search(r"b\[0\] == 10 \|\| b\[0\] == 127", mw):
+        fail("address-family",
+             "a hand-rolled IPv4 private-range test remains in the enforcement "
+             "path; use IpScopeClassifier.IsPublicUnicast, which covers both "
+             "families and is the routine everything else uses")
+
+    if len(failures) == before:
+        notes.append("address-family: enforcement paths cover IPv4 and IPv6")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2114,6 +2163,7 @@ def main():
     check_kernel_verdict()
     check_map_contrast()
     check_tray_menu()
+    check_enforcement_address_family()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()

@@ -48,6 +48,17 @@ Then it shows you everything else: live connections, per-application bandwidth, 
 world map of where your traffic actually goes, and a searchable log of every
 decision with the reason attached.
 
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
+  <img src="docs/screenshots/dashboard-light.png" alt="GunWall dashboard showing protection status, live throughput and top talkers" width="100%">
+</picture>
+
+<sub>The dashboard — protection state, live throughput, and what is talking right now.</sub>
+
+</div>
+
 ---
 
 ## Why GunWall
@@ -98,6 +109,29 @@ decision with the reason attached.
 - **VirusTotal lookups** — only a file's hash is sent, never the file itself
 
 <div align="right"><sub><a href="docs/DOCUMENTATION.md">Every feature explained in the User Guide →</a></sub></div>
+
+---
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/traffic-dark.png" alt="Traffic map showing destination countries"/></td>
+<td width="50%"><img src="docs/screenshots/security-dark.png" alt="Security and privacy blocklists"/></td>
+</tr>
+<tr>
+<td><sub><b>Traffic</b> — where your connections actually go, by country and application.</sub></td>
+<td><sub><b>Security</b> — blocklists for telemetry, ads and trackers.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/activity-light.png" alt="Activity log of new connections"/></td>
+<td><img src="docs/screenshots/settings-dark.png" alt="Settings screen"/></td>
+</tr>
+<tr>
+<td><sub><b>Activity</b> — every new connection as it happens.</sub></td>
+<td><sub><b>Settings</b> — and yes, there is a light theme.</sub></td>
+</tr>
+</table>
 
 ---
 

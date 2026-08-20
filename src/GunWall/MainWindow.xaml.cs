@@ -1590,15 +1590,21 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 if (!procs.TryGetValue(c.ProcessId, out var pi) || pi.Path.Length == 0) continue;
                 if (!flagged.Contains(pi.Path.ToLowerInvariant())) continue;
 
-                // Public IPv4 only; everything local/LAN is out of scope here.
-                if (!System.Net.IPAddress.TryParse(c.RemoteAddress, out var ip) ||
-                    ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
-                var b = ip.GetAddressBytes();
-                bool isPrivate = b[0] == 10 || b[0] == 127 || b[0] == 0 ||
-                                 (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
-                                 (b[0] == 192 && b[1] == 168) ||
-                                 (b[0] == 169 && b[1] == 254) || b[0] >= 224;
-                if (isPrivate) continue;
+                // Public addresses of EITHER family. This accepted IPv4 only and
+                // carried its own hand-rolled private-range test, which meant an
+                // application under the "block direct connections" scope could
+                // reach any IPv6 address it liked, unresolved and unblocked - a
+                // security feature that silently did not apply to half the
+                // internet. Both halves of the chain below already handle v6:
+                // DomainForIp consults the v6 observation table, and
+                // AddAppRemoteIpBlock installs v6 filters.
+                //
+                // Delegated to IsPublicUnicast rather than extended in place. It
+                // already rejects loopback, link-local, unique-local, multicast,
+                // CGNAT and the unspecified address for both families, and it is
+                // the routine the rest of the enforcement path uses - a second
+                // private-range test here would be one more thing to keep in step.
+                if (!Services.IpScopeClassifier.IsPublicUnicast(c.RemoteAddress)) continue;
                 if (Services.DnsObservations.WasResolved(c.RemoteAddress)) continue;
 
                 string dedupe = pi.Path + "|" + c.RemoteAddress;
@@ -3372,7 +3378,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private string GeoSourceSummary() => _firewall.GeoIpApiActive
         ? $"Using API server: {_firewall.GeoIpApiUrl}"
         : _firewall.GeoIpLoaded
-            ? $"Using local database ({_firewall.GeoIpRangeCount:N0} ranges)."
+            // Both families. A single "ranges" figure silently meant IPv4 only,
+            // which is the same half-truth the diagnostics line carried.
+            ? $"Using local database ({_firewall.GeoIpRangeCount:N0} IPv4 + "
+              + $"{_firewall.GeoIpRangeCountV6:N0} IPv6 ranges)."
             : "Using local database - not downloaded yet (Connections tab).";
 
     private void InitGeoSourceUi()
@@ -5858,7 +5867,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         string geo = _firewall.GeoIpApiActive
             ? "GeoIP via API server."
             : _firewall.GeoIpLoaded
-                ? $"GeoIP ready ({_firewall.GeoIpRangeCount:N0} ranges)."
+                ? $"GeoIP ready ({_firewall.GeoIpRangeCount:N0} IPv4 + "
+                  + $"{_firewall.GeoIpRangeCountV6:N0} IPv6 ranges)."
                 : "GeoIP not loaded - choose a source in Settings to enable matching.";
         int active = _firewall.EntityReactiveBlockCount;
         EntityStatus.Text = active > 0 ? $"{geo}  {active} active block(s)." : geo;
