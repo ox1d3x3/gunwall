@@ -15,6 +15,35 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.114] — 2026-08-16
+
+### Added — screen shortcuts in the tray menu
+Right-clicking the tray icon now offers **Applications**, **Connections**,
+**Activity**, **Security** and **Settings** alongside the existing entries. Each
+opens the window directly on that screen, rather than opening it wherever it was
+left and requiring a second click in the sidebar.
+
+Five of the thirteen screens, chosen as the ones reached in a hurry — something has
+been blocked, or something looks wrong. Listing all thirteen would make the menu
+long enough to have to read rather than aim at. Flat rather than nested under a
+"Go to" submenu, since the entire point is fewer clicks and a submenu adds one back.
+
+**It drives the sidebar button rather than setting panel visibility directly.**
+`Nav_Checked` sets fourteen visibilities and maintains three pieces of state
+alongside them; a second implementation would need updating whenever a screen is
+added and would be the one nobody remembers. Matched on the button's `Tag`, which
+is what `Nav_Checked` actually reads, rather than on the `Nav` + tag naming
+convention that merely happens to agree with it today.
+
+### Added
+- `tray-menu`: every shortcut must name a screen that exists, and the navigation
+  must go through the sidebar rather than around it. A tag matching nothing
+  produces no error and no crash — just a menu entry that silently does nothing —
+  and since one label deliberately differs from its tag (**Applications** opens the
+  screen tagged `Firewall`), it cannot be checked by eye. Shown to fail on a
+  mistyped tag and on a bypassed sidebar.
+---
+
 ## [0.99.113] — 2026-08-16
 
 Documentation. No code changed.

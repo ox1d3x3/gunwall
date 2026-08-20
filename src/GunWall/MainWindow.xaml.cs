@@ -365,7 +365,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.113 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.114 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -6743,6 +6743,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
             var menu = new System.Windows.Forms.ContextMenuStrip();
             menu.Items.Add("Open GunWall", null, (_, _) => RestoreFromTray());
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+
+            // Straight to a screen, without opening the window and then hunting for
+            // it in the sidebar. Flat rather than nested under a "Go to" submenu:
+            // the entire point is fewer clicks, and a submenu adds one back.
+            //
+            // Five of thirteen screens, chosen as the ones reached in a hurry -
+            // something was blocked, or something looks wrong. Listing all thirteen
+            // would make the menu long enough to have to read rather than aim at.
+            foreach (var (label, tag) in new[]
+            {
+                ("Applications", "Firewall"),
+                ("Connections",  "Connections"),
+                ("Activity",     "Activity"),
+                ("Security",     "Security"),
+                ("Settings",     "Settings"),
+            })
+            {
+                string t = tag;                       // captured per iteration
+                menu.Items.Add(label, null, (_, _) => OpenAt(t));
+            }
+
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
             menu.Items.Add("Toggle lockdown", null, (_, _) =>
                 Dispatcher.Invoke(() => LockdownButton_Click(this, new RoutedEventArgs())));
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
@@ -6760,6 +6783,48 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // Minimize hides to tray (filters keep enforcing - they live in the OS).
         if (WindowState == WindowState.Minimized && _tray != null)
             Hide();
+    }
+
+    /// <summary>Opens the window on a chosen screen, from the tray.
+    ///
+    /// Drives the sidebar's own RadioButton rather than setting panel visibility
+    /// directly, so there is exactly ONE navigation path. A second implementation
+    /// would need updating every time a screen is added or renamed, and would be
+    /// the one nobody remembers - Nav_Checked already sets fourteen visibilities
+    /// and maintains three pieces of state alongside them.
+    ///
+    /// Matched on Tag rather than on the "Nav" + tag naming convention, because
+    /// the Tag is what Nav_Checked actually reads; the names merely happen to
+    /// agree with it today.</summary>
+    private void OpenAt(string tag)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+
+            foreach (var rb in FindRadioButtons(this))
+            {
+                if (!string.Equals(rb.Tag as string, tag, StringComparison.Ordinal)) continue;
+                // Setting IsChecked raises Checked, which runs Nav_Checked. If the
+                // screen is already showing, that event does not fire - and does
+                // not need to, since the window has just been brought forward.
+                rb.IsChecked = true;
+                return;
+            }
+        });
+    }
+
+    private static IEnumerable<RadioButton> FindRadioButtons(DependencyObject root)
+    {
+        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is RadioButton rb) yield return rb;
+            foreach (var deeper in FindRadioButtons(child)) yield return deeper;
+        }
     }
 
     private void RestoreFromTray()

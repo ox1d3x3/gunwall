@@ -2023,6 +2023,49 @@ def check_profile_survives_update():
                      "migrated, no stray writes, no shadowed BCL types")
 
 
+def check_tray_menu():
+    """Every tray shortcut must name a screen that exists.
+
+    The tray navigates by setting the sidebar RadioButton whose Tag matches, so a
+    tag that matches nothing does nothing at all - no error, no crash, just a menu
+    entry that silently fails. The label and the tag differ in at least one case
+    ("Applications" opens the screen tagged "Firewall"), so this cannot be checked
+    by eye.
+    """
+    before = len(failures)
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+    cs = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    tags = set(re.findall(r'<RadioButton[^>]*?Checked="Nav_Checked"[^>]*?Tag="(\w+)"',
+                          xaml, re.S))
+    if not tags:
+        fail("tray-menu", "no navigation buttons found; the Tag convention has changed")
+        return
+
+    i = cs.find('("Applications", "Firewall")')
+    if i < 0:
+        fail("tray-menu", "the tray shortcut list could not be located")
+        return
+    block = cs[i:cs.index("})", i)]
+
+    for label, tag in re.findall(r'\("([^"]+)",\s*"([^"]+)"\)', block):
+        if tag not in tags:
+            fail("tray-menu",
+                 f'tray entry "{label}" targets screen "{tag}", which no navigation '
+                 "button carries - the menu item would do nothing when clicked")
+
+    # And the navigation must go through the sidebar, not around it.
+    if "private void OpenAt" in cs:
+        body = re.search(r"private void OpenAt.*?\n    \}", cs, re.S)
+        if body and "IsChecked = true" not in body.group(0):
+            fail("tray-menu",
+                 "OpenAt does not drive the sidebar button, so it is a second "
+                 "navigation path that will drift from Nav_Checked")
+
+    if len(failures) == before:
+        notes.append(f"tray-menu: every shortcut maps to one of {len(tags)} screens")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2070,6 +2113,7 @@ def main():
     check_allow_level()
     check_kernel_verdict()
     check_map_contrast()
+    check_tray_menu()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()

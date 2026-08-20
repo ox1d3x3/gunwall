@@ -95,9 +95,43 @@ decision with the reason attached.
 
 - **Signature verification** — valid, unsigned and *invalid* are three different things, and GunWall distinguishes them
 - **Tamper detection** on applications and on its own filters
-- **VirusTotal lookups** with your own key; only a hash ever leaves the machine
+- **VirusTotal lookups** — only a file's hash is sent, never the file itself
 
 <div align="right"><sub><a href="docs/DOCUMENTATION.md">Every feature explained in the User Guide →</a></sub></div>
+
+---
+
+## How it compares
+
+Windows has several good firewalls, and some will suit you better than this one.
+
+| If you want… | Use |
+|---|---|
+| The smallest possible footprint | **simplewall** — under 1 MB, does one thing well |
+| No prompts, ever | **TinyWall** — whitelist-based, deliberately silent |
+| Cross-platform, with a company behind it | **Portmaster** — Windows and Linux |
+| The most polished monitoring | **GlassWire** — commercial, and it shows |
+| Deep visibility with per-application domain blocking, free | **GunWall** |
+
+|  | **GunWall** | simplewall | TinyWall | Portmaster | GlassWire |
+|---|---|---|---|---|---|
+| Licence | MIT | GPLv3 | Open source | Open source | Proprietary |
+| Cost | Free | Free | Free | Free + Pro tier | Freemium |
+| Approach | Own WFP layer | Own WFP layer | Wraps Windows Firewall | Own kernel layer | Wraps Windows Firewall |
+| Size | ~190 MB | < 1 MB | ~2 MB | Moderate | Moderate |
+| Country / ASN rules | Yes | No | No | Yes | No |
+| Built-in DNS resolver | Yes, with DoH | No | No | Yes | No |
+| Per-app domain blocking | Yes | No | No | Per-app profiles | No |
+| Signed binaries | No | GPG | Yes | Yes | Yes |
+| Uninstall removes filters | Yes | **No — manual step** | N/A | Yes | N/A |
+
+**Where the others win.** simplewall is a fraction of the size and has been
+maintained since 2016. TinyWall never interrupts you, which for many people is the
+better design. Portmaster runs on Linux too and has a company behind it. GlassWire's
+monitoring is more refined, and it carries security features GunWall has no answer
+to. All four are signed; GunWall is not.
+
+**[Full comparison, including when *not* to choose GunWall →](docs/COMPARISON.md)**
 
 ---
 
@@ -191,6 +225,7 @@ can read.
 |  |  |
 |---|---|
 | **[User Guide](docs/DOCUMENTATION.md)** | Installing, configuring, every screen, troubleshooting |
+| [How GunWall compares](docs/COMPARISON.md) | Honest comparison with simplewall, TinyWall, Portmaster and GlassWire |
 | [Release notes](docs/RELEASE-NOTES.md) | What is in the current release |
 | [Changelog](CHANGELOG.md) | Every change, every version |
 | [Architecture](docs/ARCHITECTURE.md) | How the engine works, for developers |
