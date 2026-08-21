@@ -15,6 +15,63 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.117] — 2026-08-21
+
+0.99.116's one-click update confirmed on hardware: `Update: launched installer for
+0.99.116.0 (verified=True)`, **388 filters before and 388 after**, protection back
+on by itself, zero errors. The checksum path — the half that matters most on an
+unsigned binary — is proven.
+
+### Added — exempt an application from blocklists
+**App properties → Blocklists → "Do not apply DNS blocklists to this app."** For
+the browser used for development work, or anything that legitimately needs a
+domain a curated list blocks.
+
+### What it does and does not cover, because the difference is not a detail
+Blocklists enforce on three surfaces, and **only one can know which application is
+asking**:
+
+| Surface | Knows the app | Exempt |
+|---|---|---|
+| Kernel address blocks | Yes — the connection carries its executable | **Yes** |
+| The DNS resolver's NXDOMAIN | No | No |
+| Hosts-file categories | No | No |
+
+The resolver sees a UDP packet from `127.0.0.1`. Attributing that socket to a
+process yields **`svchost.exe`** — the DNS Client service — for every application
+on the machine, which is exactly why per-application domain blocking works at the
+connection layer instead.
+
+So an exempt application still receives NXDOMAIN for a blocked name. What it no
+longer gets is the address block that severs the connection, which is the half
+that actually breaks things. The dialog says so rather than implying more.
+
+### Two things that would have made it fail quietly
+- **The guard sits before any filter is built**, not after. Checking afterwards
+  would leave the exempt application blocked for the moment in between, and churn
+  the kernel for a decision already made.
+- **Enabling the exemption removes filters already installed for that
+  application.** Those filters are persistent: setting the exemption without
+  clearing them would leave the app exactly as blocked as before, the setting
+  would appear to do nothing, and the reasonable conclusion would be that the
+  feature is broken.
+
+### Deliberately not extended
+The **global fallback** block — used when the process cannot be identified — does
+not honour exemptions. It fires precisely when GunWall does not know who is
+asking, so it cannot know whether an exemption applies; extending it there would
+mean guessing, and guessing wrong means one exemption silently widening to every
+application on the machine.
+
+### Added
+- The Applications list carries a **BLOCKLISTS** column showing *Exempt*, blank
+  otherwise. An exemption nobody can see is one they set once and forget, and this
+  one quietly weakens a protection they asked for.
+- `blocklist-bypass`: the guard must precede filter creation, and enabling must
+  clear existing filters matched on the app-scoped key so one exemption cannot
+  clear another's. Shown to fail on both.
+---
+
 ## [0.99.116] — 2026-08-16
 
 ### Added — one-click update

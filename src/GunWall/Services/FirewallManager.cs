@@ -1797,6 +1797,59 @@ public sealed class FirewallManager : IDisposable
     /// That removes the whole reason the global path needs a sharing veto. Here the
     /// address may be shared with a hundred other services and it does not matter -
     /// none of them is this process reaching this name.</summary>
+    /// <summary>True when this application is exempt from kernel domain blocking.</summary>
+    public bool BypassesBlocklists(string exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath)) return false;
+        var rule = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        return rule?.BypassBlocklists == true;
+    }
+
+    /// <summary>Sets the exemption and, when turning it ON, removes the domain
+    /// filters already installed for that application.
+    ///
+    /// Removing them is the whole point rather than tidiness. A blocklist filter
+    /// is persistent: setting the exemption without clearing what is already in
+    /// the kernel would leave the application exactly as blocked as before, and
+    /// the setting would appear to do nothing. Someone would then toggle it,
+    /// restart, and conclude the feature is broken - which it would be.
+    ///
+    /// Turning it OFF removes nothing: enforcement simply resumes the next time
+    /// that application reaches a blocked address.</summary>
+    public int SetBypassBlocklists(string exePath, bool bypass)
+    {
+        var rule = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        if (rule is null) return 0;
+
+        rule.BypassBlocklists = bypass;
+        int removed = 0;
+
+        if (bypass)
+        {
+            // Keyed "appdomainblock|<lowercased exe>|<address>" - see
+            // AddAppDomainBlock. Matched on the app segment so one application's
+            // exemption cannot clear another's filters.
+            string prefix = $"appdomainblock|{exePath.ToLowerInvariant()}|";
+            foreach (var key in _data.ScopeFilters.Keys
+                         .Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+            {
+                try { _engine.RemoveFilters(_data.ScopeFilters[key]); removed += _data.ScopeFilters[key].Count; }
+                catch (Exception ex) { DiagnosticLog.LogException("SetBypassBlocklists", ex); }
+                _data.ScopeFilters.Remove(key);
+            }
+        }
+
+        _store.Save(_data);
+        EventLog(bypass
+            ? $"Blocklists no longer apply to {System.IO.Path.GetFileName(exePath)} at the kernel "
+              + $"layer; removed {removed} existing filter(s). Blocked names are still refused by "
+              + "GunWall's DNS resolver."
+            : $"Blocklists apply to {System.IO.Path.GetFileName(exePath)} again.");
+        return removed;
+    }
+
     public bool AddAppDomainBlock(string exePath, string domain, string remoteIp)
     {
         if (string.IsNullOrWhiteSpace(exePath) || !IsApplicablePath(exePath)) return false;

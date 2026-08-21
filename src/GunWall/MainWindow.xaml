@@ -33,6 +33,7 @@
         <conv:StatusToFillConverter x:Key="StatusToFill" />
         <conv:StatusToActionTextConverter x:Key="StatusToAction" />
         <conv:StatusToTextConverter x:Key="StatusToText" />
+        <conv:BoolToBypassTextConverter x:Key="BoolToBypassText" />
         <conv:CategoryToBrushConverter x:Key="CategoryToBrush" />
         <conv:CategoryToTextConverter x:Key="CategoryToText" />
         <conv:ProtectLabelConverter x:Key="ProtectLabel" />
@@ -1107,6 +1108,18 @@
                                                            Foreground="{Binding Status, Converter={StaticResource StatusToBrush}}"
                                                            FontSize="11.5" FontWeight="SemiBold" />
                                             </Border>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <!-- Blank for every app that is not exempt, so the column
+                                     costs nothing to read until it has something to say. -->
+                                <GridViewColumn Header="BLOCKLISTS" Width="110">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding BypassBlocklists, Converter={StaticResource BoolToBypassText}}"
+                                                       Foreground="{DynamicResource WarnText}"
+                                                       FontSize="11.5" VerticalAlignment="Center"
+                                                       ToolTip="Kernel domain blocking does not apply to this app." />
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>

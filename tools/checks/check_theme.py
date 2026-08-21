@@ -2193,6 +2193,57 @@ def check_update_download():
         notes.append("update-download: host pinned, redirect re-checked, hash verified")
 
 
+def check_blocklist_bypass():
+    """The exemption must take effect before a filter is built, and must clear
+    filters already installed.
+
+    Two ways this fails silently. If the guard sits after the filter is created,
+    the exempt application is blocked for the moment between - and the kernel is
+    churned for a decision already made. And if enabling the exemption does not
+    remove the filters already in place, those are PERSISTENT: the application
+    stays exactly as blocked as before, the setting appears to do nothing, and
+    the reasonable conclusion is that the feature is broken.
+    """
+    before = len(failures)
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    fm = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+
+    loop = re.search(r"private void EnforceBlockedDomains.*?\n    \}", mw, re.S)
+    if not loop:
+        fail("blocklist-bypass", "EnforceBlockedDomains not found")
+        return
+    body = loop.group(0)
+
+    gi = body.find("BypassesBlocklists")
+    ai = body.find("AddAppDomainBlock")
+    if gi < 0:
+        fail("blocklist-bypass",
+             "the enforcement loop never consults the exemption, so the setting "
+             "does nothing")
+    elif ai >= 0 and gi > ai:
+        fail("blocklist-bypass",
+             "the exemption is checked after the filter is built, leaving the "
+             "exempt application blocked in between")
+
+    setter = re.search(r"public int SetBypassBlocklists.*?\n    \}", fm, re.S)
+    if not setter:
+        fail("blocklist-bypass", "SetBypassBlocklists not found")
+    else:
+        sb = setter.group(0)
+        if "RemoveFilters" not in sb:
+            fail("blocklist-bypass",
+                 "enabling the exemption does not remove filters already installed "
+                 "for that application - they are persistent, so the setting would "
+                 "appear to do nothing")
+        if "appdomainblock|" not in sb:
+            fail("blocklist-bypass",
+                 "the filters removed are not matched on the app-scoped key, so "
+                 "one exemption could clear another application's filters")
+
+    if len(failures) == before:
+        notes.append("blocklist-bypass: guard precedes filter creation, existing filters cleared")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2243,6 +2294,7 @@ def main():
     check_tray_menu()
     check_enforcement_address_family()
     check_update_download()
+    check_blocklist_bypass()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()

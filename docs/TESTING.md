@@ -227,7 +227,30 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
-*No build-specific checks are outstanding.*
+### 0.99.117 — exempting an app from blocklists
+
+1. **DNS resolver → blocklist box.** Add one line naming a domain your browser
+   reaches often, then **Apply blocklist**. Confirm **Watch system DNS lookups**
+   is ticked.
+2. Browse to it. It should be blocked — the log shows
+   `Blocked domain enforced for one app: <browser> -> <address>`.
+3. **Applications → double-click that browser → Blocklists** → tick
+   **Do not apply DNS blocklists to this app**.
+
+   **PASS:** a message reports how many existing filters were removed.
+   **FAIL:** nothing happens, or the application stays blocked.
+
+4. **Browse to the domain again.** It should connect.
+5. **Applications list** — that row reads **Exempt** under BLOCKLISTS.
+6. **Untick it.** Browse again; the block returns on the next connection.
+
+### What should not change
+
+7. Other applications must still be blocked from that domain — the exemption is
+   per-application, not global.
+8. With an adapter's DNS pointed at 127.0.0.1, the exempt application still gets
+   NXDOMAIN for that name. That is correct: the resolver cannot tell which
+   application asked.
 
 ---
 

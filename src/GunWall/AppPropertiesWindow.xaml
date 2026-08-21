@@ -77,6 +77,14 @@
                      BorderBrush="{DynamicResource BorderBrush}" Padding="6"
                      ToolTip="A private note for your own reference (saved automatically)." />
 
+            <TextBlock Text="Blocklists" Foreground="{DynamicResource TextSecondary}" Margin="0,16,0,4" />
+            <CheckBox x:Name="BypassBlocklistsCheck" Click="BypassBlocklists_Click"
+                      Content="Do not apply DNS blocklists to this app"
+                      Foreground="{DynamicResource TextPrimary}" />
+            <TextBlock Text="Stops GunWall blocking the addresses that blocked domains resolve to, for this app only. Blocked names are still refused by GunWall's own DNS resolver, and hosts-file categories still apply to the whole machine - neither of those can tell which app is asking."
+                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"
+                       FontSize="11" Margin="24,4,0,0" />
+
             <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16" />
 
             <!-- Actions -->

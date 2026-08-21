@@ -365,7 +365,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.116 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.117 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1508,6 +1508,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 string domain = Services.DnsObservations.DomainForIp(remote);
                 if (domain.Length == 0) continue;
                 if (!_dnsResolver.IsBlocked(domain)) continue;
+
+                // BEFORE any filter is built, not after. Building one and then
+                // removing it would leave a window in which the exempt
+                // application is blocked, and would churn the kernel for a
+                // decision already made.
+                //
+                // Only the app-scoped path is exempted. The global fallback below
+                // fires precisely when the process cannot be identified, so it
+                // cannot know whether an exemption applies - extending it there
+                // would mean guessing, and guessing wrong means an exemption
+                // silently widening to every application on the machine.
+                if (!string.IsNullOrEmpty(c.ExePath) && _firewall.BypassesBlocklists(c.ExePath))
+                    continue;
 
                 // APP LAYER FIRST. A filter naming one executable has no collateral
                 // at all, so a shared CDN address is safe to block here - which is
@@ -2956,6 +2969,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 : Services.SignatureService.PublisherLabel(a.ExecutablePath);
             a.Icon = Services.IconService.GetIcon(a.ExecutablePath);
             a.Note = _firewall.GetNote(a.ExecutablePath);
+            a.BypassBlocklists = _firewall.BypassesBlocklists(a.ExecutablePath);
             ApplyVtStatus(a);   // §VT cached verdict + auto-queue on first sight
 
             var store = Services.StoreAppService.Resolve(a.ExecutablePath);

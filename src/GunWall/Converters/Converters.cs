@@ -51,6 +51,18 @@ public sealed class StatusToActionTextConverter : IValueConverter
 }
 
 /// <summary>Maps AppStatus to a readable text label.</summary>
+/// <summary>"Exempt" when an application is exempt from kernel domain blocking,
+/// and an empty string otherwise - so the column is blank for almost every row
+/// and costs nothing to read until it has something to say.</summary>
+public sealed class BoolToBypassTextConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is true ? "Exempt" : "";
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 public sealed class StatusToTextConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

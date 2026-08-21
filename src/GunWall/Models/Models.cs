@@ -100,6 +100,11 @@ public sealed class AppInfo
     /// <summary>User's free-text note for this app.</summary>
     public string Note { get; set; } = "";
 
+    /// <summary>Exempt from kernel domain blocking. Surfaced in the list because
+    /// an exemption nobody can see is one they set once and forget - and this one
+    /// quietly weakens a protection they asked for.</summary>
+    public bool BypassBlocklists { get; set; }
+
     /// <summary>True when this is a Microsoft Store / UWP (AppContainer) app.</summary>
     public bool IsStoreApp { get; set; }
 
@@ -165,6 +170,27 @@ public sealed class FirewallRule
 
     /// <summary>Allowed but suppressed from raising notification popups.</summary>
     public bool Silent { get; set; }
+
+    /// <summary>Exempt this application from KERNEL-level domain blocking.
+    ///
+    /// Deliberately narrow, and the narrowness is not a shortcut. Blocklists
+    /// enforce on three surfaces and only one can know which application is
+    /// asking:
+    ///
+    ///  - kernel address blocks, built from a connection that carries its own
+    ///    executable path - the one that can be exempted;
+    ///  - the DNS resolver's NXDOMAIN, which sees a UDP packet from 127.0.0.1.
+    ///    Attributing that socket to a process yields svchost.exe, the DNS Client
+    ///    service, for every application on the machine;
+    ///  - the hosts file, which is machine-wide by construction.
+    ///
+    /// So an exempt application still receives NXDOMAIN for a blocked name. What
+    /// it no longer gets is the address block that severs the connection, which
+    /// is the half that actually breaks things.
+    ///
+    /// Defaults false, so every profile written before this existed behaves
+    /// exactly as it did.</summary>
+    public bool BypassBlocklists { get; set; }
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
