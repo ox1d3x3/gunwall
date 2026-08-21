@@ -365,7 +365,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.114 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.116 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5054,15 +5054,93 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             var r = await UpdateService.CheckAsync();
             UpdateStatus.Text = r.Message;
-            if (r.Ok && r.UpdateAvailable)
+            if (!r.Ok || !r.UpdateAvailable) return;
+
+            // No installer attached to the release - offer the page, as before.
+            if (r.AssetUrl.Length == 0)
             {
-                var ask = MessageBox.Show($"{r.Message}\n\nOpen the downloads page?",
+                var open = MessageBox.Show($"{r.Message}\n\nOpen the downloads page?",
                     "Update available", MessageBoxButton.YesNo, MessageBoxImage.Information);
-                if (ask == MessageBoxResult.Yes)
+                if (open == MessageBoxResult.Yes)
                     try { Process.Start(new ProcessStartInfo(r.Url) { UseShellExecute = true }); } catch { }
+                return;
             }
+
+            string size = r.AssetSize > 0 ? $" ({r.AssetSize / 1024 / 1024} MB)" : "";
+            var ask = MessageBox.Show(
+                $"{r.Message}\n\nDownload and install it now{size}?\n\n"
+                + "GunWall will close while the installer runs. Your rules and "
+                + "settings are kept.",
+                "Update available", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (ask != MessageBoxResult.Yes) return;
+
+            await DownloadAndInstallAsync(r);
         }
         catch (Exception ex) { UpdateStatus.Text = "Update check failed."; Debug.WriteLine(ex.Message); }
+    }
+
+    /// <summary>Downloads the release installer, reports what verification found,
+    /// and launches it only if the user agrees.
+    ///
+    /// The verification result is put in front of the user rather than acted on
+    /// silently. A file that failed its checksum is deleted and never offered; a
+    /// file whose checksum could not be established is offered with that stated
+    /// plainly, because on an unsigned binary the checksum is the only integrity
+    /// story there is and quietly skipping it would be the wrong kind of
+    /// convenience.</summary>
+    private async Task DownloadAndInstallAsync(UpdateService.Result r)
+    {
+        var progress = new Progress<double>(f =>
+        {
+            if (UpdateStatus != null)
+                UpdateStatus.Text = $"Downloading update... {f * 100:0}%";
+        });
+
+        var d = await UpdateService.DownloadInstallerAsync(r, progress);
+        if (UpdateStatus != null) UpdateStatus.Text = d.Message;
+
+        if (!d.Ok)
+        {
+            MessageBox.Show(d.Message, "Update", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string prompt = d.Verified
+            ? $"Version {r.Latest} downloaded, and its checksum matches the one "
+              + "published with the release.\n\nInstall it now?"
+            : $"Version {r.Latest} downloaded.\n\n"
+              + "The release did not publish a checksum for this file, so GunWall "
+              + "could not confirm it arrived intact.\n\nInstall it anyway?";
+
+        var go = MessageBox.Show(prompt, "Update",
+            MessageBoxButton.YesNo,
+            d.Verified ? MessageBoxImage.Question : MessageBoxImage.Warning,
+            d.Verified ? MessageBoxResult.Yes : MessageBoxResult.No);
+        if (go != MessageBoxResult.Yes) return;
+
+        try
+        {
+            // Elevated, because it writes to Program Files and the uninstaller it
+            // registers has to be able to remove kernel filters. GunWall does not
+            // replace its own executable - the installer does, after closing this
+            // process - which is the one arrangement that cannot half-succeed.
+            Process.Start(new ProcessStartInfo(d.Path)
+            {
+                UseShellExecute = true,
+                Verb = "runas",
+            });
+            Services.DiagnosticLog.Log(
+                $"Update: launched installer for {r.Latest} (verified={d.Verified}). Exiting.");
+            ExitFromTray();
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("UpdateInstall", ex);
+            MessageBox.Show(
+                $"The installer could not be started: {ex.Message}\n\n"
+                + $"It was saved to:\n{d.Path}\n\nYou can run it yourself.",
+                "Update", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     // ================================================================ VirusTotal

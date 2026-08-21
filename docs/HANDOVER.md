@@ -352,7 +352,12 @@ after `Initialize()`, that no external `MarkReconcileReady` exists, and that
 - **Never recall a WFP GUID or struct offset.** Verify against the SDK or
   win32metadata. Three were wrong once and matched nothing; one killed the
   process with no managed exception.
-- **Version numbers mark releases, not changes.** See `CONTRIBUTING.md`.
+- **Every change to shipped code bumps the version; documentation alone does
+  not.** Both halves matter, and both have been got wrong. Two versions were
+  burned on documentation, then three code fixes rode along on a number already
+  used. A build whose version matches a different build's behaviour makes every
+  later bug report start with a question nobody can answer. If in doubt: did a
+  compiled file change? Bump. See `CONTRIBUTING.md`.
 - **A direct admission beats a quiet correction.** If something shipped broken,
   the changelog says so and says why the verification missed it.
 

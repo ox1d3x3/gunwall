@@ -15,7 +15,86 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
-## [0.99.114] — 2026-08-16
+## [0.99.116] — 2026-08-16
+
+### Added — one-click update
+**Settings → Check for updates** now downloads the release installer and runs it,
+rather than opening a browser and leaving the rest to the reader. GunWall closes
+while the installer works; rules and settings are kept, as they live outside the
+application folder.
+
+This matters more for an unsigned beta than any feature would. Every release
+previously asked someone to notice a notification, find the right file among
+several, dismiss SmartScreen again, and run it — so most would not, and the user
+base would spread across a dozen builds until every bug report began with a
+question nobody could answer.
+
+**GunWall never replaces its own executable.** It downloads, verifies, and hands
+the file to the installer, which closes this process before writing anything. That
+is the one arrangement that cannot half-succeed.
+
+### The two properties that make this safe to ship
+The updater downloads code and runs it **elevated**, so it is worth being explicit
+about what guards that.
+
+- **The download host is pinned to this project.** The URL arrives inside a JSON
+  response; if that response were ever tampered with — a compromised account, a
+  proxy, a poisoned DNS answer — following the URL it named would hand
+  administrator rights to whatever it pointed at. TLS makes that unlikely rather
+  than impossible, and unlikely is not the standard for something that installs a
+  firewall. The host is checked against a list before the request, **and again on
+  whatever actually answered**, since HttpClient follows redirects.
+
+- **The checksum is verified, or its absence is stated.** A file whose SHA-256
+  disagrees with the release is **deleted rather than offered**. A file whose
+  checksum could not be established is offered with that said plainly, and the
+  dialog defaults to *No*. On an unsigned binary the published checksum is the only
+  integrity story there is, and quietly skipping it would be the wrong kind of
+  convenience. The hash is read from GitHub's asset digest where present, and
+  otherwise from the release notes, matched against the file's own name so the
+  portable build's checksum cannot be picked up by mistake.
+
+### Fixed before release — an audit of the updater found three
+Asked for a deep audit before the feature was tested, which found more than the
+testing would have.
+
+- **The download would have failed on every connection.** It shared the version
+  check's `HttpClient`, whose 12-second timeout is right for a small JSON request
+  and fatal for a 190 MB file — `HttpClient.Timeout` covers the whole operation,
+  not just the response headers. Fifteen seconds at 100 Mbit/s, five minutes on a
+  slow line, and the failure would have been reported as a network problem rather
+  than as the deadline it was. Now a separate client with a thirty-minute budget.
+
+- **A crafted release tag could write outside the temp directory.** The version
+  string went straight into a file path, so a tag such as `../../Users/Public/x`
+  escaped — and this code then offers to run what it wrote, **elevated**. Pinning
+  the download host while trusting a tag from the same response was an
+  inconsistent threat model. The version is now reduced to characters that can
+  appear in one, and the resolved path is confirmed to sit inside temp.
+
+- **The destination was predictable.** The file is verified and then launched, and
+  between those moments it sits on disk where another process running as the same
+  user could replace it. Each download now lands in a freshly created directory
+  with an unguessable name, which also means an interrupted download can never be
+  mistaken for a fresh one.
+
+Also added a `User-Agent` to the download request. The version check sets one
+because the GitHub API rejects requests without it; the asset host is more
+tolerant today, and relying on that is the kind of assumption this project avoids.
+
+### Added
+- `update-download`: the host must be pinned and re-checked after redirects, the
+  installer must be hashed, a failing file must be deleted, and the caller must
+  distinguish verified from unverifiable, the download must not share the short
+  timeout, and the path must be built from a sanitised version in an unpredictable
+  directory. Shown to fail on each.
+
+  One of those assertions first tested whether `safeVersion` appeared anywhere in
+  the method, which a leftover reference satisfied while the path itself used the
+  raw tag again. It now examines the path construction.
+---
+
+## [0.99.115] — 2026-08-16
 
 ### Fixed — the IPv4-only assumptions left behind by the IPv6 work
 Three stale guards. Two were found by reading a screenshot of the Security screen;
@@ -46,6 +125,13 @@ rather than stopping at the two that happened to be photographed.
   `IsPublicUnicast`, which covers both families and is what the rest of the
   enforcement path uses — a second private-range test was how this one drifted.
 
+**Verification status.** The GeoIP count lines and the absence of regressions were
+confirmed on hardware. The two IPv6 enforcement fixes — country/ASN rules and the
+direct-connection scope — were **not**: the test machine has IPv6 disabled, so it
+can establish that nothing broke but not that the v6 paths now work. They are
+correct by inspection and by the shared code they now route through, and they
+remain unverified in practice until someone with routable IPv6 exercises them.
+
 **The sweep also confirmed what is correctly IPv4-only**, so it is on record:
 ARP-based network scanning, the custom-rule validator (the rule engine takes v4
 literals, so accepting v6 would let users write rules that cannot apply), and the
@@ -63,6 +149,10 @@ v6 table.
   pair through `<picture>`, and a four-panel gallery covering Traffic, Security,
   Activity and Settings. `docs/screenshots/README.md` records what each capture
   shows and how to retake them.
+
+---
+
+## [0.99.114] — 2026-08-16
 
 ### Added — screen shortcuts in the tray menu
 Right-clicking the tray icon now offers **Applications**, **Connections**,

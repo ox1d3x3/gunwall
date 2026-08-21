@@ -85,9 +85,18 @@ matched everything, one that skipped misses silently, and one whose own string
 handling was wrong. A check never demonstrated against its own defect is a guess
 that counts as coverage. [`docs/HANDOVER.md`](docs/HANDOVER.md) lists them.
 
-**Version numbers mark releases, not changes.** Bump when a build goes out for
-testing or publication — not for every edit, and never for a documentation-only
-change. Four files carry the version and must agree:
+**Every change to shipped code gets a new version; documentation alone does not.**
+
+Bump whenever a compiled file changes — a fix, a feature, a one-line guard. The
+version is how a bug report is tied to a build, and code that ships under a number
+already used makes every later report begin with a question nobody can answer.
+
+Do not bump for documentation, artwork or changes confined to `tools/`. Those ride
+along with the next release that contains code.
+
+If in doubt, the test is simple: **did a file that gets compiled change?**
+
+Four files carry the version and must agree:
 `src/GunWall/GunWall.csproj`, `src/GunWall/app.manifest`, the About string in
 `MainWindow.xaml.cs`, and `CurrentVersion` in `Services/UpdateService.cs`.
 `tools/checks/check_theme.py` fails the build if they disagree.

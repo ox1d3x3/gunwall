@@ -2115,6 +2115,84 @@ def check_enforcement_address_family():
         notes.append("address-family: enforcement paths cover IPv4 and IPv6")
 
 
+def check_update_download():
+    """The updater downloads code and runs it elevated. Two properties guard that.
+
+    The URL arrives inside a JSON response. If that response were ever tampered
+    with, following the URL it names would hand administrator rights to whatever
+    it pointed at - so the host is checked against a list rather than trusted for
+    having arrived over HTTPS, and checked again after redirects.
+
+    And the binary is unsigned, so its published checksum is the only integrity
+    story there is. A file that fails verification must be deleted rather than
+    offered, and one that cannot be verified must say so rather than pass quietly.
+    """
+    before = len(failures)
+    src = (APP / "Services" / "UpdateService.cs").read_text(encoding="utf-8")
+
+    if "AllowedDownloadHosts" not in src:
+        fail("update-download",
+             "no host allowlist - the updater would follow whatever URL the API "
+             "response named and run it elevated")
+
+    dl = re.search(r"public static async Task<DownloadResult> DownloadInstallerAsync.*?\n    \}",
+                   src, re.S)
+    if not dl:
+        fail("update-download", "DownloadInstallerAsync not found")
+        return
+    body = dl.group(0)
+
+    if "IsAllowedDownloadUrl" not in body:
+        fail("update-download",
+             "the download does not check the URL against the allowlist before "
+             "fetching it")
+    if "RequestUri?.Host" not in body:
+        fail("update-download",
+             "the host is not re-checked after redirects, so an allowed URL could "
+             "redirect anywhere and still be downloaded")
+    if "SHA256" not in body:
+        fail("update-download",
+             "the downloaded installer is never hashed, so a corrupted or "
+             "substituted file would be run elevated unchecked")
+    # The version check's client has a 12-second timeout, which is right for a
+    # small JSON request and fatal for a 190 MB file - HttpClient.Timeout covers
+    # the whole operation, so sharing it aborted every download on every
+    # connection and reported it as a network failure.
+    if "Downloader" not in body:
+        fail("update-download",
+             "the installer download uses the version check's HttpClient, whose "
+             "short timeout aborts a large file on any connection")
+
+    # The version arrives in the same response whose host is deliberately not
+    # trusted; putting it into a path unsanitised let a crafted tag write outside
+    # the temp directory, which this code then offers to run elevated.
+    # The PATH CONSTRUCTION, not a mention of the variable anywhere. The first
+    # version tested "safeVersion" in body, which a leftover reference elsewhere
+    # satisfied while the path itself used the raw tag again.
+    dest_line = re.search(r'string dest = Path\.Combine\([^;]+;', body, re.S)
+    dest_txt = dest_line.group(0) if dest_line else ""
+    if "safeVersion" not in dest_txt or "Guid.NewGuid" not in body:
+        fail("update-download",
+             "the download path is built from an unsanitised release tag or is "
+             "predictable - a crafted tag can escape the temp directory, and a "
+             "guessable name can be replaced between verification and launch")
+
+    if "File.Delete" not in body:
+        fail("update-download",
+             "a file failing verification is not deleted - leaving it on disk "
+             "means it can still be run by hand")
+
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    run = re.search(r"private async Task DownloadAndInstallAsync.*?\n    \}", mw, re.S)
+    if run and "d.Verified" not in run.group(0):
+        fail("update-download",
+             "the caller does not distinguish a verified download from an "
+             "unverifiable one, so the user is not told which they are agreeing to")
+
+    if len(failures) == before:
+        notes.append("update-download: host pinned, redirect re-checked, hash verified")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2164,6 +2242,7 @@ def main():
     check_map_contrast()
     check_tray_menu()
     check_enforcement_address_family()
+    check_update_download()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()
