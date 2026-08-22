@@ -174,6 +174,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Services.ProfilePaths.MigrateStrayFile("usage-history.json");
         Services.ProfilePaths.MigrateStrayFile("dns-blocklist-preset.txt");
 
+        // One source: UpdateService.CurrentVersion, which the version check
+        // already compares against and which the check suite keeps in step with
+        // the other three files. A literal here would be a fifth place to forget.
+        if (SidebarVersion != null)
+            SidebarVersion.Text = "v" + Services.UpdateService.CurrentVersion;
+
         _dnsResolver.Query += OnDnsQuery;
         // Lets the resolver name the enforcement posture in its own results, so a
         // self-check line still means something when it is read months later in a
@@ -365,7 +371,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.121 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.122 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3699,7 +3705,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // them - that is what makes the labels legible rather than overprinted.
         double ph = Math.Max(1, h - GraphAxisBand);
 
-        _graphStepX = w / (GraphFinePoints - 1);
+        // Must match SeriesPoints' spacing exactly. This is the distance the
+        // trace slides between samples, so a mismatch would leave the geometry
+        // creeping in one direction over time.
+        _graphStepX = w / Math.Max(1, GraphFinePoints - 3);
         DrawBaseline(canvas, w, ph); // static, not scrolled
         // Download: blue gradient area. Upload: thin magenta line.
         // Series colours come from the theme, not from literals. They were
@@ -3773,10 +3782,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         int n = series.Length;
         var pts = new Point[n];
-        double stepX = w / (n - 1);
+        // ONE STEP OF OVERHANG AT EACH END, hence n-3 rather than n-1.
+        //
+        // The trace slides left by one step between samples. It already hung one
+        // step off the right, which is why new traffic arrived smoothly - but it
+        // STARTED one step inside the left edge, so during every slide the left
+        // end travelled from +stepX down to 0 and snapped back on redraw. The
+        // endpoint of a spline also carries its own curvature, so that end did
+        // not merely move: it flexed, once per second, which reads as a shake at
+        // exactly the place data leaves the chart.
+        //
+        // With a step of overhang on both sides the visible span is covered for
+        // the whole slide and nothing terminates inside the plot. The canvas is
+        // ClipToBounds, so the overhang costs nothing.
+        double stepX = w / Math.Max(1, n - 3);
         for (int i = 0; i < n; i++)
         {
-            double x = (i - n + 2) * stepX + w;
+            double x = (i - 1) * stepX;
             double y = h - (series[i] / max * (h - 6)) - 3;
             pts[i] = new Point(x, y);
         }
@@ -4239,7 +4261,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     // ------------------------------------------ Phase 4: graph hover readout
     /// <summary>Maps a cursor x back through the train layout
-    /// (x = (i - n + 2) * step + w) to a fine-series index and shows the
+    /// (x = (i - 1) * step) to a fine-series index and shows the
     /// values under the cursor. Overlay elements live outside GraphCanvas so
     /// the per-sample redraw never clears them.</summary>
     private void UpdateGraphHover()
@@ -4255,7 +4277,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (w <= 1 || h <= 1) return;
 
         int n = GraphFinePoints;
-        int i = (int)Math.Round((x - w) / _graphStepX) + n - 2;
+        // Inverts SeriesPoints' mapping, x = (i - 1) * stepX, so it must change
+        // whenever that does. It previously inverted the old formula and would
+        // have reported the wrong sample under the cursor after the overhang
+        // change - a silent error, since a plausible number would still appear.
+        int i = (int)Math.Round(x / _graphStepX) + 1;
         i = Math.Clamp(i, 0, n - 1);
         double secondsAgo = (n - 1 - i) * 60.0 / (n - 1);
 

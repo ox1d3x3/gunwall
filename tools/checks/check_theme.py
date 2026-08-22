@@ -2313,6 +2313,54 @@ def check_access_rules_dialog():
         notes.append("access-rules: controls fit their text, domains normalised, duplicates refused")
 
 
+def check_graph_scroll():
+    """The trace must overhang BOTH edges of the plot.
+
+    It slides left by one step between samples. With overhang on the right only,
+    new data arrived smoothly while the left end travelled from +stepX to 0 and
+    snapped back each tick - and because a spline endpoint carries its own
+    curvature, that end flexed rather than merely moved. It read as a shake at
+    exactly the point data leaves the chart.
+
+    Also asserts the three places that must agree on the spacing: the geometry,
+    the scroll distance, and the hover lookup. The hover inverts the mapping, so a
+    change on one side without the other reports the wrong sample under the
+    cursor - and reports it as a plausible number, which is worse than an error.
+    """
+    before = len(failures)
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    sp = re.search(r"private static Point\[\] SeriesPoints.*?\n    \}", mw, re.S)
+    if not sp:
+        fail("graph-scroll", "SeriesPoints not found")
+        return
+    body = sp.group(0)
+
+    if "n - 3" not in body:
+        fail("graph-scroll",
+             "SeriesPoints does not reserve a step of overhang at each end - the "
+             "left end of the trace terminates inside the plot and flexes on every "
+             "sample")
+    if not re.search(r"double x = \(i - 1\) \* stepX", body):
+        fail("graph-scroll",
+             "the x mapping no longer starts one step left of the plot, so the "
+             "left edge is uncovered while the trace slides")
+
+    if not re.search(r"_graphStepX = w / Math\.Max\(1, GraphFinePoints - 3\)", mw):
+        fail("graph-scroll",
+             "the scroll distance does not match SeriesPoints' spacing; the "
+             "geometry would creep in one direction over time")
+
+    hover = re.search(r"private void UpdateGraphHover.*?\n    \}", mw, re.S)
+    if hover and not re.search(r"Math\.Round\(x / _graphStepX\) \+ 1", hover.group(0)):
+        fail("graph-scroll",
+             "the hover lookup does not invert the current x mapping, so it names "
+             "the wrong sample under the cursor - and names a plausible one")
+
+    if len(failures) == before:
+        notes.append("graph-scroll: trace overhangs both edges, spacing agrees in all three places")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2365,6 +2413,7 @@ def main():
     check_update_download()
     check_blocklist_bypass()
     check_access_rules_dialog()
+    check_graph_scroll()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()

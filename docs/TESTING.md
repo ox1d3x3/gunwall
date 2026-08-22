@@ -227,6 +227,22 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.122 — graph scrolling and the version label
+
+1. **Overview.** Watch the network graph for a minute with real traffic running.
+
+   **PASS:** the trace leaves the left edge as smoothly as it enters from the
+   right — no flicker or wobble at the left boundary.
+   **FAIL:** still shaking. If so, note whether it is the line, the shaded fill,
+   or both, since they are drawn separately.
+
+2. **Hover over the graph.** The tooltip must name the values that actually match
+   the point under the cursor — check against a visible spike rather than a flat
+   stretch, since a flat stretch would hide an off-by-one.
+
+3. **The sidebar**, under *Engage lockdown*, should read **v0.99.122** and match
+   Settings → About.
+
 ### 0.99.121 — the whole add-rule row
 
 1. **Applications → double-click an app → Access rules.**

@@ -270,6 +270,16 @@
                                            FontWeight="SemiBold" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
+
+                        <!-- Version, where someone already looks to check state.
+                             It was only in Settings, at the bottom of a scroll,
+                             which is a long way to go to answer "which build am I
+                             on" - the first question of every bug report. -->
+                        <TextBlock x:Name="SidebarVersion" Text="v0.0.0"
+                                   FontSize="10.5" Opacity="0.55"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   HorizontalAlignment="Center" Margin="0,8,0,0"
+                                   ToolTip="Installed version. Settings has Check for updates." />
                     </StackPanel>
                 </Border>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

@@ -15,6 +15,49 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.122] — 2026-08-23
+
+### Fixed — the graph shook where the trace left the chart
+Reported with a screen recording, which is what made it findable: the trace scrolls
+right to left, arrives smoothly, and jitters as it exits.
+
+Measuring the recording showed the scroll itself was steady at 2px per frame, so
+the motion was not the fault. The mapping was:
+
+```
+x = (i - n + 2) * stepX + w      →  x₀ = stepX,  xₙ₋₁ = w + stepX
+```
+
+**One step of overhang on the right, none on the left.** New traffic therefore
+entered from off-screen and arrived smoothly, while the left end of the trace
+started one step *inside* the plot, travelled to zero during each slide, and
+snapped back on redraw. A spline endpoint also carries its own curvature, so that
+end did not merely move — it flexed, once per sample, at exactly the point data
+leaves the chart.
+
+Now `stepX = w / (n - 3)` with `x = (i - 1) * stepX`, giving a step of overhang at
+**each** end. Verified arithmetically that both edges stay covered for the whole
+slide. The canvas has always been `ClipToBounds`, so the overhang costs nothing.
+
+The hover lookup inverts that mapping and was updated with it — left alone it
+would have named the wrong sample under the cursor, and named a plausible one,
+which is worse than an error.
+
+### Added — the version in the sidebar
+Under **Engage lockdown**, where someone already looks to check state. It was only
+at the bottom of Settings, which is a long way to answer *"which build am I on"* —
+the first question of every bug report.
+
+Read from `UpdateService.CurrentVersion`, the constant the update check already
+compares against and the check suite already keeps in step with the other three
+files. A literal would have been a fifth place to forget.
+
+### Added
+- `graph-scroll`: the trace must overhang both edges, and the three places that
+  must agree on the spacing — geometry, scroll distance, hover lookup — must
+  actually agree. Shown to fail on each.
+---
+
 ## [0.99.121] — 2026-08-23
 
 ### Fixed — the text box hid what was typed into it
