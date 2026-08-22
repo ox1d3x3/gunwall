@@ -365,7 +365,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.119 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.120 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1658,8 +1658,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 { Action = r.Action, EntityType = r.EntityType, Value = r.Value, Enabled = r.Enabled });
 
         var list = new ItemsControl { Margin = new Thickness(0, 4, 0, 8) };
-        // "Block everything else" is 21 characters and was clipped at 150px.
-        var defaultCombo = new ComboBox { MinWidth = 150, Height = 28 };
+        var defaultCombo = new ComboBox { MinWidth = 150 };
         defaultCombo.Items.Add(new ComboBoxItem { Content = "Allow (default)", Tag = "allow" });
         defaultCombo.Items.Add(new ComboBoxItem { Content = "Block everything else", Tag = "block" });
         defaultCombo.SelectedIndex = work.DefaultBlock ? 1 : 0;
@@ -1725,20 +1724,25 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Rebuild();
 
         // ---- add-rule row ----
-        // NO fixed Width. WPF sizes a ComboBox to its widest item plus whatever
-        // chrome its template actually uses, which is the only party that knows
-        // how much that is.
+        // NO fixed Width and NO fixed Height.
         //
-        // The previous fix computed a width from a measured chrome constant, and
-        // the constant was wrong: it came from a different control on a different
-        // screenshot and was reused without re-measuring. The controls got wider
-        // and the text stayed clipped. MinWidth keeps a sensible shape when the
-        // list is short; nothing caps it.
-        var actionCombo = new ComboBox { MinWidth = 90, Height = 28, Margin = new Thickness(0, 0, 6, 0) };
+        // WPF UI's ComboBox template lays the content out in a "*" column with
+        // Margin="{TemplateBinding Padding}", and its default padding is
+        // 10,8,10,8. Forcing Height = 28 therefore left twelve pixels of vertical
+        // room for text, and the content grid clipped what would not fit.
+        //
+        // Two earlier attempts at this changed the WIDTH, once from a chrome
+        // constant that had been measured on a different control and reused
+        // without checking. The template was fetched and read before this third
+        // attempt, rather than reasoned about again.
+        //
+        // MinWidth keeps a sensible shape when the list is short; nothing caps
+        // either dimension, so the control is as large as its own template needs.
+        var actionCombo = new ComboBox { MinWidth = 90, Margin = new Thickness(0, 0, 6, 0) };
         actionCombo.Items.Add(new ComboBoxItem { Content = "Block", Tag = "block" });
         actionCombo.Items.Add(new ComboBoxItem { Content = "Allow", Tag = "allow" });
         actionCombo.SelectedIndex = 0;
-        var typeCombo = new ComboBox { MinWidth = 110, Height = 28, Margin = new Thickness(0, 0, 6, 0) };
+        var typeCombo = new ComboBox { MinWidth = 110, Margin = new Thickness(0, 0, 6, 0) };
         foreach (var (label, tag) in new[] { ("Domain", "domain"), ("Country", "country"), ("Continent", "continent"),
                  ("ASN", "asn"), ("IP", "ip"), ("IP range", "cidr"), ("Scope", "scope"), ("Any", "any") })
             typeCombo.Items.Add(new ComboBoxItem { Content = label, Tag = tag });

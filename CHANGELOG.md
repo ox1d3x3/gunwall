@@ -15,6 +15,40 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.120] — 2026-08-22
+
+### Fixed — the dropdowns, for the actual reason this time
+Two releases tried to fix this by widening the controls. Both failed, because
+**width was never the constraint.**
+
+WPF UI's ComboBox template — fetched and read for this attempt rather than reasoned
+about again — lays content out in a `*` column with
+`Margin="{TemplateBinding Padding}"`, and its default padding is `10,8,10,8`.
+GunWall forced `Height = 28` on these three, which left **twelve pixels of vertical
+room for text**. The content grid clipped what would not fit, at any width.
+
+No dimension is pinned now. `MinWidth` keeps a sensible shape when the list is
+short; the control is otherwise as large as its own template needs it to be.
+
+### On the two failed attempts
+The first computed a required width from a ComboBox chrome constant of 49px, taken
+from a *different control on a different screenshot* in 0.99.77 and reused here
+without re-measuring. The second removed the fixed width, which was correct and
+insufficient.
+
+Throughout, the check reported success — it asserted a fixed width exceeded a
+number that was itself a guess. It now forbids pinning either dimension, which is
+a property this file can establish rather than a figure it cannot verify.
+
+The template is not in this repository, and both failed attempts treated that as a
+reason to reason about it instead. It took seconds to fetch. Recorded as trap 2.22.
+
+### Added
+- `access-rules` extended: neither `Width` nor `Height` may be pinned on these
+  controls. Shown to fail on the height that caused this and on the width that did
+  not.
+---
+
 ## [0.99.119] — 2026-08-22
 
 ### Fixed properly — the dropdowns were still clipped

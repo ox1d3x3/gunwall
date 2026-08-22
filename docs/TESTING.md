@@ -227,6 +227,19 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.120 — dropdowns, third attempt
+
+1. **Applications → double-click an app → Access rules.**
+
+   **PASS:** *Block*, *Domain* and *Allow (default)* each show in full — nothing
+   cut at the right edge, and nothing cropped top or bottom.
+   **FAIL:** still clipped. If so, say **which direction** — horizontally at the
+   right, or vertically — because those are different causes and the answer
+   decides the next step rather than another guess.
+
+2. The three controls will be slightly taller than before. That is the fix: they
+   are now the height their own template asks for.
+
 ### 0.99.119 — dropdowns sized to their content
 
 1. **Applications → double-click an app → Access rules.**

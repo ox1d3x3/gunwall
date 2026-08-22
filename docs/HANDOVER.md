@@ -339,6 +339,30 @@ caller is the one who has to remember, the ordering is already a bug waiting.
 after `Initialize()`, that no external `MarkReconcileReady` exists, and that
 `Initialize()` sets it.
 
+### 2.22 Reasoning about a control template instead of reading it
+
+Three dropdowns clipped their own text. Two releases tried to fix it by widening
+them — the first from a ComboBox "chrome" constant measured on a different control
+in an earlier release and reused without re-measuring. The controls grew; the text
+stayed clipped, because **width was never the constraint.**
+
+WPF UI's ComboBox template lays content out in a `*` column with
+`Margin="{TemplateBinding Padding}"`, and its default padding is `10,8,10,8`.
+GunWall forced `Height = 28`, leaving twelve pixels of vertical room for text, and
+the content grid clipped what did not fit.
+
+The template is not in this repository, and both failed attempts treated that as a
+reason to reason about it. It is fetched from `lepoco/wpfui` in seconds.
+
+**Rule:** when a control from a third-party library misbehaves, read its template
+before changing anything. A measurement taken from a screenshot of a different
+control is not evidence about this one, and a constant that cannot be re-derived
+should not be relied on twice.
+
+**Check:** `access-rules` forbids pinning either `Width` or `Height` on these
+controls rather than asserting a computed size — a property this project can
+establish, where a number was a guess wearing a check's clothes.
+
 ---
 
 ## 3. Working agreements

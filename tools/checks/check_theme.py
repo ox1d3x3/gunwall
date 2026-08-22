@@ -2268,14 +2268,25 @@ def check_access_rules_dialog():
     # Only WPF knows how much chrome its template uses. Asserting that nobody
     # pins the width is a property this file can actually establish; asserting a
     # number is a guess wearing a check's clothes.
+    # NEITHER dimension may be pinned.
+    #
+    # WPF UI's ComboBox template lays content out in a "*" column with
+    # Margin="{TemplateBinding Padding}", default 10,8,10,8. A forced Height of 28
+    # therefore left twelve pixels for text and the content grid clipped it. Two
+    # earlier fixes changed the width and neither helped, because the width was
+    # never the constraint.
     for name in ("actionCombo", "typeCombo", "defaultCombo"):
-        m = re.search(rf"var {name} = new ComboBox \{{ Width = ", mw)
-        if m:
-            line = mw[:m.start()].count("\n") + 1
-            fail("access-rules",
-                 f"{name} sets a fixed Width (MainWindow.xaml.cs:{line}). A ComboBox "
-                 "clipped by its own template cannot be widened reliably from here - "
-                 "use MinWidth and let WPF size it to its content.")
+        m = re.search(rf"var {name} = new ComboBox \{{([^}}]*)\}}", mw)
+        if not m:
+            continue
+        args = m.group(1)
+        line = mw[:m.start()].count("\n") + 1
+        for prop in ("Width", "Height"):
+            if re.search(rf"\b{prop}\s*=", args):
+                fail("access-rules",
+                     f"{name} pins {prop} (MainWindow.xaml.cs:{line}). WPF UI's "
+                     "template sizes content inside its own padding; pinning either "
+                     f"dimension clips the text. Use Min{prop} instead.")
 
     add = re.search(r"addBtn\.Click \+=.*?\n        \};", mw, re.S)
     if not add:
