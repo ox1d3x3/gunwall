@@ -2257,19 +2257,25 @@ def check_access_rules_dialog():
     before = len(failures)
     mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
 
-    # Widths, measured the same way the header-fit check does.
-    FONT_PX, ADV, CHROME = 12.5, 0.600, 49
-    for name, longest in (("actionCombo", "Block"), ("typeCombo", "Continent")):
-        m = re.search(rf"var {name} = new ComboBox {{ Width = (\d+)", mw)
-        if not m:
-            fail("access-rules", f"{name} not found or no longer has a fixed width")
-            continue
-        width = int(m.group(1))
-        needed = len(longest) * FONT_PX * ADV + CHROME
-        if width < needed:
+    # NO fixed Width on a ComboBox in this dialog.
+    #
+    # The previous version of this check computed a required width from a measured
+    # chrome constant and asserted the fixed width exceeded it. The constant was
+    # wrong - taken from a different control on a different screenshot and reused
+    # without re-measuring - so the check passed, the controls grew, and the text
+    # stayed clipped.
+    #
+    # Only WPF knows how much chrome its template uses. Asserting that nobody
+    # pins the width is a property this file can actually establish; asserting a
+    # number is a guess wearing a check's clothes.
+    for name in ("actionCombo", "typeCombo", "defaultCombo"):
+        m = re.search(rf"var {name} = new ComboBox \{{ Width = ", mw)
+        if m:
+            line = mw[:m.start()].count("\n") + 1
             fail("access-rules",
-                 f"{name} is {width}px but '{longest}' needs {needed:.0f}px - the "
-                 "longest entry is clipped")
+                 f"{name} sets a fixed Width (MainWindow.xaml.cs:{line}). A ComboBox "
+                 "clipped by its own template cannot be widened reliably from here - "
+                 "use MinWidth and let WPF size it to its content.")
 
     add = re.search(r"addBtn\.Click \+=.*?\n        \};", mw, re.S)
     if not add:

@@ -15,6 +15,41 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.119] — 2026-08-22
+
+### Fixed properly — the dropdowns were still clipped
+0.99.118 widened them and the text stayed cut off. The width was never the
+constraint.
+
+**The measurement was wrong.** That fix computed a required width from a
+ComboBox chrome constant of 49px — taken from a *different control on a different
+screenshot* in an earlier release, and reused here without re-measuring. GunWall's
+ComboBoxes are rendered by WPF-UI's template, whose chrome is larger, so the
+controls grew and clipped exactly as before. The check passed throughout, because
+it asserted the fixed width exceeded a number that was itself a guess.
+
+**Only WPF knows how much chrome its template uses.** So nothing here specifies a
+width any more: the three access-rules dropdowns and the interface-font picker use
+`MinWidth` and are sized to their content. That is correct at any font, any
+theme and any DPI, none of which a constant can be.
+
+`FontChoice` was the same defect, visible in an earlier Settings screenshot —
+*"JetBrainsMono Nerd Font (bund"* clipped at 280px.
+
+### Changed — the check now asserts a property instead of a number
+It required a fixed width to exceed a computed minimum. It now requires **no fixed
+width at all** on these controls, which is something this file can actually
+establish. A number derived from an unverifiable constant is a guess wearing a
+check's clothes, and it passed on broken output for a whole release.
+
+### Not changed, and worth a look
+Twelve other ComboBoxes still specify a fixed `Width`. Several were widened in
+0.99.77 using the same suspect constant. They are left alone because changing a
+control's width can disturb a layout that cannot be rendered here, and a blind
+sweep would risk breaking screens that currently look right. If any of them shows
+clipped text, it is the same defect and the same fix applies.
+---
+
 ## [0.99.118] — 2026-08-22
 
 Per-application domain blocking confirmed on hardware: Brave blocked from a site

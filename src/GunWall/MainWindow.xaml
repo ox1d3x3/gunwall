@@ -2685,7 +2685,7 @@
                             <TextBlock Text="JetBrainsMono Nerd Font is bundled and is the default; Instrument Sans is bundled too. Any other font is read from the ones installed on this PC. Addresses, ports and byte counts always use the bundled mono face."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal">
-                                <ComboBox x:Name="FontChoice" Width="280" MinHeight="33"
+                                <ComboBox x:Name="FontChoice" MinWidth="280" MinHeight="33"
                                           SelectionChanged="FontChoice_Changed"
                                           ToolTip="Applies immediately. Machine values stay in JetBrains Mono." />
                                 <Button Content="Reset to default" Style="{StaticResource ActionButton}"

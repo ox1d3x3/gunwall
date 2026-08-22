@@ -227,6 +227,22 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.119 — dropdowns sized to their content
+
+1. **Applications → double-click an app → Access rules.**
+
+   **PASS:** *Block*, *Domain* and *Allow (default)* all show in full, with no
+   character cut off at the right edge.
+   **FAIL:** any of the three is still clipped — say which, and by roughly how
+   much.
+
+2. **Settings → Appearance → interface font.** The selected entry should read
+   *JetBrainsMono Nerd Font (bundled)* in full, not *(bund*.
+
+3. **Glance at the other dropdowns while you are there** — Settings, Security,
+   DNS resolver, Connections. Twelve still specify a fixed width and were not
+   touched. If any shows clipped text, name it and it gets the same fix.
+
 ### 0.99.118 — the access-rules dialog
 
 1. **Applications → double-click an app → Access rules.**
