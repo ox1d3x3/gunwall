@@ -15,6 +15,46 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.118] — 2026-08-22
+
+Per-application domain blocking confirmed on hardware: Brave blocked from a site
+while every other browser reached it normally, 414/414 filters present, zero
+errors. Two defects in the access-rules dialog, both visible in one screenshot.
+
+### Fixed — the dialog could not fit its own text
+The action ComboBox was 84px while **"Block" needs 86** at 12.5px in a 0.600em
+face plus 49px of ComboBox chrome. The control that decides what a rule *does* was
+clipping its own longest entry. "Continent" needed 116px in a 110px control.
+
+Now 100 and 130, with 14px of slack each — measured with the same metrics the
+header-fit check uses, not estimated. The value box was a fixed 140px and now has
+a 220px minimum: it holds domains and pasted URLs, which are routinely longer than
+that, so a person could not see what they had typed while typing it.
+
+### Fixed — a pasted URL became a rule that matched nothing
+The screenshot showed two rules for one site: `www.ox1de.xyz` and
+`https://www.ox1de.xyz/`. The second was stored exactly as typed.
+
+A domain rule matches the **name an address resolved from**, so a value carrying a
+scheme and a trailing slash matches nothing, ever. It sat in the list looking
+identical to the rule that worked — and someone reasonably concludes the feature
+is unreliable rather than that one of their two rules is inert.
+
+Domain values now go through the blocklist box's existing normaliser, which
+already strips scheme, credentials, path, query, port and the adblock `*.`
+wildcard. Reused rather than reimplemented: two implementations of one rule is how
+they drift. A value that reduces to nothing is refused with the reason, rather
+than stored.
+
+**Duplicates are now refused too.** Adding the same rule twice is always a mistake,
+and two identical rows are indistinguishable in the list.
+
+### Added
+- `access-rules`: both ComboBoxes must fit their longest entry, domain values must
+  be normalised, and duplicates must be refused. Shown to fail on the shipped
+  width and on removing either guard.
+---
+
 ## [0.99.117] — 2026-08-21
 
 0.99.116's one-click update confirmed on hardware: `Update: launched installer for

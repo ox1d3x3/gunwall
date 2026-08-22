@@ -365,7 +365,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.117 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.118 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1724,16 +1724,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Rebuild();
 
         // ---- add-rule row ----
-        var actionCombo = new ComboBox { Width = 84, Height = 28, Margin = new Thickness(0, 0, 6, 0) };
+        // 84px fitted nothing: "Block" needs 86 at 12.5px in a 0.600em face plus 49px
+        // of ComboBox chrome, so the widest entry was clipped in the control that
+        // decides what the rule does.
+        var actionCombo = new ComboBox { Width = 100, Height = 28, Margin = new Thickness(0, 0, 6, 0) };
         actionCombo.Items.Add(new ComboBoxItem { Content = "Block", Tag = "block" });
         actionCombo.Items.Add(new ComboBoxItem { Content = "Allow", Tag = "allow" });
         actionCombo.SelectedIndex = 0;
-        var typeCombo = new ComboBox { Width = 110, Height = 28, Margin = new Thickness(0, 0, 6, 0) };
+        // "Continent" needs 116px; 110 clipped it.
+        var typeCombo = new ComboBox { Width = 130, Height = 28, Margin = new Thickness(0, 0, 6, 0) };
         foreach (var (label, tag) in new[] { ("Domain", "domain"), ("Country", "country"), ("Continent", "continent"),
                  ("ASN", "asn"), ("IP", "ip"), ("IP range", "cidr"), ("Scope", "scope"), ("Any", "any") })
             typeCombo.Items.Add(new ComboBoxItem { Content = label, Tag = tag });
         typeCombo.SelectedIndex = 0;
-        var valueBox = new TextBox { Width = 140, Height = 28, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        // Takes the remaining width instead of a fixed 140px. This holds domains and
+        // pasted URLs, which are routinely longer than that - a person could not
+        // see what they had typed while typing it.
+        var valueBox = new TextBox { MinWidth = 220, Height = 28, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
         var addBtn = new Button { Content = "Add rule", Height = 28, Padding = new Thickness(12, 0, 12, 0) };
         if (TryFindResource("PrimaryButton") is Style pb) addBtn.Style = pb;
         addBtn.Click += (_, _) =>
@@ -1742,6 +1749,44 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             string type = ((ComboBoxItem)typeCombo.SelectedItem).Tag.ToString()!;
             string val = valueBox.Text.Trim();
             if (type != "any" && val.Length == 0) { valueBox.Focus(); return; }
+
+            // A domain rule matches the NAME an address resolved from, so a pasted
+            // URL has to be reduced to its hostname or it matches nothing. Without
+            // this, pasting "https://www.example.com/" produced a second rule
+            // sitting beside the real one, looking identical in the list and
+            // silently never firing.
+            //
+            // Reuses the blocklist box's normaliser rather than repeating it: that
+            // one already strips scheme, credentials, path, query, port and the
+            // adblock "*." wildcard, and two implementations of one rule is how
+            // they drift.
+            if (type == "domain")
+            {
+                string cleaned = Services.DnsResolver.NormalizeBlocklistEntry(val, out string problem);
+                if (cleaned.Length == 0)
+                {
+                    MessageBox.Show(
+                        problem.Length > 0
+                            ? $"That is not a domain: {problem}."
+                            : "That is not a domain GunWall can match.",
+                        "Access rules", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    valueBox.Focus();
+                    return;
+                }
+                val = cleaned;
+            }
+
+            // Adding the same rule twice is always a mistake, and the duplicate is
+            // invisible in a list where both rows read the same.
+            if (work.Rules.Any(r => r.EntityType == type
+                                    && string.Equals(r.Value, val, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show($"There is already a rule for {val}.",
+                    "Access rules", MessageBoxButton.OK, MessageBoxImage.Information);
+                valueBox.Clear();
+                return;
+            }
+
             work.Rules.Add(new GunWall.Models.AppAccessRule { Action = act, EntityType = type, Value = val });
             valueBox.Clear(); Rebuild();
         };

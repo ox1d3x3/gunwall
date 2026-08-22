@@ -227,6 +227,25 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.118 — the access-rules dialog
+
+1. **Applications → double-click an app → Access rules.**
+2. **PASS:** the Block/Allow and type dropdowns show their full text — no clipped
+   "Block", no clipped "Continent".
+3. In the value box, paste a full URL: `https://www.example.com/`
+4. Choose **Block** / **Domain**, press **Add rule**.
+
+   **PASS:** the rule is added as `www.example.com` — scheme and slash stripped.
+   **FAIL:** it appears with the scheme still attached; that rule matches nothing.
+
+5. **Add the same domain again**, typed plainly this time.
+
+   **PASS:** "There is already a rule for www.example.com."
+   **FAIL:** a second identical row appears.
+
+6. Paste something that is not a domain, such as `1.2.3.4`. It should be refused
+   with a reason rather than stored.
+
 ### 0.99.117 — exempting an app from blocklists
 
 1. **DNS resolver → blocklist box.** Add one line naming a domain your browser

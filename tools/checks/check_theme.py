@@ -2244,6 +2244,51 @@ def check_blocklist_bypass():
         notes.append("blocklist-bypass: guard precedes filter creation, existing filters cleared")
 
 
+def check_access_rules_dialog():
+    """The access-rules dialog must fit its own text and normalise what it stores.
+
+    Two defects shipped together and were found in one screenshot. The action
+    ComboBox was 84px while "Block" needs 86 at this font - the control that
+    decides what a rule DOES was clipped. And a pasted URL was stored verbatim, so
+    "https://www.example.com/" became a second rule beside the real one: identical
+    in the list, and silently matching nothing, because a domain rule matches the
+    name an address resolved from.
+    """
+    before = len(failures)
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    # Widths, measured the same way the header-fit check does.
+    FONT_PX, ADV, CHROME = 12.5, 0.600, 49
+    for name, longest in (("actionCombo", "Block"), ("typeCombo", "Continent")):
+        m = re.search(rf"var {name} = new ComboBox {{ Width = (\d+)", mw)
+        if not m:
+            fail("access-rules", f"{name} not found or no longer has a fixed width")
+            continue
+        width = int(m.group(1))
+        needed = len(longest) * FONT_PX * ADV + CHROME
+        if width < needed:
+            fail("access-rules",
+                 f"{name} is {width}px but '{longest}' needs {needed:.0f}px - the "
+                 "longest entry is clipped")
+
+    add = re.search(r"addBtn\.Click \+=.*?\n        \};", mw, re.S)
+    if not add:
+        fail("access-rules", "the add-rule handler could not be located")
+    else:
+        body = add.group(0)
+        if "NormalizeBlocklistEntry" not in body:
+            fail("access-rules",
+                 "a domain rule is stored as typed, so a pasted URL becomes a rule "
+                 "that matches nothing and looks identical to one that works")
+        if "already a rule" not in body:
+            fail("access-rules",
+                 "duplicate rules are accepted, and two identical rows are "
+                 "indistinguishable in the list")
+
+    if len(failures) == before:
+        notes.append("access-rules: controls fit their text, domains normalised, duplicates refused")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2295,6 +2340,7 @@ def main():
     check_enforcement_address_family()
     check_update_download()
     check_blocklist_bypass()
+    check_access_rules_dialog()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()
