@@ -2275,18 +2275,25 @@ def check_access_rules_dialog():
     # therefore left twelve pixels for text and the content grid clipped it. Two
     # earlier fixes changed the width and neither helped, because the width was
     # never the constraint.
-    for name in ("actionCombo", "typeCombo", "defaultCombo"):
-        m = re.search(rf"var {name} = new ComboBox \{{([^}}]*)\}}", mw)
+    # EVERY input in this dialog, not only the ComboBoxes. The TextBox was left
+    # at Height = 28 when the dropdowns were fixed, and its template has the same
+    # shape - Height bound to the border, text laid out inside Padding - so typed
+    # characters were squeezed out of view entirely.
+    for name, ctor in (("actionCombo", "ComboBox"), ("typeCombo", "ComboBox"),
+                       ("defaultCombo", "ComboBox"), ("valueBox", "TextBox"),
+                       ("addBtn", "Button")):
+        m = re.search(rf"var {name} = new {ctor}\s*\{{(.*?)\}};", mw, re.S)
         if not m:
             continue
         args = m.group(1)
         line = mw[:m.start()].count("\n") + 1
         for prop in ("Width", "Height"):
-            if re.search(rf"\b{prop}\s*=", args):
+            if re.search(rf"(?<![\w.]){prop}\s*=", args):
                 fail("access-rules",
-                     f"{name} pins {prop} (MainWindow.xaml.cs:{line}). WPF UI's "
-                     "template sizes content inside its own padding; pinning either "
-                     f"dimension clips the text. Use Min{prop} instead.")
+                     f"{name} pins {prop} (MainWindow.xaml.cs:{line}). WPF UI binds "
+                     "that dimension straight to the control's border and lays "
+                     "content inside Padding, so pinning it clips the text. Use "
+                     f"Min{prop}, or Padding, instead.")
 
     add = re.search(r"addBtn\.Click \+=.*?\n        \};", mw, re.S)
     if not add:

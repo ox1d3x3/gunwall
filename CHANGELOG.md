@@ -15,6 +15,34 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.121] — 2026-08-23
+
+### Fixed — the text box hid what was typed into it
+0.99.120 diagnosed the ComboBoxes correctly and **fixed only the ComboBoxes.** The
+TextBox beside them kept `Height = 28`, and its template has the same shape:
+`Height` bound straight to the border, text laid out inside
+`Margin="{TemplateBinding Padding}"`. So a domain typed into it was squeezed out
+of view — the field looked empty while holding a value.
+
+Finding the cause and then applying it to three of the four controls that share it
+is a worse failure than not finding it, because the remaining one looks like a
+different bug.
+
+The fixed height is gone from the text box and from the **Add rule** button, which
+would otherwise have sat short beside neighbours that now size themselves.
+
+### Fixed — the empty band under the dropdown text
+The controls were inheriting the theme's own padding, `10,8,10,8`, which is sized
+for touch and leaves a visible gap under a single line of text at this size. All
+four now set `10,6,10,6` with content centred vertically: enough to breathe,
+without looking half-empty.
+
+### Added
+- `access-rules` now covers **every input in the dialog** rather than the three
+  ComboBoxes — the text box and the button included. Shown to fail on each in
+  turn, starting with the text box height that this release exists to fix.
+---
+
 ## [0.99.120] — 2026-08-22
 
 ### Fixed — the dropdowns, for the actual reason this time

@@ -227,6 +227,20 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.121 — the whole add-rule row
+
+1. **Applications → double-click an app → Access rules.**
+2. **Type `www.google.com` into the value box.**
+
+   **PASS:** the text is visible as you type it.
+   **FAIL:** the field looks empty or the text is cropped.
+
+3. The three dropdowns should show their text with a small, even margin above and
+   below — not a band of empty space underneath.
+4. **Block / Domain / Add rule** should all be the same height and line up.
+
+If anything is still cropped, say which control and in which direction.
+
 ### 0.99.120 — dropdowns, third attempt
 
 1. **Applications → double-click an app → Access rules.**

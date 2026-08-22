@@ -365,7 +365,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.120 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.121 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1658,7 +1658,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 { Action = r.Action, EntityType = r.EntityType, Value = r.Value, Enabled = r.Enabled });
 
         var list = new ItemsControl { Margin = new Thickness(0, 4, 0, 8) };
-        var defaultCombo = new ComboBox { MinWidth = 150 };
+        var defaultCombo = new ComboBox
+        {
+            MinWidth = 150,
+            Padding = new Thickness(10, 6, 10, 6),
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
         defaultCombo.Items.Add(new ComboBoxItem { Content = "Allow (default)", Tag = "allow" });
         defaultCombo.Items.Add(new ComboBoxItem { Content = "Block everything else", Tag = "block" });
         defaultCombo.SelectedIndex = work.DefaultBlock ? 1 : 0;
@@ -1738,11 +1743,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         //
         // MinWidth keeps a sensible shape when the list is short; nothing caps
         // either dimension, so the control is as large as its own template needs.
-        var actionCombo = new ComboBox { MinWidth = 90, Margin = new Thickness(0, 0, 6, 0) };
+        var actionCombo = new ComboBox
+        {
+            MinWidth = 90,
+            Padding = new Thickness(10, 6, 10, 6),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+        };
         actionCombo.Items.Add(new ComboBoxItem { Content = "Block", Tag = "block" });
         actionCombo.Items.Add(new ComboBoxItem { Content = "Allow", Tag = "allow" });
         actionCombo.SelectedIndex = 0;
-        var typeCombo = new ComboBox { MinWidth = 110, Margin = new Thickness(0, 0, 6, 0) };
+        var typeCombo = new ComboBox
+        {
+            MinWidth = 110,
+            Padding = new Thickness(10, 6, 10, 6),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+        };
         foreach (var (label, tag) in new[] { ("Domain", "domain"), ("Country", "country"), ("Continent", "continent"),
                  ("ASN", "asn"), ("IP", "ip"), ("IP range", "cidr"), ("Scope", "scope"), ("Any", "any") })
             typeCombo.Items.Add(new ComboBoxItem { Content = label, Tag = tag });
@@ -1750,8 +1767,25 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // Takes the remaining width instead of a fixed 140px. This holds domains and
         // pasted URLs, which are routinely longer than that - a person could not
         // see what they had typed while typing it.
-        var valueBox = new TextBox { MinWidth = 220, Height = 28, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-        var addBtn = new Button { Content = "Add rule", Height = 28, Padding = new Thickness(12, 0, 12, 0) };
+        // Height removed for the same reason as the ComboBoxes beside it: WPF UI's
+        // TextBox template binds Height straight to its border and lays the text
+        // inside Margin="{TemplateBinding Padding}", so forcing 28px squeezed the
+        // text out of view entirely - typed characters were simply not visible.
+        //
+        // Padding set explicitly rather than inherited. The theme's default is
+        // generous enough to leave a visible gap under a single line of text at
+        // this size; 6px above and below is enough to breathe without looking
+        // half-empty.
+        var valueBox = new TextBox
+        {
+            MinWidth = 220,
+            Padding = new Thickness(10, 6, 10, 6),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+        };
+        // Matched to the fields beside it. Left at Height = 28 it would sit short
+        // against controls that now size themselves.
+        var addBtn = new Button { Content = "Add rule", Padding = new Thickness(14, 6, 14, 6) };
         if (TryFindResource("PrimaryButton") is Style pb) addBtn.Style = pb;
         addBtn.Click += (_, _) =>
         {
