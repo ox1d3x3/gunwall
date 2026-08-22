@@ -227,6 +227,31 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.123 — MAC vendor lookup
+
+1. **Network scan.** Before downloading anything, the label beside the buttons
+   should read **No vendor data**.
+2. Press **Vendor database**. It fetches about 4 MB from IEEE and then re-scans on
+   its own.
+3. The label should read roughly **42,000 vendor prefixes** (MA-L, MA-M and MA-S
+   together).
+
+   If it names a registry that could not be reached, that is the soft-failure path
+   working — the others still loaded. Say which one.
+
+4. **The VENDOR column:**
+   - `00:50:56:...` → **VMware, Inc.**
+   - `A4:38:CC:...` → **Nintendo Co.,Ltd**
+   - your router and other real hardware → their makers
+   - the two rows marked **Randomised MAC** → **blank**, which is correct. A
+     randomised address was chosen by the device and no vendor registered it.
+
+**FAIL:** a randomised row shows a vendor, a name looks truncated mid-word, or a
+device you know the maker of shows the wrong one.
+
+5. Restart GunWall. The count should still be there — it loads from disk without
+   downloading again.
+
 ### 0.99.122 — graph scrolling and the version label
 
 1. **Overview.** Watch the network graph for a minute with real traffic running.

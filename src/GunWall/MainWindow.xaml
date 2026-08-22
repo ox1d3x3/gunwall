@@ -2395,9 +2395,15 @@
                                    Text="Discover devices on your local network (IP, MAC, host name)."
                                    Style="{StaticResource Muted}" Margin="0,4,0,0" />
                     </StackPanel>
-                    <Button x:Name="ScanBtn" Content="Scan network" Style="{StaticResource PrimaryButton}"
-                            HorizontalAlignment="Right" VerticalAlignment="Top" Padding="16,8"
-                            Click="ScanNetwork_Click" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <TextBlock x:Name="OuiStatus" Style="{StaticResource Muted}"
+                                   VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <Button x:Name="OuiBtn" Content="Vendor database" Padding="14,8"
+                                Margin="0,0,8,0" Click="DownloadOui_Click"
+                                ToolTip="Downloads IEEE's public MAC registry so devices show who made them. About 4 MB, stored locally, fetched only when you press this." />
+                        <Button x:Name="ScanBtn" Content="Scan network" Style="{StaticResource PrimaryButton}"
+                                Padding="16,8" Click="ScanNetwork_Click" />
+                    </StackPanel>
                 </Grid>
                 <Border Grid.Row="1" Padding="0">
                     <ListView x:Name="DevicesList" gw:Table.EmptyTitle="No devices found" gw:Table.EmptyText="Run a scan to look for other hosts on your network." VirtualizingPanel.IsVirtualizing="True">
@@ -2441,7 +2447,8 @@
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
                                 <GridViewColumn Header="HOST" Width="240" DisplayMemberBinding="{Binding Host}" />
-                                <GridViewColumn Header="LIKELY OS" Width="200" DisplayMemberBinding="{Binding Os}" />
+                                <GridViewColumn Header="VENDOR" Width="200" DisplayMemberBinding="{Binding Vendor}" />
+                                <GridViewColumn Header="LIKELY OS" Width="170" DisplayMemberBinding="{Binding Os}" />
                                 <GridViewColumn Header="NOTE" Width="160" DisplayMemberBinding="{Binding Kind}" />
                             </GridView>
                         </ListView.View>

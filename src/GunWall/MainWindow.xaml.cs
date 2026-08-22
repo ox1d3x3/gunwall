@@ -171,6 +171,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         DnsLog.ItemsSource = _dnsLog;
         // Carry across anything an older build wrote beside the executable, before
         // anything reads or overwrites it. Copies, and never over a newer file.
+        // Loaded here rather than on first scan: a 4 MB parse should not happen
+        // while someone is waiting for a scan to finish.
+        try
+        {
+            _oui.LoadFromFile(OuiCachePath);
+            Services.NetworkScanner.Oui = _oui;
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("OuiLoad", ex); }
+        // Shown from the start. Without this the label stays empty until someone
+        // downloads, which reads as a broken control rather than an empty table.
+        Dispatcher.BeginInvoke(new Action(RefreshOuiStatus));
+
         Services.ProfilePaths.MigrateStrayFile("usage-history.json");
         Services.ProfilePaths.MigrateStrayFile("dns-blocklist-preset.txt");
 
@@ -371,7 +383,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.122 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.123 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5919,6 +5931,54 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ================================================================ network scanner
+    private readonly Services.OuiService _oui = new();
+    private string OuiCachePath => Services.ProfilePaths.FileIn("oui.csv");
+
+    /// <summary>Shows how many prefixes are loaded, or invites the download.</summary>
+    private void RefreshOuiStatus()
+    {
+        if (OuiStatus == null) return;
+        OuiStatus.Text = _oui.Loaded
+            ? $"{_oui.Count:N0} vendor prefixes"
+            : "No vendor data";
+    }
+
+    private async void DownloadOui_Click(object sender, RoutedEventArgs e)
+    {
+        if (OuiBtn == null) return;
+        OuiBtn.IsEnabled = false;
+        string was = (string)OuiBtn.Content;
+        OuiBtn.Content = "Downloading...";
+        try
+        {
+            var (written, message) = await Services.OuiService.DownloadAsync(OuiCachePath);
+            if (written > 0)
+            {
+                _oui.LoadFromFile(OuiCachePath);
+                Services.NetworkScanner.Oui = _oui;
+                RefreshOuiStatus();
+                Services.DiagnosticLog.Log($"MAC vendor registry: {message} "
+                                         + $"{_oui.Count:N0} prefixes loaded.");
+                // Re-scan so the column fills without the user having to ask twice.
+                if (_devices.Count > 0) ScanNetwork_Click(this, new RoutedEventArgs());
+            }
+            MessageBox.Show(message, "Vendor database",
+                MessageBoxButton.OK,
+                written > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("DownloadOui", ex);
+            MessageBox.Show($"Could not download the vendor database: {ex.Message}",
+                "Vendor database", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            OuiBtn.Content = was;
+            OuiBtn.IsEnabled = true;
+        }
+    }
+
     private async void ScanNetwork_Click(object sender, RoutedEventArgs e)
     {
         try

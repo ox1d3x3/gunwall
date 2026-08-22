@@ -15,6 +15,48 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.123] — 2026-08-23
+
+### Added — who made each device on the network
+**Network scan → Vendor database** downloads IEEE's public MAC registry, and the
+scan gains a **VENDOR** column. About 4 MB, fetched only when asked, stored beside
+the GeoIP tables and never bundled — so no IEEE listing is redistributed inside an
+MIT repository, and the data stays current rather than ageing with the binary.
+
+### The part that had to be got right
+IEEE publishes **three** registries and they do not share a prefix length: MA-L is
+24 bits, MA-M is 28, MA-S is 36.
+
+For an MA-M or MA-S range **the first 24 bits belong to IEEE, not to the vendor.**
+A three-byte lookup — the obvious implementation — therefore reports a confidently
+wrong manufacturer for roughly nine thousand blocks. Wrong is worse than blank
+here: someone reading a device list cannot tell a plausible wrong answer from a
+right one.
+
+Matching is longest-prefix-first: 36 bits, then 28, then 24. Verified against a
+real 25,103-row registry file and a synthetic case covering all three registries.
+
+Two more things the obvious implementation gets wrong:
+
+- **A randomised MAC has no vendor.** The U/L bit means the device chose its own
+  address and nobody registered it, so any match is coincidence. Those return
+  blank — and the NOTE column already reads *"Randomised MAC"*, so the gap is
+  explained rather than mysterious.
+- **Organisation names contain quoted commas** — `"Shenzhen ViewAt Technology
+  Co.,Ltd."` — so the file is parsed as real CSV. Splitting on commas would
+  truncate a vendor to something that still looks entirely plausible.
+
+Each registry is fetched independently and a failure on one does not lose the
+others; MA-L alone covers most consumer hardware. The download host is pinned and
+re-checked after redirects, as the updater's is: this file is read back as
+authority on what hardware is on someone's network.
+
+### Added
+- `mac-vendor`: longest prefix must win, randomised addresses must be excluded,
+  the registry must be parsed as CSV, and the host must be re-checked after
+  redirects. Shown to fail on all four.
+---
+
 ## [0.99.122] — 2026-08-23
 
 ### Fixed — the graph shook where the trace left the chart

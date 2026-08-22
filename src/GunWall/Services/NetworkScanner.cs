@@ -14,7 +14,11 @@ namespace GunWall.Services;
 /// </summary>
 public sealed class NetworkScanner
 {
-    public sealed record Device(string Ip, string Mac, string Host, string Os = "", string Kind = "");
+    public sealed record Device(string Ip, string Mac, string Host, string Os = "", string Kind = "", string Vendor = "");
+
+    /// <summary>Supplies vendor names, when a registry has been downloaded. Set by
+    /// the host so the scanner does not own the table or its lifetime.</summary>
+    public static OuiService? Oui { get; set; }
 
     /// <summary>TTL seen in each host's ping reply, keyed by address.
     ///
@@ -123,7 +127,8 @@ public sealed class NetworkScanner
                                 : IsRandomisedMac(macLocal) ? "Randomised MAC"
                                 : "";
 
-                    lock (devices) devices.Add(new Device(ipLocal, macLocal, host, os, kind));
+                    string vendor = Oui?.Lookup(macLocal) ?? "";
+                    lock (devices) devices.Add(new Device(ipLocal, macLocal, host, os, kind, vendor));
                 }));
             }
             await Task.WhenAll(resolveTasks);

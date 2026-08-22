@@ -2361,6 +2361,60 @@ def check_graph_scroll():
         notes.append("graph-scroll: trace overhangs both edges, spacing agrees in all three places")
 
 
+def check_mac_vendor():
+    """Vendor lookup must match the longest prefix and must not guess.
+
+    The three IEEE registries use different prefix lengths - 24, 28 and 36 bits.
+    For an MA-M or MA-S range the first 24 bits belong to **IEEE**, not to the
+    vendor, so a naive three-byte lookup returns a confidently wrong manufacturer
+    for roughly nine thousand blocks. Wrong is worse than blank here: a person
+    reading a device list has no way to tell a plausible wrong answer from a right
+    one.
+
+    A locally administered address must also return nothing. The U/L bit means the
+    device chose its own address and no vendor registered it, so any match would
+    be coincidence.
+    """
+    before = len(failures)
+    src = (APP / "Services" / "OuiService.cs").read_text(encoding="utf-8")
+
+    look = re.search(r"public string Lookup\(string\? mac\).*?\n    \}", src, re.S)
+    if not look:
+        fail("mac-vendor", "OuiService.Lookup not found")
+        return
+    body = look.group(0)
+
+    # Longest first: the 36-bit test must appear before the 28-bit, and that
+    # before the 24-bit fallback.
+    i36, i28, i24 = body.find("_p36"), body.find("_p28"), body.find("_p24")
+    if min(i36, i28, i24) < 0:
+        fail("mac-vendor", "Lookup does not consult all three registries")
+    elif not (i36 < i28 < i24):
+        fail("mac-vendor",
+             "prefixes are not tried longest-first, so an MA-M or MA-S device "
+             "reports the IEEE block holder instead of its real manufacturer")
+
+    if "0x02" not in body:
+        fail("mac-vendor",
+             "a locally administered (randomised) MAC is not excluded, so it can "
+             "be given a vendor it never had")
+
+    if "ParseCsvLine" not in src:
+        fail("mac-vendor",
+             "the registry is not parsed as real CSV; organisation names contain "
+             "quoted commas and splitting truncates them silently")
+
+    dl = re.search(r"public static async Task<\(int Written, string Message\)> DownloadAsync.*?\n    \}",
+                   src, re.S)
+    if dl and "RequestUri?.Host" not in dl.group(0):
+        fail("mac-vendor",
+             "the download host is not re-checked after redirects, and this file "
+             "is read back as authority on what hardware is on the network")
+
+    if len(failures) == before:
+        notes.append("mac-vendor: longest prefix wins, randomised excluded, CSV parsed properly")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2414,6 +2468,7 @@ def main():
     check_blocklist_bypass()
     check_access_rules_dialog()
     check_graph_scroll()
+    check_mac_vendor()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()
