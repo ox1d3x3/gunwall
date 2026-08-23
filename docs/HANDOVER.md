@@ -363,6 +363,26 @@ should not be relied on twice.
 controls rather than asserting a computed size — a property this project can
 establish, where a number was a guess wearing a check's clothes.
 
+### 2.23 Auditing one file and calling it audited
+
+An interrupted session left partial work in several files. A duplicate
+`DeviceNote_Edit` was found in `MainWindow.xaml.cs`, removed, and the package was
+shipped — while `FirewallManager.cs` carried two copies of `GetDeviceNote` and
+`SetDeviceNote`, and `RuleStore.cs` two of `DeviceNotes`. Three CS0111/CS0102
+errors, in a build that had been declared verified.
+
+The search that found the first duplicate was run against one file. Nothing about
+the cause was specific to that file.
+
+**Rule:** when a defect is found, the next step is to search for it everywhere,
+not to fix the instance. A defect discovered by accident is evidence about the
+whole tree, not about the file it happened to surface in.
+
+**Check:** `duplicate-member` matches on name AND parameter list across every
+type in the project, so genuine overloads - `DnsMessage.TryReadName` exists twice
+with different parameters - are not reported. A check that flagged those is one
+people would learn to ignore.
+
 ---
 
 ## 3. Working agreements

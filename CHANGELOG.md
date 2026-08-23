@@ -15,6 +15,38 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.125] — 2026-08-23
+
+### Fixed — 0.99.124 did not compile
+Three errors: `GetDeviceNote` and `SetDeviceNote` declared twice in
+`FirewallManager`, and `DeviceNotes` twice in `StoreData`. An interrupted session
+left a first copy of each behind and a second was written over it.
+
+The duplicate copies were removed, along with `NormalizeMac`, which nothing else
+used once they were gone.
+
+### Why this shipped
+A duplicate `DeviceNote_Edit` was found in `MainWindow.xaml.cs` before release,
+removed, and the package was declared verified. **The search that found it was run
+against one file** — and nothing about the cause was specific to that file. Two
+more files carried the same defect and were never looked at.
+
+A defect found by accident is evidence about the whole tree, not about the file it
+surfaced in. Recorded as trap 2.23.
+
+### Added
+- `duplicate-member`: no type may declare the same signature twice, across every
+  file. Matched on name **and** parameter list, so genuine overloads are not
+  flagged — `DnsMessage.TryReadName` legitimately exists twice with different
+  parameters, and a check reporting that is one people learn to ignore. Shown to
+  fail on both of this build's defects.
+
+Also swept for the neighbouring compile-error classes and found none: duplicate
+type declarations, duplicate `x:Name` values, and XAML handlers with no method.
+`EVENT_RECORD`, `FWP_BYTE_BLOB`, `FWP_VALUE0` and `Result` each appear twice but
+are nested in different types, which is legal — and the reported build confirms it.
+---
+
 ## [0.99.124] — 2026-08-23
 
 ### Added — name the devices on your network

@@ -2466,6 +2466,63 @@ def check_device_notes():
         notes.append("device-notes: keyed on MAC, randomised devices cautioned")
 
 
+def check_no_duplicate_members():
+    """No type may declare the same member signature twice.
+
+    CS0111 and CS0102 are compile errors, so they cannot reach a user - but they
+    cannot be caught here either, and this project is authored where it cannot be
+    compiled. They have now shipped twice in one session, both times because an
+    interrupted edit left a first copy behind and a second was written over it.
+    Three errors in one build, none of them findable except by building.
+
+    Matched on name AND parameter list, so genuine overloads are not flagged:
+    DnsMessage.TryReadName legitimately exists twice with different parameters,
+    and a check that reported it would be one people learn to ignore.
+    """
+    before = len(failures)
+
+    def strip(text):
+        text = re.sub(r"//[^\n]*", "", text)
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        return re.sub(r'"(?:[^"\\]|\\.)*"', '""', text)
+
+    sig = re.compile(
+        r"^[ \t]*(?:public|private|internal|protected)[ \t]+"
+        r"(?:(?:static|readonly|sealed|override|virtual|async|const|new|extern|partial|unsafe)[ \t]+)*"
+        r"[\w<>\[\], \?\.]+?[ \t]+(\w+)[ \t]*(\([^)]*\)|\{[ \t]*get)", re.M)
+
+    import glob as _g
+    from collections import Counter
+    for f in sorted(_g.glob(str(APP / "**" / "*.cs"), recursive=True)):
+        text = strip(Path(f).read_text(encoding="utf-8"))
+        for tm in re.finditer(r"\b(?:class|record|struct|interface)\s+(\w+)", text):
+            i = text.find("{", tm.end())
+            if i < 0:
+                continue
+            depth = 0
+            end = len(text)
+            for j in range(i, len(text)):
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = j
+                        break
+            counts = Counter(
+                (m.group(1), re.sub(r"\s+", "", m.group(2)))
+                for m in sig.finditer(text[i:end]))
+            for (name, params), n in counts.items():
+                # IValueConverter requires both of these; they are never duplicates.
+                if n > 1 and name not in ("Convert", "ConvertBack"):
+                    fail("duplicate-member",
+                         f"{Path(f).name}: {tm.group(1)}.{name} is declared {n} times "
+                         "with the same signature - CS0111/CS0102 at build time")
+
+    if len(failures) == before:
+        notes.append("duplicate-member: no type declares a signature twice")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2521,6 +2578,7 @@ def main():
     check_graph_scroll()
     check_mac_vendor()
     check_device_notes()
+    check_no_duplicate_members()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()

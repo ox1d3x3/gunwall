@@ -214,19 +214,6 @@ public sealed class StoreData
     /// Every row a scan produces has a MAC: the scanner reads the ARP table and
     /// skips entries without one, so there is no case this cannot key.</summary>
     public Dictionary<string, string> DeviceNotes { get; set; } = new();
-
-    /// <summary>Notes the user has attached to devices on the local network,
-    /// keyed by NORMALISED MAC - uppercase hex, no separators.
-    ///
-    /// Keyed by MAC rather than by address because the MAC is the device and the
-    /// address is only where it happens to be today. A note keyed by IP would
-    /// migrate to whichever machine the router handed that lease to next, which is
-    /// worse than losing it: the label would be wrong rather than absent.
-    ///
-    /// Every row the scanner produces has a MAC - it reads the ARP table and skips
-    /// entries without one - so there is no case needing a fallback key.</summary>
-    public Dictionary<string, string> DeviceNotes { get; set; } = new();
-
     /// <summary>UI/behaviour preferences.</summary>
     public bool StartMinimized { get; set; }
     public bool AlwaysOnTop { get; set; }
