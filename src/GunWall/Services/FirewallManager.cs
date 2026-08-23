@@ -1041,11 +1041,59 @@ public sealed class FirewallManager : IDisposable
         !string.IsNullOrEmpty(exePath) && _data.AppNotes.TryGetValue(exePath, out var n) ? n : "";
 
     /// <summary>Sets or clears the note for an executable.</summary>
+    /// <summary>Normalises a MAC to the form notes are keyed by: hex only,
+    /// uppercase. Accepts colons, dashes or nothing, so a note written from one
+    /// display format is found from another.</summary>
+    public static string MacKey(string? mac) =>
+        mac is null ? "" : new string(mac.Where(Uri.IsHexDigit).ToArray()).ToUpperInvariant();
+
+    public string GetDeviceNote(string? mac)
+    {
+        string k = MacKey(mac);
+        return k.Length > 0 && _data.DeviceNotes.TryGetValue(k, out var n) ? n : "";
+    }
+
+    public void SetDeviceNote(string? mac, string note)
+    {
+        string k = MacKey(mac);
+        if (k.Length == 0) return;
+        if (string.IsNullOrWhiteSpace(note)) _data.DeviceNotes.Remove(k);
+        else _data.DeviceNotes[k] = note.Trim();
+        _store.Save(_data);
+    }
+
     public void SetNote(string exePath, string note)
     {
         if (string.IsNullOrEmpty(exePath)) return;
         if (string.IsNullOrWhiteSpace(note)) _data.AppNotes.Remove(exePath);
         else _data.AppNotes[exePath] = note.Trim();
+        _store.Save(_data);
+    }
+
+    /// <summary>Normalises a MAC to the form the note table is keyed by.
+    ///
+    /// One place, used by both the read and the write. Two normalisers would be
+    /// two chances to disagree over separators or case, and a note that saves
+    /// under one key and reads under another simply vanishes.</summary>
+    public static string NormalizeMac(string? mac) =>
+        string.IsNullOrEmpty(mac)
+            ? ""
+            : new string(mac.Where(Uri.IsHexDigit).ToArray()).ToUpperInvariant();
+
+    /// <summary>The note attached to a network device, or empty.</summary>
+    public string GetDeviceNote(string? mac)
+    {
+        string key = NormalizeMac(mac);
+        return key.Length > 0 && _data.DeviceNotes.TryGetValue(key, out var n) ? n : "";
+    }
+
+    /// <summary>Sets or clears the note for a network device.</summary>
+    public void SetDeviceNote(string? mac, string note)
+    {
+        string key = NormalizeMac(mac);
+        if (key.Length == 0) return;
+        if (string.IsNullOrWhiteSpace(note)) _data.DeviceNotes.Remove(key);
+        else _data.DeviceNotes[key] = note.Trim();
         _store.Save(_data);
     }
 

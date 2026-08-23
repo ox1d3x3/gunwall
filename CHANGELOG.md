@@ -15,6 +15,39 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.124] — 2026-08-23
+
+### Added — name the devices on your network
+**Double-click any row on the network scan** to label it: *My homelab*, *Door
+CCTV*, *Kitchen speaker*. The name appears in a **YOUR NOTE** column and is
+remembered across scans and restarts.
+
+### Keyed on the MAC address, not the IP
+The obvious design stores the note against the address it was written at, and it
+is wrong. A router hands out a different lease, and *"My homelab"* moves onto
+whatever took that address — **a label that is wrong is worse than one that is
+missing, because it gets believed.**
+
+The MAC is the device; the IP is only where it happens to be today. There is also
+no case this cannot key: the scanner reads the ARP table, which skips any entry
+without a valid MAC, so every row it produces has one.
+
+### The caution appears only where it applies
+A device that randomises its MAC chose that address itself and may choose another,
+which would orphan its note. GunWall already knows which devices those are from
+the U/L bit, so the warning is raised **in the naming dialog, for those devices
+only** — not as a banner over the whole table.
+
+A blanket caution on every device would be noise, and noise is what teaches people
+to dismiss the warnings that matter. The text says what to do about it: turn off
+private or randomised Wi-Fi addressing on that device if the name should stick.
+
+### Added
+- `device-notes`: notes must be keyed through `MacKey` — an IP passed by a caller
+  would otherwise work silently — and the randomised caution must be conditional.
+  Shown to fail on both.
+---
+
 ## [0.99.123] — 2026-08-23
 
 ### Added — who made each device on the network

@@ -179,6 +179,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Services.NetworkScanner.Oui = _oui;
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("OuiLoad", ex); }
+        Services.NetworkScanner.NoteLookup = m => _firewall.GetDeviceNote(m);
         // Shown from the start. Without this the label stays empty until someone
         // downloads, which reads as a broken control rather than an empty table.
         Dispatcher.BeginInvoke(new Action(RefreshOuiStatus));
@@ -383,7 +384,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.123 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.124 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5941,6 +5942,54 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         OuiStatus.Text = _oui.Loaded
             ? $"{_oui.Count:N0} vendor prefixes"
             : "No vendor data";
+    }
+
+    /// <summary>Edits the note attached to the selected device.
+    ///
+    /// Keyed by MAC, so the note stays with the device when its address changes.
+    /// The warning about randomised addresses is raised only for rows that
+    /// actually randomise - GunWall already knows which those are from the U/L
+    /// bit, so a blanket caution on every device would be noise that teaches
+    /// people to dismiss it.</summary>
+    private void DeviceNote_Edit(object sender, MouseButtonEventArgs e)
+    {
+        if (DevicesList?.SelectedItem is not Services.NetworkScanner.Device d) return;
+        if (string.IsNullOrWhiteSpace(d.Mac)) return;
+
+        string current = _firewall.GetDeviceNote(d.Mac);
+        string who = d.Vendor.Length > 0 ? d.Vendor
+                   : d.Host.Length > 0 ? d.Host
+                   : d.Ip;
+
+        string prompt =
+            $"Note for {who}\n{d.Ip}  -  {d.Mac}\n\n"
+            + "The note is saved against this device's MAC address, so it stays "
+            + "with the device even if your router gives it a different IP.";
+
+        if (d.MacIsRandom)
+            prompt += "\n\nThis device uses a RANDOMISED MAC address - many phones "
+                    + "and some laptops do by default. That address is stable while "
+                    + "the device stays on this network, but if it re-randomises the "
+                    + "device will appear as a new one and this note will not follow "
+                    + "it. Turn off private or randomised Wi-Fi addressing on the "
+                    + "device if you want the note to persist.";
+
+        var dlg = new NoteWindow(prompt, current) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            _firewall.SetDeviceNote(d.Mac, dlg.Note);
+            // Replace in place so the column updates without a rescan; the record
+            // is immutable, which is why this is a swap rather than an assignment.
+            int i = _devices.IndexOf(d);
+            if (i >= 0) _devices[i] = d with { Note = dlg.Note.Trim() };
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("DeviceNote", ex);
+            ShowError(ex);
+        }
     }
 
     private async void DownloadOui_Click(object sender, RoutedEventArgs e)

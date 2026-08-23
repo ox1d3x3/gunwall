@@ -227,6 +227,26 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.124 — naming devices
+
+1. **Network scan** → scan → **double-click** the row for `10.10.0.194`.
+2. Type `My homelab`, press **Save**. It should appear under **YOUR NOTE**.
+3. **Scan again.** The name is still there.
+4. **Restart GunWall** and scan. Still there — it lives in the profile.
+5. **Double-click one of the rows marked *Randomised MAC***.
+
+   **PASS:** the dialog carries an extra paragraph explaining that the device
+   chose its own address, may change it, and that the note would not follow.
+   **FAIL:** that paragraph appears for every device, or for none.
+
+6. **Clear the box and save** on any device — the name is removed.
+
+### The real test, if you can arrange it
+
+7. Give a device a new IP (reboot your router, or release its lease). Scan again.
+   The name should still be on the right device, at its new address. That is the
+   whole reason it is keyed on the MAC.
+
 ### 0.99.123 — MAC vendor lookup
 
 1. **Network scan.** Before downloading anything, the label beside the buttons

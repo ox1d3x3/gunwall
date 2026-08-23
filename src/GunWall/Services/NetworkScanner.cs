@@ -14,7 +14,17 @@ namespace GunWall.Services;
 /// </summary>
 public sealed class NetworkScanner
 {
-    public sealed record Device(string Ip, string Mac, string Host, string Os = "", string Kind = "", string Vendor = "");
+    public sealed record Device(string Ip, string Mac, string Host, string Os = "",
+                               string Kind = "", string Vendor = "", string Note = "")
+    {
+        /// <summary>True when this device chose its own MAC, so a note attached to
+        /// it will be lost the next time it randomises. Derived rather than stored
+        /// separately, so it cannot disagree with the NOTE column beside it.</summary>
+        public bool MacIsRandom => IsRandomisedMac(Mac);
+    }
+
+    /// <summary>Supplies the note for a device. Set by the host, like Oui.</summary>
+    public static Func<string, string>? NoteLookup { get; set; }
 
     /// <summary>Supplies vendor names, when a registry has been downloaded. Set by
     /// the host so the scanner does not own the table or its lifetime.</summary>
@@ -128,7 +138,8 @@ public sealed class NetworkScanner
                                 : "";
 
                     string vendor = Oui?.Lookup(macLocal) ?? "";
-                    lock (devices) devices.Add(new Device(ipLocal, macLocal, host, os, kind, vendor));
+                    string note = NoteLookup?.Invoke(macLocal) ?? "";
+                    lock (devices) devices.Add(new Device(ipLocal, macLocal, host, os, kind, vendor, note));
                 }));
             }
             await Task.WhenAll(resolveTasks);
@@ -179,7 +190,7 @@ public sealed class NetworkScanner
     ///
     /// Computed from the address itself, so no lookup table and nothing to go
     /// stale.</summary>
-    private static bool IsRandomisedMac(string mac)
+    internal static bool IsRandomisedMac(string mac)
     {
         if (string.IsNullOrEmpty(mac) || mac.Length < 2) return false;
         return int.TryParse(mac[..2], System.Globalization.NumberStyles.HexNumber,

@@ -2406,7 +2406,7 @@
                     </StackPanel>
                 </Grid>
                 <Border Grid.Row="1" Padding="0">
-                    <ListView x:Name="DevicesList" gw:Table.EmptyTitle="No devices found" gw:Table.EmptyText="Run a scan to look for other hosts on your network." VirtualizingPanel.IsVirtualizing="True">
+                    <ListView x:Name="DevicesList" gw:Table.EmptyTitle="No devices found" gw:Table.EmptyText="Run a scan to look for other hosts on your network." VirtualizingPanel.IsVirtualizing="True" MouseDoubleClick="DeviceNote_Edit">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
 
@@ -2449,7 +2449,15 @@
                                 <GridViewColumn Header="HOST" Width="240" DisplayMemberBinding="{Binding Host}" />
                                 <GridViewColumn Header="VENDOR" Width="200" DisplayMemberBinding="{Binding Vendor}" />
                                 <GridViewColumn Header="LIKELY OS" Width="170" DisplayMemberBinding="{Binding Os}" />
-                                <GridViewColumn Header="NOTE" Width="160" DisplayMemberBinding="{Binding Kind}" />
+                                <GridViewColumn Header="FLAGS" Width="140" DisplayMemberBinding="{Binding Kind}" />
+                                <GridViewColumn Header="YOUR NOTE" Width="220">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Note}" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="Double-click the row to edit. Notes follow the device's MAC address, not its IP." />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                             </GridView>
                         </ListView.View>
                     </ListView>

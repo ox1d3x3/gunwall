@@ -2415,6 +2415,57 @@ def check_mac_vendor():
         notes.append("mac-vendor: longest prefix wins, randomised excluded, CSV parsed properly")
 
 
+def check_device_notes():
+    """A device note must key on the MAC, and randomised devices must be warned.
+
+    Keyed on IP, a note would eventually land on whatever took that address after
+    a lease change - and a label that is wrong is worse than one that is missing,
+    because it gets believed. The MAC is the device; the IP is only where it
+    happens to be today.
+
+    The randomised-MAC caution must also be raised only for the devices it applies
+    to. GunWall already knows which those are from the U/L bit, so a blanket
+    warning on every device would be noise, and noise is what teaches people to
+    dismiss warnings that matter.
+    """
+    before = len(failures)
+    store = (APP / "Services" / "RuleStore.cs").read_text(encoding="utf-8")
+    fm = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    if "DeviceNotes" not in store:
+        fail("device-notes", "no store for device notes")
+        return
+
+    setter = re.search(r"public void SetDeviceNote.*?\n    \}", fm, re.S)
+    if not setter:
+        fail("device-notes", "SetDeviceNote not found")
+    elif "MacKey" not in setter.group(0):
+        fail("device-notes",
+             "device notes are not keyed through MacKey, so the key is whatever "
+             "the caller passed - an IP would silently work and would move the "
+             "note onto another device after a lease change")
+
+    edit = re.search(r"private void DeviceNote_Edit.*?\n    \}", mw, re.S)
+    if not edit:
+        fail("device-notes", "DeviceNote_Edit not found")
+    else:
+        body = edit.group(0)
+        if ".Mac" not in body:
+            fail("device-notes",
+                 "the editor does not save against the device's MAC")
+        if "MacIsRandom" not in body:
+            fail("device-notes",
+                 "no caution for a randomised MAC. Such a device chose its own "
+                 "address and may choose another, orphaning the note - and the "
+                 "person naming it has no way to know that")
+        if re.search(r"if \(true\)|dev\.Ip.*MacIsRandom", body):
+            fail("device-notes", "the randomised caution is not conditional")
+
+    if len(failures) == before:
+        notes.append("device-notes: keyed on MAC, randomised devices cautioned")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2469,6 +2520,7 @@ def main():
     check_access_rules_dialog()
     check_graph_scroll()
     check_mac_vendor()
+    check_device_notes()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()
