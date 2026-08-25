@@ -1546,13 +1546,37 @@ def check_silent_failures():
                      'the reconcile does not refuse when nothing is tracked - it '
                      'would read an unloaded store as proof that every live filter '
                      'is an orphan and delete the working set')
-        # A rule holding filters is enforcing something; only inert ones may go.
+        # The guard changed in 0.99.126 and this assertion changed with it.
+        #
+        # It used to require the rule to hold no filters - a proxy for 'safe to
+        # remove', and a poor one: it left every dead rule that still had filters,
+        # forever. What matters is whether the file can be TRUSTED to be gone,
+        # which the volume answers; and a rule that is removed must take its
+        # filters with it or they become orphans.
         prune = re.search(r'public int PruneDeadRules\(\).*?\n    \}', fm3, re.S)
-        if prune and 'FilterIds.Count == 0' not in prune.group(0):
-            fail('reset-path',
-                 'PruneDeadRules does not require the rule to hold no filters - it '
-                 'could drop a rule that is still enforcing, or one whose path is '
-                 'briefly unreachable')
+        if prune:
+            pb = prune.group(0)
+            # The CALL, not a mention. The comment above it names the method too,
+            # so a substring test passed with the guard deleted - the nineteenth
+            # time this session a check matched the neighbourhood.
+            if not re.search(r'VolumeSaysGone\(', pb):
+                fail('reset-path',
+                     'PruneDeadRules does not check the volume, so it would delete '
+                     'rules for programs on an unplugged drive or an unreachable '
+                     'share - destroying a decision the user made, invisibly')
+            if 'RemoveFilters' not in pb:
+                fail('reset-path',
+                     'PruneDeadRules removes rules without removing the filters they '
+                     'hold, manufacturing exactly the orphans the startup reconcile '
+                     'exists to clean up')
+        vol = re.search(r'private static bool VolumeSaysGone.*?\n    \}', fm3, re.S)
+        if vol:
+            if 'DriveType.Fixed' not in vol.group(0):
+                fail('reset-path',
+                     'VolumeSaysGone does not require a fixed disk, so a removable '
+                     'drive that happens to be mounted would let rules be deleted')
+            if 'IsReady' not in vol.group(0):
+                fail('reset-path', 'VolumeSaysGone does not check the volume is mounted')
         if rec:
             if 'ReconcileReady' not in rec.group(0):
                 fail('reset-path',

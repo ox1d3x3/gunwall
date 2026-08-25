@@ -15,6 +15,55 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.126] — 2026-08-23
+
+0.99.125 confirmed: 53,691 MAC vendor prefixes across all three registries,
+460/460 filters, zero errors.
+
+### Fixed — dead rules accumulated forever
+The same log carried six rules pointing at programs that no longer exist, holding
+**twenty-four kernel filters** between them: Edge WebView at two superseded
+versions, Office ClickToRun, the Windows package manager, a Kaspersky cache file,
+and a build of GunWall itself from an earlier source folder.
+
+Every one is an application that updates into a new versioned folder, so the list
+grows with each update and never shrinks.
+
+The prune removed only rules holding **no** filters — a proxy for "safe to
+remove", and a poor one, because it left precisely the rules that were still doing
+something with kernel filters attached.
+
+### The question it asks now
+"Does the file exist" has two meanings worth separating. An application that
+updated into a new folder is gone for good; one on a USB stick you unplugged, or a
+share not currently reachable, is merely absent. **Removing a rule for the second
+destroys a decision the user made, and they would have no idea why.**
+
+The volume tells them apart. A rule is pruned only when its executable is missing
+**and** its path sits on a fixed local disk that is currently mounted. Removable
+drives, unmounted volumes and UNC paths are all left alone — UNC refused outright
+rather than probed, since reaching a dead share blocks for the SMB timeout and
+this runs during startup.
+
+Verified against all six real cases and against a detached removable drive and a
+network share.
+
+**The filters go with the rule.** Removing a rule while leaving its filters in the
+kernel would manufacture exactly the orphans the startup reconcile exists to clean
+up.
+
+### Changed
+- `reset-path` no longer asserts the old zero-filters condition, which this
+  release deliberately removes. It now requires the volume check, the fixed-disk
+  and mounted tests, and filter cleanup. Shown to fail on each.
+
+### Note
+That check first tested for the string `VolumeSaysGone` anywhere in the method — a
+comment above the call satisfied it while the guard itself was deleted.
+Nineteenth time this session a check matched the neighbourhood rather than the
+thing. It now matches the call.
+---
+
 ## [0.99.125] — 2026-08-23
 
 ### Fixed — 0.99.124 did not compile

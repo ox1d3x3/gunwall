@@ -13,7 +13,7 @@ namespace GunWall.Services;
 public static class UpdateService
 {
     // Current shipped version. Bump alongside the csproj <Version>.
-    public const string CurrentVersion = "0.99.125";
+    public const string CurrentVersion = "0.99.126";
 
     private const string ReleasesApi =
         "https://api.github.com/repos/ox1d3x3/gunwall/releases/latest";

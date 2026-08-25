@@ -1757,20 +1757,76 @@ public sealed class FirewallManager : IDisposable
     /// filters and so survives. The conservative half of the test is the important
     /// half: the cost of a wrong removal is an application being asked about
     /// again, and the cost of leaving one is a line in a log.</summary>
+    /// <summary>True when a missing file can be trusted to be genuinely gone.
+    ///
+    /// "The executable is not there" has two meanings and they need separating.
+    /// An application that updated into a new versioned folder is gone for good;
+    /// one on a USB stick you have unplugged, or a network share not currently
+    /// reachable, is merely absent. Removing a rule for the second is destroying
+    /// a decision the user made, and they would have no idea why.
+    ///
+    /// The volume tells them apart. If the drive is a fixed local disk and it is
+    /// mounted, a path under it that does not exist does not exist. If the drive
+    /// is removable, unmounted, or the path is a UNC share, nothing can be
+    /// concluded and the rule stays.
+    ///
+    /// UNC is refused outright rather than probed: reaching a dead share blocks
+    /// for the SMB timeout, and this runs during startup.</summary>
+    private static bool VolumeSaysGone(string path)
+    {
+        try
+        {
+            if (path.StartsWith(@"\\", StringComparison.Ordinal)) return false;   // UNC
+            string root = System.IO.Path.GetPathRoot(path) ?? "";
+            if (root.Length == 0) return false;
+
+            var drive = new System.IO.DriveInfo(root);
+            if (!drive.IsReady) return false;                       // not mounted
+            return drive.DriveType == System.IO.DriveType.Fixed;    // not removable/network
+        }
+        catch { return false; }
+    }
+
     public int PruneDeadRules()
     {
         if (!ReconcileReady) return 0;
         try
         {
+            // No longer requires the rule to hold zero filters.
+            //
+            // That condition was the conservative half of an earlier version, and
+            // it left every dead rule that still had filters installed: six of
+            // them on one machine, holding twenty-four kernel filters between
+            // them, growing with each application that updates into a versioned
+            // folder. Edge WebView alone contributed two.
+            //
+            // What replaces it is a better question than "does it hold filters" -
+            // it asks whether the file can be TRUSTED to be gone. See
+            // VolumeSaysGone.
             var dead = _data.Rules
-                .Where(r => r.FilterIds.Count == 0 && !IsApplicablePath(r.ExecutablePath))
+                .Where(r => !IsApplicablePath(r.ExecutablePath)
+                            && VolumeSaysGone(r.ExecutablePath))
                 .ToList();
             if (dead.Count == 0) return 0;
 
-            foreach (var r in dead) _data.Rules.Remove(r);
+            // The filters must go with the rule. Removing the rule alone would
+            // leave them in the kernel with nothing naming them - which is the
+            // definition of the orphans the startup reconcile exists to clean up,
+            // manufactured here on purpose.
+            int filters = 0;
+            foreach (var r in dead)
+            {
+                if (r.FilterIds.Count > 0)
+                {
+                    try { _engine.RemoveFilters(r.FilterIds); filters += r.FilterIds.Count; }
+                    catch (Exception ex) { DiagnosticLog.LogException("PruneDeadRules/filters", ex); }
+                }
+                _data.Rules.Remove(r);
+            }
+
             _store.Save(_data);
-            DiagnosticLog.Log($"Startup reconcile: removed {dead.Count} rule(s) whose program no "
-                            + "longer exists and which held no filters - "
+            DiagnosticLog.Log($"Startup reconcile: removed {dead.Count} rule(s) whose program is "
+                            + $"gone from a mounted local disk, and {filters} filter(s) they held - "
                             + string.Join(", ", dead.Select(r => r.DisplayName)));
             return dead.Count;
         }

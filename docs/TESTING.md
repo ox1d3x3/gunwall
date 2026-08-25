@@ -227,6 +227,30 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.126 — dead rules cleaned up
+
+1. **Before starting**, export diagnostics and note the `Rule targets:` line —
+   it should list six rules pointing at missing files.
+2. **Start GunWall** and export again.
+
+   **PASS:** `Startup reconcile: removed 6 rule(s) whose program is gone from a
+   mounted local disk, and 24 filter(s) they held`, and `Rule targets: every rule
+   points at a file that exists.`
+
+3. **Applications** — those six entries are gone. Everything you actually use is
+   still listed and still allowed.
+4. **Filter integrity** should drop by the number of filters removed, with
+   `missing=0`.
+
+### The guard, if you can test it
+
+5. Allow a program on a USB drive, then **unplug the drive** and restart GunWall.
+
+   **PASS:** its rule is still there. GunWall cannot tell whether that program is
+   gone or merely unplugged, so it leaves it alone.
+   **FAIL:** the rule disappeared — tell me, because that is a decision of yours
+   being deleted without explanation.
+
 ### 0.99.124 — naming devices
 
 1. **Network scan** → scan → **double-click** the row for `10.10.0.194`.
