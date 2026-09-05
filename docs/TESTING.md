@@ -227,6 +227,27 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.127 — Traffic totals
+
+1. **Traffic.** Read the line under the heading.
+
+   **PASS:** if any destination could not be placed, it says so — *"N could not be
+   matched to a country"* — with a reason. If everything resolved, the sentence
+   ends after the apps count, as before.
+
+2. The **TOP COUNTRIES** table must NOT gain a blank-flagged "Unknown" row. The
+   unplaceable destinations are reported in the header only.
+
+3. **Connection map** — with traffic to more than ten countries you should now see
+   up to twenty arcs rather than ten. If it looks cluttered, say so and I will
+   bring it back down.
+
+### The case worth checking deliberately
+
+4. On a machine with **no GeoIP data downloaded**, the line should read *"across 0
+   countries ... download the GeoIP data on the Connections tab"* rather than just
+   reporting zero and leaving you to wonder.
+
 ### 0.99.126 — dead rules cleaned up
 
 1. **Before starting**, export diagnostics and note the `Rule targets:` line —

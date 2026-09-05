@@ -384,7 +384,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.126 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.127 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -724,9 +724,30 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         foreach (var (app, count, countries) in _stats.TopApps(25))
             _trafficApps.Add(new AppStat(app, count, countries));
         if (TrafficSubtitle != null)
-            TrafficSubtitle.Text = _stats.TotalDestinations == 0
-                ? "No external destinations seen yet - traffic will appear here as apps connect out."
-                : $"{_stats.TotalDestinations:N0} distinct destinations since startup, across {_stats.CountryCount} countries and {_stats.AppCount} apps.";
+        {
+            if (_stats.TotalDestinations == 0)
+            {
+                TrafficSubtitle.Text =
+                    "No external destinations seen yet - traffic will appear here as apps connect out.";
+            }
+            else
+            {
+                // The unresolved count is stated rather than left to be inferred.
+                // Without it the two figures simply disagree - "81 destinations
+                // across 3 countries" while twenty of those eighty-one belong to
+                // no country - and the reader has no way to know whether that is
+                // a gap in the data or a fault in the counting.
+                int unresolved = _stats.UnresolvedCount;
+                string line = $"{_stats.TotalDestinations:N0} distinct destinations since startup, "
+                            + $"across {_stats.CountryCount} countries and {_stats.AppCount} apps.";
+                if (unresolved > 0)
+                    line += $" {unresolved:N0} could not be matched to a country"
+                          + (_firewall.GeoIpActive
+                                ? " - those addresses are not in the GeoIP data."
+                                : " - download the GeoIP data on the Connections tab.");
+                TrafficSubtitle.Text = line;
+            }
+        }
 
         RefreshMapMarkers();
         RefreshUsage();
@@ -770,7 +791,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         int arcs = 0;
         foreach (var (code, count) in top)
         {
-            if (arcs >= 10) break;
+            // Twenty, not ten. Ten was low enough to hide whole countries on a
+            // busy machine, and the dots already go to two hundred - so the map
+            // showed a destination while omitting the line explaining where it
+            // came from. Not raised further: arcs are the one element here that
+            // becomes clutter rather than detail, and this is the same surface
+            // whose left edge had to be fixed twice.
+            if (arcs >= 20) break;
             string cc = code.ToUpperInvariant();
             if (cc == homeCode.ToUpperInvariant()) continue;
             if (!WorldMapData.CountryPoints.TryGetValue(cc, out var dst)) continue;

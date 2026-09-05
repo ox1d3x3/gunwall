@@ -45,7 +45,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 *Managed C# throughout. No kernel risk.*
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
 - ✅ **Service & network-app categorization** — connections name the hosted service, and services can be blocked individually by their own identity.
-- ◐ **Complete country coverage** — ✅ IPv6 GeoIP, which was the largest gap. Remaining: showing more than the top ten countries on the map, and labelling addresses outside the dataset as *unknown* rather than leaving the cell blank.
+- ◐ **Complete country coverage** — ✅ IPv6 GeoIP, which was the largest gap. ✅ **destinations with no country are counted and reported** instead of silently dropped, and the map draws twice as many connection arcs. Remaining: naming unplaceable addresses in the Connections table rather than leaving the cell blank.
 - ◐ **Network scan** — ✅ likely OS from reply TTL, gateway identification from the routing table, NetBIOS names where reverse DNS has none, and randomised-MAC detection. Remaining: vendor identification from the MAC OUI, and mDNS names for Apple and IoT devices.
 
 - ☐ **Pico / subsystem process support** — identify WSL and other minimal-process traffic.

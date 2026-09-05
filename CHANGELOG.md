@@ -15,6 +15,62 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.127] — 2026-08-24
+
+### Fixed — the Traffic totals disagreed with each other
+A destination the GeoIP data could not place was counted in the overall total and
+then **discarded** before it reached the country tables:
+
+```csharp
+if (!string.IsNullOrEmpty(country))
+{
+    AddTo(_countryIps, country, remoteIp);
+    ...
+}
+```
+
+So the header could honestly read *"81 distinct destinations across 3 countries"*
+while twenty of those eighty-one belonged to no country at all — and nothing said
+so. The two figures simply disagreed, and a reader had no way to tell a gap in the
+data from a fault in the counting.
+
+Worse in the case that matters most: with no GeoIP data downloaded, the line read
+*"across 0 countries"* and gave no hint that a download would fix it.
+
+Those destinations are now counted and reported:
+
+> 81 distinct destinations since startup, across 3 countries and 11 apps.
+> **20 could not be matched to a country — those addresses are not in the GeoIP data.**
+
+and when the data is absent, the sentence ends *"download the GeoIP data on the
+Connections tab"* instead.
+
+They are deliberately **not** shown as a row in the country table: they have no
+flag, no name and no coordinate, so a row would be a blank-flagged entry beside
+real countries, and folding them in would inflate *"across N countries"* with
+something that is not one.
+
+### Changed — twice as many connection arcs
+The map draws up to two hundred country dots but only ever ten arcs, so on a busy
+machine it showed a destination while omitting the line explaining where it came
+from. Now twenty.
+
+Not raised further on purpose: arcs are the one element on that map that becomes
+clutter rather than detail, and it is the same surface whose left edge needed
+fixing twice.
+
+### Note on the plan
+This was proposed as "the map only draws the top ten countries". Reading the code
+first showed that was wrong — the map draws two hundred, the table twenty-five,
+and only the arcs were capped at ten. The real defect was the discarded
+destinations, which nothing on screen accounted for.
+
+### Added
+- `unresolved-countries`: they must be counted, exposed, reported in the header,
+  and kept out of both `CountryCount` and `TopCountries`. Shown to fail on all
+  three.
+---
+
 ## [0.99.126] — 2026-08-23
 
 0.99.125 confirmed: 53,691 MAC vendor prefixes across all three registries,

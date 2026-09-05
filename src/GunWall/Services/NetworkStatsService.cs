@@ -30,6 +30,11 @@ public sealed class NetworkStatsService
     private readonly Dictionary<string, HashSet<string>> _appCountries = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HashSet<string>> _countryIps = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Public destinations the GeoIP data could not place. Separate from
+    /// _countryIps so they can be reported without being mistaken for a country:
+    /// they have no flag, no coordinate, and no name.</summary>
+    private readonly HashSet<string> _unresolvedIps = new(StringComparer.OrdinalIgnoreCase);
+
     // §Phase 5: byte-attributed breakdown (estimated or ETW-split, caller's choice)
     private readonly Dictionary<string, long> _appBytes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, long> _ipBytes = new(StringComparer.OrdinalIgnoreCase);
@@ -58,11 +63,30 @@ public sealed class NetworkStatsService
                 AddTo(_countryIps, country, remoteIp);
                 AddTo(_appCountries, app, country);
             }
+            else
+            {
+                // Counted, not discarded.
+                //
+                // These were dropped, so the header could honestly read "81
+                // destinations across 3 countries" while a fifth of those
+                // destinations belonged to no country at all - and nothing said
+                // so. The numbers did not add up and there was no way to tell.
+                //
+                // Kept out of _countryIps deliberately: it is not a country, it
+                // must not appear in the table, it must not be plotted, and it
+                // must not inflate CountryCount. It is reported on its own.
+                _unresolvedIps.Add(remoteIp);
+            }
         }
     }
 
     public int TotalDestinations { get { lock (_lock) { return _allIps.Count; } } }
     public int CountryCount { get { lock (_lock) { return _countryIps.Count; } } }
+
+    /// <summary>How many destinations have no country. Reported beside the totals
+    /// rather than folded into them - a reader who sees the two figures disagree
+    /// should be told why, not left to subtract.</summary>
+    public int UnresolvedCount { get { lock (_lock) { return _unresolvedIps.Count; } } }
     public int AppCount { get { lock (_lock) { return _appIps.Count; } } }
 
     /// <summary>Countries with the most distinct destinations contacted, highest first.</summary>

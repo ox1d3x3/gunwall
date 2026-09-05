@@ -2547,6 +2547,54 @@ def check_no_duplicate_members():
         notes.append("duplicate-member: no type declares a signature twice")
 
 
+def check_unresolved_countries():
+    """Destinations with no country must be counted and reported, never dropped.
+
+    They used to be discarded, so the Traffic header could honestly read "81
+    destinations across 3 countries" while twenty of those eighty-one belonged to
+    no country at all - and nothing said so. The two figures simply disagreed, and
+    a reader had no way to tell a gap in the data from a fault in the counting.
+    Same shape as the range count that silently meant IPv4 only.
+
+    They must also stay OUT of the country table: no flag, no coordinate, no name.
+    Folding them in would inflate CountryCount and put an unplottable key in front
+    of the map.
+    """
+    before = len(failures)
+    stats = (APP / "Services" / "NetworkStatsService.cs").read_text(encoding="utf-8")
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    if "_unresolvedIps" not in stats:
+        fail("unresolved-countries",
+             "destinations with no country are discarded, so the totals on the "
+             "Traffic page disagree with each other and nothing explains why")
+        return
+
+    if "UnresolvedCount" not in stats:
+        fail("unresolved-countries", "the unresolved count is recorded but never exposed")
+
+    # It must not be treated as a country anywhere.
+    cc = re.search(r"public int CountryCount.*?\n", stats)
+    if cc and "_unresolvedIps" in cc.group(0):
+        fail("unresolved-countries",
+             "CountryCount includes the unresolved bucket, so 'across N countries' "
+             "counts something that is not a country")
+
+    top = re.search(r"public List<\(string Code, int Count\)> TopCountries.*?\n    \}", stats, re.S)
+    if top and "_unresolvedIps" in top.group(0):
+        fail("unresolved-countries",
+             "TopCountries returns the unresolved bucket, which has no flag, no "
+             "name and no map coordinate")
+
+    if "could not be matched to a country" not in mw:
+        fail("unresolved-countries",
+             "the Traffic header does not report unresolved destinations, leaving "
+             "the reader to subtract two numbers and guess at the difference")
+
+    if len(failures) == before:
+        notes.append("unresolved-countries: counted, reported, and kept out of the country table")
+
+
 def check_version_consistency():
     files = {
         "GunWall.csproj":            (APP / "GunWall.csproj",              r"<Version>([0-9.]+)</Version>"),
@@ -2603,6 +2651,7 @@ def main():
     check_mac_vendor()
     check_device_notes()
     check_no_duplicate_members()
+    check_unresolved_countries()
     check_profile_survives_update()
     check_fault_suppression()
     check_silent_failures()
