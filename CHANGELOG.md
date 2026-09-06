@@ -15,6 +15,65 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.133] — 2026-09-06
+
+### Fixed — 0.99.132 did not compile
+`AtomicFile.cs` used `Stream` without `using System.IO;`, and the build failed
+with CS0246. `ImplicitUsings` is enabled but does not supply `System.IO` in this
+project — every other file that touches IO declares it — and the new file was
+written on the assumption that it did, rather than on the convention visible in
+every neighbouring file.
+
+The whole tree was searched for the same defect. Only `AtomicFile.cs` was
+affected; a second candidate was `(string Name, string Path)` in
+`ProcessService.cs`, a tuple element name rather than `System.IO.Path`.
+
+### Added — check `usings-declared`
+For a set of common BCL types, asserts the declaring file also declares the
+namespace. Matching is narrow — static access, construction, generic argument or
+array — so tuple element names are not mistaken for type uses, and a
+fully-qualified use needs no `using`.
+
+This cannot prove a program compiles, but it proves the thing that broke here.
+
+### Fixed — several checks were reading mangled source
+Checks removed comments and string literals with two regex passes. Neither order
+works. Comments first treats the `//` inside
+`"https://standards-oui.ieee.org/..."` as a comment, eats the closing quote, and
+mis-pairs every literal after it — **half of `OuiService.cs` was deleted before
+matching**, silently. Strings first has the mirror problem, where a quote inside a
+comment opens a literal that never closes.
+
+Replaced with `strip_cs`, a single pass that tracks which construct is open and
+handles verbatim, interpolated and character literals. It preserves line
+structure, and preserves interpolation holes because `$"{File.Exists(p)}"` is a
+real use of a real type.
+
+Seven checks used the old approach and now use `strip_cs`.
+
+### Fixed — a check that could never match
+`font-pack-uri` stripped line comments before searching for
+`new FontFamily("pack://`. That cut `pack://application:,,,` down to `pack:`, so
+the pattern could not match any input. It now strips comments while **keeping**
+string literals, because the text it searches for lives inside one.
+
+Sixth check in this project shown to be incapable of failing.
+
+### Note — two faults in the new stripper, both caught before release
+Preserving interpolation holes leaked format specifiers: `$"0x{code:X8}"`
+presented `X8` as a symbol, and `local-call` reported an undeclared function in
+`WfpEngine.cs`. The expression now ends at the first `,` or `:` outside
+parentheses, which is where C# ends it.
+
+Adjacent holes then concatenated: `$"0x{ErrorCode:X8}{(ErrorCode == 0 ? a : b)}"`
+produced `ErrorCode(ErrorCode`, read as a call. A space did not fix it — `Foo (x)`
+is a legal call — so holes are terminated with a semicolon. Nested literals inside
+a hole are skipped rather than copied.
+
+Both were reported by the suite on its own source. Recorded as trap 2.30.
+
+---
+
 ## [0.99.132] — 2026-09-06
 
 ### Fixed — a failed database download could destroy a working database

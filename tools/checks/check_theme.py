@@ -39,6 +39,175 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "src" / "GunWall"
+
+
+def _copy_hole(src, i, n, out):
+    """Copies an interpolation hole's EXPRESSION into `out`, stopping at the
+    alignment or format specifier.
+
+    `$"0x{code:X8}"` is not a use of a symbol called X8. The first version of
+    strip_cs copied the whole hole, so `X8` leaked out as a phantom identifier
+    and the `local-call` check reported it as an undeclared symbol in
+    WfpEngine.cs - a false CS0103 that would have sent the maintainer looking for
+    a function that was never meant to exist.
+
+    C# ends the expression at the first `,` or `:` that is not nested inside
+    parentheses or brackets, which is exactly why a ternary in a hole has to be
+    parenthesised. `::` is a namespace qualifier, not a separator.
+    """
+    depth, pdepth = 1, 0
+    i += 1
+    copying = True
+    # Terminated with ';', not a space. Two adjacent holes would otherwise join:
+    # $"0x{ErrorCode:X8}{(ErrorCode == 0 ? a : b)}" produced "ErrorCode(ErrorCode",
+    # read as a call to a function that does not exist, and reported as a CS0103
+    # against WfpEngine.cs. A SPACE does not fix it - `Foo (x)` is a legal call in
+    # C#, so `\w+\s*\(` still matched. A semicolon ends the expression.
+    out.append(";")
+    while i < n and depth:
+        c = src[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if not depth:
+                i += 1
+                break
+        elif c in "([":
+            pdepth += 1
+        elif c in ")]":
+            pdepth -= 1
+        elif c == '"':
+            # A nested literal, e.g. {(x ? ", found" : "")}. Skip its text rather
+            # than copying quotes into what is supposed to be code.
+            i += 1
+            while i < n and src[i] != '"':
+                i += 2 if src[i] == "\\" else 1
+            i += 1
+            continue
+        elif pdepth == 0 and (c == "," or (c == ":" and not (
+                (i + 1 < n and src[i + 1] == ":") or src[i - 1] == ":"))):
+            copying = False
+        if copying and depth:
+            out.append(c)
+        i += 1
+    out.append(";")
+    return i
+
+
+def strip_cs(src: str, keep_strings: bool = False) -> str:
+    """Blank out comments and string/char literal TEXT, leaving code intact.
+
+    Trap 2.30. This existed as `re.sub(r"//[^\\n]*", "", s)` followed by a second
+    pass for string literals, in several checks. Two passes cannot do this job in
+    either order:
+
+      - comments first  -> the `//` inside "https://standards-oui.ieee.org/..."
+                           is treated as a comment, the closing quote is eaten,
+                           and every following literal is mis-paired. Half of
+                           OuiService.cs was deleted before matching, silently.
+      - strings first   -> a quote inside a comment opens a literal that never
+                           closes.
+
+    So it is one pass, tracking which construct is open. Interpolation holes are
+    preserved, because `$"{File.Exists(p)}"` is a real use of a real type.
+
+    Returns text the same length-ish and same line structure, safe to regex.
+    """
+    out, i, n = [], 0, len(src)
+    while i < n:
+        c = src[i]
+
+        if c == "/" and i + 1 < n and src[i + 1] == "/":
+            while i < n and src[i] != "\n":
+                i += 1
+            continue
+
+        if c == "/" and i + 1 < n and src[i + 1] == "*":
+            i += 2
+            while i + 1 < n and not (src[i] == "*" and src[i + 1] == "/"):
+                if src[i] == "\n":
+                    out.append("\n")
+                i += 1
+            i += 2
+            continue
+
+        # @"..." and $@"..." / @$"..."  -- "" escapes a quote, backslash does not
+        verbatim = (c == "@" and i + 1 < n and src[i + 1] == '"') or \
+                   (c in "$@" and i + 2 < n and src[i + 1] in "$@" and src[i + 2] == '"')
+        if verbatim:
+            interpolated = "$" in src[i:i + 2]
+            start = src.index('"', i) + 1
+            i = start
+            if not keep_strings: out.append('""')
+            while i < n:
+                if src[i] == '"':
+                    if i + 1 < n and src[i + 1] == '"':
+                        if keep_strings: out.append('""')
+                        i += 2
+                        continue
+                    if keep_strings: out.append('"')
+                    i += 1
+                    break
+                if interpolated and src[i] == "{" and not (i + 1 < n and src[i + 1] == "{"):
+                    i = _copy_hole(src, i, n, out)
+                    continue
+                if src[i] == "\n":
+                    out.append("\n")
+                elif keep_strings:
+                    out.append(src[i])
+                i += 1
+            continue
+
+        if c == '"' or (c == "$" and i + 1 < n and src[i + 1] == '"'):
+            interpolated = c == "$"
+            if interpolated:
+                if not keep_strings: out.append("$")
+                i += 1
+            if keep_strings: out.append('"')
+            i += 1
+            if not keep_strings: out.append('""')
+            while i < n:
+                if src[i] == "\\":
+                    if keep_strings: out.append(src[i:i + 2])
+                    i += 2
+                    continue
+                if src[i] == '"':
+                    if keep_strings: out.append('"')
+                    i += 1
+                    break
+                if src[i] == "\n":       # unterminated: do not run away
+                    out.append("\n")
+                    i += 1
+                    break
+                if keep_strings:
+                    out.append(src[i])
+                if interpolated and src[i] == "{" and not (i + 1 < n and src[i + 1] == "{"):
+                    i = _copy_hole(src, i, n, out)
+                    continue
+                i += 1
+            continue
+
+        if c == "'":
+            i += 1
+            if keep_strings: out.append("'")
+            else: out.append("''")
+            while i < n:
+                if src[i] == "\\":
+                    i += 2
+                    continue
+                if src[i] == "'" or src[i] == "\n":
+                    if keep_strings: out.append(src[i])
+                    i += 1
+                    break
+                if keep_strings: out.append(src[i])
+                i += 1
+            continue
+
+        out.append(c)
+        i += 1
+
+    return "".join(out)
 DARK = APP / "Themes" / "Theme.Dark.xaml"
 LIGHT = APP / "Themes" / "Theme.Light.xaml"
 SHARED = APP / "Themes" / "Controls.xaml"
@@ -276,10 +445,7 @@ def check_local_calls():
         return
 
     def strip(t):
-        t = re.sub(r'@"(?:[^"]|"")*"', '""', t)
-        t = re.sub(r'"(?:\\.|[^"\\])*"', '""', t)
-        t = re.sub(r"//[^\n]*", "", t)
-        return re.sub(r"/\*.*?\*/", "", t, flags=re.S)
+        return strip_cs(t)
 
     declared = set()
     for t in srcs.values():
@@ -469,11 +635,12 @@ def check_no_code_pack_fonts():
     """
     hits = []
     for cs in sorted(APP.rglob("*.cs")):
-        for n, line in enumerate(cs.read_text(encoding="utf-8").splitlines(), 1):
-            # Strip line comments first. The note explaining THIS rule contains
-            # the exact pattern it forbids, and the first version of this check
-            # flagged its own documentation.
-            code = re.sub(r"//.*$", "", line)
+        # Comments removed, string literals KEPT - the pattern being searched for
+        # lives inside a string. The previous version ran `re.sub(r"//.*$", ...)`
+        # per line, which cut "pack://application..." down to "pack:" and made the
+        # check incapable of ever matching. Found by falsification; trap 2.30.
+        cleaned = strip_cs(cs.read_text(encoding="utf-8"), keep_strings=True)
+        for n, code in enumerate(cleaned.splitlines(), 1):
             if re.search(r'new\s+FontFamily\s*\(\s*"pack://', code):
                 hits.append(f"{cs.relative_to(ROOT)}:{n}")
     for h in hits:
@@ -1298,6 +1465,76 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_usings_declared():
+    """Every file must declare the namespaces its types come from.
+
+    Trap 2.30. AtomicFile.cs was written relying on `ImplicitUsings` to supply
+    `System.IO`. It does not in this project - every other file that touches IO
+    declares `using System.IO;` - and the build failed on the maintainer's machine
+    with CS0246 on `Stream`.
+
+    That is the one failure this suite exists to prevent. A check that reads
+    source cannot prove a program compiles, but it can prove the thing that broke
+    here: a type used without the namespace that defines it.
+
+    Matching is deliberately narrow. The first draft flagged
+    `(string Name, string Path)` in ProcessService as a use of System.IO.Path -
+    a tuple element name. Only four shapes count as a use:
+
+        Type.Member        static access
+        new Type(          construction
+        <Type> <Type, ,Type>   generic argument
+        Type[]             array
+
+    A fully-qualified use is not a defect, so `System.IO.Path.Combine` is allowed
+    without the using.
+    """
+    before = len(failures)
+
+    NAMESPACES = {
+        "System.IO": ["Stream", "FileStream", "StreamReader", "StreamWriter",
+                      "MemoryStream", "File", "Directory", "Path", "FileInfo",
+                      "DirectoryInfo", "InvalidDataException", "FileMode",
+                      "FileAccess", "FileShare"],
+        "System.Net.Http": ["HttpClient", "HttpResponseMessage", "HttpRequestMessage",
+                            "HttpCompletionOption", "HttpMethod"],
+        "System.Text.Json": ["JsonSerializer", "JsonSerializerOptions"],
+        "System.IO.Compression": ["GZipStream", "CompressionMode", "ZipArchive",
+                                  "ZipFile"],
+        "System.Text": ["StringBuilder", "Encoding"],
+    }
+
+    for path in sorted(APP.rglob("*.cs")):
+        if any(part in ("obj", "bin") for part in path.parts):
+            continue
+        src = path.read_text(encoding="utf-8")
+        code = strip_cs(src)
+        usings = set(re.findall(r"^using\s+(?:static\s+)?([\w.]+)\s*;", src, re.M))
+
+        for ns, types in NAMESPACES.items():
+            if ns in usings:
+                continue
+            for t in types:
+                uses = (re.search(rf"(?<![\w.]){t}\.\w", code)
+                        or re.search(rf"new\s+{t}\s*[({{<]", code)
+                        or re.search(rf"[<,]\s*{t}\s*[,>]", code)
+                        or re.search(rf"(?<![\w.]){t}\[\]", code))
+                if not uses:
+                    continue
+                if re.search(rf"{re.escape(ns)}\.{t}\b", code):
+                    continue   # fully qualified, no using needed
+                fail("usings",
+                     f"{path.name} uses {t} but declares no `using {ns};`. "
+                     "ImplicitUsings does not cover it in this project - every "
+                     "other file here declares it - so this is a CS0246 on the "
+                     "build machine")
+                break
+
+    if len(failures) == before:
+        notes.append("usings: every file declares the namespaces its types "
+                     "come from")
+
+
 def check_db_download_safety():
     """A failed database download must never damage a working database.
 
@@ -1350,9 +1587,7 @@ def check_db_download_safety():
 
     # Neither service may open the destination for writing itself.
     for name, src in (("GeoIpService", geo), ("OuiService", oui)):
-        code = re.sub(r"//[^\n]*", "", src)
-        code = re.sub(r"/\*.*?\*/", "", code, flags=re.S)
-        code = re.sub(r"///[^\n]*", "", code)
+        code = strip_cs(src)
         if re.search(r"File\.Create\(\s*dest", code) or \
            re.search(r"File\.WriteAllTextAsync\(\s*dest", code) or \
            re.search(r"File\.WriteAllText\(\s*dest", code) or \
@@ -1371,7 +1606,7 @@ def check_db_download_safety():
     if "DatabaseHost" not in geo:
         fail("db-download", "GeoIpService declares no pinned host")
     else:
-        gcode = re.sub(r"///[^\n]*", "", geo)
+        gcode = strip_cs(geo)
         # The two COMPARISONS, not the count of the identifier. Counting passed
         # with the pre-request check gutted, because DatabaseHost still appeared
         # in both error messages and in the redirect test.
@@ -1390,7 +1625,7 @@ def check_db_download_safety():
                  "redirect off the pinned host would be accepted")
 
     # A partial OUI refresh must not replace a complete file.
-    ocode = re.sub(r"///[^\n]*", "", oui)
+    ocode = strip_cs(oui)
     if "File.Exists(destPath)" not in ocode:
         fail("db-download",
              "OuiService does not check for an existing database, so a refresh "
@@ -1439,7 +1674,7 @@ def check_unblock_stops_app():
              "StopOtherInstances is gone; a running instance will re-apply the "
              "filters --unblock removes, and an uninstall leaves them enforcing")
         return
-    sb = re.sub(r"//[^\n]*", "", stop.group(0))
+    sb = strip_cs(stop.group(0))
 
     if "GetProcessesByName" not in sb:
         fail("unblock-stops-app", "StopOtherInstances does not enumerate GunWall "
@@ -1459,7 +1694,7 @@ def check_unblock_stops_app():
     if not run:
         fail("unblock-stops-app", "RunEmergencyUnblock not found")
     else:
-        code = re.sub(r"//[^\n]*", "", run.group(0))
+        code = strip_cs(run.group(0))
         if "StopOtherInstances(" not in code:
             fail("unblock-stops-app",
                  "--unblock never stops other instances; tamper protection will "
@@ -1586,7 +1821,7 @@ def check_unblock_preserves_store():
         # "ClearStore() is deliberately NOT called here", so an exclusion written
         # to skip comments matched that text and disabled the guard permanently.
         # The falsification run is the only reason that is known.
-        code = re.sub(r"//[^\n]*", "", u)
+        code = strip_cs(u)
         if re.search(r"\.ClearStore\s*\(", code):
             fail("unblock-store",
                  "--unblock calls ClearStore. The uninstaller runs this before "
@@ -3185,9 +3420,7 @@ def check_no_duplicate_members():
     before = len(failures)
 
     def strip(text):
-        text = re.sub(r"//[^\n]*", "", text)
-        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-        return re.sub(r'"(?:[^"\\]|\\.)*"', '""', text)
+        return strip_cs(text)
 
     sig = re.compile(
         r"^[ \t]*(?:public|private|internal|protected)[ \t]+"
@@ -3332,6 +3565,7 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_usings_declared()
     check_db_download_safety()
     check_unblock_stops_app()
     check_unblock_preserves_store()

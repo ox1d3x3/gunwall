@@ -643,6 +643,61 @@ would fetch any URL at all. It now asserts the two comparisons by shape. This is
 the fifth time a check here has been shown incapable of failing, and every one has
 been the same thing: matching the neighbourhood instead of the thing.
 
+### 2.30 Assuming the environment instead of reading the neighbours
+
+`AtomicFile.cs` was a new file, and it used `Stream` without `using System.IO;`
+on the assumption that `ImplicitUsings` covers it. It does not here. Every other
+file in `Services/` that touches IO declares that using — the convention was
+visible in every neighbouring file and was not read. The build failed with CS0246
+on the maintainer's machine, which is the one failure this suite exists to
+prevent.
+
+**Rule:** when adding a file, read what the files beside it declare. A convention
+followed by every existing file is a fact about the project, not a style
+preference, and it is cheaper to copy than to reason about.
+
+**Rule:** a defect found in a new file is still evidence about the whole tree.
+Searching for the same pattern found one more candidate, which turned out to be a
+tuple element named `Path` — worth the search either way.
+
+**Check:** `usings-declared`. It cannot prove a program compiles; it proves the
+specific thing that broke.
+
+### The larger finding: several checks were reading mangled source
+
+Checks removed comments and string literals with two regex passes, in both
+possible orders. Neither works:
+
+- comments first — the `//` inside `"https://standards-oui.ieee.org/..."` is read
+  as a comment, the closing quote is consumed, and every literal after it is
+  mis-paired. **Half of `OuiService.cs` was deleted before matching**, with no
+  error and no output.
+- strings first — a quote inside a comment opens a literal that never closes.
+
+This was not one check. It was seven, including checks that had been trusted for
+releases. `db-download-safety` passed a falsification run only because the file it
+was reading had been truncated.
+
+**Rule:** a lexical problem needs a lexer. Regex cannot strip C# comments and
+strings, because each construct can contain the other's delimiter, and the
+failure is silent — the check keeps reporting `ok` against text that is no longer
+the program.
+
+`strip_cs` is a single pass tracking which construct is open. Two faults were
+found in it, both by the suite reporting against its own source:
+
+- Interpolation holes were copied whole, so `$"0x{code:X8}"` presented `X8` as a
+  symbol and `local-call` reported an undeclared function in `WfpEngine.cs`. The
+  expression ends at the first `,` or `:` outside parentheses, which is where C#
+  ends it — and is why a ternary in a hole must be parenthesised.
+- Adjacent holes concatenated: `{ErrorCode:X8}{(ErrorCode == 0 ? a : b)}` became
+  `ErrorCode(ErrorCode`, read as a call. A space did not fix it, because
+  `Foo (x)` is a legal call in C#. Holes are terminated with a semicolon.
+
+**Rule:** a shared helper used by many checks must be falsified through the checks
+that use it, not only on its own. Both faults above appeared as failures in
+unrelated checks, which is what identified them.
+
 ---
 
 ## 3. Working agreements
