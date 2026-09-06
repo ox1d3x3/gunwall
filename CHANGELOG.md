@@ -15,6 +15,53 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.129] — 2026-09-06
+
+### Fixed — the interface theme was not restored on launch
+Selecting the light theme persisted correctly and was then ignored. Every launch
+painted the dark theme, whatever had been chosen.
+
+The save path was never at fault. `ThemeDark` was written to the profile on every
+toggle and the value on disk was correct throughout. The defect was in the read.
+
+`FirewallManager` exposes each persisted setting as a property over a `_data`
+field that holds a **default-constructed** `StoreData` until the store is read.
+`MainWindow.OnLoaded` read `ThemeDark` thirty lines above the `Initialize()` call
+that performs that read, so it received the default — `true`, dark — with no
+error, no log entry and no null to indicate that the value was not the user's.
+
+Settings are now loaded through `FirewallManager.EnsureSettingsLoaded()`, which is
+idempotent and may be called by anything that needs a setting, without knowing
+whether `Initialize()` has run. `Initialize()` loads through the same method.
+
+The load was not deferred and `Initialize()` was not moved earlier. The theme must
+be applied before the window paints, and `Initialize()` opens the WFP engine and
+loads a GeoIP table first; painting dark and flipping to light several seconds
+later would be a worse defect than the one being corrected. The additional cost is
+one file read.
+
+Affected every route to a fresh process: closing and reopening, restarting
+Windows, and installing an update.
+
+**This is the third occurrence of this ordering defect in this handler.** 0.99.93
+and 0.99.94 placed the reconcile-readiness flag above the same `Initialize()` call,
+and the fix there was to move ownership inside the object rather than require
+callers to remember an order. The theme read was left outside that boundary and
+was not searched for at the time.
+
+### Added — check `settings-before-load`
+Asserts that `EnsureSettingsLoaded` exists and is idempotent, that `Initialize()`
+loads through it, and that the **first** reference to `_firewall` inside
+`OnLoaded` is that call. The last condition is the load-bearing one: it holds for
+any setting added later, not only the theme.
+
+Seven defects were reintroduced individually, including a setting that does not
+exist in the handler today, and the check confirmed failing on each.
+
+Recorded as trap 2.25.
+
+---
+
 ## [0.99.128] — 2026-09-06
 
 ### Fixed — unhandled COM fault raised by exclusive-fullscreen composition handoff

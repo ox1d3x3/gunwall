@@ -1281,6 +1281,87 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_settings_before_load():
+    """No setting may be read before the store that holds it has been loaded.
+
+    Trap 2.25. FirewallManager exposes every persisted setting as a property over
+    a `_data` field that is a DEFAULT-CONSTRUCTED StoreData until the store is
+    read. A caller that asks too early receives the default and no error, no log
+    line and no null - the setting simply reads as though the user had never
+    changed it.
+
+    The window's Loaded handler read ThemeDark thirty lines above the
+    Initialize() call that loads the store, so every launch applied the default
+    theme regardless of what was saved. It presented as "the theme is not
+    remembered", which is a persistence symptom for a read-ordering defect, and
+    the save path was correct throughout.
+
+    This is the third instance of the same ordering defect in the same handler:
+    0.99.93 and 0.99.94 placed the reconcile-readiness flag above the same call.
+    The response there was to move ownership inside the object rather than ask
+    callers to remember an order; this check enforces that the theme read cannot
+    drift back out of it.
+
+    Asserts:
+      - EnsureSettingsLoaded exists and is idempotent (guarded early return)
+      - Initialize() loads through it rather than reading the store directly
+      - inside OnLoaded, the FIRST reference to _firewall is EnsureSettingsLoaded
+
+    The last is the load-bearing one: it holds for any setting added later, not
+    just the theme.
+    """
+    before = len(failures)
+    fm = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    ensure = re.search(r"public void EnsureSettingsLoaded\(\).*?\n    \}", fm, re.S)
+    if not ensure:
+        fail("settings-before-load",
+             "EnsureSettingsLoaded is gone; settings can be read before the "
+             "store is loaded and will silently return defaults")
+        return
+    body = ensure.group(0)
+
+    if not re.search(r"if\s*\(\s*_settingsLoaded\s*\)\s*return\s*;", body):
+        fail("settings-before-load",
+             "EnsureSettingsLoaded has no idempotence guard - a second call "
+             "would re-read the store and discard unsaved state")
+    if "_store.Load()" not in body:
+        fail("settings-before-load", "EnsureSettingsLoaded does not load the store")
+    if not re.search(r"_settingsLoaded\s*=\s*true", body):
+        fail("settings-before-load",
+             "EnsureSettingsLoaded never sets its guard, so it reloads on every "
+             "call and is not idempotent")
+
+    init = re.search(r"public void Initialize\(\).*?\n    \}", fm, re.S)
+    if not init:
+        fail("settings-before-load", "FirewallManager.Initialize not found")
+    elif "EnsureSettingsLoaded()" not in init.group(0):
+        fail("settings-before-load",
+             "Initialize() does not load through EnsureSettingsLoaded, so the "
+             "guard and the real load can disagree about whether it has run")
+
+    loaded = re.search(r"private void OnLoaded\(object sender.*?\n    \}", mw, re.S)
+    if not loaded:
+        fail("settings-before-load", "MainWindow.OnLoaded not found")
+        return
+    h = loaded.group(0)
+
+    first = re.search(r"_firewall\.(\w+)", h)
+    if not first:
+        fail("settings-before-load", "OnLoaded touches no settings at all - "
+                                     "this check is no longer measuring anything")
+    elif first.group(1) != "EnsureSettingsLoaded":
+        fail("settings-before-load",
+             f"OnLoaded reads _firewall.{first.group(1)} before the store is "
+             "loaded; it returns a DEFAULT, silently. Call "
+             "EnsureSettingsLoaded() first")
+
+    if len(failures) == before:
+        notes.append("settings-before-load: store loaded before the first "
+                     "setting is read, loader idempotent")
+
+
 def check_publisher():
     """Publisher identity must be Ox1d3x3 and must agree everywhere it appears.
 
@@ -2821,6 +2902,7 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_settings_before_load()
     check_publisher()
     check_dwm_fault()
     check_fault_suppression()

@@ -22,6 +22,32 @@ public sealed class FirewallManager : IDisposable
     public IntPtr EngineHandle => _engine.EngineHandle;
     private readonly RuleStore _store = new();
     private StoreData _data = new();
+    private bool _settingsLoaded;
+
+    /// <summary>
+    /// Reads persisted settings from disk if they have not been read yet, and
+    /// does nothing on every call after the first.
+    ///
+    /// This exists because settings were readable before they were loaded.
+    /// <c>_data</c> is a default-constructed <see cref="StoreData"/> until the
+    /// store is read, and every property on this class reads through it - so a
+    /// caller that asked for a setting too early received the DEFAULT and no
+    /// indication anything was wrong. The window's Loaded handler did exactly
+    /// that with the theme, applying the default on every launch regardless of
+    /// what had been saved.
+    ///
+    /// Idempotent by design: any caller that needs a setting may call this,
+    /// without knowing whether <see cref="Initialize"/> has run and without
+    /// having to be ordered relative to it. Correct ordering that depends on
+    /// every caller remembering the ordering is not correct ordering - the same
+    /// conclusion reached for <c>ReconcileReady</c> below, for the same reason.
+    /// </summary>
+    public void EnsureSettingsLoaded()
+    {
+        if (_settingsLoaded) return;
+        _data = _store.Load();
+        _settingsLoaded = true;
+    }
 
     public bool LockdownEngaged => _data.LockdownEngaged;
     public bool AlertsEnabled => _data.AlertsEnabled;
@@ -44,7 +70,7 @@ public sealed class FirewallManager : IDisposable
             DiagnosticLog.LogException("WfpEngine.Initialize", ex);
             throw;
         }
-        _data = _store.Load();
+        EnsureSettingsLoaded();
         // Set HERE, by the thing that makes it true, not by a caller who has to
         // remember the ordering. 0.99.93 put this in the window's Loaded handler
         // thirty lines above the Initialize() call that loads the store, with a

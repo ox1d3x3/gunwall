@@ -227,6 +227,28 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.129 — theme restored on launch
+
+1. Open GunWall. Use the theme control in the top bar to select the theme that is
+   **not** currently active.
+2. Close GunWall completely — right-click the tray icon and choose **Exit**.
+   Closing the window alone leaves it running in the tray and does not test this.
+3. Reopen GunWall.
+
+   **PASS:** it opens in the theme selected at step 1.
+   **FAIL:** it opens in the dark theme regardless of the selection.
+
+4. Repeat across a Windows restart, and again after applying an update through
+   **Settings → Check for updates**. All three routes exercise the same path — a
+   fresh process — and all three should now restore the selection.
+
+5. Confirm the value on disk agrees. **Settings → Export diagnostics**, open
+   `config.json`, and read `ThemeDark`.
+
+   **PASS:** `false` when the light theme is selected, `true` when dark.
+   **FAIL:** the file disagrees with what is on screen — that is a different
+   defect from the one fixed here and should be reported separately.
+
 ### 0.99.128 — exclusive-fullscreen COM fault
 
 Requires an application configured for **exclusive fullscreen** (display mode

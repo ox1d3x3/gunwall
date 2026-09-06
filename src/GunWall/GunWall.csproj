@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.99.128</Version>
+    <Version>0.99.129</Version>
     <Company>Ox1d3x3</Company>
     <Authors>Ox1d3x3</Authors>
     <Product>GunWall Firewall</Product>

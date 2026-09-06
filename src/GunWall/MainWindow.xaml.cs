@@ -264,7 +264,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Apply the saved theme first so the whole window paints correctly.
+        // The store must be read before any setting is used. Until it is,
+        // _data is a default-constructed StoreData and every property returns
+        // its DEFAULT - silently. This line read ThemeDark thirty lines above
+        // the Initialize() call that loads the store, so every launch applied
+        // the default theme (dark) no matter what had been saved. Reported as
+        // the theme not being remembered across restarts.
+        //
+        // The load is not moved later and Initialize() is not moved earlier:
+        // the theme has to be applied before the window paints, and Initialize()
+        // opens the WFP engine and loads a GeoIP table first. Painting dark and
+        // then flipping to light seconds later is a worse defect than the one
+        // being fixed. EnsureSettingsLoaded() is idempotent, so this costs one
+        // file read and Initialize() still owns everything else.
+        _firewall.EnsureSettingsLoaded();
         bool dark = _firewall.ThemeDark;
         if (ThemeToggle != null) ThemeToggle.IsChecked = !dark; // checked = light
         ApplyTheme(dark);
@@ -384,7 +397,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.128 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.129 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it

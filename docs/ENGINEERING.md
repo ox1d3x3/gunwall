@@ -436,6 +436,55 @@ the only reason that is known. This is §2.10 in a new form: an ordering asserti
 that names one of the two operations it orders against is not an ordering
 assertion.
 
+### 2.25 A default is indistinguishable from a saved value
+
+`FirewallManager` exposes every persisted setting as a property over a `_data`
+field holding a **default-constructed** `StoreData` until the store is read. A
+caller that asks before that read receives the default. Not null, not an
+exception, not a log line — the default, which is a plausible value.
+
+`MainWindow.OnLoaded` read `ThemeDark` thirty lines above the `Initialize()` call
+that loads the store, so every launch applied the default theme irrespective of
+what had been saved. It was reported as the theme not being remembered, which
+points at the save path; the save path was correct throughout.
+
+This is the **third** occurrence of this ordering defect in this handler. 2.13
+records the first two: 0.99.93 and 0.99.94 placed the reconcile-readiness flag
+above the same call. The conclusion drawn then was that ordering which depends on
+every caller remembering the ordering is not ordering, and readiness was moved
+inside the object. The theme read was left outside that boundary because nobody
+searched for other early reads once the reported symptom went away.
+
+**Rule:** an uninitialised store must not be readable. Where that cannot be
+arranged, the load must be idempotent and callable by anything that needs a
+value, so no caller has to know what has already run. `EnsureSettingsLoaded()` is
+that, and `Initialize()` loads through it rather than beside it.
+
+**Rule:** when a defect is fixed by moving ownership inside an object, enumerate
+every other reader that was relying on the old ordering. Fixing the reported
+symptom is not fixing the defect — §3 already says a defect found by accident is
+evidence about the whole tree, and this is the same rule applied to a defect found
+on purpose.
+
+**Rule:** treat "setting not remembered" as a **read**-ordering hypothesis before a
+write one. A persistence symptom names the save path, and the save path is the
+half that usually works, because it runs on user action when everything is
+initialised. The read runs at startup, when things are not.
+
+**Check:** `settings-before-load` — asserts the loader exists and is idempotent,
+that `Initialize()` loads through it, and that the first `_firewall` reference in
+`OnLoaded` is that call. The last condition generalises: it fails for any setting
+added later, not only the theme.
+
+**Note on the repair itself.** The scripted edit that introduced this fix asserted
+anchor uniqueness once, ahead of two replacements. The first replacement inserted
+text containing the second anchor, so the second replacement matched the newly
+written copy instead of the intended one — producing a method that called itself
+and an `Initialize()` still loading directly. §3 requires uniqueness to be
+asserted before *every* scripted edit; asserting once for a batch does not satisfy
+it, because an earlier edit in the same batch can invalidate a later assertion.
+The check caught it on its first run.
+
 ---
 
 ## 3. Working agreements
