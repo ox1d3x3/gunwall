@@ -12,9 +12,11 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.99.127</Version>
-    <Company>GunWall</Company>
+    <Version>0.99.128</Version>
+    <Company>Ox1d3x3</Company>
+    <Authors>Ox1d3x3</Authors>
     <Product>GunWall Firewall</Product>
+    <Copyright>Copyright (c) Ox1d3x3. MIT licence.</Copyright>
     <Description>A modern, open-source Windows firewall built on the Windows Filtering Platform.</Description>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>

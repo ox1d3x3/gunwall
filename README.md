@@ -263,6 +263,7 @@ can read.
 | [Release notes](docs/RELEASE-NOTES.md) | What is in the current release |
 | [Changelog](CHANGELOG.md) | Every change, every version |
 | [Architecture](docs/ARCHITECTURE.md) | How the engine works, for developers |
+| [Engineering notes](docs/ENGINEERING.md) | Defect post-mortems and the controls that prevent recurrence |
 | [Contributing](CONTRIBUTING.md) | Building from source and conventions |
 | [Security policy](SECURITY.md) | Reporting a vulnerability |
 

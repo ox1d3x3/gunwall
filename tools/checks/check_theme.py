@@ -102,7 +102,7 @@ def check_duplicate_names():
     """No x:Name may appear twice in one XAML file.
 
     WPF generates a field per x:Name, so a duplicate is CS0102 - a compile error,
-    not a runtime one. That means it is caught, but only by the maintainer on the
+    not a runtime one. That means it is caught, but only at build time on the
     other side of a build, which in this project is the slowest feedback loop
     there is. It costs nothing to catch here.
 
@@ -247,7 +247,7 @@ def check_local_calls():
     every XAML event handler had a method. None of them look at C# calling C#.
 
     `element-ref` below says the Roslyn pass answers this. It does - but the
-    Roslyn pass is the compiler on the maintainer's machine, which is the far side
+    Roslyn pass is the compiler on the build machine, which is the far side
     of the loop. Deferring to it is deferring to the thing the check was supposed
     to run in front of.
 
@@ -1279,6 +1279,174 @@ def check_reset_path():
 
     if len(failures) == before:
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
+
+
+def check_publisher():
+    """Publisher identity must be Ox1d3x3 and must agree everywhere it appears.
+
+    Three separate places declare who published this software, and nothing makes
+    them agree: the assembly version resource (<Company>), the installer's
+    AppPublisher, and the version resource stamped onto setup.exe itself. Windows
+    reads them in different places - File Properties, Add/Remove Programs, and the
+    setup binary's own properties - so a disagreement shows up to the user without
+    ever failing a build.
+
+    Inno derives VersionInfoCompany from AppPublisher when unset, but only when
+    that value holds no unresolvable constants; otherwise it warns and leaves the
+    field EMPTY. A warning in a compile log is not a control, so the directives are
+    stated explicitly and asserted here.
+
+    Directive names were verified against Compiler.SetupCompiler.pas in
+    jrsoftware/issrc rather than recalled.
+    """
+    before = len(failures)
+    PUBLISHER = "Ox1d3x3"
+
+    csproj = (APP / "GunWall.csproj").read_text(encoding="utf-8")
+    m = re.search(r"<Company>(.*?)</Company>", csproj)
+    if not m:
+        fail("publisher", "GunWall.csproj declares no <Company>; the EXE would "
+                          "show a blank publisher in File Properties")
+    elif m.group(1).strip() != PUBLISHER:
+        fail("publisher",
+             f"GunWall.csproj <Company> is {m.group(1).strip()!r}, expected {PUBLISHER!r}")
+
+    if not re.search(r"<Copyright>[^<]*Ox1d3x3", csproj):
+        fail("publisher", "GunWall.csproj <Copyright> does not name Ox1d3x3")
+
+    iss_path = ROOT / "tools" / "installer" / "GunWall.iss"
+    if not iss_path.exists():
+        fail("publisher", "GunWall.iss not found")
+        return
+    iss = iss_path.read_text(encoding="utf-8", errors="replace")
+
+    m = re.search(r'#define\s+AppPublisher\s+"([^"]*)"', iss)
+    if not m:
+        fail("publisher", "GunWall.iss defines no AppPublisher")
+    elif m.group(1) != PUBLISHER:
+        fail("publisher",
+             f"GunWall.iss AppPublisher is {m.group(1)!r}, expected {PUBLISHER!r} - "
+             "Add/Remove Programs would disagree with the EXE")
+
+    if not re.search(r'#define\s+AppCopyright\s+"[^"]*Ox1d3x3', iss):
+        fail("publisher", "GunWall.iss defines no AppCopyright naming Ox1d3x3, so "
+                          "VersionInfoCopyright on setup.exe would be blank")
+
+    # The [Setup] section must actually consume the defines, and must stamp the
+    # setup binary's own version resource rather than relying on the derivation.
+    for directive, expected in (("AppPublisher",          "{#AppPublisher}"),
+                                ("AppCopyright",          "{#AppCopyright}"),
+                                ("VersionInfoCompany",    "{#AppPublisher}"),
+                                ("VersionInfoCopyright",  "{#AppCopyright}"),
+                                ("VersionInfoProductName","{#AppName}")):
+        if not re.search(rf"^{directive}\s*=\s*{re.escape(expected)}\s*$", iss, re.M):
+            fail("publisher",
+                 f"GunWall.iss has no `{directive}={expected}` - "
+                 "the publisher on that surface is unset or hard-coded separately")
+
+    if len(failures) == before:
+        notes.append(f"publisher: {PUBLISHER} in assembly, installer and setup.exe "
+                     "version resource")
+
+
+def check_dwm_fault():
+    """The DWM composition classifier must keep all three of its conditions.
+
+    Trap 2.24. An application taking the display in exclusive fullscreen causes
+    DWM to hand off composition; WPF's WindowChrome then calls
+    DwmExtendFrameIntoClientArea against a composition that no longer exists and
+    receives DWM_E_COMPOSITIONDISABLED. Each occurrence raised an unowned,
+    non-topmost MessageBox that rendered BEHIND the always-on-top connection
+    prompt, so it was never observed - only felt, as a second loss of focus.
+
+    The suppression is only safe while it is narrow, and each condition guards a
+    different way of becoming too wide:
+
+      - drop the TYPE      -> swallows every fault raised from that frame
+      - drop the HRESULT   -> swallows every COMException WindowChrome raises
+      - drop the FRAME     -> swallows that HRESULT raised anywhere in GunWall
+      - match the MESSAGE  -> silently stops working on a non-English Windows,
+                              because Windows localises it and the number does not
+
+    Each condition was reintroduced as a defect and this check confirmed failing
+    on it before the check was trusted.
+    """
+    before = len(failures)
+    app = (APP / "App.xaml.cs").read_text(encoding="utf-8")
+
+    cls = re.search(r"private static bool IsDwmCompositionFault.*?\n    \}", app, re.S)
+    if not cls:
+        fail("dwm-fault", "IsDwmCompositionFault not found - the fullscreen "
+                          "error dialog would be back")
+        return
+    body = cls.group(0)
+
+    if "COMException" not in body:
+        fail("dwm-fault",
+             "the classifier does not check the exception type - it would match "
+             "on a stack frame alone and swallow unrelated faults")
+    if not re.search(r"0x80263001", body + app, re.I):
+        fail("dwm-fault",
+             "the classifier does not test DWM_E_COMPOSITIONDISABLED - it would "
+             "swallow every COMException WindowChrome raises")
+    if "HResult" not in body:
+        fail("dwm-fault",
+             "the classifier does not compare an HRESULT; matching the message "
+             "text breaks on a non-English Windows, where it is localised")
+    if "WindowChromeWorker" not in body:
+        fail("dwm-fault",
+             "the classifier does not require the WindowChrome frame - it would "
+             "swallow that HRESULT raised anywhere else in GunWall")
+
+    # The message text must not be what identifies it. Windows localises it.
+    if re.search(r'Contains\(\s*"[^"]*composition[^"]*"', body, re.I):
+        fail("dwm-fault",
+             "the classifier matches the localised message text; it must match "
+             "the HRESULT, which does not translate")
+
+    handler = re.search(r"private void OnDispatcherUnhandledException.*?\n    \}", app, re.S)
+    if not handler:
+        fail("dwm-fault", "OnDispatcherUnhandledException not found")
+        return
+    h = handler.group(0)
+
+    if "IsDwmCompositionFault" not in h:
+        fail("dwm-fault",
+             "the classifier exists but the handler never calls it - the dialog "
+             "still shows")
+        return
+
+    # It has to run BEFORE the dialog, or it changes nothing - and before the
+    # error log, or the fault is recorded as a real error AND counted as benign,
+    # leaving "Errors this session" reading exactly as it does today.
+    #
+    # The first revision tested MessageBox.Show only. Under falsification,
+    # LogException was moved above the classifier and this check still passed -
+    # trap 2.10 in a new form. An ordering assertion that names one of the two
+    # operations it orders against is not an ordering assertion.
+    where = h.index("IsDwmCompositionFault")
+    for after in ("MessageBox.Show", 'DiagnosticLog.LogException("DispatcherUnhandledException"'):
+        if after not in h:
+            fail("dwm-fault", f"{after} is gone from the handler entirely")
+            continue
+        if where > h.index(after):
+            fail("dwm-fault",
+                 f"the DWM check runs after {after.split('(')[0]}, so the fault "
+                 "is still treated as an unexpected error")
+
+    seg = h[h.index("IsDwmCompositionFault"):]
+    seg = seg[:seg.index("MessageBox.Show")] if "MessageBox.Show" in seg else seg
+    if "NoteBenignFault" not in seg:
+        fail("dwm-fault",
+             "the suppressed fault is not counted, so it would vanish from "
+             "diagnostics rather than being recorded quietly")
+    if "e.Handled = true" not in seg:
+        fail("dwm-fault",
+             "the fault is not marked handled - WPF would tear the process down")
+
+    if len(failures) == before:
+        notes.append("dwm-fault: type + HRESULT + WindowChrome frame, counted, "
+                     "runs before the dialog")
 
 
 def check_fault_suppression():
@@ -2653,6 +2821,8 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_publisher()
+    check_dwm_fault()
     check_fault_suppression()
     check_silent_failures()
     check_version_consistency()

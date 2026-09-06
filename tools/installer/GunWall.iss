@@ -40,7 +40,7 @@
 ; somewhere else - which is everyone who uses the Visual Studio publish dialog and
 ; picks their own folder.
 #ifndef PublishDir
-  ; The maintainer's local publish folder, so a plain compile in the Inno Setup
+  ; Default local publish folder, so a plain compile in the Inno Setup
   ; IDE works with no arguments. Anyone else passes /DPublishDir - the guard
   ; below names the problem if they forget.
   #define PublishDir "C:\Users\TAMGG\Downloads\1.Gunwall-Installer\x64"
@@ -57,7 +57,8 @@
 #endif
 
 #define AppName        "GunWall"
-#define AppPublisher   "ox1d3x3"
+#define AppPublisher   "Ox1d3x3"
+#define AppCopyright   "Copyright (c) Ox1d3x3. MIT licence."
 #define AppUrl         "https://github.com/ox1d3x3/gunwall"
 #define AppExe         "GunWall.exe"
 
@@ -71,6 +72,7 @@ AppId={{9F2C41AB-7E33-4D58-9C1E-0B7A6D5E4F21}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+AppCopyright={#AppCopyright}
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
 AppUpdatesURL={#AppUrl}/releases
@@ -85,6 +87,18 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+
+; Version resource on setup.exe itself. Inno derives these from AppPublisher,
+; AppCopyright and AppName when they are unset, but only when those values hold
+; no unresolvable constants - otherwise it emits a warning and leaves the field
+; blank. Stated explicitly so the publisher shown in the setup binary's file
+; properties cannot silently become empty.
+; Directive names verified against Compiler.SetupCompiler.pas in jrsoftware/issrc,
+; not recalled.
+VersionInfoCompany={#AppPublisher}
+VersionInfoCopyright={#AppCopyright}
+VersionInfoProductName={#AppName}
+VersionInfoDescription={#AppName} Setup
 
 ; GunWall cannot install or remove WFP filters without elevation, and the
 ; uninstaller needs it too — see the note above about why that matters.

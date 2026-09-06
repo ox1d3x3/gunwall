@@ -83,7 +83,7 @@ it was written for, watch the check fail, remove the defect, watch it pass. This
 project has shipped three checks that could not fail — one whose exclusion rule
 matched everything, one that skipped misses silently, and one whose own string
 handling was wrong. A check never demonstrated against its own defect is a guess
-that counts as coverage. [`docs/HANDOVER.md`](docs/HANDOVER.md) lists them.
+that counts as coverage. [`docs/ENGINEERING.md`](docs/ENGINEERING.md) lists them.
 
 **Every change to shipped code gets a new version; documentation alone does not.**
 

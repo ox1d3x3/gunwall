@@ -190,6 +190,48 @@ public partial class App : Application
             || trace.Contains("System.Windows.Automation.Peers", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// DWM_E_COMPOSITIONDISABLED, as returned by DwmExtendFrameIntoClientArea
+    /// when composition is unavailable. Compared numerically and never against
+    /// the exception message: Windows localises that text, and the code does
+    /// not translate.
+    /// </summary>
+    private const int DwmCompositionDisabled = unchecked((int)0x80263001);
+
+    /// <summary>
+    /// True for the one COM failure a fullscreen game causes and nobody can act
+    /// on.
+    ///
+    /// A game taking the display in EXCLUSIVE fullscreen makes DWM hand the
+    /// composition off, and Windows broadcasts WM_DWMCOMPOSITIONCHANGED to every
+    /// top-level window. WPF's WindowChrome - which <c>ui:FluentWindow</c> uses -
+    /// answers by calling DwmExtendFrameIntoClientArea against a composition that
+    /// is no longer there. It is purely the window border; no filtering, no rule
+    /// and no kernel state is involved, and there is nothing the reader could do
+    /// about it.
+    ///
+    /// Three conditions, each load-bearing:
+    ///   - the TYPE, or a stack-frame match alone would swallow every COM fault
+    ///     raised from that frame whatever it was
+    ///   - the HRESULT, or this would swallow every COMException WindowChrome
+    ///     ever raises, including ones that mean something
+    ///   - the WindowChromeWorker FRAME, or this would swallow the same HRESULT
+    ///     raised anywhere else in GunWall
+    ///
+    /// The frame is matched on WindowChromeWorker specifically and never on the
+    /// outer frame, which varies: captures of this fault have arrived via both
+    /// HwndSubclass.DispatcherCallbackOperation and HwndWrapper.WndProc.
+    /// WM_DWMCOMPOSITIONCHANGED is a broadcast, so the answering window is not
+    /// fixed.
+    /// </summary>
+    private static bool IsDwmCompositionFault(Exception ex)
+    {
+        if (ex is not System.Runtime.InteropServices.COMException com) return false;
+        if (com.HResult != DwmCompositionDisabled) return false;
+        string trace = com.StackTrace ?? "";
+        return trace.Contains("WindowChromeWorker", StringComparison.Ordinal);
+    }
+
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         // Counted, not shown. Nothing the reader could do about it, and an
@@ -198,6 +240,17 @@ public partial class App : Application
         if (IsWpfAutomationPeerFault(e.Exception))
         {
             DiagnosticLog.NoteBenignFault("WPF automation peer (dotnet/wpf #2152)");
+            e.Handled = true;
+            return;
+        }
+
+        // Same reasoning, different framework defect. This one raises an
+        // unowned, non-topmost MessageBox that renders BEHIND the always-on-top
+        // connection prompt, so it is never seen - only felt, as a second loss
+        // of focus from whatever holds the display. See ENGINEERING.md 2.24.
+        if (IsDwmCompositionFault(e.Exception))
+        {
+            DiagnosticLog.NoteBenignFault("DWM composition handoff (exclusive-fullscreen app)");
             e.Handled = true;
             return;
         }

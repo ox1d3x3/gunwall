@@ -151,7 +151,7 @@ which no amount of examining the toggle would have found.
 
 **If a check reported success and the build is still wrong, say so.** A check that
 passes on a broken build is a worse problem than the bug it missed, and the
-pattern is recorded in [`HANDOVER.md`](HANDOVER.md) §2.10 each time it occurs.
+pattern is recorded in [`ENGINEERING.md`](ENGINEERING.md) §2.10 each time it occurs.
 
 ---
 
@@ -227,6 +227,31 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.128 — exclusive-fullscreen COM fault
+
+Requires an application configured for **exclusive fullscreen** (display mode
+*Fullscreen*, not *Borderless*). Borderless titles do not reproduce the fault.
+
+1. **Settings → Export diagnostics** before the run. Retain the archive.
+2. Run the application to the point where it takes the display, and return to the
+   desktop. Change no GunWall settings for this test.
+3. **Settings → Export diagnostics** after the run.
+
+   **PASS:** no *An unexpected error occurred* dialog at any point, and the
+   diagnostics footer reads
+   `benign faults: DWM composition handoff (exclusive-fullscreen app) xN`.
+
+   **FAIL:** the dialog appears, or `Errors this session:` still counts the fault.
+
+   **INCONCLUSIVE:** neither the error nor the benign-fault line appears. The
+   fault did not occur during the run and nothing was established. Repeat with the
+   application in exclusive fullscreen.
+
+4. A single loss of focus remains expected while *Silence popups while a
+   fullscreen app or game is running* is unchecked — that is the connection
+   prompt. What should no longer occur is a **second** interruption with no prompt
+   attached to it.
+
 ### 0.99.127 — Traffic totals
 
 1. **Traffic.** Read the line under the heading.
@@ -239,8 +264,8 @@ user-visible change, this section says so rather than inventing steps.
    unplaceable destinations are reported in the header only.
 
 3. **Connection map** — with traffic to more than ten countries you should now see
-   up to twenty arcs rather than ten. If it looks cluttered, say so and I will
-   bring it back down.
+   up to twenty arcs rather than ten. Report it if the result reads as clutter
+   rather than detail; the ceiling is a single constant and can be lowered.
 
 ### The case worth checking deliberately
 
@@ -269,8 +294,8 @@ user-visible change, this section says so rather than inventing steps.
 
    **PASS:** its rule is still there. GunWall cannot tell whether that program is
    gone or merely unplugged, so it leaves it alone.
-   **FAIL:** the rule disappeared — tell me, because that is a decision of yours
-   being deleted without explanation.
+   **FAIL:** the rule disappeared. Report this — it is a user decision being
+   discarded without explanation.
 
 ### 0.99.124 — naming devices
 

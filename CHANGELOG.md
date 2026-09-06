@@ -15,6 +15,100 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.128] — 2026-09-06
+
+### Fixed — unhandled COM fault raised by exclusive-fullscreen composition handoff
+An application taking the display in exclusive fullscreen produced an
+`An unexpected error occurred` dialog:
+
+```
+{Desktop composition is disabled} The operation could not be completed
+because desktop composition is disabled. (0x80263001)
+```
+
+Cause: exclusive fullscreen causes DWM to hand off composition, and Windows
+broadcasts `WM_DWMCOMPOSITIONCHANGED` to every top-level window. WPF's
+`WindowChrome` — used by `ui:FluentWindow` — answers by calling
+`DwmExtendFrameIntoClientArea` against a composition that no longer exists and
+receives `DWM_E_COMPOSITIONDISABLED`. The call affects the window border only; no
+rule, filter or kernel state is involved.
+
+`OnDispatcherUnhandledException` classified one framework defect as benign and
+routed everything else to a dialog, so this fault took the dialog path.
+
+The dialog was not observable in practice. The connection prompt is
+`Topmost="True"`; this is an unowned `MessageBox` and is not, so it rendered
+beneath the prompt and remained behind the foreground application. The only
+surfaced symptom was a second loss of focus from the foreground application,
+indistinguishable from the connection prompt that preceded it.
+
+The fault is now counted as a benign fault alongside the WPF automation-peer
+defect and raises no dialog. Classification requires **three** conditions: the
+exception type, the HRESULT, and a `WindowChromeWorker` stack frame. The message
+text is explicitly not used — Windows localises it, and the numeric code does not
+translate.
+
+The stack frame is matched on `WindowChromeWorker` rather than the outer frame,
+which varies: captures arrived via both `HwndSubclass.DispatcherCallbackOperation`
+and `HwndWrapper.WndProc`. `WM_DWMCOMPOSITIONCHANGED` is a broadcast, so the
+answering window is not fixed.
+
+Reproduces only under exclusive fullscreen. Titles running borderless windowed on
+the same hardware do not trigger it, which is what identified the display mode as
+the trigger rather than any GunWall code path.
+
+### Added — check `dwm-fault`
+Asserts all three classification conditions, forbids a message-text match, and
+asserts that the classifier is called, precedes **both** the error log and the
+dialog, counts the fault, and marks it handled.
+
+Its first revision asserted ordering against `MessageBox.Show` alone. Under
+falsification, `DiagnosticLog.LogException` was moved above the classifier and the
+check still passed — a state in which the fault is recorded as a real error *and*
+counted as benign, leaving the diagnostics error total unchanged. Recorded as
+trap 2.24; the pattern is trap 2.10. Eight defects were reintroduced individually
+and the check confirmed failing on each.
+
+### Changed — publisher identity
+The publisher is now **Ox1d3x3** on every surface Windows reads it from.
+
+Previously the assembly declared `<Company>GunWall</Company>` — the product name
+in the publisher field — while the installer declared `ox1d3x3` in lower case, and
+`setup.exe` carried no copyright at all. Three surfaces, three answers.
+
+- `GunWall.csproj` — `<Company>`, `<Authors>` and a new `<Copyright>`, which is
+  what File Properties reads
+- `GunWall.iss` — `AppPublisher` corrected to `Ox1d3x3`, `AppCopyright` added;
+  these drive Add/Remove Programs
+- `GunWall.iss` — `VersionInfoCompany`, `VersionInfoCopyright`,
+  `VersionInfoProductName` and `VersionInfoDescription` now stated explicitly
+  rather than left to Inno's derivation, which is skipped with a compile-time
+  warning when the source directive holds an unresolvable constant. A warning in
+  a build log is not a control.
+
+Directive names were verified against `Compiler.SetupCompiler.pas` in
+`jrsoftware/issrc` rather than recalled.
+
+This changes what the binaries *declare*. It does not change what Windows
+*attests* — GunWall remains unsigned, so SmartScreen and the UAC prompt continue
+to report an unknown publisher. Published SHA-256 checksums remain the
+verification path.
+
+### Added — check `publisher`
+Asserts the identity in the assembly, the installer and the setup version
+resource, and that the version-resource directives reference the defines rather
+than repeating the value. Eight defects were reintroduced individually and the
+check confirmed failing on each.
+
+### Documentation
+- `docs/HANDOVER.md` renamed to `docs/ENGINEERING.md` and rewritten in a neutral
+  technical voice. Content is unchanged apart from the additions above.
+- Collaboration-specific phrasing removed from the changelog, the check suite
+  docstrings and the source comments. Passages describing a particular operator or
+  workflow now describe the constraint itself.
+
+---
+
 ## [0.99.127] — 2026-08-24
 
 ### Fixed — the Traffic totals disagreed with each other
@@ -661,9 +755,9 @@ Documentation. No code changed.
   according to the reader's theme. `branding/README.md` documents the set and the
   markup.
 
-- **`TESTING.md` rewritten in a neutral voice.** It had been written as one person addressing another — "what I cannot check", "tell me which" — and carried a per-build checklist that goes stale the moment a release ships. It now describes what the check suite can and cannot establish, and keeps one short section for build-specific checks that says so plainly when there are none.
+- **`TESTING.md` rewritten in a neutral voice.** It had been written as one person addressing another — and carried a per-build checklist that goes stale the moment a release ships. It now describes what the check suite can and cannot establish, and keeps one short section for build-specific checks that says so plainly when there are none.
 
-- **Collaboration-specific references removed** from the maintainer documents. Passages describing a particular machine and toolchain now describe the constraint itself, which is what future readers need.
+- **Collaboration-specific references removed** from the engineering documents. Passages describing a particular machine and toolchain now describe the constraint itself, which is what future readers need.
 
 - Every link, cross-file anchor and image path across all eleven markdown files verified — anchors resolved against the target file's actual headings rather than assumed.
 
@@ -701,7 +795,7 @@ accurate and thoroughly unhelpful. Renamed to `FileIn`.
 
 It also omitted `using System.IO;`, which every other file in that folder declares
 explicitly. Neither error can occur on a machine that cannot compile WPF, so both
-were caught by the maintainer's build rather than here.
+were caught by the Windows build rather than here.
 
 `profile-path` now rejects a member whose name shadows a BCL type **when the same
 file also uses that type**. The first version of that check omitted the second
@@ -770,7 +864,7 @@ That is precisely the failure the installer exists to prevent, and it was implem
 Replaced with `InitializeUninstall`, which reads the exit code — 0 clean, 1 filters remained, anything else a failure to run — and on failure **stops and asks**, spelling out that the filters will keep enforcing after GunWall is gone.
 
 ### Changed
-- `PublishDir` now defaults to the maintainer's local publish folder, so pressing Compile in the Inno Setup IDE works with no arguments. Anyone else passes `/DPublishDir`, and the existing compile-time guard names the problem if they forget.
+- `PublishDir` now defaults to the standard local publish folder, so pressing Compile in the Inno Setup IDE works with no arguments. Anyone else passes `/DPublishDir`, and the existing compile-time guard names the problem if they forget.
 ---
 
 ## [0.99.108] — 2026-08-16
@@ -1197,7 +1291,7 @@ A `netsh` dump taken between the kill and the reopen shows **exactly 108** filte
 ## [0.99.93] — 2026-08-11
 
 ### Fixed — 0.99.92's startup reconcile disarmed a protected machine
-The crash test worked, and it found a regression I introduced one release earlier.
+The crash test worked, and it found a regression introduced one release earlier.
 
 ```
 Startup reconcile: 116 filter(s) in the sublayer, 0 tracked - removing 116 orphan(s)
@@ -1206,7 +1300,7 @@ Filter integrity: expected=120, missing=112 (112 of 120 filters MISSING)
 
 The kernel held 116 filters correctly — persistent, as designed, surviving the kill. The reconcile ran **from the window's field initialisers, before the store had loaded**, read `0 tracked`, concluded every live filter was an orphan, and deleted the lot.
 
-I identified this exact risk while writing it and dismissed it in a comment as *"correct behaviour too"* if the store were lost. It is not. **An empty answer from a component that is not ready is not an answer**, and a firewall that disarms itself because it briefly could not read its own notes is worse than one that leaves an orphan behind.
+This exact risk was identified while the code was being written and dismissed in a comment as *"correct behaviour too"* if the store were lost. It is not. **An empty answer from a component that is not ready is not an answer**, and a firewall that disarms itself because it briefly could not read its own notes is worse than one that leaves an orphan behind.
 
 Two guards, because either alone would have prevented it and neither alone is enough:
 
@@ -1248,7 +1342,7 @@ That check first tested for the bare method name, which still matched after the 
 ### Remove all filtering now returns the machine to Windows defaults
 The remaining gap was orphaned filters: ones GunWall installed and later lost the id for — a crash between installing and saving, or a store cleared before its filters were deleted. They are PERSISTENT, so they keep filtering forever, survive reboots, and cannot be named by anything. That is what `FWP_E_IN_USE` on the sublayer delete has been reporting all along.
 
-I had been describing this as a limitation rather than fixing it, twice. The stated blocker was that reaching them needs `FwpmFilterEnum0`, which means marshalling `FWPM_FILTER0` — a struct with a union and nested blobs whose layout would have to be right first time on a machine this code cannot run on. Trap 2.5 was exactly that mistake with a callback offset and it killed a process silently.
+This had been described as a limitation rather than fixed, twice. The stated blocker was that reaching them needs `FwpmFilterEnum0`, which means marshalling `FWPM_FILTER0` — a struct with a union and nested blobs whose layout would have to be right first time on a machine this code cannot run on. Trap 2.5 was exactly that mistake with a callback offset and it killed a process silently.
 
 **That blocker was avoidable.** `netsh wfp show filters file=<path>` ships with Windows, writes documented XML, and every filter in it carries its `subLayerKey` and its `filterId`. GunWall runs elevated, so it can ask Windows for the list, match GunWall's own sublayer GUID, and delete each by id with `FwpmFilterDeleteById0` — which was already bound. **No new interop, no struct layout, nothing new at the kernel boundary.** Parsing XML is something this project can verify; guessing a struct offset is not.
 
@@ -1282,7 +1376,7 @@ Protection-off now sweeps every filter collection the same way the reset does �
 Persistence is deliberate and stays. Every filter carries `FWPM_FILTER_FLAG_PERSISTENT`, so a crash, a close or a reboot with the firewall left on keeps enforcing. That is what a kernel firewall must do. The two intended exits — the posture switch and Remove all filtering — are what must work, and one of them did not.
 
 ### Still open — orphaned filters
-The reset removes every filter it has an id for. Filters whose ids were lost — a crash between installing and saving, or a store cleared before its filters were deleted — stay in the sublayer permanently, which is why the sublayer delete reports `FWP_E_IN_USE`. Clearing those needs `FwpmFilterEnum0`, and `FWPM_FILTER0` has to be verified against win32metadata before it is marshalled. **I will not author that struct layout from memory** — trap 2.5 is exactly that mistake and it killed a process silently.
+The reset removes every filter it has an id for. Filters whose ids were lost — a crash between installing and saving, or a store cleared before its filters were deleted — stay in the sublayer permanently, which is why the sublayer delete reports `FWP_E_IN_USE`. Clearing those needs `FwpmFilterEnum0`, and `FWPM_FILTER0` has to be verified against win32metadata before it is marshalled. **That struct layout will not be authored from memory** — trap 2.5 is exactly that mistake and it killed a process silently.
 ---
 
 ## [0.99.89] — 2026-08-11
@@ -1572,7 +1666,7 @@ Four versions of one check. Every one of them looked right, and each was found o
 
   GunWall was observing: 1,181 DNS events, 472 answers, 204 names known. The log stayed empty anyway, because it lists queries **sent to the resolver on 127.0.0.1**, and the passive ETW observer is a different path entirely. Two mechanisms, one of them named in a message about the other.
 
-  The maintainer read that text, saw observation working and the log empty, and reported a bug. There was no bug — the empty state was describing the wrong half of the feature. It now names the resolver path explicitly and says what to change to route lookups through it.
+  That text was read against a working observer and an empty log, and reported as a bug. There was no bug — the empty state was describing the wrong half of the feature. It now names the resolver path explicitly and says what to change to route lookups through it.
 
 ### Notes — two reports from this session, neither a defect
 
@@ -1657,7 +1751,7 @@ The 3.5.12 and 3.6.3 GitHub Desktop entries are separate paths, so the pair is l
 
   Shown to fail on three shapes: the deletion that shipped, a rename with callers left behind, and a rename in another file. Clean baseline: 819 declarations, every call resolves.
 
-- The `element-ref` note has been corrected. It said the gap was covered by the Roslyn pass, which is true and useless — the Roslyn pass is the compiler on the maintainer's machine, the far side of the loop this suite runs in front of. Recorded as trap 2.16.
+- The `element-ref` note has been corrected. It said the gap was covered by the Roslyn pass, which is true and useless — the Roslyn pass is the compiler on the build machine, the far side of the loop this suite runs in front of. Recorded as trap 2.16.
 
 ### Note — this check also passed on the bug it was written for, twice
 The first version's declaration pattern allowed the return type to be whitespace, so `) CollapseConnInspector(` parsed as a declaration with a blank return type. **Every call site registered itself as its own definition.** It reported "981 declarations, every bare call resolves" on a tree with the method deleted.
@@ -1706,7 +1800,7 @@ Both defects found by reading screenshots sent with "no error found". One of the
 ## [0.99.74] — 2026-08-09
 
 ### Changed
-- **The Connections inspector collapses again when nothing is selected**, and opens on selection. Reverted at the maintainer's direction; 0.99.73 had made it permanent.
+- **The Connections inspector collapses again when nothing is selected**, and opens on selection. Reverted as a product decision; 0.99.73 had made it permanent.
 
   The reason it was made permanent no longer applies. The empty band it was hiding was never really the panel's fault — it was a fixed last column in a resizable table, and 0.99.73 fixed that separately. With `LOCATION` deriving its width, the table stays full whether the panel is there or not. The panel is free to come and go.
 
@@ -1757,7 +1851,7 @@ Three defects found by reading the 0.99.72 screenshots rather than by anyone rep
 
   Between them, shown to fail on seven defects and clear on restore: labels back at `h - 15`, series to the full canvas, baseline to the full canvas, a band too small for its label, the hook removed, the re-entrancy guard removed, the minimum removed.
 
-### Note — the same reporting bug, in the checks I wrote to catch the last one
+### Note — the same reporting bug, in the checks written to catch the last one
 Both new checks appended their `ok` line unconditionally, so a failure printed `ok graph-axis: 22px band` directly beside `FAIL [graph-axis]`. That is the exact defect called out in the 0.99.72 notes and fixed there in `hint-width` — written again, the same week, in the checks added to catch the bug that entry was about. Gated in all three now.
 
 ### Note — an arithmetic correction
@@ -1816,7 +1910,7 @@ And two of the falsification injections were refused by their own uniqueness ass
   Same shape as retiring the footer: the fix was not to rename the collision but to notice that two things were saying one thing.
 
 ### Added
-- **A `duplicate-name` check.** WPF generates one field per `x:Name`, so a duplicate is a compile error — caught, but only by the maintainer on the far side of a build, which is the slowest feedback loop in this project. It costs nothing to catch here.
+- **A `duplicate-name` check.** WPF generates one field per `x:Name`, so a duplicate is a compile error — caught, but only at build time on the far side of a build, which is the slowest feedback loop in this project. It costs nothing to catch here.
 
   It excludes `ControlTemplate` bodies, because each template is its own namescope: `Controls.xaml` has five borders called `Bd` and always has. The first version flagged them, which would have been a check that fails on correct code — the same defect as one that passes on broken code, wearing a more convincing face.
 
@@ -1839,7 +1933,7 @@ And two of the falsification injections were refused by their own uniqueness ass
 - The Windows services buttons, carried from the previous entry, plus a dead `_geoCountry` field written during this change and caught before it shipped — assigned twice, read never.
 
 ### Note — the check caught me
-`binding-override` failed on my own new code: the subject tile assigns `Background` and `Stroke` that the markup binds with `DynamicResource`. That is trap 2.4 in `docs/HANDOVER.md`, written up two releases ago, walked into again the same week.
+`binding-override` failed on new code in the same release: the subject tile assigns `Background` and `Stroke` that the markup binds with `DynamicResource`. That is trap 2.4 in `docs/ENGINEERING.md`, recorded two releases earlier and repeated in the same week.
 
 It is a legitimate state-painted element, so it joins the allow-list — but with the condition recorded rather than assumed: the prompt window is constructed per prompt and always resolves at the current theme, and a theme switch with a prompt open would still freeze it. That is the honest scope of the exemption.
 
@@ -1853,9 +1947,9 @@ It is a legitimate state-painted element, so it joins the allow-list — but wit
   Widened from the **longest** string each cell can hold rather than the one visible when the column was written. That is the same mistake as sizing headers before uppercasing them, in a different place.
 
 ### Added
-- **`docs/HANDOVER.md`** — the trap list, the working agreements, the deliberate deviations, and what is deliberately not built.
+- **`docs/ENGINEERING.md`** (added this release as `docs/HANDOVER.md`; renamed in 0.99.128) — the trap list, the working agreements, the deliberate deviations, and what is deliberately not built.
 
-  It existed before only inside a handover archive regenerated by hand, which is the same failure as the check suite that used to live in `/tmp`: a document surviving only while someone remembers to carry it forward will eventually be reconstructed from memory, and memory is what it exists to replace. It is in the repository now and linked from the README.
+  It existed before only inside an archive regenerated by hand, which is the same failure as the check suite that used to live in `/tmp`: a document surviving only while someone remembers to carry it forward will eventually be reconstructed from memory, and memory is what it exists to replace. It is in the repository now and linked from the README.
 
   Ten traps are recorded, each cross-referenced to the check that catches it — including the four found in this migration that had no name before: a code assignment destroying a markup binding, a `StaticResource` across dictionaries merged in the wrong order, font name ID 16 splitting a family, and a pack URI constructed where no base URI exists.
 
@@ -1958,14 +2052,14 @@ Table lifecycle states — the last structural piece of the design migration.
 
   `HasItems` cannot tell those apart, and guessing wrong is not cosmetic. Showing *"No alerts. That is the good outcome."* over a table still reading the kernel buffer tells someone their machine is quiet when nobody has looked yet. On a firewall that is the wrong answer to give confidently. So the phase is stated by whoever owns the data, and empty-versus-no-results is derived from whether a query is set.
 
-- **The empty state is now the design's**, replacing the plain centred line I shipped in 0.99.49 and described at the time as though it were finished: dashed frame, mark at 35%, a title and a body. Each table says what *it* means by nothing — and on several of them, nothing is the good outcome, so it is stated calmly rather than as a problem.
+- **The empty state is now the design's**, replacing the plain centred line shipped in 0.99.49 and described at the time as though it were finished: dashed frame, mark at 35%, a title and a body. Each table says what *it* means by nothing — and on several of them, nothing is the good outcome, so it is stated calmly rather than as a problem.
 
 - **Network scan carries the loading and error states**, because it is the only table with a real lifecycle: it takes seconds and it can fail. Everything else populates in one pass and stays on `Ready` — claiming a loading state that lasts a frame would add a flicker and describe nothing.
 
   Its error copy follows the section 10 rule that the body states **what is still true** before what is broken: *"Your firewall rules are unaffected and still enforcing — this is the local network scan only."* Someone reading a failure on a firewall needs to know whether they are exposed before they need to know which call threw. The mono line is a code and a timestamp to paste, never a raw exception.
 
 ### Note
-The first attempt at the template edit corrupted `Controls.xaml` — I reused a string index after reassigning the string it indexed into, so the replacement landed before the document root. Restored from the last verified package and redone against literal anchors with uniqueness assertions, which is what the rest of this project's edits already do and what I skipped for being in a hurry.
+The first attempt at the template edit corrupted `Controls.xaml`: a string index was reused after the string it indexed into had been reassigned, so the replacement landed before the document root. Restored from the last verified package and redone against literal anchors with uniqueness assertions — the discipline the rest of this project's edits already follow, omitted here for speed.
 
 ---
 
@@ -1990,7 +2084,7 @@ The first attempt at the template edit corrupted `Controls.xaml` — I reused a 
 ### Note — three releases spent on the wrong thing
 0.99.61 renamed font files. 0.99.62 replaced them with untouched upstream ones and added a check that the name tables agree. Both were reasonable responses to the evidence, and both were treating a symptom: the fonts were fine the whole time.
 
-The tell was in the report from the start — *"working fine selecting any other my windows installed font"*. Bundled failing while installed worked isolates the difference to how the family is **constructed**, not to the files. I read it as evidence about the files three times before reading it as evidence about the code.
+The tell was in the report from the start — *"working fine selecting any other my windows installed font"*. Bundled failing while installed worked isolates the difference to how the family is **constructed**, not to the files. It was read as evidence about the files three times before it was read as evidence about the code.
 
 ---
 
@@ -1999,11 +2093,11 @@ The tell was in the report from the start — *"working fine selecting any other
 ### Fixed
 - **The bundled font was not loading at all, and 0.99.61 caused it.** The whole interface silently fell back to the system UI font — which is why the bundled default looked nothing like the same font installed on the machine.
 
-  The cause was the renaming I did in 0.99.61. WPF resolves a family by name **ID 16** (typographic family) when present, falling back to ID 1. Upstream already sets ID 16 to `JetBrainsMono Nerd Font` on **every** weight, so all four were one family and no renaming was needed. My rename set ID 16 on two of the four, which split them: Regular and Bold kept the upstream name, Medium and SemiBold got the new one. The reference then matched a family containing only weights 500 and 600, a 400 request found nothing, and WPF fell back.
+  The cause was the renaming performed in 0.99.61. WPF resolves a family by name **ID 16** (typographic family) when present, falling back to ID 1. Upstream already sets ID 16 to `JetBrainsMono Nerd Font` on **every** weight, so all four were one family and no renaming was needed. That rename set ID 16 on two of the four, which split them: Regular and Bold kept the upstream name, Medium and SemiBold got the new one. The reference then matched a family containing only weights 500 and 600, a 400 request found nothing, and WPF fell back.
 
-  I renamed the files to solve a problem upstream had already solved, checked ID 1 to confirm it had worked, and never looked at ID 16. Two of the four disagreed, and nothing errored, logged or failed — the text just stopped being monospaced.
+  The files were renamed to solve a problem upstream had already solved; ID 1 was checked to confirm the rename had worked and ID 16 was never examined. Two of the four disagreed, and nothing errored, logged or failed — the text just stopped being monospaced.
 
-- The bundled face is now `JetBrainsMono Nerd Font` — the same variant installed on the maintainer's machine — **exactly as upstream ships it**. No file has been modified: not the outlines, not the name table.
+- The bundled face is now `JetBrainsMono Nerd Font`, **exactly as upstream ships it**. No file has been modified: not the outlines, not the name table.
 
 ### Added
 - **A `font-family` check.** Every bundled weight of a family must agree on the name WPF will resolve. Disagreement means two families, a partial weight set, and a silent fallback — which is a failure with no symptom other than "it looks wrong", and therefore exactly the kind this project keeps writing checks for.
@@ -2021,7 +2115,7 @@ The rule this leaves, and the reason it is now in a check rather than a comment:
 - The same family-splitting trap appeared again and was fixed again: upstream ships Medium and SemiBold as their own families — *"JetBrainsMono NFM Medium"*, *"...SemiBold"* — each with subfamily "Regular". A `FontWeight` request against *"JetBrainsMono NFM"* would miss both and return Regular with no error. All four renamed into one family.
 
 ### Fixed
-- The font setting's own description still read *"Instrument Sans ships with GunWall and is the default"* — untrue since the previous release changed the default and I did not update the sentence describing it. A settings page that misstates its own default is worse than one with no description.
+- The font setting's own description still read *"Instrument Sans ships with GunWall and is the default"* — untrue since the previous release changed the default without updating the sentence describing it. A settings page that misstates its own default is worse than one with no description.
 
 ### Note on size
 The bundled fonts go from about 1MB to about 9.5MB. That is the cost of 12,503 glyphs per weight, and for a portable single-file application it is worth stating plainly rather than letting it be discovered: the binary grows by roughly that much. It is a deliberate trade, and reversible — dropping to Regular and Bold would halve it at the cost of the weight hierarchy the interface uses to separate a label from its value.
@@ -2084,8 +2178,8 @@ was visible in a screenshot.
 ### Fixed
 - **The apps usage timeline was blue** — `#0A84FF`, under a gradient from 40% alpha. That is not merely "a colour the design does not use": it is the **System category colour** from `CategoryPalette`, which section 2 calls user data and forbids reusing in the interface. It was editable in Settings, so a user changing their System swatch would have retinted a chart. Neutral ink over a flat `fill-up` now, matching the throughput chart — brand is deliberately not used here, because brand is already spent on the drag-selection pulled across that same strip, and data must not be the colour of selection.
 - **The connection map** used `#0A84FF` for the home marker and `#23C05C` for destinations. Home is neutral ink — it is "you", not a state — and destinations take the accent. A destination is not "allowed"; it is somewhere traffic went, and green here was decoration. Arcs were `#E0524D`, a red belonging to neither palette.
-- **The Applications status pills were hard-coded light-theme values.** `#2E9E54` ink on `#E7F6EC` fill — near-white tints that cannot be right in both themes, on the pills stating whether an application may reach the network. I described these pills as the correct treatment two releases ago while comparing them against the packet log; they were the better of two wrong things.
-- **`AppPropertiesWindow` carried the identical four signature literals I fixed in `AlertWindow` in 0.99.44.** I fixed one window and never looked for the other copy.
+- **The Applications status pills were hard-coded light-theme values.** `#2E9E54` ink on `#E7F6EC` fill — near-white tints that cannot be right in both themes, on the pills stating whether an application may reach the network. These pills were described as the correct treatment two releases earlier, while being compared against the packet log; they were the better of two wrong things.
+- **`AppPropertiesWindow` carried the identical four signature literals corrected in `AlertWindow` in 0.99.44.** One window was fixed and the second copy was never searched for.
 - The prompt's confirmation dot, and the category-colour fallback, were also literals.
 
 ### Added
@@ -2137,7 +2231,7 @@ Skeleton and error states, and the letter-spacing decision. Section 10 has now b
 
   A ring around an entire table is the wrong idea regardless of how it is drawn. "This list has focus" is never the question; the question is which **row**, and the row answers it itself. The container now suppresses the visual and the row carries it.
 
-  For everything else, my first attempt set `FocusVisualStyle` on the window root — which does nothing, because that property is registered on `FrameworkElement` **without** `Inherits`. I wrote a comment asserting it cascaded before checking that it does. It covers 103 checkboxes, combo boxes and text fields through `SystemParameters.FocusVisualStyleKey` instead, which is the supported hook: WPF looks that key up for any element that has not specified its own, so one entry replaces the default everywhere. Per-style setters stay where they exist — they document intent and they win.
+  For everything else, the first attempt set `FocusVisualStyle` on the window root — which does nothing, because that property is registered on `FrameworkElement` **without** `Inherits`. A comment asserting that it cascades was written before the claim was checked. It covers 103 checkboxes, combo boxes and text fields through `SystemParameters.FocusVisualStyleKey` instead, which is the supported hook: WPF looks that key up for any element that has not specified its own, so one entry replaces the default everywhere. Per-style setters stay where they exist — they document intent and they win.
 
 ### Verified on hardware
 - Ellipsis on the flag columns, after the `StackPanel` → `Grid` change: `Switzerland · AS200107...` rather than `AS200107 K`.
@@ -2149,7 +2243,7 @@ Skeleton and error states, and the letter-spacing decision. Section 10 has now b
 ## [0.99.53] — 2026-08-07
 
 ### Fixed
-- **The ellipsis fix from two releases ago did not work on the flag columns, and I reported it as done.** `Location` and `Country` put their text inside a horizontal `StackPanel`, which measures children with **infinite width** — so the `TextTrimming="CharacterEllipsis"` that was already sitting on that `TextBlock` was honoured by the layout system as "no overflow, nothing to trim", while the cell boundary clipped the glyphs anyway. `AS200107 K` still read as an operator name rather than a truncated one.
+- **The ellipsis fix from two releases ago did not work on the flag columns, and was reported as complete.** `Location` and `Country` put their text inside a horizontal `StackPanel`, which measures children with **infinite width** — so the `TextTrimming="CharacterEllipsis"` that was already sitting on that `TextBlock` was honoured by the layout system as "no overflow, nothing to trim", while the cell boundary clipped the glyphs anyway. `AS200107 K` still read as an operator name rather than a truncated one.
 
   Both are `Grid` now, `Auto` for the flag and `*` for the text, so the constraint actually exists. Worth being precise about the failure: the property was present and correct, and asserting that it was present was never evidence that it did anything.
 
@@ -2200,7 +2294,7 @@ The design's Rules table has five columns and this build has four; `HITS` is the
 Column sizing. Three defects, one of them introduced by the release before it.
 
 ### Fixed
-- **`PROTO` was rendering as `PROT`.** Uppercasing the headers in 0.99.49 made every one of them wider, and this was the column with no slack: 20px of header padding left 36px for a word that needs about 40. `DIRECTION` in the packet log was in the same position. Both widened, and a check now measures every header against its own column so this cannot recur silently. Making text wider is an obvious consequence of uppercasing it, and I did not think about it at all.
+- **`PROTO` was rendering as `PROT`.** Uppercasing the headers in 0.99.49 made every one of them wider, and this was the column with no slack: 20px of header padding left 36px for a word that needs about 40. `DIRECTION` in the packet log was in the same position. Both widened, and a check now measures every header against its own column so this cannot recur silently. Making text wider is an obvious consequence of uppercasing it, and it was not considered.
 - **Long values were cut mid-character with no ellipsis.** Publisher read "Kaspersky Labs GmbH — inval" and paths stopped mid-folder. A hard cut reads as the value *ending* there; an ellipsis says it continues. Both columns now trim properly and carry the full value as a tooltip.
 - **The Connections table was losing its last column entirely at ordinary window widths.** Seven fixed-width columns plus a 340px inspector overflowed anything under about 1730px, and `HorizontalScrollBarVisibility="Disabled"` means overflow is silent clipping rather than a scrollbar.
 
@@ -2227,7 +2321,7 @@ The version check also had a bug of its own: `"0.99.50.0".rstrip(".0")` strips a
 Both were caught before packaging, but only because of what they would have done:
 
 - The empty-state template replaced the `ListView` template without the `GridViewScrollViewerStyleKey` style. When a `ListView` has a `GridView`, the column header row is drawn by a `GridViewHeaderRowPresenter` that lives inside *that* ScrollViewer template. Without it, every table would have rendered its rows perfectly and had **no headers at all** — which looks like a layout bug, and would have been hunted for in the layout.
-- The script that applied the empty messages used `if not m: continue`, so three tables whose names I had guessed wrong were skipped in silence and reported success for the nine that matched. Rewritten to assert. A helper that quietly does less than asked is the same defect this project keeps finding in the product.
+- The script that applied the empty messages used `if not m: continue`, so three tables whose names had been recorded incorrectly were skipped in silence while success was reported for the nine that matched. Rewritten to assert. A helper that quietly does less than asked is the same defect this project keeps finding in the product.
 
 The placeholder also shipped, briefly, defaulting to visible with only a "show when empty" trigger — so it would have sat under the typed text forever, since nothing would ever have hidden it again.
 
@@ -2294,7 +2388,7 @@ screen you stop trusting.
 - **A red underline across the search field.** The library's TextBox template paints its own focus line in the accent, under a field that already has a border. A second border in the loudest available colour is not a focus ring.
 
 ### Note
-`UpdateHero` built a four-way string for the button that is now Resume-only. I left the variable in place with a comment claiming the tray menu read it — it does not, and I had not checked before writing that. Assigned in four branches and read nowhere is `CS0219`, so it is gone. A variable kept "in case" is how dead state survives a refactor.
+`UpdateHero` built a four-way string for the button that is now Resume-only. The variable was left in place with a comment claiming the tray menu read it — it does not, and the claim was not checked before it was written. Assigned in four branches and read nowhere is `CS0219`, so it is gone. A variable kept "in case" is how dead state survives a refactor.
 
 ---
 
@@ -2369,7 +2463,7 @@ The metering banner was added as a new first row on Traffic, which left the pane
 
 ## [0.99.42] — 2026-08-06
 
-First of eight releases migrating the interface to the Claude Design handoff.
+First of eight releases migrating the interface to the new design system.
 This one paints nothing new. It removes every colour that predates the design
 and gives colour a single home, because each of the seven stages after it lands
 on top of these tokens — fixing them afterwards would mean repainting whatever

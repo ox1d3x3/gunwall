@@ -10,7 +10,7 @@ namespace GunWall;
 /// designing. Nothing here pins a Width or Height on an input: WPF UI binds those
 /// straight to a control's border and lays its content inside Padding, so a fixed
 /// dimension clips the text. That cost three releases to find once already - see
-/// HANDOVER.md trap 2.22.
+/// ENGINEERING.md trap 2.22.
 /// </summary>
 public sealed class NoteWindow : Window
 {
