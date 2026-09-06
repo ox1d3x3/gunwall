@@ -792,16 +792,19 @@ public sealed class FirewallManager : IDisposable
             "StrictMode",          // protection on/off - not a preference
             "LockdownEngaged",     // ditto
             "DnsRedirectActive",   // adapters are actually pointed at us
-            "VirusTotalApiKey",    // the user's own credential, not a default
 
             // Names verified against StoreData rather than written from memory. A
             // keep-list entry matching no property protects nothing and fails
             // silently - the first draft guarded "CustomListPath", which does not
             // exist, while the real "CustomBlocklistPath" sat in the reset set and
             // would have taken the user's chosen list file with it.
-            "CustomBlocklistPath", // a path they chose; losing it loses the list
             "DnsGamingSession",    // a live session, not a preference
         };
+
+        // The user's own values, from the one list ClearStore also reads. Kept
+        // here rather than repeated, so the two paths cannot disagree about what
+        // belongs to the user.
+        foreach (string name in UserOwnedSettings) keep.Add(name);
 
         // Every keep-list entry must name a real property, checked rather than
         // trusted, because the failure mode above is invisible.
@@ -909,16 +912,112 @@ public sealed class FirewallManager : IDisposable
 
         try { HostsFileService.FlushDns(); } catch { }
 
-        // Cleared unconditionally. The tracked filters are gone; keeping the
-        // store would leave the UI showing rules that no longer exist in the
-        // kernel, which is a worse lie than an orphaned empty sublayer.
-        _data = new StoreData();
+        // The filters are gone, so the ids tracking them are stale and the
+        // machine-state flags are false by fact. Recorded here because this
+        // method is what made them false. Rules, preferences and credentials are
+        // NOT touched - see ClearStore for that, and for why the two are apart.
+        ForgetFilterIds(_data, new HashSet<object>(ReferenceEqualityComparer.Instance));
+        _data.StrictMode = false;
+        _data.LockdownEngaged = false;
+        _data.DnsRedirectActive = false;
+        _data.DnsGamingSession = false;
         _store.Save(_data);
 
         DiagnosticLog.Log(sublayerGone
-            ? "Reset: complete - sublayer removed and store cleared."
-            : "Reset: filters and store cleared; sublayer retained (untracked filters remain).");
+            ? "Reset: complete - sublayer removed; rules and settings kept."
+            : "Reset: filters removed, rules and settings kept; sublayer retained "
+            + "(untracked filters remain).");
         return sublayerGone;
+    }
+
+    /// <summary>
+    /// Empties every tracked filter-id collection in the store.
+    ///
+    /// Mirrors <see cref="CollectFilterIds"/> deliberately: the same reflective
+    /// walk that finds the ids to remove is the one that forgets them, so a
+    /// collection added later cannot be swept by one and missed by the other.
+    /// A hand-written list of the six known collections is what trap 2.19 was.
+    /// </summary>
+    private static void ForgetFilterIds(object? node, HashSet<object> seen)
+    {
+        if (node is null || node is string || node.GetType().IsPrimitive
+            || node is decimal || node is DateTime) return;
+        if (!seen.Add(node)) return;   // cycle guard
+
+        if (node is System.Collections.IEnumerable seq)
+        {
+            if (node is List<ulong> ids) { ids.Clear(); return; }
+            foreach (var item in seq)
+            {
+                if (item is System.Collections.DictionaryEntry de)
+                { ForgetFilterIds(de.Value, seen); continue; }
+                var kt = item?.GetType();
+                if (kt is { IsGenericType: true } &&
+                    kt.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+                { ForgetFilterIds(kt.GetProperty("Value")?.GetValue(item), seen); continue; }
+                ForgetFilterIds(item, seen);
+            }
+            return;
+        }
+
+        if (node.GetType().Namespace?.StartsWith("GunWall", StringComparison.Ordinal) != true) return;
+        foreach (var p in node.GetType().GetProperties())
+        {
+            if (p.GetIndexParameters().Length > 0 || !p.CanRead) continue;
+            try { ForgetFilterIds(p.GetValue(node), seen); }
+            catch { /* a property that throws holds no filter ids */ }
+        }
+    }
+
+    /// <summary>
+    /// Settings that belong to the user rather than to GunWall, and that GunWall
+    /// cannot recreate for them.
+    ///
+    /// Shared by <see cref="ResetSettingsToDefaults"/> and
+    /// <see cref="ClearStore"/> rather than written out in both. Two copies of
+    /// one rule is how the two drift, and the drift is silent: a credential
+    /// survives one path and is destroyed by the other, with nothing to say so.
+    /// </summary>
+    internal static readonly string[] UserOwnedSettings =
+    {
+        "VirusTotalApiKey",     // issued by another service; cannot be reissued here
+        "CustomBlocklistPath",  // a path they chose; losing it loses the list
+    };
+
+    /// <summary>
+    /// Discards rules and settings, keeping what the user owns.
+    ///
+    /// Separate from <see cref="RemoveAllFiltering"/> because they answer
+    /// different questions. Removing filtering is "undo what GunWall did to this
+    /// machine". Clearing the store is "discard what the user decided". The
+    /// in-app reset button means both and says so. The uninstaller means only the
+    /// first.
+    ///
+    /// Previously they were one method, and the uninstaller reached it through
+    /// <c>--unblock</c> in InitializeUninstall - BEFORE the prompt offering to
+    /// keep the profile. Answering "No" to that prompt preserved a file that had
+    /// already been emptied, so an uninstall-then-reinstall lost every rule and
+    /// the VirusTotal key while reporting that it had kept them.
+    /// </summary>
+    public void ClearStore()
+    {
+        var keep = new StoreData();
+        foreach (string name in UserOwnedSettings)
+        {
+            var prop = typeof(StoreData).GetProperty(name);
+            if (prop is null || !prop.CanRead || !prop.CanWrite)
+            {
+                DiagnosticLog.Log($"Store clear: '{name}' is not a settable StoreData "
+                                + "property - it protects nothing.");
+                continue;
+            }
+            prop.SetValue(keep, prop.GetValue(_data));
+        }
+
+        _data = keep;
+        _store.Save(_data);
+        DiagnosticLog.Log("Store cleared; user-owned settings kept ("
+                        + string.Join(", ", UserOwnedSettings) + ").");
     }
 
     /// <summary>Empties every filter-id collection in the store, leaving the rules
@@ -2192,17 +2291,51 @@ public sealed class FirewallManager : IDisposable
         catch (Exception ex) { return $"(error running {exe}: {ex.Message})"; }
     }
 
+    /// <summary>
+    /// The settings document for the diagnostics bundle, with the user's
+    /// VirusTotal credential replaced.
+    ///
+    /// Redaction happens in the PRODUCED DOCUMENT, never on <c>_data</c>. The
+    /// previous implementation assigned "(redacted)" to
+    /// <c>_data.VirusTotalApiKey</c>, serialised, and restored the real value in
+    /// a <c>finally</c>. That is correct on one thread and wrong on two.
+    ///
+    /// The export runs on a background thread (<c>Task.Run</c> from the settings
+    /// screen) and takes seconds, because it shells out to netsh and ipconfig
+    /// with an eight-second timeout each. The UI thread is free throughout. Any
+    /// of the ninety-plus <c>_store.Save(_data)</c> call sites reached inside
+    /// that window - approving one application at a prompt is enough -
+    /// serialises the SAME object and writes "(redacted)" to rules.json as the
+    /// real value. The user would lose their API key by exporting a diagnostics
+    /// bundle, and the loss would be silent and permanent.
+    ///
+    /// Fail-closed on the property name: if the redaction target is not present
+    /// in the serialised document, no config is written at all. Overwriting a
+    /// key that is not there would ADD it and emit the real credential beside
+    /// it, so a rename must break the export rather than leak.
+    /// </summary>
     private string SanitizedConfigJson()
     {
-        string saved = _data.VirusTotalApiKey;
         try
         {
-            _data.VirusTotalApiKey = string.IsNullOrEmpty(saved) ? "" : "(redacted)";
-            return System.Text.Json.JsonSerializer.Serialize(_data,
+            bool hasKey = !string.IsNullOrEmpty(_data.VirusTotalApiKey);
+
+            if (System.Text.Json.Nodes.JsonNode.Parse(
+                    System.Text.Json.JsonSerializer.Serialize(_data))
+                is not System.Text.Json.Nodes.JsonObject obj)
+                return "(config omitted: unexpected document shape)";
+
+            const string secret = nameof(StoreData.VirusTotalApiKey);
+            if (!obj.ContainsKey(secret))
+                return $"(config omitted: redaction target '{secret}' not found, " +
+                       "so the document could not be proven safe to include)";
+
+            obj[secret] = hasKey ? "(redacted)" : "";
+
+            return obj.ToJsonString(
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
         }
         catch (Exception ex) { return "(failed to serialize config: " + ex.Message + ")"; }
-        finally { _data.VirusTotalApiKey = saved; }
     }
 
     /// <summary>

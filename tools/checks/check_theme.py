@@ -1253,10 +1253,27 @@ def check_reset_path():
         fail("reset-path", "the sublayer is deleted before the filters that reference "
                            "it; WFP refuses that with FWP_E_IN_USE")
 
-    clear_at = body.find("new StoreData()")
-    if clear_at < 0 or clear_at < sub_at:
-        fail("reset-path", "the store is not cleared after the kernel work - an "
-                           "exception in between leaves the saved rules behind")
+    # The store clear moved OUT of this method in 0.99.130 (trap 2.27), because
+    # the uninstaller reached it via --unblock before asking whether to keep the
+    # profile. The ordering guarantee still has to hold, so it is now asserted
+    # across the two calls at the button: kernel work first, store discard second.
+    #
+    # The guarantee is stronger this way, not weaker. Previously an exception in
+    # the kernel work skipped a clear later in the same method; now it prevents a
+    # separate call from happening at all.
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    seq = re.search(r"bool complete = _firewall\.RemoveAllFiltering\(\);(.{0,400})", mw, re.S)
+    if not seq:
+        fail("reset-path", "the in-app reset no longer calls RemoveAllFiltering")
+    elif "ClearStore()" not in seq.group(1):
+        fail("reset-path",
+             "the reset button removes filters but never discards the store, "
+             "while its confirmation promises to clear all saved rules")
+
+    if "new StoreData()" in body:
+        fail("reset-path",
+             "RemoveAllFiltering discards the store again; --unblock reaches this "
+             "from the uninstaller before the keep-my-profile prompt is answered")
 
     eng_body = re.search(r"public bool RemoveAllFiltering\(\).*?\n    \}", eng, re.S)
     if not eng_body:
@@ -1279,6 +1296,315 @@ def check_reset_path():
 
     if len(failures) == before:
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
+
+
+def check_unblock_stops_app():
+    """Nothing may be left running that can re-apply the filters being removed.
+
+    Trap 2.28. A running GunWall watches its own filters and re-installs them
+    when they vanish - that is what tamper protection is for, and it cannot tell
+    a deliberate teardown from an attack. So it treated the uninstaller as an
+    attack. On 2026-09-06 the uninstaller removed 24 filters at 18:25:38 and the
+    running instance restored 28 at 18:25:47, nine seconds after --unblock had
+    reported success. The uninstall then completed, leaving filters enforcing in
+    the kernel with nothing installed that could remove them.
+
+    Two runs that day differed only in whether GunWall happened to be open:
+
+        18:25  running  -> 24 removed, 28 re-applied, machine left filtered
+        18:33  closed   -> 4 removed, clean
+
+    Nine seconds is why a lock held for the duration of the call is not the fix -
+    the conflict happens after the call returns. The other instance has to be
+    gone before the kernel is touched.
+
+    Both layers are asserted, because either alone has a hole. The installer's
+    taskkill can fail or be denied; and the command is also run by hand, which is
+    precisely when a machine is already broken.
+
+    Comments are stripped before every ordering test. Trap 2.27 was an assertion
+    disabled by the comment written to explain it.
+    """
+    before = len(failures)
+    app = (APP / "App.xaml.cs").read_text(encoding="utf-8")
+    iss_path = ROOT / "tools" / "installer" / "GunWall.iss"
+
+    stop = re.search(r"private static void StopOtherInstances.*?\n    \}", app, re.S)
+    if not stop:
+        fail("unblock-stops-app",
+             "StopOtherInstances is gone; a running instance will re-apply the "
+             "filters --unblock removes, and an uninstall leaves them enforcing")
+        return
+    sb = re.sub(r"//[^\n]*", "", stop.group(0))
+
+    if "GetProcessesByName" not in sb:
+        fail("unblock-stops-app", "StopOtherInstances does not enumerate GunWall "
+                                  "processes, so it stops nothing")
+    if not re.search(r"proc\.Kill\(\)", sb):
+        fail("unblock-stops-app", "StopOtherInstances never ends the other process")
+    if "Environment.ProcessId" not in sb or "proc.Id == self" not in sb:
+        fail("unblock-stops-app",
+             "StopOtherInstances does not exclude its own process by id. Both "
+             "processes are named GunWall, so it would kill itself")
+    if not re.search(r"WaitForExit\(", sb):
+        fail("unblock-stops-app",
+             "StopOtherInstances does not wait for exit; filter removal can begin "
+             "while the other process is still running an integrity check")
+
+    run = re.search(r"private static int RunEmergencyUnblock\(\).*?\n    \}", app, re.S)
+    if not run:
+        fail("unblock-stops-app", "RunEmergencyUnblock not found")
+    else:
+        code = re.sub(r"//[^\n]*", "", run.group(0))
+        if "StopOtherInstances(" not in code:
+            fail("unblock-stops-app",
+                 "--unblock never stops other instances; tamper protection will "
+                 "undo the removal seconds after it reports success")
+        elif "RemoveAllFiltering()" in code and \
+             code.index("StopOtherInstances(") > code.index("RemoveAllFiltering()"):
+            fail("unblock-stops-app",
+                 "--unblock stops other instances AFTER removing filters, which "
+                 "is the race it exists to close")
+
+    if not iss_path.exists():
+        fail("unblock-stops-app", "GunWall.iss not found")
+        return
+    iss = iss_path.read_text(encoding="utf-8", errors="replace")
+
+    uninst = re.search(r"function InitializeUninstall\(\).*?\nend;", iss, re.S)
+    if not uninst:
+        fail("unblock-stops-app", "InitializeUninstall not found")
+        return
+    # Pascal block comments, then the ordering test.
+    u = re.sub(r"\{[^}]*\}", "", uninst.group(0))
+
+    kill_at   = u.find("taskkill.exe")
+    unblock_at = u.find("'--unblock'")
+    if kill_at < 0:
+        fail("unblock-stops-app",
+             "the uninstaller does not close GunWall before --unblock. The "
+             "install path does; the uninstall path is where it matters, because "
+             "anyone uninstalling a firewall usually has it open")
+    elif unblock_at < 0:
+        fail("unblock-stops-app", "the uninstaller no longer runs --unblock at "
+                                  "all; filters would survive the uninstall")
+    elif kill_at > unblock_at:
+        fail("unblock-stops-app",
+             "the uninstaller closes GunWall AFTER --unblock, so the running "
+             "instance re-applies the filters in between")
+
+    if len(failures) == before:
+        notes.append("unblock-stops-app: installer closes GunWall first, and "
+                     "--unblock stops other instances before touching the kernel")
+
+
+def check_unblock_preserves_store():
+    """`--unblock` must remove filters without discarding the user's decisions.
+
+    Trap 2.27. RemoveAllFiltering() ended with `_data = new StoreData();
+    _store.Save(_data);`, and the uninstaller reaches it through
+    `GunWall.exe --unblock` in InitializeUninstall - which runs BEFORE the prompt
+    offering to keep the saved profile. Answering "No" to that prompt therefore
+    preserved a file emptied minutes earlier, so uninstall-then-reinstall lost
+    every rule and the VirusTotal API key while reporting that it kept them.
+
+    The two operations answer different questions. Removing filtering undoes what
+    GunWall did to the machine. Clearing the store discards what the user decided.
+    The in-app button means both and its confirmation says so; the uninstaller
+    means only the first.
+
+    Asserts:
+      - RemoveAllFiltering does not construct a fresh store or clear it
+      - ClearStore exists, and keeps the user-owned settings
+      - the emergency-unblock path calls RemoveAllFiltering and NOT ClearStore
+      - the in-app reset button calls BOTH, because its prompt promises both
+      - one shared UserOwnedSettings list, read by both reset paths
+    """
+    before = len(failures)
+    fm  = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+    app = (APP / "App.xaml.cs").read_text(encoding="utf-8")
+    mw  = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+
+    raf = re.search(r"public bool RemoveAllFiltering\(\).*?\n    \}", fm, re.S)
+    if not raf:
+        fail("unblock-store", "FirewallManager.RemoveAllFiltering not found")
+        return
+    if re.search(r"_data\s*=\s*new StoreData\(\)", raf.group(0)):
+        fail("unblock-store",
+             "RemoveAllFiltering discards the store. The uninstaller calls this "
+             "before asking whether to keep the profile, so the 'keep my rules' "
+             "prompt would be preserving an already-emptied file")
+    if "ClearStore()" in raf.group(0):
+        fail("unblock-store",
+             "RemoveAllFiltering calls ClearStore, which re-joins the two "
+             "operations the split exists to keep apart")
+    # It no longer wipes the store, so it has to forget the ids itself. Without
+    # this the store keeps ids for filters that were just deleted, and the next
+    # reconcile has to discover that rather than being told.
+    if "ForgetFilterIds(" not in raf.group(0):
+        fail("unblock-store",
+             "RemoveAllFiltering does not clear the tracked filter ids it just "
+             "deleted; the store would keep ids for filters that no longer exist")
+    if not re.search(r"private static void ForgetFilterIds", fm):
+        fail("unblock-store", "ForgetFilterIds is gone")
+
+    cs = re.search(r"public void ClearStore\(\).*?\n    \}", fm, re.S)
+    if not cs:
+        fail("unblock-store", "ClearStore not found; the in-app reset would no "
+                              "longer clear anything")
+    # The ITERATION, not the identifier. ClearStore's own log line names
+    # UserOwnedSettings, so a substring test passes with the loop gutted - which
+    # is what the falsification run showed.
+    elif "foreach (string name in UserOwnedSettings)" not in cs.group(0):
+        fail("unblock-store",
+             "ClearStore does not iterate UserOwnedSettings, so a deliberate "
+             "reset would destroy the API key it cannot reissue")
+
+    if not re.search(r"internal static readonly string\[\] UserOwnedSettings", fm):
+        fail("unblock-store", "UserOwnedSettings is gone; the two reset paths "
+                              "would each carry their own copy and drift")
+    elif fm.count("foreach (string name in UserOwnedSettings)") < 1 or \
+         "foreach (string name in UserOwnedSettings) keep.Add(name)" not in fm:
+        fail("unblock-store",
+             "ResetSettingsToDefaults no longer reads the shared list, so the "
+             "two paths can disagree about what belongs to the user")
+
+    unblock = re.search(
+        r"private static int RunEmergencyUnblock\(\).*?\n    \}", app, re.S)
+    if not unblock:
+        fail("unblock-store", "RunEmergencyUnblock not found")
+    else:
+        u = unblock.group(0)
+        if "RemoveAllFiltering()" not in u:
+            fail("unblock-store", "--unblock no longer removes filters; the "
+                                  "uninstaller would leave the kernel filtered")
+        # Comments stripped FIRST. The explanation above the call says
+        # "ClearStore() is deliberately NOT called here", so an exclusion written
+        # to skip comments matched that text and disabled the guard permanently.
+        # The falsification run is the only reason that is known.
+        code = re.sub(r"//[^\n]*", "", u)
+        if re.search(r"\.ClearStore\s*\(", code):
+            fail("unblock-store",
+                 "--unblock calls ClearStore. The uninstaller runs this before "
+                 "asking whether to keep the profile, so the answer is taken "
+                 "after the data is already gone")
+
+    btn = re.search(r"bool complete = _firewall\.RemoveAllFiltering\(\);(.{0,400})", mw, re.S)
+    if not btn:
+        fail("unblock-store", "the in-app reset no longer calls RemoveAllFiltering")
+    elif "ClearStore()" not in btn.group(1):
+        fail("unblock-store",
+             "the in-app reset removes filters but never clears the store, while "
+             "its confirmation promises to clear all saved rules")
+
+    if len(failures) == before:
+        notes.append("unblock-store: filters and store separated, --unblock keeps "
+                     "the profile, reset button clears it, one keep-list")
+
+
+def check_secret_handling():
+    """The user's API credential must survive every path, and leave in none.
+
+    Trap 2.26. VirusTotalApiKey is the only value in the profile the user cannot
+    regenerate from GunWall - it comes from another service. Five paths touch it,
+    and four were already correct:
+
+      - installer upgrade   : [Files] never writes to the profile folder
+      - uninstall           : DelTree is behind a prompt defaulting to No
+      - one-click update    : hands off to the installer, same as above
+      - reset to defaults   : explicit keep-list entry
+      - diagnostics export  : REDACTED BY MUTATING THE LIVE OBJECT  <- the defect
+
+    The export ran on a background thread while the UI thread stayed live, and
+    took seconds because it shells out to netsh and ipconfig. It set
+    _data.VirusTotalApiKey to "(redacted)", serialised, and restored the value in
+    a finally. Any of the ninety-plus _store.Save(_data) call sites reached inside
+    that window wrote "(redacted)" to rules.json as the real value - silently,
+    permanently, and triggered by exporting a bundle to report an unrelated bug.
+
+    Asserts, for the export: no assignment to the live secret, a redaction still
+    happens, and the property-name lookup is fail-closed so a rename breaks the
+    export rather than leaking the credential beside a redacted decoy.
+
+    Asserts, for reset: the keep-list still names the credential.
+
+    Asserts, for the installer: [Files] does not target the profile folder, and
+    the only DelTree of it is guarded by a prompt.
+    """
+    before = len(failures)
+    fm = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+
+    san = re.search(r"private string SanitizedConfigJson\(\).*?\n    \}", fm, re.S)
+    if not san:
+        fail("secret-handling", "SanitizedConfigJson not found; the diagnostics "
+                                "bundle may be emitting the raw API key")
+        return
+    body = san.group(0)
+
+    # The defect: assigning to the shared object at all.
+    if re.search(r"_data\.VirusTotalApiKey\s*=", body):
+        fail("secret-handling",
+             "SanitizedConfigJson ASSIGNS to _data.VirusTotalApiKey. A concurrent "
+             "Save(_data) during the export writes the placeholder to disk as the "
+             "real key. Redact the produced document, not the live object")
+
+    if "(redacted)" not in body:
+        fail("secret-handling",
+             "SanitizedConfigJson no longer redacts; the bundle would carry the "
+             "user's API key in clear text")
+
+    if "ContainsKey" not in body or "config omitted" not in body:
+        fail("secret-handling",
+             "SanitizedConfigJson does not fail closed on the property name. If "
+             "the property is renamed, writing the redaction ADDS a key and the "
+             "real credential ships alongside it")
+
+    # The credential is kept via the shared UserOwnedSettings list rather than a
+    # literal in each reset path. Both halves are asserted: the list must name it,
+    # and the reset must actually read the list. Checking only one would pass with
+    # a list nobody consults, or a consumer of an empty list.
+    owned = re.search(r"internal static readonly string\[\] UserOwnedSettings\s*=\s*\{(.*?)\};",
+                      fm, re.S)
+    if not owned:
+        fail("secret-handling", "UserOwnedSettings not found; nothing marks the "
+                                "API key as the user's rather than a default")
+    elif '"VirusTotalApiKey"' not in owned.group(1):
+        fail("secret-handling",
+             "UserOwnedSettings does not name VirusTotalApiKey, so a reset would "
+             "discard a credential the user cannot regenerate from here")
+
+    reset = re.search(r"public int ResetSettingsToDefaults\(\).*?\n    \}", fm, re.S)
+    if not reset:
+        fail("secret-handling", "ResetSettingsToDefaults not found")
+    elif "UserOwnedSettings" not in reset.group(0):
+        fail("secret-handling",
+             "the settings reset does not read UserOwnedSettings, so the "
+             "credential it names is not actually protected on that path")
+
+    iss = (ROOT / "tools" / "installer" / "GunWall.iss").read_text(
+        encoding="utf-8", errors="replace")
+
+    files = re.search(r"^\[Files\](.*?)^\[", iss, re.S | re.M)
+    if not files:
+        fail("secret-handling", "installer [Files] section not found")
+    elif re.search(r"DestDir:\s*\"\{commonappdata\}", files.group(1)):
+        fail("secret-handling",
+             "installer [Files] writes into {commonappdata}; an upgrade would "
+             "overwrite the profile that holds the API key")
+
+    if "DelTree" in iss and not re.search(r"MsgBox\([^)]*?\n?[^)]*?\)\s*=\s*IDYES then\s*\n?\s*DelTree", iss, re.S):
+        fail("secret-handling",
+             "the profile DelTree is not gated on an explicit MsgBox = IDYES; "
+             "uninstall could remove rules and credentials without asking")
+
+    if "MB_DEFBUTTON2" not in iss:
+        fail("secret-handling",
+             "the uninstall profile prompt does not default to No; the safe "
+             "answer must be the default one")
+
+    if len(failures) == before:
+        notes.append("secret-handling: export redacts a copy and fails closed, "
+                     "reset keeps the key, installer never touches the profile")
 
 
 def check_settings_before_load():
@@ -2902,6 +3228,9 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_unblock_stops_app()
+    check_unblock_preserves_store()
+    check_secret_handling()
     check_settings_before_load()
     check_publisher()
     check_dwm_fault()

@@ -15,6 +15,148 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.131] — 2026-09-06
+
+### Fixed — uninstalling with GunWall open left the kernel filtered
+The uninstaller removed GunWall's filters, and the still-running GunWall put them
+back. The uninstall then completed, leaving filters enforcing in the Windows
+kernel with nothing installed that could remove them.
+
+Observed directly:
+
+```
+18:25:38.378  Reset: complete - sublayer removed; rules and settings kept.
+18:25:38.378  === Emergency unblock finished (complete=True) ===
+18:25:47.620  FILTER TAMPERING DETECTED: 24 of 32 filters are missing
+              from the kernel. Re-applying.
+18:25:47.669  Filtering re-applied after tampering: 28 filter(s) installed.
+```
+
+Tamper protection did exactly what it exists to do. A running GunWall watches its
+own filters and restores them when they vanish, and it has no way to distinguish a
+deliberate teardown from an attack — so it treated the uninstaller as an attack.
+
+`InitializeUninstall` invoked `--unblock` without closing the running instance
+first. `PrepareToInstall` has closed the app since the installer gained an upgrade
+path; the uninstall path never did. Two runs on the same machine an hour apart
+differed only in whether GunWall happened to be open:
+
+| GunWall at uninstall | Result |
+|---|---|
+| running | 24 removed, 28 re-applied, machine left filtered |
+| closed | 4 removed, clean |
+
+Most people uninstalling a firewall have it open — that is how they reached the
+decision.
+
+Fixed in both layers, because either alone has a hole:
+
+- **Installer** — `InitializeUninstall` now closes GunWall before invoking
+  `--unblock`, matching the install path.
+- **Application** — `--unblock` ends every other GunWall process before the engine
+  is touched, excluding its own by process id and waiting for exit. `taskkill` can
+  fail or be denied, and the command is also run by hand — which is exactly when a
+  machine is already broken.
+
+A lock held for the duration of the call would not have worked. The conflict
+occurs nine seconds *after* `--unblock` returns, and any such lock is long
+released by then. The other instance has to be gone before the kernel is touched.
+
+Tamper protection itself is unchanged. "The sublayer is gone, so stand down" would
+have been the shorter fix and it is wrong: removing the sublayer is precisely what
+a real attacker would do.
+
+*Pre-existing, not introduced by 0.99.130 — the watchdog held its expected filter
+set in memory and would have behaved identically before the store split. It became
+visible because 0.99.130 made the uninstall path worth testing end to end.*
+
+### Added — check `unblock-stops-app`
+Asserts both layers: the installer closes GunWall before `--unblock`, and
+`--unblock` stops other instances before removing filters — enumerating them,
+excluding its own process id, actually terminating, and waiting for exit. Ordering
+is asserted in both files with comments stripped first, which is trap 2.27.
+
+Eight defects were reintroduced individually and the check confirmed failing on
+each. Recorded as trap 2.28.
+
+### Verified on hardware — 0.99.130
+An uninstall with GunWall closed preserved the profile as intended: 19 application
+rules kept, `ThemeDark` kept, and the folder left in place. `StrictMode`,
+`LockdownEngaged` and `DnsRedirectActive` were all reset to false, and every
+tracked filter-id collection was emptied — including the per-rule arrays, 0 of 76
+remaining. The reflective `ForgetFilterIds` walk works.
+
+---
+
+## [0.99.130] — 2026-09-06
+
+### Fixed — uninstalling destroyed the profile before asking whether to keep it
+`RemoveAllFiltering()` ended by discarding the store. The uninstaller reaches that
+method through `GunWall.exe --unblock` in `InitializeUninstall()`, which runs
+**before** the prompt offering to keep the saved profile.
+
+Answering **No** to *"Also delete GunWall's saved rules and settings?"* therefore
+preserved a file that had been emptied minutes earlier. An uninstall followed by a
+reinstall lost every application rule, every custom rule and the VirusTotal API
+key, while reporting that it had kept them.
+
+The two operations answer different questions. Removing filtering undoes what
+GunWall did to the machine — kernel filters, the sublayer, hosts-file entries,
+adapter DNS. Clearing the store discards what the user decided. They are now
+separate methods:
+
+- `RemoveAllFiltering()` reverts the machine, forgets the filter ids it just
+  deleted, and marks protection off. Rules, preferences and credentials are
+  untouched.
+- `ClearStore()` discards rules and settings, keeping what the user owns.
+
+`--unblock` calls the first only. The in-app **Remove all GunWall filtering**
+button calls both, because its confirmation says both.
+
+The ordering guarantee from 0.99.79 is unchanged and slightly stronger: an
+exception during the kernel work previously skipped a clear later in the same
+method; it now prevents a separate call from running at all.
+
+`ForgetFilterIds` mirrors the existing reflective `CollectFilterIds` walk rather
+than listing the six known id collections, so a collection added later cannot be
+swept by one and missed by the other. That is trap 2.19.
+
+### Changed — one list defines what belongs to the user
+`ResetSettingsToDefaults` carried its own keep-list and `ClearStore` would have
+needed a second copy. Both now read `UserOwnedSettings`, naming
+`VirusTotalApiKey` and `CustomBlocklistPath`. Two copies of one rule is how the
+two paths drift, and the drift is silent — a credential survives one reset and is
+destroyed by the other, with nothing to say so.
+
+### Added — check `unblock-preserves-store`
+Asserts the split holds in both directions: `RemoveAllFiltering` neither discards
+the store nor calls `ClearStore`, and does forget the ids it deleted;
+`--unblock` removes filters and does not clear; the reset button does both;
+`ClearStore` iterates the shared list.
+
+Nine defects were reintroduced individually and the check confirmed failing on
+each. Two of those runs found faults in the check itself:
+
+- The guard on `--unblock` excluded comment lines, and the comment above the call
+  reads *"ClearStore() is deliberately NOT called here"* — so the exclusion
+  matched that text and disabled the guard permanently. Comments are now stripped
+  before the test.
+- The `ClearStore` assertion tested for the identifier `UserOwnedSettings`, which
+  also appears in that method's log line, so gutting the loop left the substring
+  intact. It now asserts the iteration.
+
+Both are the recurring failure of matching the neighbourhood rather than the
+thing. Recorded as trap 2.27.
+
+### Changed — existing checks updated for the split
+`reset-path` asserted the store clear happened inside `RemoveAllFiltering`; it now
+asserts the ordering across the two calls at the button. `secret-handling`
+asserted a literal `"VirusTotalApiKey"` inside the reset; it now asserts the
+shared list names the credential **and** that the reset reads the list — either
+alone would pass with a list nobody consults, or a consumer of an empty list.
+
+---
+
 ## [0.99.129] — 2026-09-06
 
 ### Fixed — the interface theme was not restored on launch
@@ -48,6 +190,47 @@ and 0.99.94 placed the reconcile-readiness flag above the same `Initialize()` ca
 and the fix there was to move ownership inside the object rather than require
 callers to remember an order. The theme read was left outside that boundary and
 was not searched for at the time.
+
+### Fixed — the diagnostics export could destroy the VirusTotal API key
+Exporting a diagnostics bundle could overwrite the stored API key with the string
+`(redacted)`, permanently and without any indication.
+
+`SanitizedConfigJson()` redacted the credential by assigning `"(redacted)"` to
+`_data.VirusTotalApiKey`, serialising, and restoring the real value in a
+`finally`. Correct on one thread. The export does not run on one thread: it is
+started with `Task.Run` from the settings screen and takes seconds, because it
+shells out to `netsh` and `ipconfig` with an eight-second timeout each. The UI
+thread stays live throughout.
+
+`StoreData` has ninety-plus `_store.Save(_data)` call sites, and `RuleStore.Save`
+serialises the object it is handed — the same object the export was holding in its
+redacted state. Approving one application at a connection prompt during an export
+was sufficient to write the placeholder to `rules.json` as the real key.
+
+Redaction now happens in the **produced document**. Nothing shared is mutated, so
+there is no window to lose.
+
+The property-name lookup is also fail-closed: if the redaction target is absent
+from the serialised document, no settings are written to the bundle at all.
+Assigning to a key that does not exist would *add* it, emitting the real
+credential alongside a redacted decoy — so a rename must break the export rather
+than leak.
+
+*No evidence this occurred in practice; the window requires a save during an
+export. The API key is the one value in the profile that cannot be regenerated
+from within GunWall, and the trigger was exporting a bundle to report an
+unrelated problem.*
+
+### Added — check `secret-handling`
+Covers all five paths that touch the credential: installer upgrade, uninstall,
+one-click update, settings reset, and the diagnostics export. Asserts the export
+does not assign to the live secret, still redacts, and fails closed on the
+property name; that the reset keep-list still names the credential; that the
+installer's `[Files]` section never writes into the profile folder; and that the
+uninstaller's profile prompt defaults to No.
+
+Six defects were reintroduced individually and the check confirmed failing on
+each. Recorded as trap 2.26.
 
 ### Added — check `settings-before-load`
 Asserts that `EnsureSettingsLoaded` exists and is idempotent, that `Initialize()`

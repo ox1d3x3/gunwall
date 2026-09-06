@@ -397,7 +397,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.129 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.131 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -6470,7 +6470,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         try
         {
+            // Both halves, because the confirmation above says both: "Remove
+            // every GunWall filter and clear all saved rules?". The command-line
+            // --unblock path calls only the first - see App.xaml.cs.
             bool complete = _firewall.RemoveAllFiltering();
+            _firewall.ClearStore();
             SyncLockdownButton();
             RebuildAppsList();
             MessageBox.Show(

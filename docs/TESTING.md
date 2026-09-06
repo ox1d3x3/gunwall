@@ -227,6 +227,97 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.131 — uninstall with GunWall OPEN leaves no filters
+
+The previous test was run with GunWall closed. This one must be run with it
+**open**, because that is the case that failed.
+
+1. Launch GunWall and turn **protection ON**. Leave the window open.
+2. Enter a VirusTotal key under **Settings → VirusTotal** if one is not already
+   set — this test also covers credential preservation, which the 0.99.130 run
+   could not.
+3. Note the application count.
+4. **Uninstall GunWall** from Settings → Apps → Installed apps, with the window
+   still open.
+5. Answer **No** to *"Also delete GunWall's saved rules and settings?"*
+6. In an elevated prompt: `netsh wfp show filters file=-` and search for GunWall.
+
+   **PASS:** no GunWall filters and no GunWall sublayer.
+   **FAIL:** filters remain. Capture the output — this is the failure this release
+   exists to fix, and there is now nothing installed that can remove them. Recover
+   with a reinstall followed by *Settings → Remove all GunWall filtering*.
+
+7. Open `%ProgramData%\GunWall\rules.json`.
+
+   **PASS:** the application rules are present and `VirusTotalApiKey` holds the
+   key from step 2.
+   **FAIL:** either is missing.
+
+8. Reinstall and confirm the rules and key are in the interface.
+
+9. Check the log for the sequence, in `%ProgramData%\GunWall\diagnostics.log`:
+
+   **PASS:** `Emergency unblock: closed 1 running GunWall instance(s) first`
+   appears before `Reset: removing N tracked filter(s)`, and **no**
+   `FILTER TAMPERING DETECTED` line follows the unblock.
+   **FAIL:** a tampering line appears after the unblock.
+
+### 0.99.130 — uninstall keeps rules and credentials
+
+This is the one that was losing data. Test it on a machine whose rules you can
+afford to lose, or export a profile first.
+
+1. Note what you have: the number of applications in the Applications list, and
+   that **Settings → VirusTotal** holds a working key.
+2. **Uninstall GunWall** from Settings → Apps → Installed apps.
+3. When asked *"Also delete GunWall's saved rules and settings?"*, answer **No**.
+4. Before reinstalling, open `%ProgramData%\GunWall\rules.json`.
+
+   **PASS:** the file still contains your application rules, and
+   `VirusTotalApiKey` holds your key.
+   **FAIL:** the file is empty or holds only defaults.
+
+5. Reinstall and launch.
+
+   **PASS:** the Applications list is as it was, and the VirusTotal key is
+   present.
+
+6. Confirm the filters were still removed. Between steps 2 and 5, run
+   `netsh wfp show filters file=-` in an elevated prompt and search for GunWall.
+
+   **PASS:** none. Uninstalling must still leave the machine at Windows defaults —
+   keeping the profile is not keeping the enforcement.
+
+7. Confirm the in-app path still clears everything. **Settings → Remove all
+   GunWall filtering**, confirm the prompt.
+
+   **PASS:** rules are gone, as the confirmation says. The VirusTotal key and any
+   custom blocklist path are kept — those are yours, not defaults.
+
+8. Answer **Yes** to the uninstall prompt on a throwaway machine.
+
+   **PASS:** `%ProgramData%\GunWall` is removed entirely.
+
+### 0.99.129 — API key survives an export
+
+1. **Settings → VirusTotal** and confirm a key is entered and working (an
+   application scan returns a verdict rather than an authentication error).
+2. **Settings → Export diagnostics.** While the export is running, approve or
+   block something at a connection prompt, or change any setting.
+3. Open the exported `config.json`.
+
+   **PASS:** `VirusTotalApiKey` reads `(redacted)`.
+   **FAIL:** it contains the real key. Do not attach that bundle to anything.
+
+4. Return to **Settings → VirusTotal**.
+
+   **PASS:** the key is still present and scans still return verdicts.
+   **FAIL:** the field is empty or scans now fail to authenticate — the export
+   overwrote the stored key.
+
+5. Confirm across an upgrade: install this build over the previous one, then
+   check the key is still present and rules are intact.
+
 ### 0.99.129 — theme restored on launch
 
 1. Open GunWall. Use the theme control in the top bar to select the theme that is

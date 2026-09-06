@@ -128,6 +128,63 @@ public partial class App : Application
     /// Deliberately writes to whatever console launched it, because the person
     /// running this has no working GUI and probably no working network either.
     /// A silent recovery tool is no better than none.</summary>
+    /// <summary>
+    /// Ends every other GunWall process before filtering is removed.
+    ///
+    /// Terminate rather than request: there is no channel to ask through, and
+    /// the caller is usually an uninstaller that will delete this executable in
+    /// a moment. Nothing is lost by not exiting gracefully - the store is saved
+    /// on every change, and this process saves the post-removal state itself.
+    ///
+    /// Its own process is excluded by id, not by name. Both are "GunWall".
+    /// </summary>
+    private static void StopOtherInstances(Action<string> say)
+    {
+        int self = Environment.ProcessId;
+        int stopped = 0;
+
+        System.Diagnostics.Process[] found;
+        try { found = System.Diagnostics.Process.GetProcessesByName("GunWall"); }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("StopOtherInstances/enumerate", ex);
+            return;
+        }
+
+        foreach (var proc in found)
+        {
+            using (proc)
+            {
+                if (proc.Id == self) continue;
+                try
+                {
+                    proc.Kill();
+                    // Without the wait, filter removal can begin while the other
+                    // process is still running its last integrity check.
+                    proc.WaitForExit(5000);
+                    stopped++;
+                }
+                catch (Exception ex)
+                {
+                    // Reported, never fatal. Removing the filters is still worth
+                    // attempting, and the caller is told what to expect if the
+                    // instance survived.
+                    DiagnosticLog.LogException($"StopOtherInstances/pid {proc.Id}", ex);
+                    say($"  Warning: could not close GunWall (pid {proc.Id}): {ex.Message}");
+                    say("  It may re-apply the filters after this completes.");
+                }
+            }
+        }
+
+        if (stopped > 0)
+        {
+            DiagnosticLog.Log($"Emergency unblock: closed {stopped} running GunWall "
+                            + "instance(s) first, so tamper protection cannot re-apply "
+                            + "the filters being removed.");
+            say($"  Closed {stopped} running instance(s).");
+        }
+    }
+
     private static int RunEmergencyUnblock()
     {
         // Set FIRST, before anything is constructed. Everything that starts
@@ -147,8 +204,40 @@ public partial class App : Application
         try
         {
             DiagnosticLog.Log("=== Emergency unblock requested from the command line ===");
+
+            // BEFORE the engine is touched, not after.
+            //
+            // A running GunWall watches its own filters and re-installs them when
+            // they vanish, which is what tamper protection is for. It cannot tell
+            // a deliberate teardown from an attack, so it treated this one as an
+            // attack: on 2026-09-06 the uninstaller removed 24 filters at
+            // 18:25:38 and the running instance put 28 back at 18:25:47 - nine
+            // seconds later, after --unblock had already reported success. The
+            // uninstall then completed, leaving filters enforcing in the kernel
+            // with nothing installed that could remove them.
+            //
+            // Nine seconds is why a lock held for the duration of this call would
+            // not have helped; the conflict happens after the call returns. The
+            // only thing that works is for the other instance to be gone first.
+            //
+            // The installer also closes GunWall before invoking this (see
+            // InitializeUninstall). That is the primary path and this is not a
+            // substitute for it - it is what makes the command correct when it is
+            // run by hand, which is exactly when a machine is already broken.
+            StopOtherInstances(Say);
+
             fw = new FirewallManager();
             fw.Initialize();
+            // Filters only. ClearStore() is deliberately NOT called here.
+            //
+            // The uninstaller runs this from InitializeUninstall, BEFORE it asks
+            // whether to keep the saved profile. Clearing the store here made
+            // that prompt dishonest: answering "No" preserved a file that had
+            // already been emptied, so uninstall-then-reinstall lost every rule
+            // and the user's VirusTotal key while reporting it had kept them.
+            //
+            // The in-app reset button means both operations and says so in its
+            // confirmation. This command means one.
             bool complete = fw.RemoveAllFiltering();
             // Named explicitly. Without this the log shows the same "Reset:" lines a
             // button press produces, and the only thing distinguishing them is the

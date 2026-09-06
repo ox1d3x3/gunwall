@@ -485,6 +485,121 @@ asserted before *every* scripted edit; asserting once for a batch does not satis
 it, because an earlier edit in the same batch can invalidate a later assertion.
 The check caught it on its first run.
 
+### 2.26 Redacting a secret by mutating the object that holds it
+
+`SanitizedConfigJson()` produced the settings document for the diagnostics bundle
+by assigning `"(redacted)"` to `_data.VirusTotalApiKey`, serialising, and
+restoring the real value in a `finally`.
+
+That is correct single-threaded and wrong here. The export runs via `Task.Run`,
+takes seconds because it shells out to `netsh` and `ipconfig` with eight-second
+timeouts, and leaves the UI thread live throughout. There are ninety-plus
+`_store.Save(_data)` call sites, and `Save` serialises the object handed to it —
+the same object, in its redacted state. Approving one application at a prompt
+during an export writes the placeholder to disk as the real credential.
+
+The value is the only one in the profile the user cannot regenerate from inside
+GunWall, and the trigger was exporting a bundle to report an unrelated fault.
+
+**Rule:** never redact by mutating the live object. Redact the produced document.
+A `finally` restores state on the thread that set it; it does not restore state
+another thread has already read and written.
+
+**Rule:** a scrubbing routine must fail closed on the shape it is scrubbing. This
+one located the secret by property name and overwrote it. Overwriting a key that
+is not present would *add* it, emitting the real credential alongside a redacted
+decoy that looks correct on inspection. A rename must break the export, not
+quietly widen it.
+
+**Rule:** enumerate every path that touches a user credential before declaring
+any of them safe. Four of the five here were already correct — the installer never
+writes to the profile, uninstall asks and defaults to No, the update hands off to
+the installer, and the reset keep-list names the credential explicitly. The
+question asked was whether updates preserved the key, and the answer was yes; the
+defect was on the fifth path, which nobody had asked about.
+
+**Check:** `secret-handling` — all five paths, six falsifying mutations.
+
+### 2.27 One method answering two questions
+
+`RemoveAllFiltering()` reverted every change GunWall made to the machine and then
+discarded the store. Two operations, one entry point, and the second was reachable
+by a caller that wanted only the first.
+
+The uninstaller calls `GunWall.exe --unblock` from `InitializeUninstall()`, before
+`CurUninstallStepChanged` asks whether to keep the saved profile. The store was
+emptied and written to disk before the question was put. Answering "No" preserved
+an empty file, so uninstall-then-reinstall lost every rule and the user's
+VirusTotal key while reporting that it had kept them — with a reassuring default
+on the prompt.
+
+**Rule:** when one method does two things, the caller that needs one of them will
+eventually get both. Split by the question being answered, not by what happens to
+sit adjacent in the call order. "Undo what we did to this machine" and "discard
+what the user decided" are different questions with different callers.
+
+**Rule:** a promise made in a prompt is a specification. If the text says
+declining keeps the profile, then no code path reachable before that prompt may
+touch the profile.
+
+**Rule:** one list, not two. `ResetSettingsToDefaults` and `ClearStore` both need
+to know what belongs to the user. A second copy drifts, and the drift is silent —
+a credential survives one path and is destroyed by the other.
+
+**Check:** `unblock-preserves-store`, nine falsifying mutations.
+
+**Two defects in the check, both found by falsification, both the recurring
+neighbourhood match.**
+
+The guard asserting `--unblock` does not call `ClearStore` excluded comment lines,
+because the comment above the call explains that `ClearStore()` is deliberately
+not called there. The exclusion matched its own explanation and disabled the guard
+permanently — the check could not fail. Comments are now stripped before the test.
+
+The `ClearStore` assertion tested for the identifier `UserOwnedSettings`, which
+also appears in that method's closing log line. Replacing the loop's source with
+an empty array left the substring present and the check passed. It now asserts the
+iteration itself.
+
+Both passed review. Neither survived the falsification run. This is the reason the
+run is mandatory rather than advisory, and it is now the third and fourth time a
+check written in this project has been shown to be incapable of failing.
+
+### 2.28 A guard that cannot tell teardown from attack
+
+Tamper protection re-installs GunWall's filters when they disappear from the
+kernel. The uninstaller removes those filters. Nothing told either about the
+other, so uninstalling with GunWall open removed 24 filters and restored 28 nine
+seconds later, and the uninstall completed over the top — leaving filtering
+enforcing with nothing installed that could undo it.
+
+The watchdog was not wrong. It has no way to distinguish a deliberate teardown
+from an attack, and it must not: removing the sublayer is exactly what an attacker
+would do, so "sublayer gone, stand down" would trade the whole feature for this
+one case.
+
+**Rule:** a self-healing component and a teardown path are in conflict by
+construction. Whichever runs second undoes the other. The teardown must stop the
+healer before it starts — not signal it, not race it.
+
+**Rule:** locks scoped to a call do not close a race that resolves after the call
+returns. `--unblock` completed in 50 ms and the conflict landed nine seconds
+later; a mutex held for the duration would have been released long before, and
+would have looked like a fix. Measure the actual interval before choosing the
+mechanism.
+
+**Rule:** when two paths do the same preparation, check they both do it. The
+install path closed the running app; the uninstall path never did, and the
+difference sat unnoticed because the two are read at different times and the
+uninstall path is exercised least.
+
+**Rule:** a defect whose outcome depends on incidental state - here, whether the
+user happened to have the window open - produces contradictory reports and looks
+intermittent. Two runs an hour apart disagreed completely. Find the variable
+before theorising about the mechanism.
+
+**Check:** `unblock-stops-app`, both layers, eight falsifying mutations.
+
 ---
 
 ## 3. Working agreements

@@ -66,6 +66,67 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 - ✅ **Logging upgrades** *(complete)* — blocked/allowed events to the **Windows Event Log** (toggle), a configurable **log-size limit** (live-row cap + CSV rotation size), and a separate **error log viewer** with deduplicated entries.
 - ◐ **View & tray niceties** — ✅ autosize columns, **tray single-click**, and **UI size / zoom**. Remaining: list view modes (details / icon / tile) and icon sizes.
 
+### Upgrade and data preservation
+*Managed C# and the installer script. No kernel risk. Nothing a user configured may
+be altered by installing, uninstalling, resetting filters, or by a profile that
+fails to parse.*
+
+- ☐ **`--unblock` must not clear the store** — `RemoveAllFiltering()` ends with
+  `_data = new StoreData(); _store.Save(_data);`, and the uninstaller calls it via
+  `GunWall.exe --unblock` in `InitializeUninstall()` *before* asking whether to
+  keep the profile. Choosing **No** at that prompt therefore preserves a file that
+  was emptied minutes earlier, so an uninstall-then-reinstall loses every rule and
+  the VirusTotal key while reporting that it kept them. Removing filters and
+  discarding decisions are two operations sharing one path; the uninstaller needs
+  only the first. Splitting them makes the prompt honest.
+- ☐ **Credentials must survive a filter reset** — `ResetSettingsToDefaults` has a
+  keep-list naming `VirusTotalApiKey`; `RemoveAllFiltering` writes
+  `new StoreData()` unconditionally and has no equivalent. The key is issued by
+  another service and cannot be regenerated from inside GunWall, so it should
+  outlive an operation about filters.
+- ☐ **A corrupt profile is discarded silently** — `RuleStore.Load()` catches every
+  exception and returns a fresh `StoreData` with no log line. The next save then
+  overwrites a possibly recoverable file with defaults. Log it, and keep a `.bak`
+  before the first overwrite.
+- ☐ **Pre-upgrade profile snapshot** — copy `rules.json` to
+  `rules.pre-<version>.json` on the first run after a version change. Cheap, and
+  it makes the remaining cases recoverable rather than theoretical.
+
+### Database freshness
+*Managed C# throughout. No kernel risk. Both databases are already downloaded on
+demand and stored beside the profile; this is about keeping them current and about
+the first-run experience.*
+
+- ☐ **Daily background refresh of the GeoIP and MAC vendor databases** —
+  **off by default**, enabled from Settings. A stale country table quietly
+  misattributes connections and a stale IEEE registry quietly misattributes
+  hardware, and neither failure announces itself. Requirements:
+  - Opt-in only. A firewall that reaches the network on a schedule the user did
+    not ask for is the thing GunWall exists to prevent.
+  - Each database refreshes independently; a failure on one must not lose the
+    other, matching the existing per-registry behaviour for MA-L / MA-M / MA-S.
+  - Host pinned and re-checked after redirects, as the updater and the vendor
+    download already are.
+  - Failures recorded and surfaced, never silent — a refresh that has been
+    failing for a month must be visible, not assumed working.
+  - Replace only on a complete, validated download. A truncated file must not
+    overwrite a working table.
+- ☐ **First-run offer to download the databases** — on a genuinely fresh install
+  with neither database present, ask once whether to download them. Conditions:
+  - **Never shown after an upgrade.** Users enable and disable these deliberately,
+    and re-asking every release is how a prompt becomes something people dismiss
+    without reading.
+  - Shown only when there is **no sign of a prior installation** — no profile, no
+    stored databases, no prior version recorded. Any evidence of previous use
+    means the absence of a database is a choice, not a gap.
+  - Asked once and the answer recorded, so declining is durable.
+
+  *To decide before building:* what counts as proof of a prior installation.
+  A profile that exists but is empty is ambiguous — it is what a fresh install
+  produces on first launch, and also what the uninstall defect above leaves
+  behind. The marker should be something written deliberately on first run rather
+  than inferred from the presence of a file.
+
 ### Kernel hardening
 *Touches the WFP filter set. Every item here needs hardware verification and a removal path before it ships.*
 - ◐ **Kernel verdict visibility** — ✅ the packet log records what the kernel did, not only what GunWall would have decided, and names a drop caused by other software on the machine. Remaining: attributing that drop to the specific filter responsible.

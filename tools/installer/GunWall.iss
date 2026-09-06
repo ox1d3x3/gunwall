@@ -245,6 +245,29 @@ begin
   Exe := ExpandConstant('{app}\{#AppExe}');
   if not FileExists(Exe) then Exit;   { nothing to run; let the uninstall proceed }
 
+  { Close it BEFORE --unblock, not after.
+
+    A running GunWall watches its own filters and re-installs them when they go
+    missing. It cannot distinguish a deliberate teardown from an attack, so it
+    treats this one as an attack: on 2026-09-06 the uninstaller removed 24
+    filters at 18:25:38 and the running instance restored 28 at 18:25:47. The
+    uninstall then completed and left them enforcing in the kernel with nothing
+    installed that could remove them - the exact outcome the message below warns
+    about.
+
+    PrepareToInstall has closed the app since the installer gained an upgrade
+    path. The uninstall path never did, and the two runs on 2026-09-06 differed
+    only in whether GunWall happened to be open. Most people uninstalling a
+    firewall have it open; that is how they reached the decision.
+
+    Not fatal if it fails. --unblock closes other instances itself for exactly
+    this reason, and the codes below still report what happened. }
+  if GunWallIsRunning() then
+  begin
+    Exec('taskkill.exe', '/IM GunWall.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(1500);
+  end;
+
   if not Exec(Exe, '--unblock', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     Result := MsgBox('GunWall could not be started to remove its firewall filters.'#13#10#13#10
