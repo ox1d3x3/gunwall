@@ -227,6 +227,37 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.132 — database downloads cannot damage a working database
+
+Nothing about *when* downloads happen has changed. This verifies they are still
+correct, and that a failure now leaves the previous data intact.
+
+1. **Settings → GeoIP → Download database.** Let it finish.
+
+   **PASS:** the status reports the ranges loaded, and the diagnostics footer
+   shows non-zero `rangesV4` and `rangesV6`.
+
+2. **Network scan → Vendor database.** Let it finish.
+
+   **PASS:** the VENDOR column populates and the count is around 53,000 prefixes.
+
+3. Note the size of `%ProgramData%\GunWall\lists\` — both files should be several
+   megabytes.
+
+4. **The failure case.** Start a GeoIP download and pull the network cable, or
+   disable the adapter, while it is running.
+
+   **PASS:** an error is reported, the existing database still loads on the next
+   launch with the same range counts as step 1, and there is **no** leftover
+   `.incoming` file in that folder.
+   **FAIL:** the range count drops, GeoIP reports no data, or an `.incoming` file
+   remains.
+
+5. Repeat step 4 for the vendor database.
+
+   **PASS:** the message names which registries could not be reached and says the
+   existing database was kept. The VENDOR column keeps working.
+
 ### 0.99.131 — uninstall with GunWall OPEN leaves no filters
 
 The previous test was run with GunWall closed. This one must be run with it

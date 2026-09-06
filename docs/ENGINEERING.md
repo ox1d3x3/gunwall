@@ -600,6 +600,49 @@ before theorising about the mechanism.
 
 **Check:** `unblock-stops-app`, both layers, eight falsifying mutations.
 
+### 2.29 Truncating the good copy before the new one arrives
+
+`GeoIpService.Fetch` opened the destination with `File.Create` and streamed the
+download into it. `File.Create` truncates on open, so the working country table
+was destroyed before the first byte of its replacement had been received. A
+connection dropped at 80% left a partial table that loaded without complaint. The
+OUI download wrote its destination in a single call, which is better but still not
+safe against a crash or a full disk.
+
+Neither was reached by accident: the risk was bounded while these ran only on a
+button press with someone watching the result. What changed is that they are about
+to go on a daily timer, which removes the person who notices.
+
+**Rule:** never open the live file to receive data that has not arrived yet. Write
+a temp sibling, validate, move. The move is the only step that touches the
+destination, and it happens after there is something worth keeping.
+
+**Rule:** the temp file goes beside the destination, never in %TEMP%. `File.Move`
+is atomic within a volume and a copy across volumes is not.
+
+**Rule:** a successful transfer is not a valid file. A captive portal answering
+200 with an HTML login page satisfies every check except reading it. A validated
+temp file is the only place that check can live.
+
+**Rule:** where several sources share one output, a partial result must not
+replace a complete one. The three IEEE registries write one file, so a refresh
+reaching one of them would have discarded the other two and reported success.
+
+**Rule:** harden the operation before automating it. Automation does not create
+these faults, it removes the human who was compensating for them. The ordering -
+safety first, schedule second - is the whole reason this shipped as its own
+release.
+
+**Check:** `db-download-safety`, eleven falsifying mutations.
+
+**One defect in the check, found by falsification.** The host-pinning assertion
+counted occurrences of `DatabaseHost` and required three. Removing the
+pre-request comparison entirely still left the identifier in both error messages
+and in the redirect test, so the count held and the check passed — a service that
+would fetch any URL at all. It now asserts the two comparisons by shape. This is
+the fifth time a check here has been shown incapable of failing, and every one has
+been the same thing: matching the neighbourhood instead of the thing.
+
 ---
 
 ## 3. Working agreements

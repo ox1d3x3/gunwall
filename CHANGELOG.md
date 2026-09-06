@@ -15,6 +15,67 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.132] — 2026-09-06
+
+### Fixed — a failed database download could destroy a working database
+Both the GeoIP and MAC vendor downloads wrote straight to the live file. GeoIP
+opened its destination with `File.Create`, which **truncates before the first byte
+arrives** — so a connection dropped partway left a partial country table where a
+working one had been, and it loaded without complaint.
+
+Downloads now write a temporary sibling, validate it, and move it over the
+destination only on success. The existing file is untouched on every failure path,
+and the partial file is removed rather than left to accumulate.
+
+### Fixed — the GeoIP download was not pinned
+`GeoIpService` fetched its URL with no host check and followed redirects without
+examining who answered. The updater and the IEEE registry download have both done
+this since they were written; the GeoIP path never did, and that file is read back
+as authority for which country an address belongs to.
+
+Pinned to `iptoasn.com`, checked before the request and again on whatever answered.
+
+### Added — downloads are validated before they are trusted
+A captive portal answering `200` with an HTML login page is a successful download
+by every measure except the one that matters. Both downloads now reject a file
+that is implausibly small or whose first line is not in the expected format, and
+the existing database is kept.
+
+### Fixed — a partial vendor refresh replaced a complete one
+The three IEEE registries share a single file, so writing whatever was reachable
+silently discarded the two that were not — a refresh reaching only MA-L turned a
+full vendor table into a third of one and reported success. A partial result now
+never replaces a complete file. On a first download, where there is nothing to
+protect, a partial result is still written with the missing registries named.
+
+### Changed — both downloads are async and cancellable
+`GeoIpService.DownloadDatabaseAsync` / `DownloadDatabaseV6Async` added, with the
+synchronous names kept as wrappers so existing callers are unchanged.
+`OuiService.DownloadAsync` takes a `CancellationToken`. This is the shape the
+scheduled refresh needs.
+
+*Groundwork. Nothing about when these run has changed — they still only happen
+when asked. The write has to be safe before it can be put on a timer, which is why
+this ships ahead of the refresh itself.*
+
+### Added — check `db-download-safety`
+Asserts neither service opens the destination for writing, that both replace
+through `AtomicFile`, that `AtomicFile` writes a temp sibling, validates, moves
+with overwrite and deletes the partial file on failure, that GeoIP compares the
+host both before the request and after redirects, that both validate content, and
+that a partial vendor result cannot replace a complete file.
+
+Eleven defects were reintroduced individually and the check confirmed failing on
+each. One of those runs found a fault in the check itself: the host-pinning
+assertion counted occurrences of `DatabaseHost`, which still appeared in both
+error messages and the redirect test after the pre-request comparison was gutted,
+so the check passed. It now asserts the two comparisons. That is the recurring
+neighbourhood match, trap 2.27.
+
+Recorded as trap 2.29.
+
+---
+
 ## [0.99.131] — 2026-09-06
 
 ### Fixed — uninstalling with GunWall open left the kernel filtered

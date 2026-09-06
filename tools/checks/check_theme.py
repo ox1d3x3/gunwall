@@ -1298,6 +1298,110 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_db_download_safety():
+    """A failed database download must never damage a working database.
+
+    Trap 2.29. Both downloads wrote straight to the live path. GeoIP was worse in
+    every respect: it took its URL unchecked, followed redirects without
+    re-examining who answered, and opened the DESTINATION with File.Create - which
+    truncates before the first byte arrives. A connection dropped at 80% left a
+    partial country table where a working one had been, and it loaded without
+    complaint. The OUI download was pinned but wrote its destination directly.
+
+    That risk was bounded while these ran only on a button press with someone
+    watching. The daily refresh removes the person who notices, so the write has
+    to be safe BEFORE the schedule exists - which is why this ships ahead of it.
+
+    Asserts:
+      - neither service opens the destination for writing directly
+      - both replace through AtomicFile, which writes a temp sibling, validates,
+        and moves; and which deletes the temp file on every failure path
+      - GeoIP pins its host and re-checks it after redirects, as OUI already did
+      - both validate content, so a captive portal answering 200 with HTML cannot
+        become the database
+      - a partial OUI result does not replace a complete file
+    """
+    before = len(failures)
+    geo = (APP / "Services" / "GeoIpService.cs").read_text(encoding="utf-8")
+    oui = (APP / "Services" / "OuiService.cs").read_text(encoding="utf-8")
+    atomic_path = APP / "Services" / "AtomicFile.cs"
+
+    if not atomic_path.exists():
+        fail("db-download", "AtomicFile.cs is gone; downloads would write the live "
+                            "path directly again")
+        return
+    at = atomic_path.read_text(encoding="utf-8")
+
+    for token, why in (
+        (".incoming", "AtomicFile does not write to a temp sibling"),
+        ("File.Move", "AtomicFile never moves the temp file into place"),
+        ("overwrite: true", "the move cannot replace an existing database"),
+        ("validate(", "AtomicFile does not run the caller's validation"),
+    ):
+        if token not in at:
+            fail("db-download", why)
+
+    # The temp file must go on every failure path, or a half-written file is left
+    # behind and the disk fills up one failed refresh at a time.
+    tail = at[at.find("catch"):] if "catch" in at else ""
+    if "File.Delete(tmp)" not in tail:
+        fail("db-download",
+             "AtomicFile does not remove the partial file when a download fails")
+
+    # Neither service may open the destination for writing itself.
+    for name, src in (("GeoIpService", geo), ("OuiService", oui)):
+        code = re.sub(r"//[^\n]*", "", src)
+        code = re.sub(r"/\*.*?\*/", "", code, flags=re.S)
+        code = re.sub(r"///[^\n]*", "", code)
+        if re.search(r"File\.Create\(\s*dest", code) or \
+           re.search(r"File\.WriteAllTextAsync\(\s*dest", code) or \
+           re.search(r"File\.WriteAllText\(\s*dest", code) or \
+           re.search(r"File\.WriteAllBytes\(\s*dest", code):
+            fail("db-download",
+                 f"{name} writes the destination directly; a failure mid-write "
+                 "destroys the working database it was replacing")
+        if "AtomicFile.ReplaceAsync" not in code:
+            fail("db-download", f"{name} does not replace through AtomicFile")
+        if "PlausibleTextTable" not in code:
+            fail("db-download",
+                 f"{name} does not validate what it downloaded; a captive portal "
+                 "answering 200 with an HTML page would become the database")
+
+    # GeoIP pinning, which it did not have at all.
+    if "DatabaseHost" not in geo:
+        fail("db-download", "GeoIpService declares no pinned host")
+    else:
+        gcode = re.sub(r"///[^\n]*", "", geo)
+        # The two COMPARISONS, not the count of the identifier. Counting passed
+        # with the pre-request check gutted, because DatabaseHost still appeared
+        # in both error messages and in the redirect test.
+        if not re.search(r"string\.Equals\(\s*u\.Host\s*,\s*DatabaseHost", gcode):
+            fail("db-download",
+                 "GeoIpService does not compare the requested host against the "
+                 "pinned one before the request; any URL would be fetched")
+        if not re.search(r"string\.Equals\(\s*finalHost\s*,\s*DatabaseHost", gcode):
+            fail("db-download",
+                 "GeoIpService does not compare the host that ANSWERED against "
+                 "the pinned one; HttpClient follows redirects and this file is "
+                 "read back as authority for what country an address belongs to")
+        if "RequestMessage?.RequestUri?.Host" not in gcode:
+            fail("db-download",
+                 "GeoIpService does not examine who actually answered, so a "
+                 "redirect off the pinned host would be accepted")
+
+    # A partial OUI refresh must not replace a complete file.
+    ocode = re.sub(r"///[^\n]*", "", oui)
+    if "File.Exists(destPath)" not in ocode:
+        fail("db-download",
+             "OuiService does not check for an existing database, so a refresh "
+             "that reached only one of the three registries would overwrite a "
+             "complete vendor table with a third of one")
+
+    if len(failures) == before:
+        notes.append("db-download: temp-then-validate-then-move, host pinned and "
+                     "re-checked, content validated, partial never replaces whole")
+
+
 def check_unblock_stops_app():
     """Nothing may be left running that can re-apply the filters being removed.
 
@@ -3228,6 +3332,7 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_db_download_safety()
     check_unblock_stops_app()
     check_unblock_preserves_store()
     check_secret_handling()

@@ -145,7 +145,26 @@ public sealed class OuiService
     /// the others: MA-L alone covers most consumer hardware, so partial data is
     /// worth far more than none. The result says which succeeded rather than
     /// reporting a single success or failure for all three.</summary>
-    public static async Task<(int Written, string Message)> DownloadAsync(string destPath)
+    public static Task<(int Written, string Message)> DownloadAsync(string destPath)
+        => DownloadAsync(destPath, CancellationToken.None);
+
+    /// <summary>
+    /// Fetches the three IEEE registries into one file.
+    ///
+    /// Two rules govern the write, and both exist because this runs unattended
+    /// once a schedule is added:
+    ///
+    /// A PARTIAL result never replaces a COMPLETE one. All three registries share
+    /// a single file, so writing whatever was reachable would silently discard the
+    /// two that were not - a refresh that fetched only MA-L would turn a full
+    /// vendor table into a third of one, reporting success. If a file is already
+    /// present and any registry failed, the existing file is kept.
+    ///
+    /// On a FIRST download there is nothing to protect, so a partial result is
+    /// better than none and is written with what failed named plainly.
+    /// </summary>
+    public static async Task<(int Written, string Message)> DownloadAsync(
+        string destPath, CancellationToken ct)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         client.DefaultRequestHeaders.Add("User-Agent", "GunWall");
@@ -163,7 +182,7 @@ public sealed class OuiService
                     !string.Equals(u.Host, RegistryHost, StringComparison.OrdinalIgnoreCase))
                 { failed.Add(name); continue; }
 
-                using var resp = await client.GetAsync(url);
+                using var resp = await client.GetAsync(url, ct);
                 // Re-checked on whatever answered, because HttpClient follows
                 // redirects and this file is read back as authority.
                 string finalHost = resp.RequestMessage?.RequestUri?.Host ?? "";
@@ -172,7 +191,7 @@ public sealed class OuiService
                      !string.Equals(finalHost, RegistryHost, StringComparison.OrdinalIgnoreCase)))
                 { failed.Add(name); continue; }
 
-                sb.Append(await resp.Content.ReadAsStringAsync()).Append('\n');
+                sb.Append(await resp.Content.ReadAsStringAsync(ct)).Append('\n');
                 ok.Add(name);
             }
             catch { failed.Add(name); }
@@ -181,7 +200,26 @@ public sealed class OuiService
         if (ok.Count == 0)
             return (0, "Could not reach the IEEE registry. Nothing was saved.");
 
-        await File.WriteAllTextAsync(destPath, sb.ToString());
+        bool havePrevious = File.Exists(destPath);
+        if (failed.Count > 0 && havePrevious)
+            return (0, $"{string.Join(", ", failed)} could not be reached. The existing "
+                     + "vendor database was kept rather than replaced with a partial one.");
+
+        string text = sb.ToString();
+        await AtomicFile.ReplaceAsync(destPath,
+            async (outFile, token) =>
+            {
+                await using var writer = new StreamWriter(outFile, leaveOpen: true);
+                await writer.WriteAsync(text.AsMemory(), token);
+                await writer.FlushAsync();
+            },
+            // Each registry line begins with a hex OUI prefix; the CSV header
+            // begins with "Registry". Either proves this is the IEEE file and not
+            // a portal login page returned with 200.
+            (path, length) => AtomicFile.PlausibleTextTable(path, length, 200_000,
+                first => first.StartsWith("Registry", StringComparison.OrdinalIgnoreCase)
+                      || first.Split(',').Length >= 3),
+            ct);
 
         string msg = failed.Count == 0
             ? $"Downloaded {string.Join(", ", ok)}."

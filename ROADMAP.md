@@ -92,6 +92,18 @@ fails to parse.*
   `rules.pre-<version>.json` on the first run after a version change. Cheap, and
   it makes the remaining cases recoverable rather than theoretical.
 
+- ☐ **Credential at rest** — `rules.json` holds the VirusTotal API key in plain
+  text. The diagnostics bundle redacts it correctly, but the raw profile does not,
+  and users are routinely asked to attach a profile to a bug report with nothing
+  warning them a credential is in it. A key was exposed this way on 2026-09-06.
+  Encrypt with DPAPI at machine scope, which also makes the profile safe to
+  attach. This is the credential half of *Encrypted profiles* and is worth doing
+  ahead of the whole-profile work.
+- ☐ **Show that a key is set** — `VtApiKeyBox` is a `PasswordBox` that is never
+  populated, deliberately: a stored secret is not echoed back. The only indication
+  is a `"A key is saved."` line beside an empty-looking box, which reads as data
+  loss. Show masked dots or the last four characters. Never the key.
+
 ### Database freshness
 *Managed C# throughout. No kernel risk. Both databases are already downloaded on
 demand and stored beside the profile; this is about keeping them current and about

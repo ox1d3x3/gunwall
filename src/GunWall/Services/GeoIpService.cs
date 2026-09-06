@@ -280,11 +280,18 @@ public sealed class GeoIpService
     /// Returns the number of bytes written. Throws on network/IO failure (callers
     /// run this off the UI thread and surface a friendly message).
     /// </summary>
+    /// <summary>iptoasn.com, pinned. Checked before the request and again on
+    /// whatever answered after redirects, exactly as the updater and the IEEE
+    /// registry download already do. This file is read back as authority for
+    /// which country an address belongs to, so where it came from matters.</summary>
+    public const string DatabaseHost = "iptoasn.com";
+
     public static long DownloadDatabase(string destTsvPath)
-    {
-        const string url = "https://iptoasn.com/data/ip2asn-v4-u32.tsv.gz";
-        return Fetch(url, destTsvPath);
-    }
+        => DownloadDatabaseAsync(destTsvPath).GetAwaiter().GetResult();
+
+    public static Task<long> DownloadDatabaseAsync(string destTsvPath,
+                                                   CancellationToken ct = default)
+        => FetchAsync("https://iptoasn.com/data/ip2asn-v4-u32.tsv.gz", destTsvPath, ct);
 
     /// <summary>Downloads the IPv6 half of the same CC0 dataset.
     ///
@@ -293,20 +300,64 @@ public sealed class GeoIpService
     /// coverage means some destinations show no country; losing v4 as well would
     /// mean almost none do.</summary>
     public static long DownloadDatabaseV6(string destTsvPath)
-    {
-        const string url = "https://iptoasn.com/data/ip2asn-v6.tsv.gz";
-        return Fetch(url, destTsvPath);
-    }
+        => DownloadDatabaseV6Async(destTsvPath).GetAwaiter().GetResult();
 
-    private static long Fetch(string url, string destTsvPath)
+    public static Task<long> DownloadDatabaseV6Async(string destTsvPath,
+                                                     CancellationToken ct = default)
+        => FetchAsync("https://iptoasn.com/data/ip2asn-v6.tsv.gz", destTsvPath, ct);
+
+    /// <summary>
+    /// Fetches and decompresses one half of the dataset over a pinned host, into
+    /// a validated temporary file that replaces the destination only on success.
+    ///
+    /// The previous version did none of that. It took the URL unchecked, followed
+    /// redirects without re-examining who answered, and opened the DESTINATION
+    /// with File.Create - which truncates before the first byte arrives. A
+    /// connection dropped at 80% left a partial country table where a working one
+    /// had been, and it loaded without complaint.
+    /// </summary>
+    private static async Task<long> FetchAsync(string url, string destTsvPath,
+                                               CancellationToken ct)
     {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u) ||
+            u.Scheme != Uri.UriSchemeHttps ||
+            !string.Equals(u.Host, DatabaseHost, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Refusing to download the GeoIP database from '{url}': it is not "
+                + $"https on {DatabaseHost}.");
+
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(3) };
-        using var netStream = client.GetStreamAsync(url).GetAwaiter().GetResult();
-        using var gz = new GZipStream(netStream, CompressionMode.Decompress);
-        using var outFile = File.Create(destTsvPath);
-        gz.CopyTo(outFile);
-        outFile.Flush();
-        return outFile.Length;
+        client.DefaultRequestHeaders.Add("User-Agent", "GunWall");
+
+        using var resp = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        resp.EnsureSuccessStatusCode();
+
+        string finalHost = resp.RequestMessage?.RequestUri?.Host ?? "";
+        if (finalHost.Length > 0 &&
+            !string.Equals(finalHost, DatabaseHost, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"The GeoIP download was redirected to '{finalHost}', which is not "
+                + $"{DatabaseHost}. Nothing was saved.");
+
+        return await AtomicFile.ReplaceAsync(destTsvPath,
+            async (outFile, token) =>
+            {
+                await using var netStream = await resp.Content.ReadAsStreamAsync(token);
+                await using var gz = new GZipStream(netStream, CompressionMode.Decompress);
+                await gz.CopyToAsync(outFile, token);
+            },
+            // A row is: start<TAB>end<TAB>ASN<TAB>country<TAB>description. The
+            // first field is numeric in both the v4 (u32) and v6 tables, which is
+            // enough to tell a real table from an HTML error page served with 200.
+            (path, length) => AtomicFile.PlausibleTextTable(path, length, 1_000_000,
+                first =>
+                {
+                    string[] parts = first.Split('\t');
+                    return parts.Length >= 4 && parts[0].Length > 0 &&
+                           parts[0].All(c => char.IsAsciiDigit(c) || c == ':' ||
+                                             char.IsAsciiHexDigit(c));
+                }),
+            ct);
     }
 
     // -------- API-source lookup (async + cached; runtime-only network) --------
