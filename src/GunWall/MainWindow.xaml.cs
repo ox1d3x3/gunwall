@@ -351,6 +351,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (VtKeyStatus != null)
                 VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
                     ? "No key set." : "A key is saved.";
+            RefreshAdditionalDataUi();
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
@@ -397,7 +398,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Topmost = _firewall.AlwaysOnTop;
             if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
 
-            AboutText.Text = $"GunWall v0.99.133 - free, open-source, no telemetry. " +
+            // After the settings block above, so the card reads correct state,
+            // and after Initialize() so the store is loaded. The loop waits two
+            // minutes before its first check; the first-run offer does not,
+            // because it is the one thing a new user should see immediately.
+            StartDbRefreshLoop();
+            _ = OfferFirstRunDownloadsAsync();
+
+            AboutText.Text = $"GunWall v0.99.134 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -442,6 +450,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void OnClosed(object? sender, EventArgs e)
     {
         _cts?.Cancel();
+        _dbRefreshCts?.Cancel();
         ClearEventMarker(); // clean exit — not a crash
         _netEvents?.Dispose();
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
@@ -5974,6 +5983,258 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // ================================================================ network scanner
     private readonly Services.OuiService _oui = new();
     private string OuiCachePath => Services.ProfilePaths.FileIn("oui.csv");
+
+    // ================= Additional data: GeoIP and vendor databases =========
+    //
+    // The downloads themselves are unchanged and still only run when asked. What
+    // is new is the schedule, and the schedule is why 0.99.132 had to make the
+    // writes safe first: automation removes the person who would have noticed a
+    // truncated file.
+
+    private bool _dbBusyGeo, _dbBusyOui;
+    private System.Threading.CancellationTokenSource? _dbRefreshCts;
+
+    /// <summary>Reads current state onto the Additional data card. Safe to call
+    /// at any time; every control is null-checked because Settings may not have
+    /// been realised yet.</summary>
+    private void RefreshAdditionalDataUi()
+    {
+        if (DbGeoStatus != null)
+        {
+            string when = Stamp(_firewall.GeoIpLastRefresh);
+            DbGeoStatus.Text = _firewall.GeoIpRangeCount > 0
+                ? $"GeoIP database: {_firewall.GeoIpRangeCount:N0} IPv4 and "
+                  + $"{_firewall.GeoIpRangeCountV6:N0} IPv6 ranges. {when}"
+                : "GeoIP database: not downloaded. Connections will show no country.";
+        }
+        if (DbOuiStatus != null)
+        {
+            string when = Stamp(_firewall.OuiLastRefresh);
+            DbOuiStatus.Text = _oui.Loaded
+                ? $"Vendor database: {_oui.Count:N0} prefixes. {when}"
+                : "Vendor database: not downloaded. Devices will show no manufacturer.";
+        }
+        if (DbAutoRefreshCheck != null) DbAutoRefreshCheck.IsChecked = _firewall.DbAutoRefresh;
+        if (DbIntervalCombo != null)
+        {
+            foreach (var obj in DbIntervalCombo.Items)
+                if (obj is ComboBoxItem ci &&
+                    ci.Tag is string tag && tag == _firewall.DbRefreshHours.ToString())
+                { DbIntervalCombo.SelectedItem = ci; break; }
+        }
+        // Failures are shown, not only successes. A refresh failing every night
+        // for a month must read as exactly that.
+        if (DbGeoResult != null)
+            DbGeoResult.Text = _firewall.GeoIpLastResult.Length > 0
+                ? "Last GeoIP attempt: " + _firewall.GeoIpLastResult : "";
+        if (DbOuiResult != null)
+            DbOuiResult.Text = _firewall.OuiLastResult.Length > 0
+                ? "Last vendor attempt: " + _firewall.OuiLastResult : "";
+
+        static string Stamp(DateTime? utc) =>
+            utc is null ? "Never refreshed." : $"Updated {utc.Value.ToLocalTime():yyyy-MM-dd HH:mm}.";
+    }
+
+    private async void DbGeoDownload_Click(object sender, RoutedEventArgs e)
+        => await RefreshGeoIpAsync(manual: true);
+
+    private async void DbOuiDownload_Click(object sender, RoutedEventArgs e)
+        => await RefreshOuiAsync(manual: true);
+
+    private void DbAutoRefresh_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressModeEvent || DbAutoRefreshCheck == null) return;
+        bool on = DbAutoRefreshCheck.IsChecked == true;
+        _firewall.SetDbAutoRefresh(on);
+        Services.DiagnosticLog.Log($"Database auto-refresh {(on ? "enabled" : "disabled")}"
+            + (on ? $" (every {_firewall.DbRefreshHours}h)." : "."));
+
+        // Turning it on fetches anything missing straight away. "Keep these up to
+        // date" reasonably includes "get them", and waiting up to a day to act on
+        // a switch the user just pressed reads as the switch not working.
+        if (on) _ = RunDueRefreshesAsync(force: false);
+    }
+
+    private void DbInterval_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressModeEvent || DbIntervalCombo?.SelectedItem is not ComboBoxItem ci) return;
+        if (ci.Tag is string tag && int.TryParse(tag, out int hours))
+            _firewall.SetDbRefreshHours(hours);
+    }
+
+    private async System.Threading.Tasks.Task RefreshGeoIpAsync(bool manual)
+    {
+        if (_dbBusyGeo) return;
+        _dbBusyGeo = true;
+        if (DbGeoBtn != null) { DbGeoBtn.IsEnabled = false; DbGeoBtn.Content = "Downloading..."; }
+        try
+        {
+            int n = await System.Threading.Tasks.Task.Run(() => _firewall.DownloadAndLoadGeoIp());
+            _firewall.NoteDbRefresh(geo: true, success: true, $"{n:N0} ranges loaded.");
+        }
+        catch (Exception ex)
+        {
+            // The previous database is untouched - AtomicFile only moves a file
+            // that validated - so the failure costs nothing but the attempt.
+            _firewall.NoteDbRefresh(geo: true, success: false,
+                $"failed, previous data kept: {ex.Message}");
+            if (manual) MessageBox.Show($"The GeoIP download failed.\n\n{ex.Message}\n\n"
+                + "Your existing database has not been changed.",
+                "GeoIP", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _dbBusyGeo = false;
+            if (DbGeoBtn != null) { DbGeoBtn.IsEnabled = true; DbGeoBtn.Content = "Download now"; }
+            RefreshAdditionalDataUi();
+        }
+    }
+
+    private async System.Threading.Tasks.Task RefreshOuiAsync(bool manual)
+    {
+        if (_dbBusyOui) return;
+        _dbBusyOui = true;
+        if (DbOuiBtn != null) { DbOuiBtn.IsEnabled = false; DbOuiBtn.Content = "Downloading..."; }
+        try
+        {
+            var (written, message) = await Services.OuiService.DownloadAsync(OuiCachePath);
+            if (written > 0)
+            {
+                _oui.LoadFromFile(OuiCachePath);
+                Services.NetworkScanner.Oui = _oui;
+                RefreshOuiStatus();
+            }
+            _firewall.NoteDbRefresh(geo: false, success: written > 0, message);
+            if (manual)
+                MessageBox.Show(message, "Vendor database", MessageBoxButton.OK,
+                    written > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            _firewall.NoteDbRefresh(geo: false, success: false,
+                $"failed, previous data kept: {ex.Message}");
+            if (manual) MessageBox.Show($"The vendor download failed.\n\n{ex.Message}\n\n"
+                + "Your existing database has not been changed.",
+                "Vendor database", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _dbBusyOui = false;
+            if (DbOuiBtn != null) { DbOuiBtn.IsEnabled = true; DbOuiBtn.Content = "Download now"; }
+            RefreshAdditionalDataUi();
+        }
+    }
+
+    /// <summary>
+    /// Refreshes whichever database is due. Each is attempted independently, so a
+    /// failure on one cannot cost the other - the same reasoning the v4/v6 split
+    /// and the three IEEE registries already follow.
+    /// </summary>
+    private async System.Threading.Tasks.Task RunDueRefreshesAsync(bool force)
+    {
+        if (!_firewall.DbAutoRefresh) return;
+
+        // Only the SCHEDULE respects this. A download the user pressed happens
+        // regardless; they can see what they asked for.
+        if (Services.NetworkCost.IsMetered())
+        {
+            if (_firewall.DbRefreshDue(true))
+                _firewall.NoteDbRefresh(true, false, Services.NetworkCost.HeldBackMessage);
+            if (_firewall.DbRefreshDue(false))
+                _firewall.NoteDbRefresh(false, false, Services.NetworkCost.HeldBackMessage);
+            RefreshAdditionalDataUi();
+            return;
+        }
+
+        if (force || _firewall.DbRefreshDue(true)) await RefreshGeoIpAsync(manual: false);
+        if (force || _firewall.DbRefreshDue(false)) await RefreshOuiAsync(manual: false);
+    }
+
+    /// <summary>
+    /// Background scheduler. Wakes hourly rather than sleeping for the whole
+    /// interval, so a machine that was suspended for two days acts on resume
+    /// instead of waiting out a timer that stopped counting.
+    /// </summary>
+    private void StartDbRefreshLoop()
+    {
+        _dbRefreshCts = new System.Threading.CancellationTokenSource();
+        var ct = _dbRefreshCts.Token;
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                // Not at startup: launch already contends for disk and network,
+                // and a 4 MB download competing with the engine coming up is the
+                // wrong first impression.
+                await System.Threading.Tasks.Task.Delay(TimeSpan.FromMinutes(2), ct);
+                while (!ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Dispatcher.InvokeAsync(async () =>
+                            await RunDueRefreshesAsync(force: false));
+                    }
+                    catch (Exception ex)
+                    { Services.DiagnosticLog.LogException("DbRefreshLoop", ex); }
+
+                    await System.Threading.Tasks.Task.Delay(TimeSpan.FromHours(1), ct);
+                }
+            }
+            catch (OperationCanceledException) { }
+        }, ct);
+    }
+
+    /// <summary>
+    /// Offers the two databases once, on a genuinely fresh install.
+    ///
+    /// Never after an upgrade: the installer writes FirstRunCompleted when it
+    /// finds an existing installation, so the marker is already set. Users enable
+    /// and disable these deliberately, and re-asking every release is how a
+    /// prompt becomes something people dismiss without reading.
+    /// </summary>
+    private async System.Threading.Tasks.Task OfferFirstRunDownloadsAsync()
+    {
+        // The installer leaves this when it finds an existing profile folder,
+        // which means GunWall has run on this machine before. Consumed here and
+        // deleted, so it cannot suppress the offer on some later clean install.
+        try
+        {
+            string marker = Services.ProfilePaths.FileIn("upgraded.marker");
+            if (System.IO.File.Exists(marker))
+            {
+                _firewall.MarkFirstRunComplete();
+                System.IO.File.Delete(marker);
+                Services.DiagnosticLog.Log("Upgrade marker consumed; the first-run "
+                                         + "database offer will not be shown.");
+            }
+        }
+        catch (Exception ex)
+        { Services.DiagnosticLog.LogException("UpgradeMarker", ex); }
+
+        if (!_firewall.IsFirstRun) return;
+
+        // Recorded before the question, not after. If it is asked and GunWall is
+        // killed before an answer, asking again on the next launch is worse than
+        // not asking at all.
+        _firewall.MarkFirstRunComplete();
+
+        bool haveGeo = _firewall.GeoIpRangeCount > 0;
+        bool haveOui = _oui.Loaded;
+        if (haveGeo && haveOui) return;
+
+        var answer = MessageBox.Show(
+            "GunWall can download two optional databases:\n\n"
+            + "  \u2022  Country and network owner for each connection (about 25 MB)\n"
+            + "  \u2022  Device manufacturers for network scans (about 4 MB)\n\n"
+            + "Both are stored on this machine and used offline. Nothing about you "
+            + "is sent.\n\nDownload them now? You can also do this later from "
+            + "Settings \u2192 Additional data.",
+            "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+
+        if (!haveGeo) await RefreshGeoIpAsync(manual: true);
+        if (!haveOui) await RefreshOuiAsync(manual: true);
+    }
 
     /// <summary>Shows how many prefixes are loaded, or invites the download.</summary>
     private void RefreshOuiStatus()

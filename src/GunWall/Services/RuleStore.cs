@@ -403,6 +403,39 @@ public sealed class StoreData
     public bool DnsRedirectActive { get; set; }
     public bool DnsGamingSession { get; set; }
     public List<SavedAdapterDns> DnsSavedAdapters { get; set; } = new();
+
+    // ---- Additional data: GeoIP and MAC vendor databases -------------------
+    //
+    // OFF by default, and deliberately so. A firewall that reaches the network on
+    // a schedule nobody asked for is the behaviour GunWall exists to make
+    // visible; it does not get an exemption for its own traffic.
+    public bool DbAutoRefresh { get; set; }
+
+    /// <summary>Hours between refresh attempts. 6, 12 or 24; anything else is
+    /// clamped when read, so a hand-edited profile cannot produce a busy loop.</summary>
+    public int DbRefreshHours { get; set; } = 24;
+
+    /// <summary>Last SUCCESSFUL refresh, UTC round-trip format. Empty means never.</summary>
+    public string GeoIpLastRefreshUtc { get; set; } = "";
+    public string OuiLastRefreshUtc { get; set; } = "";
+
+    /// <summary>Outcome of the last ATTEMPT, successful or not.
+    ///
+    /// Kept separately from the timestamp because a refresh failing every night
+    /// for a month has to be visible. If only successes were recorded the reader
+    /// would see an old date with nothing explaining it.</summary>
+    public string GeoIpLastRefreshResult { get; set; } = "";
+    public string OuiLastRefreshResult { get; set; } = "";
+
+    /// <summary>Set the first time GunWall completes a launch, and by the
+    /// installer when it detects an upgrade.
+    ///
+    /// This is what stops the first-run download offer appearing after every
+    /// update. It is written DELIBERATELY rather than inferred from whether a
+    /// profile or a database happens to exist: an empty profile is what a fresh
+    /// install produces AND what a failed uninstall leaves behind, so the presence
+    /// of a file cannot tell the two apart.</summary>
+    public bool FirstRunCompleted { get; set; }
 }
 
 /// <summary>One adapter's pre-redirect IPv4 DNS setting, so it can be restored

@@ -426,16 +426,20 @@ def check_local_calls():
     needing to resolve types. Anything inherited or attribute-shaped is
     allow-listed by name, and the list is short enough to read.
 
-    KNOWN LIMITATION, found by this check firing on correct code in 0.99.86:
-    quotes nested inside an interpolation hole - `$"x={(b ? "ON (a)" : "OFF")}"`
-    - defeat the string stripping below, which pairs quotes left to right. The
-    text between the inner quotes is then scanned as if it were code, and
-    `ON (` reads as a call.
+    The interpolation limitation recorded here from 0.99.86 - quotes nested in a
+    hole defeating a left-to-right string stripper - was fixed in 0.99.133 when
+    `strip_cs` replaced the regex passes. Nested literals inside a hole are now
+    skipped rather than scanned as code.
 
-    Left unfixed on purpose. Matching C# interpolation properly needs a parser,
-    and the alternative - allow-listing whatever words leak out - is how a check
-    stops failing. Writing the branch into a local first is clearer code anyway,
-    so a false positive here is a nudge rather than an obstacle.
+    KNOWN LIMITATION, found by falsification in 0.99.134: a one-line body of the
+    form `{ return Helper(); }` registers `Helper` as a DECLARATION, because the
+    declaration pattern reads `return Helper(` as "type name(" after the brace.
+    A call that only ever appears in that shape is therefore never checked.
+
+    Left unfixed on purpose. Excluding keywords from the type position risks
+    breaking a pattern that currently resolves 900+ declarations correctly, and
+    the ordinary case - a call on its own statement - is caught, which is where a
+    renamed or deleted method actually shows up.
     """
     import glob as _glob
     srcs = {f: Path(f).read_text(encoding="utf-8")
@@ -498,7 +502,12 @@ def check_local_calls():
 
     unresolved = {}
     for f, t in srcs.items():
-        for m in re.finditer(r"(?<![\w\.])(?<!new\s)([A-Z]\w*)\s*(?:<[^(){};]*>)?\s*\(",
+        # `(?<!\[)` recognises attribute POSITION rather than adding each
+        # attribute's name to the allow-list. [Guid("...")] and
+        # [InterfaceType(...)] are syntactically calls and are not calls; so were
+        # the four names already listed below. Recognising the shape means the
+        # list stops growing, which is what keeps it readable enough to audit.
+        for m in re.finditer(r"(?<![\w\.])(?<!new\s)(?<!\[)([A-Z]\w*)\s*(?:<[^(){};]*>)?\s*\(",
                              strip(t)):
             n = m.group(1)
             if n in KEYWORDS or n in ALLOWED or n in declared:
@@ -1463,6 +1472,187 @@ def check_reset_path():
 
     if len(failures) == before:
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
+
+
+def check_db_refresh_feature():
+    """The scheduled refresh must stay opt-in, metered-aware and independent.
+
+    Every condition here is a promise made to the reader on the Settings card or
+    in the roadmap, and each fails silently if it regresses - an opt-in that
+    defaults on, a schedule that ignores metered links, or a first-run prompt that
+    returns after every update all look like working software.
+
+    Asserts:
+      - DbAutoRefresh defaults to FALSE in the store
+      - the interval is clamped on READ, so a hand-edited 0 cannot busy-loop
+      - the scheduler consults DbAutoRefresh before doing anything
+      - the scheduler checks the metered state, and the MANUAL path does not
+      - each database is refreshed by its own call, so one failure cannot lose
+        the other
+      - failures are recorded, not only successes
+      - the first-run offer is gated on IsFirstRun and marks completion BEFORE
+        asking, so a kill mid-prompt does not re-ask
+      - the installer writes the upgrade marker before copying files, and the app
+        consumes and deletes it
+    """
+    before = len(failures)
+    store = (APP / "Services" / "RuleStore.cs").read_text(encoding="utf-8")
+    fm = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+    mw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+    iss = (ROOT / "tools" / "installer" / "GunWall.iss").read_text(
+        encoding="utf-8", errors="replace")
+
+    # Opt-in. A bool with no initialiser defaults to false; an initialiser to
+    # true would be the regression.
+    m = re.search(r"public bool DbAutoRefresh \{ get; set; \}([^\n]*)", strip_cs(store))
+    if not m:
+        fail("db-refresh", "DbAutoRefresh is gone from the store")
+    elif "true" in m.group(1):
+        fail("db-refresh",
+             "DbAutoRefresh defaults to TRUE. This feature is opt-in: a firewall "
+             "that reaches the network on a schedule nobody asked for is the "
+             "behaviour GunWall exists to make visible")
+
+    fmc = strip_cs(fm)
+    if not re.search(r"public int DbRefreshHours =>[^;]*is 6 or 12 or 24", fmc):
+        fail("db-refresh",
+             "DbRefreshHours is not clamped on read; a hand-edited profile with 0 "
+             "would refresh on every tick")
+
+    sched = re.search(r"private async System\.Threading\.Tasks\.Task RunDueRefreshesAsync"
+                      r".*?\n    \}", mw, re.S)
+    if not sched:
+        fail("db-refresh", "RunDueRefreshesAsync not found; nothing drives the schedule")
+        return
+    sc = strip_cs(sched.group(0))
+
+    if "_firewall.DbAutoRefresh" not in sc:
+        fail("db-refresh",
+             "the scheduler does not check DbAutoRefresh, so it would run for "
+             "users who never turned it on")
+    if "NetworkCost.IsMetered()" not in sc:
+        fail("db-refresh",
+             "the scheduler does not check for a metered connection; it would "
+             "spend a mobile data allowance unattended")
+    if "RefreshGeoIpAsync" not in sc or "RefreshOuiAsync" not in sc:
+        fail("db-refresh",
+             "the scheduler does not refresh both databases independently; a "
+             "failure on one would cost the other")
+
+    # NetworkCost itself. Three gaps the falsification run of 2026-09-07 found:
+    # this check passed with metering failing closed, with the roaming and
+    # over-limit flags removed, and with the CLSID altered by a digit.
+    cost_path = APP / "Services" / "NetworkCost.cs"
+    if not cost_path.exists():
+        fail("db-refresh", "NetworkCost.cs is gone; the schedule cannot know "
+                           "whether the link is metered")
+    else:
+        raw = cost_path.read_text(encoding="utf-8")
+        cost = strip_cs(raw)
+
+        # Verified against netlistmgr.h in microsoft/win32metadata, never recalled.
+        for guid, what in (("dcb00c01-570f-4a9b-8d69-199fdba5723b",
+                            "CLSID_NetworkListManager"),
+                           ("dcb00008-570f-4a9b-8d69-199fdba5723b",
+                            "IID_INetworkCostManager")):
+            if guid not in raw.lower():
+                fail("db-refresh",
+                     f"{what} does not match netlistmgr.h. A wrong GUID does not "
+                     "fail loudly - CoCreateInstance returns an error, the meter "
+                     "reads as unknown, and metered links stop being skipped")
+
+        ism = re.search(r"public static bool IsMetered\(\).*?\n    \}", cost, re.S)
+        if not ism:
+            fail("db-refresh", "NetworkCost.IsMetered not found")
+        elif not re.search(r"catch[^{]*\{[^}]*return false", ism.group(0), re.S):
+            fail("db-refresh",
+                 "IsMetered does not fail open. Where the cost API throws, the "
+                 "refresh would stop forever and silently - far harder to notice "
+                 "than one unwanted download")
+
+        # The literal has to be DECLARED with the right value AND used in the
+        # mask. Testing only the declaration passed with the mask narrowed to
+        # CostFixed alone, because the constants stayed at the top of the file.
+        for name, value, why in (
+                ("CostOverDataLimit", "0x10000", "a connection past its data cap"),
+                ("CostRoaming",       "0x40000", "a roaming connection")):
+            if not re.search(rf"{name}\s*=\s*{value}\b", cost):
+                fail("db-refresh",
+                     f"{name} is not {value}; verified against netlistmgr.h")
+            elif ism and name not in ism.group(0):
+                fail("db-refresh",
+                     f"{name} is declared but not used in the metered test, so "
+                     f"{why} would read as unmetered and be refreshed unattended")
+
+    # The manual path must NOT be gated on metered - the user can see what they
+    # pressed and may spend their own data.
+    for name in ("DbGeoDownload_Click", "DbOuiDownload_Click"):
+        h = re.search(rf"private async void {name}.*?;", mw, re.S)
+        if not h:
+            fail("db-refresh", f"{name} is missing; the Settings button does nothing")
+        elif "IsMetered" in strip_cs(h.group(0)):
+            fail("db-refresh",
+                 f"{name} checks the metered state. A download the user pressed "
+                 "must happen - only the schedule holds back")
+
+    if not re.search(r"NoteDbRefresh\(\s*(?:geo:\s*)?(?:true|false)\s*,\s*(?:success:\s*)?false",
+                     strip_cs(mw)):
+        fail("db-refresh",
+             "no failure is ever recorded through NoteDbRefresh, so a refresh "
+             "failing nightly for a month would show only a stale date")
+
+    offer = re.search(r"private async System\.Threading\.Tasks\.Task "
+                      r"OfferFirstRunDownloadsAsync\(\).*?\n    \}", mw, re.S)
+    if not offer:
+        fail("db-refresh", "OfferFirstRunDownloadsAsync not found")
+    else:
+        oc = strip_cs(offer.group(0))
+        if "IsFirstRun" not in oc:
+            fail("db-refresh",
+                 "the first-run offer is not gated on IsFirstRun; it would appear "
+                 "after every update")
+        else:
+            # From the GUARD onward, not from the top of the method. The upgrade
+            # marker block above also calls MarkFirstRunComplete(), so `.index()`
+            # found that one and the ordering test passed with the real call moved
+            # below the prompt. Same neighbourhood match as trap 2.27.
+            gated = oc[oc.index("IsFirstRun"):]
+            if "MarkFirstRunComplete()" not in gated:
+                fail("db-refresh", "the first-run offer never records that it was shown")
+            elif "MessageBox.Show" not in gated:
+                fail("db-refresh", "the first-run offer no longer asks anything")
+            elif gated.index("MarkFirstRunComplete()") > gated.index("MessageBox.Show"):
+                fail("db-refresh",
+                     "the first run is marked complete AFTER the prompt, so being "
+                     "killed mid-prompt re-asks on the next launch")
+
+        # Scoped to THIS method. File.Delete(marker) also appears in the crash
+        # marker code, so a whole-file search passed with this deletion removed.
+        if "File.Delete(marker)" not in oc:
+            fail("db-refresh",
+                 "the app does not delete the upgrade marker after consuming it, "
+                 "so it would suppress the offer on a later clean install too")
+        if "upgraded.marker" not in offer.group(0):
+            fail("db-refresh", "the app does not look for the upgrade marker")
+
+    if "upgraded.marker" not in iss:
+        fail("db-refresh",
+             "the installer does not write the upgrade marker, so the first-run "
+             "offer would appear once after upgrading from an older version")
+    elif re.search(r"ssPostInstall.*upgraded\.marker", iss, re.S):
+        fail("db-refresh",
+             "the upgrade marker is written at ssPostInstall, after files are "
+             "copied; the previous installation must be detected before that")
+
+
+    for name in ("DbGeoStatus", "DbOuiStatus", "DbAutoRefreshCheck", "DbIntervalCombo"):
+        if f'x:Name="{name}"' not in xaml:
+            fail("db-refresh", f"{name} is missing from the Settings card")
+
+    if len(failures) == before:
+        notes.append("db-refresh: opt-in, interval clamped, metered respected on "
+                     "the schedule only, failures recorded, first run asked once")
 
 
 def check_usings_declared():
@@ -3565,6 +3755,7 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_db_refresh_feature()
     check_usings_declared()
     check_db_download_safety()
     check_unblock_stops_app()

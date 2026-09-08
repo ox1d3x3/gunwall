@@ -15,6 +15,60 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.134] — 2026-09-07
+
+### Added — automatic database refresh
+**Settings → ADDITIONAL DATA** now holds both optional databases in one place,
+alongside the buttons that remain on Traffic and Network scan.
+
+- **GeoIP database** and **Vendor database**, each with when it was last updated
+  and a **Download now** button
+- **Keep these up to date automatically** — **off by default**
+- **Check every** 6 hours, 12 hours or Daily
+- The outcome of the last refresh for each database, including failures
+
+Turning the switch on fetches anything missing immediately. Waiting up to a day to
+act on a switch that was just pressed reads as the switch not working.
+
+### Added — metered connections are skipped
+The **schedule** does not refresh over a metered link. A refresh the user pressed
+always runs — they can see what they asked for and may spend their own data.
+
+Detection goes through `INetworkCostManager`. The CLSID, the interface IID and the
+`NLM_CONNECTION_COST` flags were read from `netlistmgr.h` in
+`microsoft/win32metadata`, not recalled. `GetCost` is the first method after
+`IUnknown`, which is why declaring only that one is safe.
+
+It **fails open**: where the cost cannot be determined, the refresh proceeds.
+Failing closed would stop refreshing forever on any machine where that API
+misbehaves, which is far harder to notice than one unwanted download.
+
+### Added — a first-run offer, asked once
+On a genuinely fresh install with neither database present, GunWall offers to
+download them. Never after an upgrade: the installer writes an upgrade marker when
+it finds an existing installation, and the application consumes and deletes it.
+
+Completion is recorded **before** the question is shown, so being closed
+mid-prompt does not cause it to be asked again.
+
+### Note — this feature was not in 0.99.132 or 0.99.133
+It was present in the working copy but absent from both packages, and the
+discrepancy is not accounted for. It has never been in a build anyone has run, so
+it should be treated as new code on its first install.
+
+### Changed — check `db-refresh` strengthened
+The existing check passed with metered detection failing closed, with the mask
+narrowed so roaming and over-limit connections read as unmetered, and with the
+CLSID altered by a digit — a wrong GUID does not fail loudly; the meter simply
+reads as unknown and metered links stop being skipped.
+
+It now asserts the GUIDs against `netlistmgr.h`, that `IsMetered` fails open, and
+that each cost flag is both declared with the right value and used in the mask.
+Twelve defects were reintroduced individually and the check confirmed failing on
+each.
+
+---
+
 ## [0.99.133] — 2026-09-06
 
 ### Fixed — 0.99.132 did not compile

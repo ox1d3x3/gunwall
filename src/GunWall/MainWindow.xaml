@@ -3083,6 +3083,57 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
+                            <TextBlock Text="ADDITIONAL DATA" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="Two optional databases. The GeoIP table names the country and network owner behind each connection; the IEEE registry names the manufacturer of each device on a network scan. Both are downloaded only when you ask, stored locally, and used offline. Neither sends anything about you."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock x:Name="DbGeoStatus" Style="{StaticResource Muted}"
+                                           VerticalAlignment="Center" TextWrapping="Wrap"
+                                           Margin="0,0,140,0" Text="GeoIP database: checking..." />
+                                <Button x:Name="DbGeoBtn" Content="Download now" MinWidth="120"
+                                        Style="{StaticResource ActionButton}" Click="DbGeoDownload_Click"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Grid Margin="0,0,0,10">
+                                <TextBlock x:Name="DbOuiStatus" Style="{StaticResource Muted}"
+                                           VerticalAlignment="Center" TextWrapping="Wrap"
+                                           Margin="0,0,140,0" Text="Vendor database: checking..." />
+                                <Button x:Name="DbOuiBtn" Content="Download now" MinWidth="120"
+                                        Style="{StaticResource ActionButton}" Click="DbOuiDownload_Click"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <CheckBox x:Name="DbAutoRefreshCheck"
+                                      Content="Keep these up to date automatically"
+                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
+                                      Checked="DbAutoRefresh_Changed" Unchecked="DbAutoRefresh_Changed"
+                                      ToolTip="Off by default. When on, GunWall refreshes each database in the background and skips metered connections." />
+                            <TextBlock Text="Off by default. Refreshes run in the background, are skipped on metered connections, and never replace a working database with a failed download."
+                                       Style="{StaticResource Muted}" Margin="22,0,0,8" TextWrapping="Wrap" />
+
+                            <StackPanel Orientation="Horizontal" Margin="22,0,0,10">
+                                <TextBlock Text="Check every" Style="{StaticResource Muted}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox x:Name="DbIntervalCombo" MinWidth="150" MinHeight="33"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="DbInterval_Changed">
+                                    <ComboBoxItem Content="6 hours" Tag="6" />
+                                    <ComboBoxItem Content="12 hours" Tag="12" />
+                                    <ComboBoxItem Content="Daily" Tag="24" IsSelected="True" />
+                                </ComboBox>
+                            </StackPanel>
+
+                            <TextBlock x:Name="DbGeoResult" Style="{StaticResource Muted}"
+                                       Margin="0,0,0,2" TextWrapping="Wrap" Text="" />
+                            <TextBlock x:Name="DbOuiResult" Style="{StaticResource Muted}"
+                                       TextWrapping="Wrap" Text="" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
                             <TextBlock Text="REFRESH INTERVAL" Style="{StaticResource SectionLabel}" />
                             <TextBlock Text="How often connections and the graph update. Slower = lower CPU."
                                        Style="{StaticResource Muted}" Margin="0,2,0,10" />

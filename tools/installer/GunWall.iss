@@ -214,6 +214,26 @@ end;
   the deny-with-a-prompt contract intact across a reboot. }
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  { Recorded BEFORE any file is copied, while the previous installation is still
+    identifiable. If a profile folder is already here, this machine has run
+    GunWall before, so the first-run offer of the optional databases must not
+    appear - the user has already made that choice, and re-asking every release
+    is how a prompt becomes something people dismiss without reading.
+
+    A marker FILE rather than an edit to rules.json: the installer has no JSON
+    writer, and the application is the only thing that should be writing to its
+    own store. GunWall consumes and deletes this on the next launch. }
+  if CurStep = ssInstall then
+  begin
+    if DirExists(ProfileDir) then
+    begin
+      ForceDirectories(ProfileDir);
+      SaveStringToFile(ProfileDir + '\upgraded.marker',
+                       'Written by the installer on upgrade. Consumed and deleted '
+                       + 'by GunWall on the next launch. Safe to delete.', False);
+    end;
+  end;
+
   if CurStep = ssPostInstall then
   begin
     if WizardIsTaskSelected('startup') then

@@ -1605,6 +1605,80 @@ public sealed class FirewallManager : IDisposable
     public string UiFontFamily => _data.UiFontFamily ?? "";
     public void SetUiFontFamily(string v) { _data.UiFontFamily = v ?? ""; _store.Save(_data); }
 
+    // ---- Additional data: GeoIP and MAC vendor databases -------------------
+
+    public bool DbAutoRefresh => _data.DbAutoRefresh;
+
+    /// <summary>Clamped on READ, not only on write. A hand-edited profile with 0
+    /// would otherwise mean "refresh on every tick".</summary>
+    public int DbRefreshHours =>
+        _data.DbRefreshHours is 6 or 12 or 24 ? _data.DbRefreshHours : 24;
+
+    public void SetDbAutoRefresh(bool on)
+    { _data.DbAutoRefresh = on; _store.Save(_data); }
+
+    public void SetDbRefreshHours(int hours)
+    { _data.DbRefreshHours = hours is 6 or 12 or 24 ? hours : 24; _store.Save(_data); }
+
+    public DateTime? GeoIpLastRefresh => ParseUtc(_data.GeoIpLastRefreshUtc);
+    public DateTime? OuiLastRefresh => ParseUtc(_data.OuiLastRefreshUtc);
+    public string GeoIpLastResult => _data.GeoIpLastRefreshResult;
+    public string OuiLastResult => _data.OuiLastRefreshResult;
+
+    private static DateTime? ParseUtc(string s) =>
+        DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.RoundtripKind,
+                          out var d) ? d : null;
+
+    /// <summary>
+    /// Records the outcome of a refresh attempt.
+    ///
+    /// The timestamp advances only on success; the message is written either way.
+    /// A refresh that has been failing nightly for a month must be readable as
+    /// exactly that, rather than as an old date with no explanation.
+    /// </summary>
+    public void NoteDbRefresh(bool geo, bool success, string message)
+    {
+        string stamp = DateTime.UtcNow.ToString("o");
+        string line = $"{DateTime.Now:yyyy-MM-dd HH:mm} - {message}";
+        if (geo)
+        {
+            _data.GeoIpLastRefreshResult = line;
+            if (success) _data.GeoIpLastRefreshUtc = stamp;
+        }
+        else
+        {
+            _data.OuiLastRefreshResult = line;
+            if (success) _data.OuiLastRefreshUtc = stamp;
+        }
+        _store.Save(_data);
+        DiagnosticLog.Log($"Database refresh ({(geo ? "GeoIP" : "vendor")}): {message}");
+    }
+
+    /// <summary>True when this database is older than the chosen interval, or has
+    /// never been fetched.</summary>
+    public bool DbRefreshDue(bool geo)
+    {
+        DateTime? last = geo ? GeoIpLastRefresh : OuiLastRefresh;
+        if (last is null) return true;
+        return DateTime.UtcNow - last.Value >= TimeSpan.FromHours(DbRefreshHours);
+    }
+
+    /// <summary>
+    /// Whether this is the first launch after a clean install.
+    ///
+    /// False after an upgrade, because the installer writes the marker when it
+    /// finds an existing installation. Not inferred from whether a profile or a
+    /// database exists - see StoreData.FirstRunCompleted for why that cannot work.
+    /// </summary>
+    public bool IsFirstRun => !_data.FirstRunCompleted;
+
+    public void MarkFirstRunComplete()
+    {
+        if (_data.FirstRunCompleted) return;
+        _data.FirstRunCompleted = true;
+        _store.Save(_data);
+    }
+
     public string VirusTotalApiKey => _data.VirusTotalApiKey;
     public void SetVirusTotalApiKey(string v) { _data.VirusTotalApiKey = v?.Trim() ?? ""; _store.Save(_data); }
 
