@@ -104,9 +104,36 @@ public sealed class RuleStore
                 string json = File.ReadAllText(_file);
                 return JsonSerializer.Deserialize<StoreData>(json) ?? new StoreData();
             }
-            catch
+            catch (Exception ex)
             {
-                // Corrupt or unreadable store: start clean rather than crashing.
+                // Starting clean rather than crashing is right. Doing it SILENTLY
+                // was not: the next Save() overwrote a file that may have been
+                // recoverable, and the only visible symptom was a machine that had
+                // forgotten every rule. On 2026-09-08 that presented as a reconcile
+                // deleting 316 live filters, and there was no log line anywhere
+                // saying the profile had failed to load.
+                //
+                // Keep the original before anything can overwrite it, and say so.
+                string kept = "";
+                try
+                {
+                    if (File.Exists(_file))
+                    {
+                        kept = _file + $".unreadable-{DateTime.Now:yyyyMMdd-HHmmss}";
+                        File.Copy(_file, kept, overwrite: true);
+                    }
+                }
+                catch { /* the log line below still gets written */ }
+
+                DiagnosticLog.Log(
+                    $"PROFILE COULD NOT BE READ ({ex.GetType().Name}: {ex.Message}). "
+                    + "GunWall has started with default settings and NO rules. "
+                    + (kept.Length > 0
+                        ? $"The original was kept as {Path.GetFileName(kept)} and has not "
+                        + "been modified - rules can be recovered from it."
+                        : "The original could not be copied.")
+                    + " Protection will be off until this is resolved.");
+
                 return new StoreData();
             }
         }

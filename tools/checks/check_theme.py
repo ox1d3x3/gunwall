@@ -2645,7 +2645,22 @@ def check_silent_failures():
         # have prevented it and neither alone is enough.
         rec = re.search(r'public int ReconcileOrphanFilters\(\).*?\n    \}', fm3, re.S)
         if rec:
-            if 'tracked.Count == 0' not in rec.group(0):
+            # `tracked.Count == 0` was the original guard and it could not fire:
+            # EnsureSelfConnectivity writes four self-permit ids to the store before
+            # the reconcile runs, so an unreadable store presents as 4 tracked, not
+            # 0. On 2026-09-08 that let 316 live filters be deleted. The guard must
+            # discount the ids GunWall created for itself.
+            if 'knownBeyondSelf' not in rec.group(0):
+                fail('reset-path',
+                     'the reconcile counts self-permit ids as knowledge of the '
+                     'machine. Four of them are written before it runs, so an '
+                     'unreadable store reads as 4 tracked and the zero-guard never '
+                     'fires - which is how 316 live filters were deleted')
+            if 'SelfFilterIds' not in rec.group(0):
+                fail('reset-path',
+                     'the reconcile does not exclude SelfFilterIds from the tracked '
+                     'set, so it cannot tell its own ids from real knowledge')
+            if 'knownBeyondSelf == 0' not in rec.group(0):
                 fail('reset-path',
                      'the reconcile does not refuse when nothing is tracked - it '
                      'would read an unloaded store as proof that every live filter '
@@ -2747,9 +2762,42 @@ def check_silent_failures():
              "diagnostics never report rules pointing at a missing executable - "
              "they list as Allowed, hold no filters, and throw when re-applied")
 
+    # A profile that cannot be read is the most expensive silent failure in the
+    # program: Load() returns defaults, the next Save() overwrites the original,
+    # and the only symptom is a machine that has forgotten every rule. On
+    # 2026-09-08 that presented as a reconcile deleting 316 live filters, with no
+    # line anywhere saying the profile had failed to load.
+    rs = (APP / "Services" / "RuleStore.cs").read_text(encoding="utf-8")
+    load = re.search(r"public StoreData Load\(\).*?\n    \}\n", rs, re.S)
+    if not load:
+        fail("silent-failure", "RuleStore.Load not found")
+    else:
+        lb = load.group(0)
+        if re.search(r"catch\s*\n?\s*\{", lb) and "catch (Exception" not in lb:
+            fail("silent-failure",
+                 "RuleStore.Load swallows the exception without capturing it, so "
+                 "the reason a profile failed to load cannot be reported")
+        # A LIVE statement, not merely the identifier. `if (false) DiagnosticLog.Log(...)`
+        # keeps the name present and reports nothing, and a substring test passed on it.
+        if not re.search(r"^\s*DiagnosticLog\.Log\(", lb, re.M):
+            fail("silent-failure",
+                 "RuleStore.Load does not unconditionally log when the profile "
+                 "cannot be read. The user sees a machine with no rules and no "
+                 "explanation, and the next save destroys the file that could "
+                 "have been recovered")
+        if "PROFILE COULD NOT BE READ" not in lb:
+            fail("silent-failure",
+                 "the profile-load failure no longer states plainly what happened; "
+                 "this line is the only warning the user gets")
+        if "File.Copy" not in lb:
+            fail("silent-failure",
+                 "RuleStore.Load does not preserve an unreadable profile before "
+                 "returning defaults, so the next save overwrites it permanently")
+
     if len(failures) == before:
         notes.append("silent-failure: causes recorded, resolver self-checks, posture logged, "
-                     "shared addresses spared, orphan rules reported")
+                     "profile-load failures reported, shared addresses spared, "
+                     "orphan rules reported")
 
 
 def check_recovery_path():

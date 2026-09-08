@@ -15,6 +15,66 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.135] — 2026-09-08
+
+### Fixed — the startup reconcile could delete a working filter set
+On a machine running 0.99.134, the startup reconcile read **4 tracked** filters
+against **320 live**, removed 316 of them, and left the machine with 22
+application rules where it had had 73, with protection off.
+
+```
+17:36  0.99.133 -> 292 filter(s) in the sublayer, all accounted for   (73 apps)
+18:25  0.99.133 -> 304 filter(s) in the sublayer, all accounted for   (73 apps)
+21:34  0.99.134 -> 320 in the sublayer, 4 tracked - removing 316      (22 apps)
+```
+
+A guard for exactly this has existed since 0.99.92, when an earlier reconcile ran
+against an empty store and disarmed a protected machine:
+
+```csharp
+if (tracked.Count == 0)   // knowing nothing is not knowing everything is an orphan
+```
+
+**It could not fire.** `EnsureSelfConnectivity()` writes four self-permit filter
+ids to the store *before* the reconcile runs, so a store that has lost everything
+still presents as `4 tracked`, never `0`. The guard has been unreachable since the
+self-permit was moved ahead of it, and nothing noticed because the condition it
+protects against is rare.
+
+The test is now whether anything is tracked **beyond GunWall's own self-permit
+ids**. Those are not knowledge about the machine; they were created two hundred
+milliseconds earlier by this process.
+
+### Fixed — a profile that cannot be read now says so
+`RuleStore.Load()` caught every exception and returned defaults with no log line.
+The next `Save()` then overwrote a file that may have been recoverable, and the
+only symptom was a machine that had forgotten every rule.
+
+It now records what failed and why, and copies the original to
+`rules.json.unreadable-<timestamp>` before returning defaults, so the data can be
+recovered. The message states plainly that GunWall has started with no rules and
+that protection will be off.
+
+*This does not establish why the profile read as empty on 2026-09-08 — nothing was
+logged at the time, which is the defect being fixed. It ensures the next occurrence
+is diagnosable rather than silent, and the reconcile fix above means it can no
+longer cost anyone their filters either way.*
+
+### Changed — checks `reset-path` and `silent-failure`
+`reset-path` asserted the literal `tracked.Count == 0`, so it certified a guard
+that could not fire. It now asserts the self-permit ids are excluded. Four
+mutations, including restoring the exact original condition.
+
+`silent-failure` gained three assertions covering `RuleStore.Load`: the exception
+is captured, the failure is logged as a live statement, and the unreadable profile
+is preserved. A first draft tested only for the identifier `DiagnosticLog` and
+passed on `if (false) DiagnosticLog.Log(...)`.
+
+Seven defects were reintroduced individually and the checks confirmed failing on
+each.
+
+---
+
 ## [0.99.134] — 2026-09-07
 
 ### Added — automatic database refresh

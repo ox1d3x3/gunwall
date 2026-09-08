@@ -1911,12 +1911,27 @@ public sealed class FirewallManager : IDisposable
             // So: nothing tracked and something live means this component cannot
             // distinguish the two. Say so and touch nothing. The reset path is
             // unaffected - there the user has explicitly asked for everything to go.
-            if (tracked.Count == 0)
+            // Self-permit ids are NOT knowledge about this machine. EnsureSelfConnectivity
+            // writes four of them to the store before this runs, so a store that has lost
+            // everything still presents as "4 tracked" rather than 0 - and the guard below,
+            // written against 0, could not fire. On 2026-09-08 that let a reconcile read
+            // 4 tracked against 320 live, delete 316, and take a working machine from 73
+            // application rules to 22 with protection off.
+            //
+            // The question is not "do we know any ids" but "do we know anything this store
+            // did not create for itself two hundred milliseconds ago".
+            var selfIds = new HashSet<ulong>(_data.SelfFilterIds);
+            int knownBeyondSelf = tracked.Count(id => !selfIds.Contains(id));
+
+            if (knownBeyondSelf == 0)
             {
                 DiagnosticLog.Log(
-                    $"Startup reconcile: {live.Count} filter(s) in the sublayer but 0 tracked - "
-                    + "declining to act. Nothing was removed. If the machine is stuck, "
-                    + "Settings -> Remove all GunWall filtering clears the sublayer deliberately.");
+                    $"Startup reconcile: {live.Count} filter(s) in the sublayer but nothing "
+                    + $"tracked beyond GunWall's own {selfIds.Count} self-permit filter(s) - "
+                    + "declining to act. Nothing was removed. This means the profile could "
+                    + "not be read or is not describing this machine; the filters are left "
+                    + "alone rather than deleted. If the machine is stuck, Settings -> "
+                    + "Remove all GunWall filtering clears the sublayer deliberately.");
                 return 0;
             }
 
