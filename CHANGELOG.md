@@ -15,6 +15,112 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.140] — 2026-09-10
+
+### Fixed — every launch destroyed the profile before reading it
+This is the cause of the rules, the theme and the protection state resetting on
+restart. It has been present since 0.99.134.
+
+`MainWindow.xaml` carried this:
+
+```xml
+<ComboBoxItem Content="Daily" Tag="24" IsSelected="True" />
+```
+
+WPF raises `SelectionChanged` for a preselected item during
+`InitializeComponent()` — in the constructor, before `OnLoaded` reads the store.
+`DbInterval_Changed` calls `SetDbRefreshHours`, every setter ends in a save, and
+`_data` was still a default `StoreData`.
+
+So each launch wrote an empty profile over the real one and then read the empty
+one back. Rules gone, theme back to dark, protection off, every application asking
+for approval again. The exit dialog was never involved; answering "No" was
+correct and made no difference.
+
+The instrumentation added in 0.99.137 identified it in a single run:
+
+```
+Profile read from C:\ProgramData\GunWall\rules.json | exists=True size=1997
+  modifiedUtc=2026-09-09 22:04:17Z | rules=0 ruleFilterIds=0 self=0 StrictMode=False
+```
+
+A file that exists, holds 2 KB, and was modified in the same second it was read is
+neither a corrupt profile nor a wrong path. It is a profile this process
+overwrote moments earlier.
+
+Two fixes:
+
+- **Every save now goes through `SaveStore()`**, which refuses and logs while the
+  profile has not been read. Ninety-eight call sites redirected; exactly one
+  direct write remains, inside the guard.
+- **Three XAML controls no longer preset their state** while carrying a change
+  handler that can save: `DbIntervalCombo`'s item, `DnsObserveCheck` and
+  `DnsCloakCheck`. All three are set from the store after it loads.
+
+The XAML fix alone would have fixed one control. The guard makes the class
+incapable of the mistake, which matters because there are ninety-odd setters and
+any of them can be reached from a designer-raised event.
+
+### Added — check `no-save-before-load`
+Asserts the guard exists, tests `_settingsLoaded`, logs unconditionally, that no
+setter bypasses it, and that no control presets state into a handler that can
+save.
+
+The first draft matched only presets and handlers on the **same** element — which
+misses this exact defect, because `IsSelected` is on the `ComboBoxItem` while
+`SelectionChanged` is on the parent `ComboBox`. Restoring the original XAML did
+not fail the check. Both shapes are now tested, and the check only flags handlers
+that actually reach a setter, so `IntervalCombo` — which only marks settings dirty
+— is correctly ignored.
+
+Six defects were reintroduced individually and the check confirmed failing on
+each. Recorded as trap 2.34.
+
+---
+
+## [0.99.139] — 2026-09-09
+
+### Fixed — GunWall could be blocked by its own baseline
+Turning protection **off** sweeps every tracked filter id, `SelfFilterIds`
+included, and `ClearAllFilterIds` then forgets they existed. That is correct —
+off means nothing is enforced.
+
+Turning it back **on** rebuilt the baseline, the permits for allowed rules and the
+core Windows apps, and stopped. GunWall's own permit was never re-created. After a
+single off/on cycle, GunWall was denied by its own baseline until the next
+restart, when the window's Loaded handler ran `EnsureSelfConnectivity` again.
+
+It surfaced as the first-run database download failing on a clean install: the
+firewall correctly denied an unapproved application, and the unapproved
+application was GunWall.
+
+Update checks and VirusTotal lookups were failing the same way for the same
+window. Both are best-effort by design, so a denied connection is indistinguishable
+from an offline machine and neither had anything to report.
+
+`SetStrictMode(true)` now restores the permit. `EnsureSelfConnectivity` is
+idempotent, so it costs nothing when the permit is already present.
+
+### Changed — the first-run offer says what it is about to do
+The dialog now states that GunWall will permit its own executable to reach the
+network, and that nothing else is permitted. The permit is asserted **after** the
+user answers Yes and before the first request — on a clean install this offer is
+the first thing that touches the network.
+
+Permitting an executable is the user's decision. A firewall making that decision
+silently for itself is the one exception nobody agreed to, so it is now asked for
+rather than assumed.
+
+### Added — check `self-permit-survives`
+Asserts the permit is restored when protection engages, that the first-run
+download asserts it before its first request, that it happens **after** the
+dialog rather than before, and that the dialog discloses it. Four defects were
+reintroduced individually and the check confirmed failing on each.
+
+Recorded as trap 2.33.
+
+---
+
 ## [0.99.138] — 2026-09-09
 
 ### Fixed — 0.99.137 did not compile

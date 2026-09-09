@@ -1791,12 +1791,12 @@
                             </StackPanel>
                             <CheckBox x:Name="DnsObserveCheck" Content="Watch system DNS lookups"
                                       Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
-                                      Margin="0,14,18,0" IsChecked="True"
+                                      Margin="0,14,18,0"
                                       Checked="DnsObserve_Changed" Unchecked="DnsObserve_Changed"
                                       ToolTip="Passively watches the lookups this PC makes, so domain rules and 'block direct connections' know which name produced an address. Nothing is intercepted, redirected or answered - your DNS settings are never touched." />
                             <CheckBox x:Name="DnsCloakCheck" Content="Block CNAME-cloaked trackers"
                                       Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
-                                      Margin="0,14,18,0" IsChecked="True"
+                                      Margin="0,14,18,0"
                                       ToolTip="Follows each answer's CNAME chain and blocks it if any hop is on the blocklist - catching trackers that hide behind a clean first-party subdomain." />
                             <CheckBox x:Name="DnsDohFallbackCheck" Content="Fall back to plaintext if encryption fails"
                                       Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
@@ -2683,7 +2683,7 @@
                             <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap"
                                        Text="Alert mode allows new apps and notifies you. Strict mode takes full control: everything is blocked except apps you explicitly allow. Core Windows networking (svchost, DNS) and loopback are auto-allowed so your connection keeps working." />
                             <RadioButton x:Name="AlertModeRadio" Content="Alert mode (recommended)"
-                                         GroupName="FwMode" IsChecked="True"
+                                         GroupName="FwMode"
                                          Foreground="{DynamicResource TextPrimary}"
                                          Checked="Mode_Changed" Margin="0,0,0,6" />
                             <RadioButton x:Name="StrictModeRadio" Content="Strict mode - block everything except allowed apps"
@@ -3121,7 +3121,7 @@
                                           SelectionChanged="DbInterval_Changed">
                                     <ComboBoxItem Content="6 hours" Tag="6" />
                                     <ComboBoxItem Content="12 hours" Tag="12" />
-                                    <ComboBoxItem Content="Daily" Tag="24" IsSelected="True" />
+                                    <ComboBoxItem Content="Daily" Tag="24" />
                                 </ComboBox>
                             </StackPanel>
 

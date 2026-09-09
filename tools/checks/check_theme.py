@@ -1474,6 +1474,193 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_no_save_before_load():
+    """The profile must not be written before it has been read.
+
+    Trap 2.34. This is the defect that destroyed a working profile on every
+    launch for six releases.
+
+    A ComboBoxItem in the settings XAML carried IsSelected="True". WPF raises
+    SelectionChanged for that during InitializeComponent - in the constructor,
+    long before OnLoaded reads the store. The handler called SetDbRefreshHours,
+    every setter ends in a save, and `_data` was still a default StoreData. So
+    each launch wrote an empty profile over the real one and then read the empty
+    one back: rules gone, theme back to default, protection off, every
+    application asking for approval again.
+
+    The instrumentation added in 0.99.137 is what found it, in one run:
+
+        Profile read from ...\\rules.json | exists=True size=1997
+          modifiedUtc=<the same second as the read> | rules=0 ... StrictMode=False
+
+    A file that exists, is 2 KB, and was modified in the same second it was read
+    is not a corrupt profile and not a bad path. It is a profile that was
+    overwritten moments earlier by this process.
+
+    Two fixes, and the check asserts the general one:
+
+      - every save goes through SaveStore(), which refuses and logs while
+        _settingsLoaded is false
+      - the XAML no longer presets a selection on a control with a handler
+
+    The second alone would fix one control. There are ninety-odd setters and any
+    of them can be reached from a designer-raised event, so the class has to be
+    incapable of it.
+    """
+    before = len(failures)
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+
+    guard = re.search(r"private void SaveStore\(\).*?\n    \}", fm, re.S)
+    if not guard:
+        fail("save-before-load",
+             "SaveStore is gone. Setters write _store directly again, so any "
+             "handler raised during InitializeComponent overwrites the profile "
+             "with defaults before it has been read")
+        return
+    g = guard.group(0)
+    if "_settingsLoaded" not in g:
+        fail("save-before-load",
+             "SaveStore does not test whether the profile has been read, so it "
+             "cannot refuse the write that destroys it")
+    if not re.search(r"if\s*\(\s*!\s*_settingsLoaded\s*\)", g):
+        fail("save-before-load", "SaveStore has no early-return guard")
+    if not re.search(r"^\s*DiagnosticLog\.Log\(", g, re.M):
+        fail("save-before-load",
+             "a refused save is not unconditionally logged, so the offending "
+             "caller stays invisible - which is how this survived six releases")
+
+    # Nothing outside SaveStore may write the store.
+    direct = len(re.findall(r"_store\.Save\(", fm))
+    if direct != 1:
+        fail("save-before-load",
+             f"{direct} direct _store.Save calls; exactly one is allowed and it "
+             "must be the one inside SaveStore. A setter bypassing the guard can "
+             "still overwrite an unread profile")
+
+    # No control may preset state while a change handler is attached.
+    #
+    # Two shapes, and the first draft only tested one. On a CheckBox or
+    # RadioButton the preset and the handler are attributes of the SAME element.
+    # On a ComboBox the handler is on the container and IsSelected="True" is on a
+    # CHILD ComboBoxItem - which is exactly the defect that caused this trap, and
+    # exactly what a same-element test misses.
+    mw_code = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+
+    def handler_can_save(name):
+        """True only if that handler reaches a setter. A handler that merely
+        marks the settings dirty cannot overwrite the profile, and flagging it
+        would make this check noise the maintainer learns to ignore."""
+        m = re.search(rf"void {name}\(object sender.*?(?=\n    (?:private|public|internal|protected)\b)",
+                      mw_code, re.S)
+        return bool(m) and "_firewall.Set" in m.group(0)
+
+    for m in re.finditer(r"<(?:CheckBox|RadioButton)\b[^>]*?>", xaml, re.S):
+        tag = m.group(0)
+        handlers = re.findall(r'(?:Checked|Unchecked|Click)="(\w+)"', tag)
+        if re.search(r'Is(?:Selected|Checked)="True"', tag) and \
+           any(handler_can_save(h) for h in handlers):
+            name = re.search(r'x:Name="(\w+)"', tag)
+            fail("save-before-load",
+                 f"{name.group(1) if name else 'a control'} presets its state in "
+                 "XAML and has a change handler. WPF raises that handler during "
+                 "InitializeComponent, before the profile is read - set the value "
+                 "in code once the store is loaded instead")
+
+    for m in re.finditer(r"<ComboBox\b(?![^>]*/>)(.*?)</ComboBox>", xaml, re.S):
+        block = m.group(0)
+        sc = re.search(r'SelectionChanged="(\w+)"', block)
+        if not sc or not handler_can_save(sc.group(1)):
+            continue
+        if re.search(r'<ComboBoxItem[^>]*?IsSelected="True"', block):
+            name = re.search(r'x:Name="(\w+)"', block)
+            fail("save-before-load",
+                 f"{name.group(1) if name else 'a ComboBox'} has a "
+                 "SelectionChanged handler and a child ComboBoxItem with "
+                 "IsSelected=\"True\". WPF raises the handler during "
+                 "InitializeComponent, before the profile is read - select the "
+                 "item in code once the store is loaded instead")
+
+    if len(failures) == before:
+        notes.append("save-before-load: one guarded save path, refuses and logs "
+                     "before the profile is read, no control presets state into a "
+                     "handler")
+
+
+def check_self_permit_survives():
+    """GunWall must not be blocked by its own baseline.
+
+    Trap 2.33. `SetStrictMode(false)` sweeps every tracked filter id via
+    `CollectFilterIds` - `SelfFilterIds` among them - and `ClearAllFilterIds`
+    then forgets they ever existed. That is correct: protection off means nothing
+    is enforced.
+
+    `SetStrictMode(true)` rebuilt the baseline, the permits for allowed rules and
+    the core Windows apps, and stopped. It never re-created GunWall's own permit.
+    So after one OFF/ON cycle GunWall was denied by its own baseline until the
+    next restart, when the window's Loaded handler ran EnsureSelfConnectivity
+    again.
+
+    It surfaced as the first-run database download failing on a clean install:
+    the firewall correctly denied an unapproved application, and the unapproved
+    application was GunWall. Update checks and VirusTotal lookups were failing
+    the same way with nothing to report it - they are best-effort by design and
+    a denied connection looks like an offline machine.
+
+    Asserts the enable branch restores the permit, that the first-run download
+    asserts it before its first request, and that the dialog says so - permitting
+    an executable to reach the network is the user's decision to make, and a
+    firewall doing it silently for itself is the one exception nobody agreed to.
+    """
+    before = len(failures)
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    mw_raw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    mw = strip_cs(mw_raw)
+
+    ssm = re.search(r"public void SetStrictMode\(bool enabled\).*?\n    \}", fm, re.S)
+    if not ssm:
+        fail("self-permit", "SetStrictMode not found")
+        return
+    body = ssm.group(0)
+    enable = body.split("else", 1)[0]
+
+    if "EnsureSelfConnectivity()" not in enable:
+        fail("self-permit",
+             "engaging protection does not restore GunWall's own permit. Turning "
+             "protection off sweeps SelfFilterIds with everything else, so after "
+             "one off/on cycle GunWall is denied by its own baseline - and the "
+             "symptom is downloads and update checks silently failing")
+
+    offer = re.search(r"private async System\.Threading\.Tasks\.Task "
+                      r"OfferFirstRunDownloadsAsync\(\).*?\n    \}", mw, re.S)
+    if not offer:
+        fail("self-permit", "OfferFirstRunDownloadsAsync not found")
+    else:
+        o = offer.group(0)
+        if "EnsureSelfConnectivity()" not in o:
+            fail("self-permit",
+                 "the first-run download does not assert the self-permit before "
+                 "its first request. On a clean install this is the first thing "
+                 "that reaches the network")
+        if "MessageBox.Show" in o and "EnsureSelfConnectivity()" in o and \
+           o.index("EnsureSelfConnectivity()") < o.index("MessageBox.Show"):
+            fail("self-permit",
+                 "GunWall permits itself before asking. The dialog is where the "
+                 "user agrees to it; doing it first makes the question cosmetic")
+
+    # The dialog must actually say what it is about to do.
+    offer_raw = re.search(r"private async System\.Threading\.Tasks\.Task "
+                          r"OfferFirstRunDownloadsAsync\(\).*?\n    \}", mw_raw, re.S)
+    if offer_raw and "permit its own executable" not in offer_raw.group(0):
+        fail("self-permit",
+             "the first-run dialog does not tell the user GunWall will permit "
+             "its own executable to reach the network")
+
+    if len(failures) == before:
+        notes.append("self-permit: restored when protection engages, asserted "
+                     "before the first download, and disclosed in the dialog")
+
+
 def check_type_names():
     """A type used in code must exist.
 
@@ -3956,6 +4143,8 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_no_save_before_load()
+    check_self_permit_survives()
     check_type_names()
     check_store_race()
     check_db_refresh_feature()

@@ -405,7 +405,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartDbRefreshLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.138 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.140 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -6227,10 +6227,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             + "  \u2022  Country and network owner for each connection (about 25 MB)\n"
             + "  \u2022  Device manufacturers for network scans (about 4 MB)\n\n"
             + "Both are stored on this machine and used offline. Nothing about you "
-            + "is sent.\n\nDownload them now? You can also do this later from "
+            + "is sent.\n\n"
+            + "To fetch them, GunWall will permit its own executable to reach the "
+            + "network. Nothing else is permitted, and every other application "
+            + "still needs your approval.\n\n"
+            + "Download them now? You can also do this later from "
             + "Settings \u2192 Additional data.",
             "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes) return;
+
+        // Said in the dialog, so done here - and done BEFORE the first request
+        // rather than relying on startup having got there first. On a clean
+        // install this offer is the first thing that tries to reach the network,
+        // and if the permit is missing the download fails against GunWall's own
+        // baseline with nothing explaining why.
+        try { _firewall.EnsureSelfConnectivity(); }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("FirstRun/selfPermit", ex); }
 
         if (!haveGeo) await RefreshGeoIpAsync(manual: true);
         if (!haveOui) await RefreshOuiAsync(manual: true);

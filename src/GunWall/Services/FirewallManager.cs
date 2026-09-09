@@ -59,6 +59,39 @@ public sealed class FirewallManager : IDisposable
     /// every caller remembering the ordering is not correct ordering - the same
     /// conclusion reached for <c>ReconcileReady</c> below, for the same reason.
     /// </summary>
+    /// <summary>
+    /// Writes the profile, and REFUSES to do so before it has been read.
+    ///
+    /// Every setter on this class ends in a save. Until the store is loaded,
+    /// <c>_data</c> is a default-constructed StoreData - so any setter reached
+    /// early does not write one wrong field, it writes an entire empty profile
+    /// over the user's, and the load that follows reads back defaults.
+    ///
+    /// That happened. A ComboBoxItem in the settings XAML carried
+    /// IsSelected="True", so WPF raised SelectionChanged during
+    /// InitializeComponent - in the constructor, before OnLoaded reads the store.
+    /// The handler called SetDbRefreshHours, which saved. Every launch destroyed
+    /// the profile before reading it: rules gone, theme back to default,
+    /// protection off, every application asking for approval again.
+    ///
+    /// The XAML is fixed too, but that fixes one control. This makes the class
+    /// incapable of the mistake, which matters because there are ninety-odd
+    /// setters and any of them can be reached from a designer-raised event.
+    /// </summary>
+    private void SaveStore()
+    {
+        if (!_settingsLoaded)
+        {
+            DiagnosticLog.Log("REFUSED to save the profile before it was read. A "
+                            + "setter ran before EnsureSettingsLoaded, which would "
+                            + "have written an empty profile over the real one. "
+                            + "Nothing was written; the caller is at fault and this "
+                            + "line names the bug.");
+            return;
+        }
+        _store.Save(_data);
+    }
+
     public void EnsureSettingsLoaded()
     {
         if (_settingsLoaded) return;
@@ -161,7 +194,7 @@ public sealed class FirewallManager : IDisposable
     {
         _data.GeoIpMode = mode == "api" ? "api" : "local";
         _data.GeoIpApiUrl = (url ?? "").Trim();
-        _store.Save(_data);
+        SaveStore();
         LoadGeoIp(); // (re)configure the service for the new source
     }
 
@@ -184,7 +217,7 @@ public sealed class FirewallManager : IDisposable
             if (r.Status is AppStatus.Allowed or AppStatus.Blocked)
                 snap[r.ExecutablePath] = $"{r.Status}|{r.DisplayName}";
         _data.RuleProfiles[name] = snap;
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>Apply a saved profile. Returns rules changed, or -1 if unknown.</summary>
@@ -204,7 +237,7 @@ public sealed class FirewallManager : IDisposable
             changed++;
         }
         _data.ActiveProfile = name;
-        _store.Save(_data);
+        SaveStore();
         return changed;
     }
 
@@ -213,7 +246,7 @@ public sealed class FirewallManager : IDisposable
         if (_data.RuleProfiles.Remove(name))
         {
             if (_data.ActiveProfile == name) _data.ActiveProfile = "";
-            _store.Save(_data);
+            SaveStore();
         }
     }
 
@@ -298,7 +331,7 @@ public sealed class FirewallManager : IDisposable
         {
             Found = found, Flagged = flagged, Total = total, CheckedUtc = DateTime.UtcNow
         };
-        _store.Save(_data);
+        SaveStore();
     }
 
     // ===================================================== local DNS resolver (§3)
@@ -317,7 +350,7 @@ public sealed class FirewallManager : IDisposable
         _data.DnsResolverPort = port is > 0 and <= 65535 ? port : 53;
         _data.DnsResolverUpstream = (upstream ?? "").Trim();
         _data.DnsResolverBlocklist = blocklist?.ToList() ?? new List<string>();
-        _store.Save(_data);
+        SaveStore();
     }
 
     // §3a: secure DNS (DoH) configuration.
@@ -349,7 +382,7 @@ public sealed class FirewallManager : IDisposable
                 return false;
             }
             _data.BlockedServices[serviceName] = ids;
-            _store.Save(_data);
+            SaveStore();
             EventLog($"Service blocked: {serviceName} ({ids.Count} filters)");
             DiagnosticLog.Log($"Service block ON: {serviceName} -> {ids.Count} filter(s), " +
                               $"sid={ServiceSidService.SidForServiceName(serviceName)}");
@@ -359,7 +392,7 @@ public sealed class FirewallManager : IDisposable
         if (!_data.BlockedServices.TryGetValue(serviceName, out var existing)) return true;
         try { _engine.RemoveFilters(existing); } catch { }
         _data.BlockedServices.Remove(serviceName);
-        _store.Save(_data);
+        SaveStore();
         EventLog($"Service unblocked: {serviceName}");
         DiagnosticLog.Log($"Service block OFF: {serviceName} -> {existing.Count} filter(s) removed.");
         return true;
@@ -374,7 +407,7 @@ public sealed class FirewallManager : IDisposable
             var ids = _engine.AddServiceBlock(name);
             if (ids.Count > 0) _data.BlockedServices[name] = ids;
         }
-        _store.Save(_data);
+        SaveStore();
         DiagnosticLog.Log($"Re-applied {_data.BlockedServices.Count} service block(s).");
     }
 
@@ -383,7 +416,7 @@ public sealed class FirewallManager : IDisposable
     {
         if (_data.DnsObserveSystemLookups == on) return;
         _data.DnsObserveSystemLookups = on;
-        _store.Save(_data);
+        SaveStore();
         EventLog(on ? "Watching system DNS lookups (passive)"
                     : "Stopped watching system DNS lookups");
     }
@@ -391,7 +424,7 @@ public sealed class FirewallManager : IDisposable
     {
         if (_data.DnsBlockCloakedCnames == enabled) return;
         _data.DnsBlockCloakedCnames = enabled;
-        _store.Save(_data);
+        SaveStore();
         EventLog(enabled
             ? "CNAME-cloaking defense enabled"
             : "CNAME-cloaking defense disabled");
@@ -400,7 +433,7 @@ public sealed class FirewallManager : IDisposable
     {
         _data.DnsDohUrl = (url ?? "").Trim();
         _data.DnsDohFallback = fallback;
-        _store.Save(_data);
+        SaveStore();
         EventLog(_data.DnsDohUrl.Length > 0
             ? $"Secure DNS (DoH) set to {_data.DnsDohUrl}" + (fallback ? " with plaintext fallback" : " (fail closed)")
             : "Secure DNS (DoH) disabled - queries forward in plaintext");
@@ -418,7 +451,7 @@ public sealed class FirewallManager : IDisposable
         _data.DnsRedirectActive = active;
         _data.DnsGamingSession = gaming;
         if (saved != null) _data.DnsSavedAdapters = saved;
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>Download the free CC0 database, then load it. Returns ranges loaded.</summary>
@@ -455,7 +488,7 @@ public sealed class FirewallManager : IDisposable
     public void SetCustomListPath(string path)
     {
         _data.CustomBlocklistPath = path ?? "";
-        _store.Save(_data);
+        SaveStore();
         ReloadCustomList();
     }
 
@@ -522,7 +555,7 @@ public sealed class FirewallManager : IDisposable
         if (rule == null || string.IsNullOrWhiteSpace(rule.Value)) return;
         rule.Value = rule.Value.Trim();
         _data.EntityRules.Add(rule);
-        _store.Save(_data);
+        SaveStore();
         EventLog($"Entity rule added: {rule.TypeLabel} {rule.Value} -> block for {rule.AppLabel}");
     }
 
@@ -534,7 +567,7 @@ public sealed class FirewallManager : IDisposable
             // A rule changed: tear down the reactive filters it (and others) spawned;
             // still-active rules re-form their blocks on the next matching connection.
             ClearEntityReactiveBlocks();
-            _store.Save(_data);
+            SaveStore();
         }
     }
 
@@ -544,7 +577,7 @@ public sealed class FirewallManager : IDisposable
         if (r == null) return;
         r.Enabled = enabled;
         ClearEntityReactiveBlocks();   // re-evaluate cleanly under the new rule set
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>Pure-logic match: does any enabled rule block this app from talking to
@@ -611,7 +644,7 @@ public sealed class FirewallManager : IDisposable
         if (ids.Count == 0) return null; // nothing was installed - don't claim a block
 
         _data.EntityReactiveFilters.AddRange(ids);
-        _store.Save(_data);
+        SaveStore();
 
         string reason = rule.Type switch
         {
@@ -632,7 +665,7 @@ public sealed class FirewallManager : IDisposable
         {
             try { _engine.RemoveFilters(_data.EntityReactiveFilters); } catch { }
             _data.EntityReactiveFilters.Clear();
-            _store.Save(_data);
+            SaveStore();
         }
         _entityBlocked.Clear();
     }
@@ -684,7 +717,7 @@ public sealed class FirewallManager : IDisposable
             FilterIds = ids,
             Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
         });
-        _store.Save(_data);
+        SaveStore();
     }
 
     private void RemoveAllowRule(string exePath)
@@ -695,7 +728,7 @@ public sealed class FirewallManager : IDisposable
         if (rule is null) return;
         _engine.RemoveFilters(rule.FilterIds);
         _data.Rules.Remove(rule);
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>Blocks an application and persists the rule. Idempotent.</summary>
@@ -715,7 +748,7 @@ public sealed class FirewallManager : IDisposable
             FilterIds = ids,
             Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
         });
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>
@@ -741,7 +774,7 @@ public sealed class FirewallManager : IDisposable
             Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
         });
         EventLog($"Blocked {(outbound ? "outbound" : "inbound")}: {displayName}");
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>Removes the block for an application and persists. Idempotent.</summary>
@@ -753,7 +786,7 @@ public sealed class FirewallManager : IDisposable
 
         _engine.RemoveFilters(rule.FilterIds);
         _data.Rules.Remove(rule);
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>§12: probe every WFP layer to confirm this Windows build
@@ -783,7 +816,7 @@ public sealed class FirewallManager : IDisposable
             _data.LockdownEngaged = false;
             DiagnosticLog.Log($"Lockdown RELEASED: {had} block filters removed.");
         }
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>
@@ -871,7 +904,7 @@ public sealed class FirewallManager : IDisposable
             changed++;
         }
 
-        _store.Save(_data);
+        SaveStore();
         EventLog($"Settings reset: {changed} preference(s) returned to default. "
                + "Rules, filters and protection state were not touched.");
         return changed;
@@ -958,7 +991,7 @@ public sealed class FirewallManager : IDisposable
         _data.LockdownEngaged = false;
         _data.DnsRedirectActive = false;
         _data.DnsGamingSession = false;
-        _store.Save(_data);
+        SaveStore();
 
         DiagnosticLog.Log(sublayerGone
             ? "Reset: complete - sublayer removed; rules and settings kept."
@@ -1052,7 +1085,7 @@ public sealed class FirewallManager : IDisposable
         }
 
         _data = keep;
-        _store.Save(_data);
+        SaveStore();
         DiagnosticLog.Log("Store cleared; user-owned settings kept ("
                         + string.Join(", ", UserOwnedSettings) + ").");
     }
@@ -1159,7 +1192,7 @@ public sealed class FirewallManager : IDisposable
     {
         if (string.IsNullOrEmpty(exePath) || !KnownSet.Add(exePath)) return false;
         _data.KnownApps.Add(exePath);
-        _store.Save(_data);
+        SaveStore();
         return true;
     }
 
@@ -1172,7 +1205,7 @@ public sealed class FirewallManager : IDisposable
             if (string.IsNullOrEmpty(p)) continue;
             if (KnownSet.Add(p)) { _data.KnownApps.Add(p); changed = true; }
         }
-        if (changed) _store.Save(_data);
+        if (changed) SaveStore();
     }
 
     /// <summary>
@@ -1200,7 +1233,7 @@ public sealed class FirewallManager : IDisposable
                     _data.SelfFilterIds.Clear();
                 }
                 _data.SelfFilterIds = _engine.PermitApplication(self);
-                _store.Save(_data);
+                SaveStore();
             }
             EventLog("Self-permit re-asserted for GunWall's own executable.");
         }
@@ -1214,7 +1247,7 @@ public sealed class FirewallManager : IDisposable
     public void SaveCategoryColors()
     {
         _data.CategoryColors = CategoryPalette.ToDict();
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>The note attached to an executable, or empty.</summary>
@@ -1240,7 +1273,7 @@ public sealed class FirewallManager : IDisposable
         if (k.Length == 0) return;
         if (string.IsNullOrWhiteSpace(note)) _data.DeviceNotes.Remove(k);
         else _data.DeviceNotes[k] = note.Trim();
-        _store.Save(_data);
+        SaveStore();
     }
 
     public void SetNote(string exePath, string note)
@@ -1248,7 +1281,7 @@ public sealed class FirewallManager : IDisposable
         if (string.IsNullOrEmpty(exePath)) return;
         if (string.IsNullOrWhiteSpace(note)) _data.AppNotes.Remove(exePath);
         else _data.AppNotes[exePath] = note.Trim();
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>
@@ -1264,7 +1297,7 @@ public sealed class FirewallManager : IDisposable
         _data.KnownApps.RemoveAll(p => !ruled.Contains(p));
         _knownSet = null; // force a rebuild on next access
         int removed = before - _data.KnownApps.Count;
-        if (removed > 0) _store.Save(_data);
+        if (removed > 0) SaveStore();
         return removed;
     }
 
@@ -1401,7 +1434,7 @@ public sealed class FirewallManager : IDisposable
                 _data.LockdownFilterIds = _engine.EngageLockdown();
                 made += _data.LockdownFilterIds.Count;
             }
-            _store.Save(_data);
+            SaveStore();
             DiagnosticLog.Log($"Filtering re-applied after tampering: {made} filter(s) installed.");
         }
         catch (Exception ex) { DiagnosticLog.LogException("RepairFiltering", ex); }
@@ -1421,7 +1454,7 @@ public sealed class FirewallManager : IDisposable
     {
         if (_data.TamperWatchEnabled == on) return;
         _data.TamperWatchEnabled = on;
-        _store.Save(_data);
+        SaveStore();
         EventLog(on ? "Filter integrity watch enabled" : "Filter integrity watch disabled");
     }
 
@@ -1450,7 +1483,7 @@ public sealed class FirewallManager : IDisposable
             // and the user gets a prompt the next time each app connects.
             _data.KnownApps.Clear();
             _knownSet = null;
-            _store.Save(_data);
+            SaveStore();
 
             // 2) Re-create permits for previously allowed apps.
             foreach (var rule in _data.Rules.Where(r => r.Status == AppStatus.Allowed))
@@ -1458,7 +1491,7 @@ public sealed class FirewallManager : IDisposable
                 try { rule.FilterIds = _engine.PermitApplication(rule.ExecutablePath); }
                 catch { /* exe may be gone; rule stays recorded */ }
             }
-            _store.Save(_data);
+            SaveStore();
 
             // 3) Safety net: keep core Windows networking alive (DNS/DHCP live
             //    inside these system hosts). Permitting them by app-ID is the
@@ -1468,6 +1501,24 @@ public sealed class FirewallManager : IDisposable
                 try { AllowApp(path, System.IO.Path.GetFileNameWithoutExtension(path)); }
                 catch { /* best effort */ }
             }
+
+            // 4) GunWall itself. Turning protection OFF sweeps EVERY tracked
+            //    filter id, SelfFilterIds among them, and ClearAllFilterIds then
+            //    forgets they existed. Turning it back ON rebuilt the baseline,
+            //    the allowed rules and the core system apps - and not this. So
+            //    after one OFF/ON cycle GunWall was denied by its own baseline
+            //    until the next restart, when EnsureSelfConnectivity ran again.
+            //
+            //    The visible symptom was the first-run database download failing
+            //    on a clean install: the firewall correctly blocked an
+            //    unapproved application, and the unapproved application was
+            //    GunWall. Update checks and VirusTotal lookups were failing the
+            //    same way and had nothing to report it.
+            //
+            //    Idempotent, so calling it here costs nothing when the permit is
+            //    already present.
+            try { EnsureSelfConnectivity(); }
+            catch (Exception ex) { DiagnosticLog.LogException("SetStrictMode/self", ex); }
         }
         else
         {
@@ -1499,7 +1550,7 @@ public sealed class FirewallManager : IDisposable
 
             ClearAllFilterIds(_data);
             _data.StrictMode = false;
-            _store.Save(_data);
+            SaveStore();
         }
     }
 
@@ -1507,7 +1558,7 @@ public sealed class FirewallManager : IDisposable
     {
         if (_data.AlertsEnabled == enabled) return;
         _data.AlertsEnabled = enabled;
-        _store.Save(_data);
+        SaveStore();
     }
 
     // ------------------------------------------------ silent apps
@@ -1535,7 +1586,7 @@ public sealed class FirewallManager : IDisposable
             _data.Rules.Add(rule);
         }
         rule.Silent = silent;
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>Returns the stored hash for an app, or empty if none.</summary>
@@ -1552,13 +1603,13 @@ public sealed class FirewallManager : IDisposable
     /// <summary>Where the user's profile (rules + settings) is stored on disk.</summary>
     public string ProfileFolder => _store.ProfileFolder;
 
-    public void SetStartMinimized(bool v) { _data.StartMinimized = v; _store.Save(_data); }
-    public void SetAlwaysOnTop(bool v) { _data.AlwaysOnTop = v; _store.Save(_data); }
-    public void SetHashesEnabled(bool v) { _data.HashesEnabled = v; _store.Save(_data); }
-    public void SetExperimentalEvents(bool v) { _data.ExperimentalEvents = v; _store.Save(_data); }
+    public void SetStartMinimized(bool v) { _data.StartMinimized = v; SaveStore(); }
+    public void SetAlwaysOnTop(bool v) { _data.AlwaysOnTop = v; SaveStore(); }
+    public void SetHashesEnabled(bool v) { _data.HashesEnabled = v; SaveStore(); }
+    public void SetExperimentalEvents(bool v) { _data.ExperimentalEvents = v; SaveStore(); }
 
     public bool EtwMeterEnabled => _data.EtwMeterEnabled;
-    public void SetEtwMeterEnabled(bool v) { _data.EtwMeterEnabled = v; _store.Save(_data); }
+    public void SetEtwMeterEnabled(bool v) { _data.EtwMeterEnabled = v; SaveStore(); }
 
     // ------------------------------------------------ custom rules
     public IReadOnlyList<CustomRule> CustomRules => _data.CustomRules;
@@ -1572,7 +1623,7 @@ public sealed class FirewallManager : IDisposable
             rule.Applied = rule.FilterIds.Count > 0;
         }
         _data.CustomRules.Add(rule);
-        _store.Save(_data);
+        SaveStore();
     }
 
     public bool RemoveCustomRule(string id)
@@ -1582,7 +1633,7 @@ public sealed class FirewallManager : IDisposable
         if (rule.Protected) return false; // protected rules cannot be deleted
         try { _engine.RemoveFilters(rule.FilterIds); } catch { }
         _data.CustomRules.Remove(rule);
-        _store.Save(_data);
+        SaveStore();
         return true;
     }
 
@@ -1592,7 +1643,7 @@ public sealed class FirewallManager : IDisposable
         var rule = _data.CustomRules.FirstOrDefault(r => r.Id == id);
         if (rule is null) return;
         rule.Protected = prot;
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>Manual sweep: unblocks and clears any timed blocks already past expiry
@@ -1611,7 +1662,7 @@ public sealed class FirewallManager : IDisposable
             if (_tempTimers.TryGetValue(key, out var t)) { t.Dispose(); _tempTimers.Remove(key); }
             n++;
         }
-        if (n > 0) { try { _store.Save(_data); } catch { } }
+        if (n > 0) { try { SaveStore(); } catch { } }
         return n;
     }
 
@@ -1641,7 +1692,7 @@ public sealed class FirewallManager : IDisposable
             _data.Blocklist.Add(ip);
             added++;
         }
-        _store.Save(_data);
+        SaveStore();
         return added;
     }
 
@@ -1650,16 +1701,16 @@ public sealed class FirewallManager : IDisposable
         try { _engine.RemoveFilters(_data.BlocklistFilterIds); } catch { }
         _data.BlocklistFilterIds.Clear();
         _data.Blocklist.Clear();
-        _store.Save(_data);
+        SaveStore();
     }
 
     // ------------------------------------------------ startup
     public bool RunAtStartup => _data.RunAtStartup;
     public bool ThemeDark => _data.ThemeDark;
-    public void SetThemeDark(bool v) { _data.ThemeDark = v; _store.Save(_data); }
+    public void SetThemeDark(bool v) { _data.ThemeDark = v; SaveStore(); }
 
     public string UiFontFamily => _data.UiFontFamily ?? "";
-    public void SetUiFontFamily(string v) { _data.UiFontFamily = v ?? ""; _store.Save(_data); }
+    public void SetUiFontFamily(string v) { _data.UiFontFamily = v ?? ""; SaveStore(); }
 
     // ---- Additional data: GeoIP and MAC vendor databases -------------------
 
@@ -1671,10 +1722,10 @@ public sealed class FirewallManager : IDisposable
         _data.DbRefreshHours is 6 or 12 or 24 ? _data.DbRefreshHours : 24;
 
     public void SetDbAutoRefresh(bool on)
-    { _data.DbAutoRefresh = on; _store.Save(_data); }
+    { _data.DbAutoRefresh = on; SaveStore(); }
 
     public void SetDbRefreshHours(int hours)
-    { _data.DbRefreshHours = hours is 6 or 12 or 24 ? hours : 24; _store.Save(_data); }
+    { _data.DbRefreshHours = hours is 6 or 12 or 24 ? hours : 24; SaveStore(); }
 
     public DateTime? GeoIpLastRefresh => ParseUtc(_data.GeoIpLastRefreshUtc);
     public DateTime? OuiLastRefresh => ParseUtc(_data.OuiLastRefreshUtc);
@@ -1706,7 +1757,7 @@ public sealed class FirewallManager : IDisposable
             _data.OuiLastRefreshResult = line;
             if (success) _data.OuiLastRefreshUtc = stamp;
         }
-        _store.Save(_data);
+        SaveStore();
         DiagnosticLog.Log($"Database refresh ({(geo ? "GeoIP" : "vendor")}): {message}");
     }
 
@@ -1732,11 +1783,11 @@ public sealed class FirewallManager : IDisposable
     {
         if (_data.FirstRunCompleted) return;
         _data.FirstRunCompleted = true;
-        _store.Save(_data);
+        SaveStore();
     }
 
     public string VirusTotalApiKey => _data.VirusTotalApiKey;
-    public void SetVirusTotalApiKey(string v) { _data.VirusTotalApiKey = v?.Trim() ?? ""; _store.Save(_data); }
+    public void SetVirusTotalApiKey(string v) { _data.VirusTotalApiKey = v?.Trim() ?? ""; SaveStore(); }
 
     // ------------------------------------------------ system rules
     public bool IsSystemRuleOn(string key) =>
@@ -1770,25 +1821,25 @@ public sealed class FirewallManager : IDisposable
                 DiagnosticLog.Log($"System rule OFF: {key} -> {ids.Count} filter(s) removed.");
             }
         }
-        _store.Save(_data);
+        SaveStore();
     }
 
     // ------------------------------------------------ event log
     public bool EventLogEnabled => _data.EventLogEnabled;
-    public void SetEventLogEnabled(bool v) { _data.EventLogEnabled = v; _store.Save(_data); }
+    public void SetEventLogEnabled(bool v) { _data.EventLogEnabled = v; SaveStore(); }
 
     public bool FullscreenSilent => _data.FullscreenSilent;
-    public void SetFullscreenSilent(bool v) { _data.FullscreenSilent = v; _store.Save(_data); }
+    public void SetFullscreenSilent(bool v) { _data.FullscreenSilent = v; SaveStore(); }
     public bool ConfirmClearLogs => _data.ConfirmClearLogs;
-    public void SetConfirmClearLogs(bool v) { _data.ConfirmClearLogs = v; _store.Save(_data); }
+    public void SetConfirmClearLogs(bool v) { _data.ConfirmClearLogs = v; SaveStore(); }
     public bool AlwaysConfirmExit => _data.AlwaysConfirmExit;
-    public void SetAlwaysConfirmExit(bool v) { _data.AlwaysConfirmExit = v; _store.Save(_data); }
+    public void SetAlwaysConfirmExit(bool v) { _data.AlwaysConfirmExit = v; SaveStore(); }
     public int MaxLogEntries => _data.MaxLogEntries;
-    public void SetMaxLogEntries(int v) { _data.MaxLogEntries = v < 0 ? 0 : v; _store.Save(_data); }
+    public void SetMaxLogEntries(int v) { _data.MaxLogEntries = v < 0 ? 0 : v; SaveStore(); }
     public int MaxLogFileMB => _data.MaxLogFileMB;
-    public void SetMaxLogFileMB(int v) { _data.MaxLogFileMB = v < 1 ? 1 : v; _store.Save(_data); }
+    public void SetMaxLogFileMB(int v) { _data.MaxLogFileMB = v < 1 ? 1 : v; SaveStore(); }
     public bool KeepUnusedApps => _data.KeepUnusedApps;
-    public void SetKeepUnusedApps(bool v) { _data.KeepUnusedApps = v; _store.Save(_data); }
+    public void SetKeepUnusedApps(bool v) { _data.KeepUnusedApps = v; SaveStore(); }
 
     /// <summary>Total WFP filters GunWall currently has installed across all layers
     /// (sum of every stored filter id). A live window into the kernel-side footprint.</summary>
@@ -1844,7 +1895,7 @@ public sealed class FirewallManager : IDisposable
             _data.AccessPolicies.Remove(key);
         }
         ClearAccessReactiveBlocks(exePath); // re-evaluate cleanly under the new rules
-        _store.Save(_data);
+        SaveStore();
         EventLog($"Access policy updated for {System.IO.Path.GetFileName(exePath)}");
     }
 
@@ -1858,7 +1909,7 @@ public sealed class FirewallManager : IDisposable
         string key = ScopeKey(exePath, "access");
         if (_data.ScopeFilters.TryGetValue(key, out var existing)) existing.AddRange(ids);
         else _data.ScopeFilters[key] = ids;
-        _store.Save(_data);
+        SaveStore();
         return true;
     }
 
@@ -1901,7 +1952,7 @@ public sealed class FirewallManager : IDisposable
             }
             EventLog($"P2P/direct blocking disabled for {System.IO.Path.GetFileName(exePath)}");
         }
-        _store.Save(_data);
+        SaveStore();
     }
 
     /// <summary>Reactively block one direct destination for a P2P-flagged app.
@@ -2111,7 +2162,7 @@ public sealed class FirewallManager : IDisposable
                 lock (_dataLock) _data.Rules.Remove(r);
             }
 
-            lock (_dataLock) _store.Save(_data);
+            lock (_dataLock) SaveStore();
             DiagnosticLog.Log($"Startup reconcile: removed {dead.Count} rule(s) whose program is "
                             + $"gone from a mounted local disk, and {filters} filter(s) they held - "
                             + string.Join(", ", dead.Select(r => r.DisplayName)));
@@ -2205,7 +2256,7 @@ public sealed class FirewallManager : IDisposable
             }
         }
 
-        _store.Save(_data);
+        SaveStore();
         EventLog(bypass
             ? $"Blocklists no longer apply to {System.IO.Path.GetFileName(exePath)} at the kernel "
               + $"layer; removed {removed} existing filter(s). Blocked names are still refused by "
@@ -2225,7 +2276,7 @@ public sealed class FirewallManager : IDisposable
         if (ids.Count == 0) return false;
 
         _data.ScopeFilters[key] = ids;
-        _store.Save(_data);
+        SaveStore();
         EventLog($"Blocked domain enforced for one app: {System.IO.Path.GetFileName(exePath)} "
                + $"-> {remoteIp} ({domain}). Other applications are unaffected.");
         return true;
@@ -2308,7 +2359,7 @@ public sealed class FirewallManager : IDisposable
         string key = "domainblock|" + domain.ToLowerInvariant();
         if (_data.ScopeFilters.TryGetValue(key, out var existing)) existing.AddRange(ids);
         else _data.ScopeFilters[key] = ids;
-        _store.Save(_data);
+        SaveStore();
         EventLog($"Blocked domain enforced: {domain} -> {remoteIp}");
         return true;
     }
@@ -2331,7 +2382,7 @@ public sealed class FirewallManager : IDisposable
             catch { }
             _data.ScopeFilters.Remove(key);
         }
-        if (removed > 0) { _store.Save(_data); EventLog($"Cleared {removed} blocked-domain filter(s)."); }
+        if (removed > 0) { SaveStore(); EventLog($"Cleared {removed} blocked-domain filter(s)."); }
         return removed;
     }
 
@@ -2342,7 +2393,7 @@ public sealed class FirewallManager : IDisposable
         string key = ScopeKey(exePath, "p2p");
         if (_data.ScopeFilters.TryGetValue(key, out var existing)) existing.AddRange(ids);
         else _data.ScopeFilters[key] = ids;
-        _store.Save(_data);
+        SaveStore();
         EventLog($"P2P direct connection blocked: {System.IO.Path.GetFileName(exePath)} -> {remoteIp}");
         return true;
     }
@@ -2366,13 +2417,13 @@ public sealed class FirewallManager : IDisposable
                 EventLog($"Scope block disabled: {scope} for {System.IO.Path.GetFileName(exePath)}");
             }
         }
-        _store.Save(_data);
+        SaveStore();
     }
 
     // ------------------------------------------------ packet file logging
     private PacketLogFile? _packetLog;
     public bool PacketFileLogging => _data.PacketFileLogging;
-    public void SetPacketFileLogging(bool v) { _data.PacketFileLogging = v; _store.Save(_data); }
+    public void SetPacketFileLogging(bool v) { _data.PacketFileLogging = v; SaveStore(); }
 
     /// <summary>Writes one packet entry to the CSV log if file logging is on.</summary>
     public void LogPacketToFile(DateTime time, bool blocked, string app, string protocol,
@@ -2388,7 +2439,7 @@ public sealed class FirewallManager : IDisposable
 
     // ------------------------------------------------ notification options
     public bool NotificationSound => _data.NotificationSound;
-    public void SetNotificationSound(bool v) { _data.NotificationSound = v; _store.Save(_data); }
+    public void SetNotificationSound(bool v) { _data.NotificationSound = v; SaveStore(); }
     /// <summary>Alerts-page categories the user silenced (see MainWindow.Notify).</summary>
     public IReadOnlyList<string> MutedAlertCategories => _data.MutedAlertCategories;
     public void SetAlertCategoryMuted(string cat, bool muted)
@@ -2397,22 +2448,22 @@ public sealed class FirewallManager : IDisposable
         if (muted == has) return;               // no change - skip the disk write
         if (muted) _data.MutedAlertCategories.Add(cat);
         else _data.MutedAlertCategories.Remove(cat);
-        _store.Save(_data);
+        SaveStore();
     }
 
     public bool TraySingleClick => _data.TraySingleClick;
-    public void SetTraySingleClick(bool v) { _data.TraySingleClick = v; _store.Save(_data); }
+    public void SetTraySingleClick(bool v) { _data.TraySingleClick = v; SaveStore(); }
 
     public int UiZoomPercent => _data.UiZoomPercent;
-    public void SetUiZoomPercent(int v) { _data.UiZoomPercent = Math.Clamp(v, 75, 150); _store.Save(_data); }
+    public void SetUiZoomPercent(int v) { _data.UiZoomPercent = Math.Clamp(v, 75, 150); SaveStore(); }
 
     public bool TrayNotifications => _data.TrayNotifications;
-    public void SetTrayNotifications(bool v) { _data.TrayNotifications = v; _store.Save(_data); }
+    public void SetTrayNotifications(bool v) { _data.TrayNotifications = v; SaveStore(); }
 
     public int PopupTimeoutSeconds => _data.PopupTimeoutSeconds;
-    public void SetPopupTimeoutSeconds(int v) { _data.PopupTimeoutSeconds = v < 0 ? 0 : v; _store.Save(_data); }
+    public void SetPopupTimeoutSeconds(int v) { _data.PopupTimeoutSeconds = v < 0 ? 0 : v; SaveStore(); }
     public bool PopupDefaultAllow => _data.PopupDefaultAllow;
-    public void SetPopupDefaultAllow(bool v) { _data.PopupDefaultAllow = v; _store.Save(_data); }
+    public void SetPopupDefaultAllow(bool v) { _data.PopupDefaultAllow = v; SaveStore(); }
 
     /// <summary>Writes to the Windows Event Log if the user enabled it, and always to the diagnostic log.</summary>
     public void EventLog(string message)
@@ -2465,7 +2516,7 @@ public sealed class FirewallManager : IDisposable
     /// The export runs on a background thread (<c>Task.Run</c> from the settings
     /// screen) and takes seconds, because it shells out to netsh and ipconfig
     /// with an eight-second timeout each. The UI thread is free throughout. Any
-    /// of the ninety-plus <c>_store.Save(_data)</c> call sites reached inside
+    /// of the ninety-plus <c>SaveStore()</c> call sites reached inside
     /// that window - approving one application at a prompt is enough -
     /// serialises the SAME object and writes "(redacted)" to rules.json as the
     /// real value. The user would lose their API key by exporting a diagnostics
@@ -2623,7 +2674,7 @@ public sealed class FirewallManager : IDisposable
         string key = exePath.ToLowerInvariant();
         DateTime expiryUtc = DateTime.UtcNow.Add(duration);
         _data.TempBlocks[key] = expiryUtc;   // persist so it survives a restart
-        _store.Save(_data);
+        SaveStore();
 
         ArmTempTimer(key, exePath, displayName, duration);
         return DateTime.Now.Add(duration);
@@ -2642,7 +2693,7 @@ public sealed class FirewallManager : IDisposable
             finally
             {
                 _data.TempBlocks.Remove(key);
-                try { _store.Save(_data); } catch { }
+                try { SaveStore(); } catch { }
                 if (_tempTimers.TryGetValue(key, out var t)) { t.Dispose(); _tempTimers.Remove(key); }
             }
         }, null, duration, System.Threading.Timeout.InfiniteTimeSpan);
@@ -2678,7 +2729,7 @@ public sealed class FirewallManager : IDisposable
                 ArmTempTimer(key, path, name, expiry - now);
             }
         }
-        _store.Save(_data);
+        SaveStore();
     }
 
     // ------------------------------------------------ snooze (pause protection)
@@ -2727,7 +2778,7 @@ public sealed class FirewallManager : IDisposable
         bool ok = StartupService.SetEnabled(enabled);
         // Persist the user's intent regardless; reflect actual state if it failed.
         _data.RunAtStartup = enabled && ok;
-        _store.Save(_data);
+        SaveStore();
         if (!ok && enabled)
             throw new InvalidOperationException(
                 "Could not register the startup task. Make sure GunWall is running as administrator.");
@@ -2804,7 +2855,7 @@ public sealed class FirewallManager : IDisposable
     private const int MaxBackups = 15;
 
     public bool AutoBackup => _data.AutoBackup;
-    public void SetAutoBackup(bool v) { _data.AutoBackup = v; _store.Save(_data); }
+    public void SetAutoBackup(bool v) { _data.AutoBackup = v; SaveStore(); }
 
     // ------------------------------------------------ curated blocklists (hosts-file based)
     private string ListsFolder
@@ -2938,7 +2989,7 @@ public sealed class FirewallManager : IDisposable
             }
             _data.EnabledBlocklists.Remove(key);
             RebuildHostsBlock(); // best effort for any remaining hosts-enforced lists
-            _store.Save(_data);
+            SaveStore();
             EventLog($"Blocklist disabled: {key}");
             return true;
         }
@@ -2949,7 +3000,7 @@ public sealed class FirewallManager : IDisposable
         _data.EnabledBlocklists.Add(key);
         if (RebuildHostsBlock())
         {
-            _store.Save(_data);
+            SaveStore();
             EventLog($"Blocklist enabled (hosts file): {key}");
             return true;
         }
@@ -2977,7 +3028,7 @@ public sealed class FirewallManager : IDisposable
 
         _data.BlocklistWfpFilters[key] = ids;       // enforced via WFP now
         RebuildHostsBlock();                         // ensure this one isn't in the hosts file
-        _store.Save(_data);
+        SaveStore();
         EventLog($"Blocklist enabled (WFP fallback, {ids.Count} filters): {key}");
         return true;
     }
@@ -3060,7 +3111,7 @@ public sealed class FirewallManager : IDisposable
             if (!_data.EnabledBlocklists.Contains(kv.Key)) _data.EnabledBlocklists.Add(kv.Key);
         }
         _data.Blocklists.Clear();
-        _store.Save(_data);
+        SaveStore();
         try { RebuildHostsBlock(); } catch { }
     }
 
@@ -3072,7 +3123,7 @@ public sealed class FirewallManager : IDisposable
         var preset = DnsService.ByKey(key);
         int n = DnsService.Apply(preset);
         _data.DnsProvider = preset.Key;
-        _store.Save(_data);
+        SaveStore();
         EventLog($"DNS set to {preset.Name} on {n} adapter(s)");
         return n;
     }
@@ -3205,7 +3256,7 @@ public sealed class FirewallManager : IDisposable
         var imported = _store.Import(filePath);
         _data = imported;
         _knownSet = null;
-        _store.Save(_data);
+        SaveStore();
         return _data.Rules.Count;
     }
 
