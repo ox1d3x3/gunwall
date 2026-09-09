@@ -15,6 +15,90 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.137] — 2026-09-09
+
+### Added — the profile read and the reconcile input are now recorded
+Three separate diagnoses of "the rules disappeared on restart" have been made
+without knowing whether the profile was read, **which file** was read, or what was
+in it. Every one of them was a guess, and two were wrong.
+
+Two lines are now written at startup:
+
+```
+Profile read from <path> | exists=? size=? modifiedUtc=? |
+  rules=? ruleFilterIds=? strict=? self=? StrictMode=?
+
+Reconcile input: live=? walked=? rules=? ruleFilterIdsInStore=?
+  self=? strict=?
+```
+
+The first says which file was opened and what came out of it. `RuleStore.Load()`
+returns defaults silently when the file does not exist, so a build resolving a
+different profile folder — a portable copy beside its executable, for instance —
+was indistinguishable from a corrupt profile and from a broken walk.
+
+The second separates two failures that have looked identical in every report so
+far: `walked` far below `ruleFilterIdsInStore` means the reflective walk is at
+fault, while both being zero means the store itself is empty.
+
+`RuleStore.FilePath` is exposed for the first line.
+
+*Diagnostic only. No behaviour changes.*
+
+---
+
+## [0.99.136] — 2026-09-09
+
+### Fixed — the startup reconcile raced the self-permit and lost the rules
+This is the cause of the rules disappearing on restart. It is a data race, which
+is why it came and went: the same machine logged `all accounted for` twice and
+`4 tracked` three times over two days on builds that differed in nothing relevant.
+
+`MainWindow.OnLoaded` starts the reconcile on a background thread:
+
+```csharp
+_ = Task.Run(() => { _firewall.ReconcileOrphanFilters(); ... });
+_firewall.EnsureSelfConnectivity();   // UI thread, at the same moment
+```
+
+`ReconcileOrphanFilters` walks the entire store reflectively to learn which
+filters this installation owns. `EnsureSelfConnectivity` clears and replaces
+`SelfFilterIds` on the other thread. The walk enumerated a collection that was
+being mutated and threw *"collection was modified"* — and `CollectFilterIds`
+caught it per property with a bare `catch { }`.
+
+So an entire subtree of rules was abandoned mid-walk, silently. The reconcile
+received four tracked ids instead of a hundred, concluded the rest were orphans,
+and deleted them. The rules were then rebuilt from nothing and every application
+asked for approval again.
+
+Three fixes:
+
+- A single lock now guards the store. The reflective walk, the self-permit
+  rewrite and the dead-rule prune all take it.
+- `CollectFilterIds` no longer swallows. A property holding no filter ids does not
+  throw; one being mutated on another thread does, and the difference matters. It
+  now logs which property failed and raises, so a partial walk cannot be mistaken
+  for a complete one.
+- The reconcile's outer handler already logs and removes nothing on any exception,
+  so a failed walk now aborts safely rather than deleting.
+
+`PruneDeadRules` was gated for the same reason: it enumerates and mutates rules on
+the startup thread while the UI thread can be adding approvals from a prompt.
+
+*The 0.99.135 guard did its job — that build logged "nothing tracked beyond
+GunWall's own 4 self-permit filter(s) - declining to act" and removed nothing. It
+prevented the damage without addressing the cause. This is the cause.*
+
+### Added — check `store-race`
+Asserts the lock exists, that the walk, the self-permit and the prune all take it,
+and that the walk propagates a failure rather than returning a partial set. Five
+defects were reintroduced individually and the check confirmed failing on each.
+
+Recorded as trap 2.31.
+
+---
+
 ## [0.99.135] — 2026-09-08
 
 ### Fixed — the startup reconcile could delete a working filter set

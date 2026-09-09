@@ -25,6 +25,23 @@ public sealed class FirewallManager : IDisposable
     private bool _settingsLoaded;
 
     /// <summary>
+    /// Guards <c>_data</c> against being read while it is being restructured.
+    ///
+    /// The startup reconcile runs on a background thread and walks the whole
+    /// store reflectively. EnsureSelfConnectivity runs on the UI thread at the
+    /// same moment and clears and replaces SelfFilterIds. The walk therefore
+    /// enumerated a collection that another thread was mutating, threw
+    /// "collection was modified", and had that exception swallowed by the
+    /// per-property catch - abandoning the Rules subtree and reporting four
+    /// tracked filters where there were a hundred.
+    ///
+    /// Intermittent by nature, which is why it presented as "sometimes the rules
+    /// come back and sometimes they do not": the same machine logged "all
+    /// accounted for" twice and "4 tracked" three times over two days.
+    /// </summary>
+    private readonly object _dataLock = new();
+
+    /// <summary>
     /// Reads persisted settings from disk if they have not been read yet, and
     /// does nothing on every call after the first.
     ///
@@ -47,6 +64,26 @@ public sealed class FirewallManager : IDisposable
         if (_settingsLoaded) return;
         _data = _store.Load();
         _settingsLoaded = true;
+
+        // Recorded because three separate diagnoses of "the rules disappeared"
+        // were made without knowing whether the profile had been read, which file
+        // was read, or what was in it. Every one of those was a guess. This turns
+        // the next occurrence into one line of evidence.
+        int ruleIds = 0;
+        try { foreach (var r in _data.Rules) ruleIds += r.FilterIds.Count; } catch { }
+        bool exists = false; long size = -1; string when = "-";
+        try
+        {
+            var fi = new System.IO.FileInfo(_store.FilePath);
+            exists = fi.Exists;
+            if (exists) { size = fi.Length; when = fi.LastWriteTimeUtc.ToString("u"); }
+        }
+        catch { }
+
+        DiagnosticLog.Log($"Profile read from {_store.FilePath} | exists={exists} "
+                        + $"size={size} modifiedUtc={when} | rules={_data.Rules.Count} "
+                        + $"ruleFilterIds={ruleIds} strict={_data.StrictFilterIds.Count} "
+                        + $"self={_data.SelfFilterIds.Count} StrictMode={_data.StrictMode}");
     }
 
     public bool LockdownEngaged => _data.LockdownEngaged;
@@ -1094,8 +1131,22 @@ public sealed class FirewallManager : IDisposable
         foreach (var p in node.GetType().GetProperties())
         {
             if (p.GetIndexParameters().Length > 0 || !p.CanRead) continue;
+            // NOT swallowed. A property that genuinely holds no ids does not
+            // throw; a property being mutated on another thread does, and that
+            // exception abandons an entire subtree. Swallowing it turned a race
+            // into "4 tracked" with no evidence anywhere that a hundred rules had
+            // just been skipped, and the reconcile then deleted the filters they
+            // held. Whatever the cause, the caller must know the walk is partial.
             try { CollectFilterIds(p.GetValue(node), into, seen); }
-            catch { /* a property that throws is not a filter id */ }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log($"Filter-id walk failed on {node.GetType().Name}."
+                                + $"{p.Name} ({ex.GetType().Name}: {ex.Message}). The "
+                                + "tracked set is INCOMPLETE and must not be treated as "
+                                + "a complete picture of what this installation owns.");
+                throw new InvalidOperationException(
+                    $"Filter-id walk incomplete at {node.GetType().Name}.{p.Name}.", ex);
+            }
         }
     }
 
@@ -1138,14 +1189,19 @@ public sealed class FirewallManager : IDisposable
             string self = Environment.ProcessPath ?? "";
             if (string.IsNullOrEmpty(self)) return;
 
-            // Drop any stale permit from a previous run, then add a fresh one.
-            if (_data.SelfFilterIds.Count > 0)
+            // Under the gate: the startup reconcile walks _data reflectively on a
+            // background thread and this is the mutation it was racing.
+            lock (_dataLock)
             {
-                try { _engine.RemoveFilters(_data.SelfFilterIds); } catch { }
-                _data.SelfFilterIds.Clear();
+                // Drop any stale permit from a previous run, then add a fresh one.
+                if (_data.SelfFilterIds.Count > 0)
+                {
+                    try { _engine.RemoveFilters(_data.SelfFilterIds); } catch { }
+                    _data.SelfFilterIds.Clear();
+                }
+                _data.SelfFilterIds = _engine.PermitApplication(self);
+                _store.Save(_data);
             }
-            _data.SelfFilterIds = _engine.PermitApplication(self);
-            _store.Save(_data);
             EventLog("Self-permit re-asserted for GunWall's own executable.");
         }
         catch { /* never let self-permit setup crash startup */ }
@@ -1896,7 +1952,18 @@ public sealed class FirewallManager : IDisposable
             if (live.Count == 0) return 0;
 
             var tracked = new HashSet<ulong>();
-            CollectFilterIds(_data, tracked, new HashSet<object>(ReferenceEqualityComparer.Instance));
+            int ruleIdsInStore = 0;
+            lock (_dataLock)
+            {
+                CollectFilterIds(_data, tracked, new HashSet<object>(ReferenceEqualityComparer.Instance));
+                foreach (var r in _data.Rules) ruleIdsInStore += r.FilterIds.Count;
+            }
+
+            // The two numbers that separate "the walk is broken" from "the store
+            // is empty". They have been indistinguishable in every report so far.
+            DiagnosticLog.Log($"Reconcile input: live={live.Count} walked={tracked.Count} "
+                            + $"rules={_data.Rules.Count} ruleFilterIdsInStore={ruleIdsInStore} "
+                            + $"self={_data.SelfFilterIds.Count} strict={_data.StrictFilterIds.Count}");
 
             // GUARD ONE. Knowing nothing is not the same as knowing everything is
             // an orphan, and 0.99.92 could not tell the difference: it ran while
@@ -2017,10 +2084,16 @@ public sealed class FirewallManager : IDisposable
             // What replaces it is a better question than "does it hold filters" -
             // it asks whether the file can be TRUSTED to be gone. See
             // VolumeSaysGone.
-            var dead = _data.Rules
-                .Where(r => !IsApplicablePath(r.ExecutablePath)
-                            && VolumeSaysGone(r.ExecutablePath))
-                .ToList();
+            // Snapshotted under the gate. This runs on the startup background
+            // thread while the UI thread can be adding rules from an approval
+            // prompt; enumerating _data.Rules while that happens throws, and the
+            // caller sees an empty prune rather than a broken one.
+            List<AppRule> dead;
+            lock (_dataLock)
+                dead = _data.Rules
+                    .Where(r => !IsApplicablePath(r.ExecutablePath)
+                                && VolumeSaysGone(r.ExecutablePath))
+                    .ToList();
             if (dead.Count == 0) return 0;
 
             // The filters must go with the rule. Removing the rule alone would
@@ -2035,10 +2108,10 @@ public sealed class FirewallManager : IDisposable
                     try { _engine.RemoveFilters(r.FilterIds); filters += r.FilterIds.Count; }
                     catch (Exception ex) { DiagnosticLog.LogException("PruneDeadRules/filters", ex); }
                 }
-                _data.Rules.Remove(r);
+                lock (_dataLock) _data.Rules.Remove(r);
             }
 
-            _store.Save(_data);
+            lock (_dataLock) _store.Save(_data);
             DiagnosticLog.Log($"Startup reconcile: removed {dead.Count} rule(s) whose program is "
                             + $"gone from a mounted local disk, and {filters} filter(s) they held - "
                             + string.Join(", ", dead.Select(r => r.DisplayName)));

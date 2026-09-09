@@ -698,6 +698,37 @@ found in it, both by the suite reporting against its own source:
 that use it, not only on its own. Both faults above appeared as failures in
 unrelated checks, which is what identified them.
 
+### 2.31 A swallowed exception turning a race into a deletion
+
+The startup reconcile walked the store reflectively on a background thread while
+the self-permit rewrote part of it on the UI thread. The walk threw "collection
+was modified", a per-property `catch { }` swallowed it, and the abandoned subtree
+read as "these filters belong to nobody". The reconcile deleted them.
+
+Two failures compounded. The race made the walk incomplete; the swallowed
+exception made an incomplete walk indistinguishable from a complete one.
+
+**Rule:** a reflective walk over shared state is an enumeration, and enumerations
+are not thread-safe. If a walk can run while anything else can write, it needs a
+lock - and every writer needs the same one, not just the obvious writer.
+
+**Rule:** `catch { }` around a read is only acceptable when the exception carries
+no information. Here it carried the difference between "this property has no
+filter ids" and "this walk is invalid", and the caller acted destructively on the
+wrong reading.
+
+**Rule:** intermittent means concurrent until proved otherwise. Reports that a
+symptom "sometimes" happens on identical builds are evidence about timing, not
+about the versions being compared. Two days were spent comparing builds and
+profile paths before the two call sites eight lines apart were read together.
+
+**Rule:** a guard that prevents damage is not a fix. 2.20's guard, corrected in
+0.99.135, stopped the deletion and reported honestly - and the underlying walk was
+still returning four ids out of a hundred on every affected run. Fixing the report
+is not fixing the cause, and the honest log is what made the cause findable.
+
+**Check:** `store-race`, five falsifying mutations.
+
 ---
 
 ## 3. Working agreements

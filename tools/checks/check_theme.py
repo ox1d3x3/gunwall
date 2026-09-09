@@ -1474,6 +1474,85 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_store_race():
+    """The store must not be read reflectively while another thread mutates it.
+
+    Trap 2.31. `ReconcileOrphanFilters` runs on a background thread from the
+    window's Loaded handler and walks the whole store reflectively.
+    `EnsureSelfConnectivity` runs on the UI thread at the same moment and clears
+    and replaces `SelfFilterIds`. The walk enumerated a collection being mutated,
+    threw "collection was modified", and the per-property `catch { }` swallowed
+    it - abandoning the Rules subtree and reporting FOUR tracked filters where
+    there were a hundred. The reconcile then deleted the filters those rules
+    held.
+
+    It presented as "sometimes my rules come back and sometimes they do not",
+    because it is a race. One machine logged `all accounted for` twice and
+    `4 tracked` three times across two days, on builds that differed in nothing
+    relevant.
+
+    Asserts:
+      - a lock exists guarding the store object
+      - the reflective walk is performed under it
+      - the self-permit mutation is performed under it
+      - the dead-rule prune snapshots and mutates under it
+      - the walk does NOT swallow exceptions, because a property holding no ids
+        does not throw and one being mutated does
+    """
+    before = len(failures)
+    fm = (APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8")
+
+    if not re.search(r"private readonly object _dataLock", fm):
+        fail("store-race", "no lock guards the store, so the startup reconcile "
+                           "can walk it while the self-permit rewrites it")
+        return
+
+    def under_lock(name, pattern, why):
+        m = re.search(pattern, fm, re.S)
+        if not m:
+            fail("store-race", f"{name} not found")
+            return
+        if "lock (_dataLock)" not in m.group(0):
+            fail("store-race", why)
+
+    under_lock("ReconcileOrphanFilters",
+               r"public int ReconcileOrphanFilters\(\).*?\n    \}",
+               "the reflective walk is not performed under _dataLock. Another "
+               "thread rewriting SelfFilterIds makes it throw mid-enumeration, "
+               "and a partial walk reads as 'these filters are orphans'")
+
+    under_lock("EnsureSelfConnectivity",
+               r"public void EnsureSelfConnectivity\(\).*?\n    \}",
+               "the self-permit rewrites the store outside _dataLock, which is "
+               "the mutation the startup walk was racing")
+
+    under_lock("PruneDeadRules",
+               r"public int PruneDeadRules\(\).*?\n    \}",
+               "the dead-rule prune enumerates and mutates the store outside "
+               "_dataLock while the UI thread can be adding approved rules")
+
+    walk = re.search(r"private static void CollectFilterIds.*?\n    \}", fm, re.S)
+    if not walk:
+        fail("store-race", "CollectFilterIds not found")
+    else:
+        w = walk.group(0)
+        # The bare `catch { }` is what made the race invisible for two days.
+        if re.search(r"catch\s*\{\s*/?\*?[^}]*\*?/?\s*\}", w) and "catch (Exception" not in w:
+            fail("store-race",
+                 "CollectFilterIds swallows exceptions. A property that holds no "
+                 "filter ids does not throw; one being mutated on another thread "
+                 "does, and swallowing it silently abandons an entire subtree")
+        if "throw" not in w:
+            fail("store-race",
+                 "CollectFilterIds does not propagate a failed walk, so the "
+                 "caller cannot tell a complete tracked set from a partial one "
+                 "and will treat the difference as orphans to delete")
+
+    if len(failures) == before:
+        notes.append("store-race: walk, self-permit and prune all under one lock; "
+                     "a partial walk raises instead of reading as orphans")
+
+
 def check_db_refresh_feature():
     """The scheduled refresh must stay opt-in, metered-aware and independent.
 
@@ -3803,6 +3882,7 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_store_race()
     check_db_refresh_feature()
     check_usings_declared()
     check_db_download_safety()

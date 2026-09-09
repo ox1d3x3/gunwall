@@ -18,6 +18,11 @@ public sealed class RuleStore
 
     private readonly string _dir;
     private readonly string _file;
+
+    /// <summary>Full path of the profile file, for diagnostics. Two builds run
+    /// from different folders resolve this differently if either is portable,
+    /// and nothing recorded which one was in use.</summary>
+    public string FilePath => _file;
     private readonly object _gate = new();
 
     public RuleStore()
