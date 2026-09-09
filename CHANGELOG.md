@@ -15,6 +15,38 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.138] — 2026-09-09
+
+### Fixed — 0.99.137 did not compile
+`PruneDeadRules` declared `List<AppRule>`. The element type of `StoreData.Rules`
+is `FirewallRule`; `AppRule` does not exist. Introduced in 0.99.136 and shipped
+twice before the build machine reported CS0246.
+
+The verification before packaging was `"AppRule" in source`, which returned true
+because `AppRuleCount` and `GetAppRules()` exist. A substring is not a symbol.
+This is the same neighbourhood match that has now accounted for more defects here
+than any other single cause, and the second build broken this way in three
+releases after `Stream` without `using System.IO;`.
+
+### Added — check `type-names`
+Collects every type declared in the tree — including `record struct`, which the
+first draft of the scan missed — and asserts that every type used in a
+construction or generic position resolves to one of those or to an explicit list
+of framework types already in use.
+
+The framework list is closed on purpose. Adding a genuinely new one is a
+deliberate line in the check; the failure being prevented is a name nobody
+verified.
+
+Four defects were reintroduced individually — the original `List<AppRule>`, a
+`new` on a missing type, a misspelled generic argument and an unknown
+`IEnumerable<>` argument — and the check confirmed failing on each.
+
+*The NU1900 warnings in the same build are NuGet being unreachable from the build
+machine and are unrelated.*
+
+---
+
 ## [0.99.137] — 2026-09-09
 
 ### Added — the profile read and the reconcile input are now recorded

@@ -405,7 +405,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartDbRefreshLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.137 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.138 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it

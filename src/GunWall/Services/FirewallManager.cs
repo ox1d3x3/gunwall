@@ -2088,7 +2088,7 @@ public sealed class FirewallManager : IDisposable
             // thread while the UI thread can be adding rules from an approval
             // prompt; enumerating _data.Rules while that happens throws, and the
             // caller sees an empty prune rather than a broken one.
-            List<AppRule> dead;
+            List<FirewallRule> dead;
             lock (_dataLock)
                 dead = _data.Rules
                     .Where(r => !IsApplicablePath(r.ExecutablePath)

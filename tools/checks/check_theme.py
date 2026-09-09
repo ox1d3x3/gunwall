@@ -1474,6 +1474,80 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_type_names():
+    """A type used in code must exist.
+
+    Trap 2.32. `List<AppRule>` was written in 0.99.136 against a collection whose
+    element type is `FirewallRule`. It reached the maintainer as CS0246 - the
+    second build broken this way in three releases, after `Stream` without
+    `using System.IO;`.
+
+    Both times the pre-package verification was a substring test: `"AppRule" in
+    source` returned True because `AppRuleCount` and `GetAppRules()` exist. A
+    substring is not a symbol, which is the same neighbourhood match that has now
+    accounted for more defects in this project than any other single cause.
+
+    Every type name appearing in a construction or generic position must either
+    be declared in this tree or be a framework type this tree already uses. The
+    framework list is explicit and closed: adding a new one is a deliberate line,
+    not an accident, and that is the point - the failure mode being prevented is
+    a name nobody checked.
+    """
+    before = len(failures)
+
+    FRAMEWORK = {
+        "Action", "ArgumentException", "BitmapImage", "ByteArrayContent",
+        "CancellationTokenSource", "CornerRadius", "DateTime", "DockPanel",
+        "Duration", "EventLog", "EventSourceCreationData", "Exception",
+        "FileInfo", "FileStream", "FontFamily", "GZipStream", "Grid",
+        "GridLength", "Guid", "HttpClient", "HttpRequestMessage", "IPAddress",
+        "IPEndPoint", "IntPtr", "InvalidDataException", "InvalidOperationException",
+        "NotSupportedException", "PathGeometry", "Ping", "Point",
+        "PointCollection", "ProcessStartInfo", "PropertyMetadata",
+        "QuadraticBezierSegment", "RadioButton", "Rect", "RoutedEventArgs", "Run",
+        "ScaleTransform", "SolidColorBrush", "StreamGeometry", "StreamReader",
+        "StreamWriter", "StringBuilder", "StringReader", "Task", "Thickness",
+        "Thread", "UIElement", "UInt128", "UdpClient", "Uri", "Version", "Window",
+        "WindowInteropHelper", "X509Certificate2",
+    }
+    DECL = (r"\b(?:class|struct|interface|enum)\s+(\w+)"
+            r"|\brecord\s+(?:readonly\s+)?(?:struct\s+|class\s+)?(\w+)")
+    USE = r"\bList<(\w+)>|\bnew\s+(\w+)\s*\(|\bIEnumerable<(\w+)>|\bHashSet<(\w+)>"
+
+    files = [f for f in sorted(APP.rglob("*.cs"))
+             if not any(p in ("obj", "bin") for p in f.parts)]
+
+    declared = set()
+    for f in files:
+        code = strip_cs(f.read_text(encoding="utf-8"))
+        for m in re.finditer(DECL, code):
+            declared.add(next(g for g in m.groups() if g))
+
+    if len(declared) < 100:
+        fail("type-names", f"only {len(declared)} type declarations found - the "
+                           "scan is broken and would pass on anything")
+        return
+
+    for f in files:
+        code = strip_cs(f.read_text(encoding="utf-8"))
+        seen_here = set()
+        for m in re.finditer(USE, code):
+            name = next(g for g in m.groups() if g)
+            if not name or not name[0].isupper():
+                continue
+            if name in declared or name in FRAMEWORK or name in seen_here:
+                continue
+            seen_here.add(name)
+            fail("type-names",
+                 f"{f.name} uses type '{name}', which is declared nowhere in this "
+                 "tree and is not a known framework type. If it is real, add it to "
+                 "FRAMEWORK; otherwise this is a CS0246 on the build machine")
+
+    if len(failures) == before:
+        notes.append(f"type-names: {len(declared)} declared types, every "
+                     "constructed and generic type resolves")
+
+
 def check_store_race():
     """The store must not be read reflectively while another thread mutates it.
 
@@ -3882,6 +3956,7 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_type_names()
     check_store_race()
     check_db_refresh_feature()
     check_usings_declared()
