@@ -231,73 +231,23 @@ public partial class App : Application
             fw = new FirewallManager();
             fw.Initialize();
 
-            // LOOPED, because one pass is not enough. FindAllSublayerFilterIds
-            // parses `netsh wfp show filters`, and that output was shown on
-            // 2026-09-12 to list 4 filters at a moment the kernel confirmed 144
-            // live - and to return a DIFFERENT partial set on each run. Two
-            // consecutive purges saw ~190 filters and then 4 completely
-            // different ones.
-            //
-            // So: sweep, re-enumerate, sweep again, until a pass finds nothing
-            // or stops making progress. Bounded, because an enumeration that
-            // keeps returning the same ids after a successful delete means
-            // something is wrong that another pass will not fix.
-            int ok = 0, gone = 0, failed = 0, pass = 0;
-            const int MaxPasses = 12;
-
-            while (pass < MaxPasses)
-            {
-                var ids = fw.FindAllSublayerFilterIds();
-                if (ids.Count == 0)
-                {
-                    if (pass == 0) Say("  No filters found in GunWall's sublayer.");
-                    break;
-                }
-
-                pass++;
-                Say($"  pass {pass}: {ids.Count} filter(s) found.");
-
-                int removedThisPass = 0;
-                foreach (ulong id in ids)
-                {
-                    uint r = fw.TryDeleteFilter(id);
-                    if (r == 0) { Say($"    {id,-12} removed"); ok++; removedThisPass++; }
-                    else if (r == 0x80320003) { Say($"    {id,-12} not present"); gone++; }
-                    else { Say($"    {id,-12} FAILED 0x{r:X8}"); failed++; }
-                    DiagnosticLog.Log($"Sublayer purge pass {pass}: filter {id} -> 0x{r:X8}");
-                }
-
-                if (removedThisPass == 0)
-                {
-                    Say("    (no progress this pass - stopping)");
-                    break;
-                }
-            }
-
-            if (pass >= MaxPasses)
-                Say($"  Stopped after {MaxPasses} passes; the enumeration keeps "
-                  + "returning filters. Reboot - filters are no longer persistent, "
-                  + "so a restart clears whatever is left.");
+            // One implementation, shared with the Remove all GunWall filtering
+            // button. The loop lives in FirewallManager.PurgeSublayer so the
+            // button and this command cannot drift - the button having a weaker
+            // sweep than the command line is exactly the gap that left a machine
+            // with no network.
+            var res = fw.PurgeSublayer(line => Say("  " + line));
 
             Say("");
-            Say($"  passes={pass}  removed={ok}  already-gone={gone}  failed={failed}");
-
-            uint sr = fw.TryDeleteSublayer();
-            Say(sr switch
-            {
-                0          => "  Sublayer removed. The machine is back to Windows defaults.",
-                0x80320007 => "  Sublayer was already absent.",
-                0x8032000A => "  Sublayer still IN USE - something still holds a filter in it.",
-                _          => $"  Sublayer delete returned 0x{sr:X8}."
-            });
-            DiagnosticLog.Log($"Sublayer purge: sublayer delete -> 0x{sr:X8}");
-
-            var left = fw.FindAllSublayerFilterIds();
+            Say($"  passes={res.Passes}  removed={res.Removed}  "
+              + $"already-gone={res.AlreadyGone}  failed={res.Failed}");
+            Say(res.SublayerGone
+                ? "  Sublayer removed. The machine is back to Windows defaults."
+                : "  Sublayer still IN USE - something still holds a filter in it.");
             Say("");
-            Say(left.Count == 0
+            Say(res.Remaining == 0
                 ? "  Verified: zero filters remain in GunWall's sublayer."
-                : $"  WARNING: {left.Count} filter(s) STILL present: "
-                  + string.Join(", ", left));
+                : $"  WARNING: {res.Remaining} filter(s) still present.");
 
             Say("");
             Say("  From 0.99.143 GunWall's filters are no longer persistent, so a");
@@ -305,7 +255,7 @@ public partial class App : Application
             Say("  this installation can no longer name. If the network is still");
             Say("  wrong after a reboot, it is not GunWall.");
 
-            return failed == 0 && left.Count == 0 ? 0 : 2;
+            return res.Failed == 0 && res.Remaining == 0 ? 0 : 2;
         }
         catch (Exception ex)
         {

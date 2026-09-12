@@ -15,6 +15,61 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.144] — 2026-09-12
+
+### Fixed — *Remove all GunWall filtering* now finishes the job
+The button swept the sublayer once. One pass is not enough, and 0.99.143's
+command-line purge proved it on hardware:
+
+```
+pass 1: 200 filter(s) found.   -> all removed
+pass 2: 4 filter(s) found.     -> 2829840-2829843, removed
+passes=2  removed=204  failed=0
+Sublayer removed. The machine is back to Windows defaults.
+Verified: zero filters remain in GunWall's sublayer.
+```
+
+The four filters in pass 2 were invisible to pass 1 and perfectly visible to
+pass 2, because `FindAllSublayerFilterIds` parses `netsh wfp show filters` and
+that output returns a different partial set on each call. Those four were the
+condition-less block-all filters that left a machine with no network whenever
+protection was turned off.
+
+The loop now lives in `FirewallManager.PurgeSublayer`, shared by the button and
+by `--purge-sublayer`. The command line having a stronger sweep than the button is
+exactly the gap that caused this, so there is one implementation and a check that
+both use it.
+
+### Changed — the reset reports what it actually did
+The old message said *"Some filters in GunWall's sublayer were not created by this
+installation … They are inactive without rules behind them."* That was wrong.
+Four of them were an unconditional `FWP_ACTION_BLOCK`, and they were the reason
+the machine had no network.
+
+It now reports the real outcome — passes, filters removed, how many would not
+delete, how many remain — and when the sublayer cannot be removed it says to
+restart, which from 0.99.143 is a guaranteed way back because filters are no
+longer persistent.
+
+### Added — `FirewallManager.PurgeSublayer` and `LastPurge`
+`PurgeSublayer` re-enumerates between passes, stops when a pass removes nothing
+rather than spinning, and is bounded at twelve passes. `LastPurge` carries the
+result so the interface can report it instead of guessing.
+
+### Changed — checks `reset-path` and `filters-not-permanent`
+`reset-path` now requires the reset to call `PurgeSublayer()` rather than merely
+mentioning `FindAllSublayerFilterIds`. `filters-not-permanent` follows the loop to
+its new home and asserts the command line calls the shared method.
+
+The second of those first tested `"PurgeSublayer(" not in body` — satisfied by
+`RunPurgeSublayer()`'s own name, so it could never fail. Caught by falsification;
+it now matches the call. That is the neighbourhood match again.
+
+Four defects were reintroduced individually and the checks confirmed failing on
+each.
+
+---
+
 ## [0.99.143] — 2026-09-12
 
 ### Fixed — a forgotten filter could leave a machine with no network, permanently

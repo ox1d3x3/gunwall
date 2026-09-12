@@ -1545,11 +1545,16 @@ def check_filters_not_permanent():
              "conditioned blocks no longer claim the action right, so a block the "
              "user explicitly asked for can be overridden by another product")
 
-    # The purge must survive a partial enumeration.
-    app = strip_cs((APP / "App.xaml.cs").read_text(encoding="utf-8"))
-    purge = re.search(r"private static int RunPurgeSublayer\(\).*?\n    \}", app, re.S)
+    # The purge must survive a partial enumeration. The loop lives in
+    # FirewallManager.PurgeSublayer, shared by the command line and the Remove
+    # all GunWall filtering button - the button having a weaker sweep than the
+    # command is the gap that left a machine with no network.
+    fm2 = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    purge = re.search(r"public PurgeResult PurgeSublayer\(Action<string>\? report = null\)"
+                      r".*?\n    \}", fm2, re.S)
     if not purge:
-        fail("filter-flags", "RunPurgeSublayer not found")
+        fail("filter-flags", "FirewallManager.PurgeSublayer not found; the reset and "
+                             "the command line would each need their own sweep")
     else:
         pu = purge.group(0)
         if "while" not in pu or "MaxPasses" not in pu:
@@ -1560,6 +1565,20 @@ def check_filters_not_permanent():
             fail("filter-flags",
                  "the purge loop has no no-progress exit and can spin forever on "
                  "an enumeration that keeps returning undeletable ids")
+
+    app = strip_cs((APP / "App.xaml.cs").read_text(encoding="utf-8"))
+    cmd = re.search(r"private static int RunPurgeSublayer\(\).*?\n    \}", app, re.S)
+    if not cmd:
+        fail("filter-flags", "RunPurgeSublayer not found")
+    # The CALL, not the substring. `RunPurgeSublayer()` contains "PurgeSublayer("
+    # in its own name, so the loose test was satisfied by the declaration and
+    # could never fail.
+    elif not re.search(r"\bfw\.PurgeSublayer\(", cmd.group(0)):
+        fail("filter-flags",
+             "--purge-sublayer does not call the shared FirewallManager."
+             "PurgeSublayer, so the command line and the reset button can drift "
+             "apart - and the button having the weaker sweep is what left a "
+             "machine with no network")
 
     if len(failures) == before:
         notes.append("filter-flags: nothing persistent, block-all without veto, "
@@ -3117,9 +3136,20 @@ def check_silent_failures():
                  "the reset does not clear the hosts file - domains stay blocked "
                  "with nothing installed to explain or undo it")
         # Tracked ids cannot reach an orphan. Without a sweep, "remove all
-        # filtering" leaves persistent filters enforcing forever with nothing able
-        # to name them - which is what FWP_E_IN_USE reports.
-        if "FindAllSublayerFilterIds" not in r:
+        # filtering" leaves filters enforcing with nothing able to name them -
+        # which is what FWP_E_IN_USE reports.
+        #
+        # It must be the LOOPED sweep. A single FindAllSublayerFilterIds pass was
+        # what the reset used, and the enumeration returns a different partial set
+        # on each call: one pass cleared 190 filters and left 4 that the next call
+        # saw immediately. Trap 2.36.
+        if "PurgeSublayer()" not in r:
+            fail("reset-path",
+                 "the reset does not use the looped PurgeSublayer, so a single "
+                 "partial enumeration decides what survives - which left four "
+                 "block-everything filters in the kernel and a machine with no "
+                 "network")
+        if "FindAllSublayerFilterIds" not in r and "PurgeSublayer()" not in r:
             fail("reset-path",
                  "the reset never sweeps orphaned filters, so it cannot return the "
                  "machine to Windows defaults - anything whose id was lost keeps "

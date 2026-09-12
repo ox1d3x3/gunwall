@@ -405,7 +405,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartDbRefreshLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.143 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.144 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -6750,14 +6750,30 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _firewall.ClearStore();
             SyncLockdownButton();
             RebuildAppsList();
+            // Report what actually happened. "Some filters were kept, they are
+            // inactive" was the old message and it was wrong: four kept filters
+            // were a condition-less BLOCK, and they were the reason a machine had
+            // no network with protection off. A reset that cannot finish has to
+            // say so in terms the reader can act on.
+            var purge = _firewall.LastPurge;
+            string detail = purge is null
+                ? ""
+                : $"\n\nSwept the sublayer in {purge.Value.Passes} pass(es): "
+                  + $"{purge.Value.Removed} filter(s) removed"
+                  + (purge.Value.Failed > 0
+                        ? $", {purge.Value.Failed} would not delete" : "")
+                  + $", {purge.Value.Remaining} remaining.";
+
             MessageBox.Show(
                 complete
-                    ? "All GunWall filtering removed."
-                    : "GunWall's own filters and saved rules are gone.\n\n"
-                      + "Some filters in GunWall's sublayer were not created by this "
-                      + "installation - left over from a crash or an earlier copy - so "
-                      + "the sublayer itself was kept. They are inactive without rules "
-                      + "behind them, and a restart clears any that were not persistent.",
+                    ? "All GunWall filtering removed. This machine is back to Windows "
+                      + "defaults." + detail
+                    : "GunWall's own filters and saved rules are gone, but the sublayer "
+                      + "could not be removed - filters remain in it that this "
+                      + "installation cannot delete." + detail
+                      + "\n\nRESTART THE MACHINE. GunWall's filters are not persistent, "
+                      + "so a reboot clears anything still in there. If the network is "
+                      + "still wrong after a restart, it is not GunWall.",
                 "GunWall", MessageBoxButton.OK,
                 complete ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }

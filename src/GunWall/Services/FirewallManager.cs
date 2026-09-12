@@ -957,26 +957,33 @@ public sealed class FirewallManager : IDisposable
 
         // Tracked ids only reach what GunWall still knows about. Anything orphaned
         // - a crash between installing a filter and saving its id, a store cleared
-        // before its filters were deleted - stays in the kernel permanently, which
-        // is what FWP_E_IN_USE has been reporting. Ask Windows for the rest.
+        // before its filters were deleted - stays in the kernel, which is what
+        // FWP_E_IN_USE has been reporting.
+        //
+        // This used to sweep once and give up. One sweep is not enough: the
+        // enumeration returns a DIFFERENT partial set each time it is called, so
+        // a single pass removed 190 filters and left 4 behind that the next call
+        // could see perfectly well. Both passes reported every delete as
+        // successful, and the sublayer stayed in use after each - which is how a
+        // machine ended up with four block-everything filters and no network.
+        //
+        // PurgeSublayer loops until a pass finds nothing. On the machine that
+        // failed, that cleared 204 filters across two passes and removed the
+        // sublayer, verified empty.
         if (!sublayerGone)
         {
-            var orphans = _engine.FindAllSublayerFilterIds();
-            if (orphans.Count > 0)
-            {
-                DiagnosticLog.Log($"Reset: {orphans.Count} orphaned filter(s) found in the "
-                                + "sublayer that this installation had no id for - removing.");
-                try { _engine.RemoveFilters(orphans); }
-                catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/orphans", ex); }
+            var purge = PurgeSublayer();
+            sublayerGone = purge.SublayerGone;
+            LastPurge = purge;
 
-                // Try again now the sublayer should be empty.
-                sublayerGone = _engine.RemoveAllFiltering();
-                DiagnosticLog.Log(sublayerGone
-                    ? "Reset: sublayer removed after clearing orphans - the machine is back to "
-                      + "Windows defaults."
-                    : "Reset: sublayer still in use after clearing orphans. Something outside "
-                      + "GunWall holds a filter in it.");
-            }
+            DiagnosticLog.Log(sublayerGone
+                ? $"Reset: sublayer removed after {purge.Passes} purge pass(es), "
+                  + $"{purge.Removed} filter(s) cleared - the machine is back to "
+                  + "Windows defaults."
+                : $"Reset: sublayer still in use after {purge.Passes} purge pass(es). "
+                  + $"{purge.Remaining} filter(s) remain and {purge.Failed} would not "
+                  + "delete. Filters are not persistent from 0.99.143, so a reboot "
+                  + "clears whatever is left.");
         }
 
         // Filters are not the only thing GunWall changes about this machine, and
@@ -1247,9 +1254,105 @@ public sealed class FirewallManager : IDisposable
     /// other unapproved app). Re-asserted on every launch. A user's *explicit*
     /// block on GunWall still wins, since that filter has higher weight.
     /// </summary>
-    /// <summary>Every filter id in GunWall's sublayer, tracked or not. Used by
-    /// --purge-sublayer, which exists for machines left filtering by orphans.</summary>
+    /// <summary>Every filter id in GunWall's sublayer, tracked or not.</summary>
     public List<ulong> FindAllSublayerFilterIds() => _engine.FindAllSublayerFilterIds();
+
+    /// <summary>Result of the last purge run by RemoveAllFiltering, so the
+    /// interface can tell the user what actually happened rather than just
+    /// "done".</summary>
+    public PurgeResult? LastPurge { get; private set; }
+
+    /// <summary>Outcome of a sublayer purge, for reporting to a console or a dialog.</summary>
+    public readonly record struct PurgeResult(
+        int Passes, int Removed, int AlreadyGone, int Failed, int Remaining, bool SublayerGone);
+
+    /// <summary>
+    /// Removes EVERY filter in GunWall's sublayer, re-enumerating between passes.
+    ///
+    /// One pass is not enough, and that is measured rather than assumed.
+    /// FindAllSublayerFilterIds parses `netsh wfp show filters`, and on
+    /// 2026-09-12 that output listed 4 filters at a moment the kernel confirmed
+    /// 144 of 144 present. Two consecutive single-pass purges saw ~190 filters
+    /// and then 4 completely different ones, every delete returning success both
+    /// times, and the sublayer stayed FWP_E_IN_USE after each.
+    ///
+    /// Looping fixed it on the first attempt: pass 1 removed 200, pass 2 found
+    /// the four orphans that had been invisible to pass 1, and the sublayer then
+    /// deleted cleanly - zero filters remaining, machine back to Windows
+    /// defaults.
+    ///
+    /// Bounded, and it stops early when a pass removes nothing: an enumeration
+    /// still returning ids after a successful delete is a condition another pass
+    /// will not fix, and spinning on it would hang the interface.
+    ///
+    /// The proper repair is FwpmFilterEnum0 with FWPM_FILTER0 marshalled against
+    /// win32metadata. Until that exists, this is what makes the reset complete.
+    /// </summary>
+    public PurgeResult PurgeSublayer(Action<string>? report = null)
+    {
+        const int MaxPasses = 12;
+        int passes = 0, removed = 0, gone = 0, failed = 0;
+
+        while (passes < MaxPasses)
+        {
+            List<ulong> ids;
+            try { ids = _engine.FindAllSublayerFilterIds(); }
+            catch (Exception ex)
+            {
+                DiagnosticLog.LogException("PurgeSublayer/enumerate", ex);
+                break;
+            }
+            if (ids.Count == 0) break;
+
+            passes++;
+            report?.Invoke($"pass {passes}: {ids.Count} filter(s) found.");
+            DiagnosticLog.Log($"Purge pass {passes}: {ids.Count} filter(s) in the sublayer.");
+
+            int removedThisPass = 0;
+            foreach (ulong id in ids)
+            {
+                uint r;
+                try { r = _engine.TryDeleteFilter(id); }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.LogException($"PurgeSublayer/delete {id}", ex);
+                    failed++;
+                    continue;
+                }
+                if (r == 0) { removed++; removedThisPass++; }
+                else if (r == 0x80320003) gone++;
+                else
+                {
+                    failed++;
+                    DiagnosticLog.Log($"Purge: filter {id} would not delete (0x{r:X8}).");
+                }
+            }
+
+            if (removedThisPass == 0)
+            {
+                DiagnosticLog.Log("Purge: a pass removed nothing - stopping rather than "
+                                + "spinning on an enumeration that cannot be acted on.");
+                break;
+            }
+        }
+
+        int left = 0;
+        try { left = _engine.FindAllSublayerFilterIds().Count; } catch { }
+
+        bool sublayerGone;
+        try { sublayerGone = _engine.TryDeleteSublayer() is 0 or 0x80320007; }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("PurgeSublayer/sublayer", ex);
+            sublayerGone = false;
+        }
+
+        DiagnosticLog.Log($"Purge complete: passes={passes} removed={removed} "
+                        + $"alreadyGone={gone} failed={failed} remaining={left} "
+                        + $"sublayerRemoved={sublayerGone}");
+
+        return new PurgeResult(passes, removed, gone, failed, left, sublayerGone);
+    }
 
     /// <summary>Deletes one filter, returning the code instead of throwing.</summary>
     public uint TryDeleteFilter(ulong id) => _engine.TryDeleteFilter(id);
