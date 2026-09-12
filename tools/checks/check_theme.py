@@ -1474,6 +1474,98 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_filters_not_permanent():
+    """No filter may outlive a reboot, and the block-all may not carry veto.
+
+    Trap 2.36. Filters were added with FWPM_FILTER_FLAG_PERSISTENT, and the
+    condition-less default-deny block also carried FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT.
+    Together those two flags turn a forgotten filter id into a machine with no
+    network and no way back:
+
+      - PERSISTENT  -> a reboot does not clear it
+      - CLEAR_ACTION_RIGHT on a filter matching EVERYTHING -> nothing on the
+        system can override it
+      - no id in the profile -> GunWall cannot delete it either
+
+    All three held on 2026-09-12. Four such filters sat in the sublayer; with
+    protection on the app permits outranked them and traffic flowed, and with
+    protection off the permits went and the machine was dead.
+
+    Removal could not be the safety net, because removal needs the ids.
+    FindAllSublayerFilterIds parses `netsh wfp show filters`, and that output
+    listed 4 filters at a moment the kernel confirmed 144 live - and returned a
+    different partial set on each run.
+
+    Without PERSISTENT a reboot always clears everything GunWall installed,
+    whether or not GunWall can still name it. ROADMAP.md requires exactly that
+    recovery path before boot-time filtering exists; the flag was shipping
+    boot-time filtering without it.
+
+    Veto is kept on conditioned blocks - "block this application" should not be
+    overridable by another product's permit. It is refused on the block-all,
+    which does not need it: GunWall's own permits outrank it by weight inside the
+    sublayer, and a block in any sublayer already beats permits elsewhere.
+    """
+    before = len(failures)
+    eng = (APP / "Services" / "Wfp" / "WfpEngine.cs").read_text(encoding="utf-8")
+    code = strip_cs(eng)
+
+    m = re.search(r"private const uint FilterFlags\s*=\s*([^;]+);", code)
+    if not m:
+        fail("filter-flags", "FilterFlags is gone; each filter site sets its own "
+                             "flags again and persistence can return one at a time")
+    elif "FWPM_FILTER_FLAG_PERSISTENT" in m.group(1) or m.group(1).strip() != "0":
+        fail("filter-flags",
+             f"FilterFlags is {m.group(1).strip()}, not 0. A persistent filter "
+             "whose id is lost survives every reboot and cannot be removed - "
+             "which left a machine with no network")
+
+    # No site may reintroduce it directly.
+    stray = re.findall(r"flags\s*=\s*[^;,]*FWPM_FILTER_FLAG_PERSISTENT", code)
+    if stray:
+        fail("filter-flags",
+             f"{len(stray)} filter site(s) set FWPM_FILTER_FLAG_PERSISTENT "
+             "directly, bypassing FilterFlags")
+
+    gb = re.search(r"private ulong AddGlobalBlockFilter\(Guid layer, byte weight, "
+                   r"string name\).*?\n    \}", code, re.S)
+    if not gb:
+        fail("filter-flags", "AddGlobalBlockFilter not found")
+    elif "FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT" in gb.group(0):
+        fail("filter-flags",
+             "the condition-less block-all carries CLEAR_ACTION_RIGHT. It matches "
+             "every connection, so an orphaned copy is a block nothing on the "
+             "system can override. It does not need veto - the app permits "
+             "outrank it by weight")
+
+    # Conditioned blocks SHOULD keep veto; losing it is also a defect.
+    if not re.search(r"if \(action == FWP_ACTION_BLOCK\) flags \|= "
+                     r"FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT;", code):
+        fail("filter-flags",
+             "conditioned blocks no longer claim the action right, so a block the "
+             "user explicitly asked for can be overridden by another product")
+
+    # The purge must survive a partial enumeration.
+    app = strip_cs((APP / "App.xaml.cs").read_text(encoding="utf-8"))
+    purge = re.search(r"private static int RunPurgeSublayer\(\).*?\n    \}", app, re.S)
+    if not purge:
+        fail("filter-flags", "RunPurgeSublayer not found")
+    else:
+        pu = purge.group(0)
+        if "while" not in pu or "MaxPasses" not in pu:
+            fail("filter-flags",
+                 "the purge does not re-enumerate. One pass is not enough - the "
+                 "enumeration returned a different partial set on consecutive runs")
+        if "removedThisPass == 0" not in pu:
+            fail("filter-flags",
+                 "the purge loop has no no-progress exit and can spin forever on "
+                 "an enumeration that keeps returning undeletable ids")
+
+    if len(failures) == before:
+        notes.append("filter-flags: nothing persistent, block-all without veto, "
+                     "conditioned blocks keep it, purge re-enumerates")
+
+
 def check_own_executable():
     """GunWall must report its own state truthfully and refuse to block itself.
 
@@ -4216,6 +4308,7 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_filters_not_permanent()
     check_own_executable()
     check_no_save_before_load()
     check_self_permit_survives()

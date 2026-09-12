@@ -224,9 +224,15 @@ engine, rule evaluation, monitoring, DNS and blocklist subsystems are complete.
 
 Two things to know before relying on it:
 
-- **Filters are persistent.** Closing GunWall, a crash or a reboot does not stop
-  them enforcing — that is what a firewall must do. Turning protection off, or
-  uninstalling, removes them completely.
+- **Filters do not survive a reboot.** Closing GunWall or a crash leaves them
+  enforcing, so an unapproved program stays denied while the machine is up. A
+  restart clears them, and nothing is enforced until GunWall starts again —
+  enable *Run at startup* to narrow that window.
+
+  They were persistent until 0.99.143. That made a filter whose id GunWall had
+  lost unremovable and permanent, and one such filter left a machine with no
+  network at all. A reboot is now a guaranteed way back, which
+  [ROADMAP.md](ROADMAP.md) requires before boot-time filtering is built.
 - **It runs as a single elevated process.** Service isolation is the last
   architectural item before 1.0.
 

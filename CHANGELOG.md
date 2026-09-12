@@ -15,6 +15,75 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.143] — 2026-09-12
+
+### Fixed — a forgotten filter could leave a machine with no network, permanently
+Three properties combined into a failure with no way out:
+
+- filters were added with `FWPM_FILTER_FLAG_PERSISTENT`, so a reboot did not
+  clear them
+- the condition-less default-deny block also carried
+  `FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT`, so nothing on the system could override
+  a filter that matches **everything**
+- if its id was not in the profile, GunWall could not delete it either
+
+All three held. Four `GunWall Block Default` filters sat in the sublayer with ids
+`2834208`–`2834211` against a tracked set of `3021691`–`3021698`. With protection
+**on**, the app permits at weight `0x0B` outrank the block at `0x08` and traffic
+flows; with protection **off** the permits are removed and those four are all that
+remains. Every connection blocked, unoverridable, surviving reboots.
+
+Removal could not be the safety net, because removal needs the ids.
+`FindAllSublayerFilterIds` parses `netsh wfp show filters`, and that output listed
+**4** filters at a moment the kernel confirmed **144 of 144** present — and
+returned a different partial set on consecutive runs. An enumeration that sees 3%
+of its own filters cannot be the only thing between a user and a dead network.
+
+**Filters are no longer persistent.** A reboot now clears everything GunWall
+installed, whether or not GunWall can still name it. `ROADMAP.md` requires exactly
+that recovery path before boot-time filtering exists; the flag was shipping
+boot-time filtering without it.
+
+**The block-all no longer claims the action right.** Veto is kept on conditioned
+blocks — a block the user asked for should not be overridable by another product's
+permit — and refused on the filter that matches everything. It never needed it:
+GunWall's own permits outrank it by weight inside the sublayer, and a block in any
+sublayer already beats permits elsewhere. Veto only widened the blast radius.
+
+All twelve filter-creation sites now read one named constant, `FilterFlags`, so
+persistence cannot come back at a single site.
+
+### Changed — `--purge-sublayer` re-enumerates
+One pass was not enough: two consecutive purges saw ~190 filters and then 4
+completely different ones, every delete returning success both times. It now
+sweeps, re-enumerates and sweeps again until a pass finds nothing or stops making
+progress, bounded at twelve passes.
+
+### Changed — README
+The project status said *"Filters are persistent. Closing GunWall, a crash or a
+reboot does not stop them enforcing — that is what a firewall must do."* That is
+no longer true and the trade is now stated plainly, including that nothing is
+enforced between a restart and GunWall starting.
+
+### Added — check `filters-not-permanent`
+Asserts `FilterFlags` is zero, that no site sets persistence directly, that the
+block-all does not carry veto, that conditioned blocks **do**, and that the purge
+re-enumerates with a no-progress exit. Seven defects were reintroduced
+individually and the check confirmed failing on each.
+
+Recorded as trap 2.36.
+
+### Still open
+Enumeration is the remaining defect. `FwpmFilterEnum0` is the correct fix and
+`CHANGELOG.md` above records why it was avoided — `FWPM_FILTER0` has a union and
+nested blobs whose layout must be right first time on a machine this code cannot
+run on, which is trap 2.5. That blocker is now removable: the layout can be read
+from `microsoft/win32metadata` rather than authored from memory, as the
+`INetworkCostManager` GUIDs were. It is deliberately not in this release, and
+`reset-path` still forbids declaring it until then.
+
+---
+
 ## [0.99.142] — 2026-09-12
 
 ### Added — `--purge-sublayer`, a recovery command for a machine left filtering

@@ -38,6 +38,34 @@ public sealed class WfpEngine : IDisposable
     // never reuse another product's GUID.
     private static readonly Guid SublayerKey = new("8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00");
 
+    /// <summary>
+    /// Filters are NOT persistent, deliberately.
+    ///
+    /// They were, and it made an orphan permanent. On 2026-09-12 four
+    /// "GunWall Block Default" filters - no conditions, so matching everything,
+    /// action BLOCK, flagged PERSISTENT and CLEAR_ACTION_RIGHT - sat in the
+    /// sublayer with ids the profile had lost. With protection on the app permits
+    /// outrank them and traffic flows; with protection off the permits go and
+    /// those four are all that is left, so the machine has no network. Persistent
+    /// meant a reboot did not clear it and veto meant nothing else could override
+    /// it.
+    ///
+    /// Removal alone could not fix that, because removal depends on knowing the
+    /// ids: FindAllSublayerFilterIds parses `netsh wfp show filters`, and that
+    /// output was shown to list 4 filters at a moment the kernel confirmed 144
+    /// live. An enumeration that sees 3% of its own filters cannot be the only
+    /// thing standing between a user and a dead network.
+    ///
+    /// Without PERSISTENT, a reboot always clears everything GunWall installed,
+    /// whether or not GunWall can still name it. That is the recovery path
+    /// ROADMAP.md requires before boot-time filtering exists at all - and this
+    /// flag was shipping boot-time filtering without it.
+    ///
+    /// The cost is real and documented: nothing is enforced between boot and the
+    /// moment GunWall starts. `Run at startup` narrows that window.
+    /// </summary>
+    private const uint FilterFlags = 0;   // not FWPM_FILTER_FLAG_PERSISTENT
+
     private const ushort SublayerWeight = 0x8000; // mid-high so we sit above default
     // Weights map to the documented WFP hierarchy: highest wins. Infrastructure
     // permits MUST outrank the block-all default, or DNS/DHCP/IPv6 break.
@@ -1020,7 +1048,7 @@ public sealed class WfpEngine : IDisposable
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT,
+                flags = FilterFlags,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = InfraPermitWeight },
                 numFilterConditions = 1,
                 filterCondition = condPtr,
@@ -1072,7 +1100,7 @@ public sealed class WfpEngine : IDisposable
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT,
+                flags = FilterFlags,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
                 numFilterConditions = 2,
                 filterCondition = conds,
@@ -1115,7 +1143,7 @@ public sealed class WfpEngine : IDisposable
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT,
+                flags = FilterFlags,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = InfraPermitWeight },
                 numFilterConditions = 1,
                 filterCondition = condPtr,
@@ -1160,7 +1188,7 @@ public sealed class WfpEngine : IDisposable
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT,
+                flags = FilterFlags,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = InfraPermitWeight },
                 numFilterConditions = 1,
                 filterCondition = condPtr,
@@ -1342,7 +1370,7 @@ public sealed class WfpEngine : IDisposable
             for (int i = 0; i < conds.Count; i++)
                 Marshal.StructureToPtr(conds[i], condArray + i * condSize, false);
 
-            uint flags = FWPM_FILTER_FLAG_PERSISTENT;
+            uint flags = FilterFlags;
             if (action == FWP_ACTION_BLOCK) flags |= FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT;
 
             var filter = new FWPM_FILTER0
@@ -1392,7 +1420,7 @@ public sealed class WfpEngine : IDisposable
 
             // Block actions must clear the action right so they can't be
             // overridden by lower-priority permits elsewhere in the system.
-            uint flags = FWPM_FILTER_FLAG_PERSISTENT;
+            uint flags = FilterFlags;
             if (action == FWP_ACTION_BLOCK) flags |= FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT;
 
             var filter = new FWPM_FILTER0
@@ -1586,7 +1614,7 @@ public sealed class WfpEngine : IDisposable
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                flags = FilterFlags | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
                 numFilterConditions = 1,
                 filterCondition = condArr,
@@ -1662,7 +1690,7 @@ public sealed class WfpEngine : IDisposable
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                flags = FilterFlags | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
                 numFilterConditions = 1,
                 filterCondition = condArr,
@@ -1708,7 +1736,7 @@ public sealed class WfpEngine : IDisposable
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                flags = FilterFlags | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
                 numFilterConditions = 1,
                 filterCondition = condArr,
@@ -1803,7 +1831,7 @@ public sealed class WfpEngine : IDisposable
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                flags = FilterFlags | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
                 numFilterConditions = 2,
                 filterCondition = condArr,
@@ -1853,7 +1881,7 @@ public sealed class WfpEngine : IDisposable
             {
                 layerKey = layer,
                 subLayerKey = SublayerKey,
-                flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+                flags = FilterFlags | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
                 weight = new FWP_VALUE0 { type = FWP_UINT8, value = AppBlockWeight },
                 numFilterConditions = 2,
                 filterCondition = condArr,
@@ -1872,13 +1900,27 @@ public sealed class WfpEngine : IDisposable
         }
     }
 
+    /// <summary>
+    /// The default-deny floor: no conditions, so it matches every connection.
+    ///
+    /// NO CLEAR_ACTION_RIGHT here, unlike every other block. Veto exists so a
+    /// block the user asked for cannot be overridden by some other product's
+    /// permit - which is right for "block this application" and wrong for a
+    /// filter that matches everything. An orphaned copy of this one, with veto,
+    /// is a machine nothing on earth can un-block.
+    ///
+    /// It does not need veto to do its job. GunWall's own app permits outrank it
+    /// by weight inside this sublayer (AppPermitWeight 0x0B against
+    /// StrictBaseWeight 0x08), and a block in any sublayer already wins over
+    /// permits elsewhere without it. Veto only widened the blast radius.
+    /// </summary>
     private ulong AddGlobalBlockFilter(Guid layer, byte weight, string name)
     {
         var filter = new FWPM_FILTER0
         {
             layerKey = layer,
             subLayerKey = SublayerKey,
-            flags = FWPM_FILTER_FLAG_PERSISTENT | FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT,
+            flags = FilterFlags,
             weight = new FWP_VALUE0 { type = FWP_UINT8, value = weight },
             numFilterConditions = 0,
             filterCondition = IntPtr.Zero,

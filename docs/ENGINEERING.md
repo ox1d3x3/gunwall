@@ -729,6 +729,40 @@ is not fixing the cause, and the honest log is what made the cause findable.
 
 **Check:** `store-race`, five falsifying mutations.
 
+### 2.36 Three safe-looking flags composing into an unrecoverable state
+
+`FWPM_FILTER_FLAG_PERSISTENT` is defensible: a firewall should keep enforcing
+across a crash. `FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT` is defensible: a block the
+user asked for should not be overridden by another product. Losing a filter id is
+a bug but a recoverable one.
+
+Together they are a machine with no network that cannot be fixed. The filter
+matches everything, nothing can override it, a reboot does not clear it, and the
+only component that knows how to delete it has forgotten it exists.
+
+**Rule:** evaluate flags by what they compose into, not individually. Each of
+these passed review on its own merits. No review asked what happens when all
+three are true at once.
+
+**Rule:** a recovery path must not depend on the component that failed. Removal
+depended on the profile holding the ids, and the failure mode was the profile
+losing them. "Reboot" is the only recovery that holds when the product cannot
+identify its own work — which is why persistence had to go.
+
+**Rule:** when a capability is gated on a prerequisite, check whether a flag is
+already providing it. ROADMAP.md listed boot-time filters as unbuilt and gated on
+Safe Mode recovery. `FWPM_FILTER_FLAG_PERSISTENT` had been shipping them for
+months without it.
+
+**Rule:** a substitute chosen to avoid risk must be verified to work.
+`FwpmFilterEnum0` was avoided because `FWPM_FILTER0` could not be marshalled
+safely without testing, and `netsh wfp show filters` was adopted instead. The
+substitute reported 4 filters where 144 were live. Avoiding a known risk by taking
+an unmeasured one is not a safer choice, it is an unmeasured one - and the reset
+paths were trusting it.
+
+**Check:** `filters-not-permanent`, seven falsifying mutations.
+
 ---
 
 ## 3. Working agreements

@@ -231,29 +231,56 @@ public partial class App : Application
             fw = new FirewallManager();
             fw.Initialize();
 
-            var ids = fw.FindAllSublayerFilterIds();
-            if (ids.Count == 0)
+            // LOOPED, because one pass is not enough. FindAllSublayerFilterIds
+            // parses `netsh wfp show filters`, and that output was shown on
+            // 2026-09-12 to list 4 filters at a moment the kernel confirmed 144
+            // live - and to return a DIFFERENT partial set on each run. Two
+            // consecutive purges saw ~190 filters and then 4 completely
+            // different ones.
+            //
+            // So: sweep, re-enumerate, sweep again, until a pass finds nothing
+            // or stops making progress. Bounded, because an enumeration that
+            // keeps returning the same ids after a successful delete means
+            // something is wrong that another pass will not fix.
+            int ok = 0, gone = 0, failed = 0, pass = 0;
+            const int MaxPasses = 12;
+
+            while (pass < MaxPasses)
             {
-                Say("  No filters found in GunWall's sublayer. Nothing to remove.");
-                DiagnosticLog.Log("Sublayer purge: sublayer already empty.");
-                return 0;
+                var ids = fw.FindAllSublayerFilterIds();
+                if (ids.Count == 0)
+                {
+                    if (pass == 0) Say("  No filters found in GunWall's sublayer.");
+                    break;
+                }
+
+                pass++;
+                Say($"  pass {pass}: {ids.Count} filter(s) found.");
+
+                int removedThisPass = 0;
+                foreach (ulong id in ids)
+                {
+                    uint r = fw.TryDeleteFilter(id);
+                    if (r == 0) { Say($"    {id,-12} removed"); ok++; removedThisPass++; }
+                    else if (r == 0x80320003) { Say($"    {id,-12} not present"); gone++; }
+                    else { Say($"    {id,-12} FAILED 0x{r:X8}"); failed++; }
+                    DiagnosticLog.Log($"Sublayer purge pass {pass}: filter {id} -> 0x{r:X8}");
+                }
+
+                if (removedThisPass == 0)
+                {
+                    Say("    (no progress this pass - stopping)");
+                    break;
+                }
             }
 
-            Say($"  {ids.Count} filter(s) found in GunWall's sublayer.");
-            Say("");
-
-            int ok = 0, gone = 0, failed = 0;
-            foreach (ulong id in ids)
-            {
-                uint r = fw.TryDeleteFilter(id);
-                if (r == 0) { Say($"    {id,-12} removed"); ok++; }
-                else if (r == 0x80320003) { Say($"    {id,-12} not present"); gone++; }
-                else { Say($"    {id,-12} FAILED 0x{r:X8}"); failed++; }
-                DiagnosticLog.Log($"Sublayer purge: filter {id} -> 0x{r:X8}");
-            }
+            if (pass >= MaxPasses)
+                Say($"  Stopped after {MaxPasses} passes; the enumeration keeps "
+                  + "returning filters. Reboot - filters are no longer persistent, "
+                  + "so a restart clears whatever is left.");
 
             Say("");
-            Say($"  removed={ok}  already-gone={gone}  failed={failed}");
+            Say($"  passes={pass}  removed={ok}  already-gone={gone}  failed={failed}");
 
             uint sr = fw.TryDeleteSublayer();
             Say(sr switch
@@ -273,9 +300,10 @@ public partial class App : Application
                   + string.Join(", ", left));
 
             Say("");
-            Say("  A reboot is worth doing either way: these filters are marked");
-            Say("  persistent, so anything the kernel has not released yet is");
-            Say("  re-read from the persistent store at boot.");
+            Say("  From 0.99.143 GunWall's filters are no longer persistent, so a");
+            Say("  REBOOT clears anything still listed above - including filters");
+            Say("  this installation can no longer name. If the network is still");
+            Say("  wrong after a reboot, it is not GunWall.");
 
             return failed == 0 && left.Count == 0 ? 0 : 2;
         }
