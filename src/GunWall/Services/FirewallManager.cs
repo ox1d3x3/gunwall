@@ -1247,6 +1247,16 @@ public sealed class FirewallManager : IDisposable
     /// other unapproved app). Re-asserted on every launch. A user's *explicit*
     /// block on GunWall still wins, since that filter has higher weight.
     /// </summary>
+    /// <summary>Every filter id in GunWall's sublayer, tracked or not. Used by
+    /// --purge-sublayer, which exists for machines left filtering by orphans.</summary>
+    public List<ulong> FindAllSublayerFilterIds() => _engine.FindAllSublayerFilterIds();
+
+    /// <summary>Deletes one filter, returning the code instead of throwing.</summary>
+    public uint TryDeleteFilter(ulong id) => _engine.TryDeleteFilter(id);
+
+    /// <summary>Deletes GunWall's sublayer, returning the code instead of throwing.</summary>
+    public uint TryDeleteSublayer() => _engine.TryDeleteSublayer();
+
     public void EnsureSelfConnectivity()
     {
         try

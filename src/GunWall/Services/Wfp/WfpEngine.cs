@@ -738,6 +738,31 @@ public sealed class WfpEngine : IDisposable
     }
 
     /// <summary>Removes a set of previously created filters by ID.</summary>
+    /// <summary>
+    /// Deletes one filter and RETURNS the result instead of throwing.
+    ///
+    /// RemoveFilters throws on the first real failure, so a sweep of several
+    /// orphans reports one exception and nothing about the rest. During the
+    /// 2026-09-12 incident the reset logged "4 orphaned filter(s) found -
+    /// removing" and then "sublayer still in use", with no record of what any
+    /// individual delete actually returned. That is the one fact needed and the
+    /// only one not captured.
+    /// </summary>
+    public uint TryDeleteFilter(ulong id)
+    {
+        EnsureReady();
+        return FwpmFilterDeleteById0(_engine, id);
+    }
+
+    /// <summary>Deletes GunWall's sublayer, returning the result rather than
+    /// throwing. FWP_E_IN_USE means filters still reference it.</summary>
+    public uint TryDeleteSublayer()
+    {
+        EnsureReady();
+        var key = SublayerKey;
+        return FwpmSubLayerDeleteByKey0(_engine, ref key);
+    }
+
     public void RemoveFilters(IEnumerable<ulong> filterIds)
     {
         EnsureReady();

@@ -15,6 +15,62 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.142] — 2026-09-12
+
+### Added — `--purge-sublayer`, a recovery command for a machine left filtering
+Removes **every** filter in GunWall's sublayer, tracked or not, and prints the
+result of each delete individually.
+
+`--unblock` already removes tracked filters and orphans found by enumeration, but
+`RemoveFilters` throws on the first real failure — so a sweep of several orphans
+reports one exception and says nothing about the rest. On 2026-09-12 that produced:
+
+```
+Reset: 4 orphaned filter(s) found in the sublayer that this installation
+       had no id for - removing.
+Reset: sublayer still in use after clearing orphans.
+```
+
+Four filters named `GunWall Block Default` — no conditions, so matching all
+traffic, `FWP_ACTION_BLOCK`, weight 8, flagged `PERSISTENT` and
+`CLEAR_ACTION_RIGHT` — remained in the kernel with ids the profile no longer knew
+(`2834208`–`2834211`, against a tracked set of `3021691`–`3021698`).
+
+With protection **on** the app permits at weight `0x0B` outrank them, so traffic
+flows. With protection **off** the permits are removed and those four are all that
+is left: every connection blocked, with veto so nothing else can override it, and
+persistent so a reboot does not clear it.
+
+No record existed of what any individual delete returned, which was the one fact
+needed. This command captures it:
+
+```
+GunWall.exe --purge-sublayer
+```
+
+`WfpEngine.TryDeleteFilter` and `TryDeleteSublayer` return their result codes
+rather than throwing, so one failure no longer hides the others. Every code is
+written to the console and the diagnostics log.
+
+### Note — unresolved
+The reason the deletes reported success while the filters remained is not yet
+established. Enumeration is confirmed correct — replaying
+`FindAllSublayerFilterIds`' logic against the captured dump returns exactly those
+four ids. The persistent-store interaction is the open question.
+
+Three design changes are proposed and **not** made, because the second changes the
+security model and is the maintainer's decision:
+
+- register a WFP provider GUID and stamp every filter with it, so removal is
+  complete by construction rather than dependent on remembered ids
+- drop `PERSISTENT` from the baseline block, so a reboot always clears an orphan.
+  `ROADMAP.md` lists boot-time filters as unbuilt and gated on Safe Mode
+  recovery; the flag ships that behaviour today without the recovery path
+- drop `CLEAR_ACTION_RIGHT` from the block-all only, keeping it on per-app blocks
+  where the user asked for the block
+
+---
+
 ## [0.99.141] — 2026-09-11
 
 ### Fixed — GunWall reported itself as blocked while it was working

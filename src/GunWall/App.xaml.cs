@@ -36,6 +36,13 @@ public partial class App : Application
         foreach (string arg in e.Args)
         {
             string a = arg.Trim().TrimStart('-', '/').ToLowerInvariant();
+            if (a is "purge-sublayer" or "purgesublayer")
+            {
+                int pcode = RunPurgeSublayer();
+                Shutdown(pcode);
+                return;
+            }
+
             if (a is not ("unblock" or "panic" or "reset")) continue;
 
             int code = RunEmergencyUnblock();
@@ -183,6 +190,102 @@ public partial class App : Application
                             + "the filters being removed.");
             say($"  Closed {stopped} running instance(s).");
         }
+    }
+
+    /// <summary>
+    /// Removes EVERY filter in GunWall's sublayer, tracked or not, and reports
+    /// the result of each delete individually.
+    ///
+    /// --unblock removes what the profile knows about, plus orphans found by
+    /// enumeration, but RemoveFilters throws on the first real failure - so a
+    /// sweep reports one exception and says nothing about the rest. On
+    /// 2026-09-12 that produced "4 orphaned filter(s) found - removing" followed
+    /// by "sublayer still in use", with no record of what any single delete
+    /// returned. Four block-everything filters stayed in the kernel, marked
+    /// persistent, and turning protection off left the machine with no network.
+    ///
+    /// This exists to be run when that has happened. It prints one line per
+    /// filter with the exact code, so the next report contains the fact that
+    /// was missing rather than an inference about it.
+    /// </summary>
+    private static int RunPurgeSublayer()
+    {
+        // Same headless setup as --unblock: everything that starts
+        // asynchronously during a normal launch is still starting when this
+        // process exits, and a half-started subsystem looks like a crash.
+        DnsEventMonitorService.HeadlessRecovery = true;
+
+        AttachConsole(-1);   // parent console, if any
+        void Say(string line) { try { Console.WriteLine(line); } catch { } }
+
+        Say("");
+        Say("GunWall sublayer purge");
+        Say("----------------------");
+
+        FirewallManager? fw = null;
+        try
+        {
+            DiagnosticLog.Log("=== Sublayer purge requested from the command line ===");
+            StopOtherInstances(Say);
+
+            fw = new FirewallManager();
+            fw.Initialize();
+
+            var ids = fw.FindAllSublayerFilterIds();
+            if (ids.Count == 0)
+            {
+                Say("  No filters found in GunWall's sublayer. Nothing to remove.");
+                DiagnosticLog.Log("Sublayer purge: sublayer already empty.");
+                return 0;
+            }
+
+            Say($"  {ids.Count} filter(s) found in GunWall's sublayer.");
+            Say("");
+
+            int ok = 0, gone = 0, failed = 0;
+            foreach (ulong id in ids)
+            {
+                uint r = fw.TryDeleteFilter(id);
+                if (r == 0) { Say($"    {id,-12} removed"); ok++; }
+                else if (r == 0x80320003) { Say($"    {id,-12} not present"); gone++; }
+                else { Say($"    {id,-12} FAILED 0x{r:X8}"); failed++; }
+                DiagnosticLog.Log($"Sublayer purge: filter {id} -> 0x{r:X8}");
+            }
+
+            Say("");
+            Say($"  removed={ok}  already-gone={gone}  failed={failed}");
+
+            uint sr = fw.TryDeleteSublayer();
+            Say(sr switch
+            {
+                0          => "  Sublayer removed. The machine is back to Windows defaults.",
+                0x80320007 => "  Sublayer was already absent.",
+                0x8032000A => "  Sublayer still IN USE - something still holds a filter in it.",
+                _          => $"  Sublayer delete returned 0x{sr:X8}."
+            });
+            DiagnosticLog.Log($"Sublayer purge: sublayer delete -> 0x{sr:X8}");
+
+            var left = fw.FindAllSublayerFilterIds();
+            Say("");
+            Say(left.Count == 0
+                ? "  Verified: zero filters remain in GunWall's sublayer."
+                : $"  WARNING: {left.Count} filter(s) STILL present: "
+                  + string.Join(", ", left));
+
+            Say("");
+            Say("  A reboot is worth doing either way: these filters are marked");
+            Say("  persistent, so anything the kernel has not released yet is");
+            Say("  re-read from the persistent store at boot.");
+
+            return failed == 0 && left.Count == 0 ? 0 : 2;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("PurgeSublayer", ex);
+            Say($"  FAILED: {ex.Message}");
+            return 1;
+        }
+        finally { try { fw?.Dispose(); } catch { } }
     }
 
     private static int RunEmergencyUnblock()
