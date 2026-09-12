@@ -15,6 +15,48 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.145] — 2026-09-13
+
+### Fixed — changing a monitor's refresh rate raised an error dialog
+Switching from 240 Hz to 144 Hz inside a fullscreen game produced:
+
+> **An unexpected error occurred:** UCEERR_RENDERTHREADFAILURE (0x88980406)
+
+A refresh-rate change is a display-mode change. WPF answers the resulting window
+message through `HwndTarget.UpdateWindowPos`, pushes the new geometry to the
+compositor with `DUCE.Channel.SyncFlush`, and the compositor is no longer there.
+
+Nothing about filtering is involved — the filters are in the kernel and kept
+enforcing throughout. This is the window's ability to draw, and the reader can do
+nothing about it. The dialog appeared over a fullscreen game, which is the same
+harm trap 2.24 was written about.
+
+It is now counted as a benign fault and raises no dialog. Matched on three
+conditions like its predecessor: the exception type, the HRESULT, and a
+`System.Windows.Media` frame — present in every captured stack
+(`DUCE.Channel.SyncFlush` and `MediaContext.CompleteRender` both live under it)
+while the outer frames vary, exactly as they did for the DWM fault.
+
+**Unlike the DWM fault, this one can leave a window that will not redraw**, so
+suppression alone would not be honest. A line naming the remedy is written to the
+diagnostics log: close GunWall from the tray and reopen it, which rebuilds the
+render target. Filtering is unaffected while it is down. A check asserts that line
+is present.
+
+*Observed three times in one session: twice from the mode change and once during
+shutdown at `MediaContext.Dispose`. Only the dispatcher handler shows a dialog;
+the AppDomain handler already logged without one.*
+
+### Changed — check `dwm-fault`
+Extended to cover the render-thread classifier: type, HRESULT by value, the WPF
+rendering frame, that the handler calls it before the dialog, that the fault is
+counted, and that the remedy is logged. Six defects were reintroduced individually
+and the check confirmed failing on each.
+
+Recorded as trap 2.37.
+
+---
+
 ## [0.99.144] — 2026-09-12
 
 ### Fixed — *Remove all GunWall filtering* now finishes the job

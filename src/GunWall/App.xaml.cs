@@ -394,6 +394,44 @@ public partial class App : Application
     /// WM_DWMCOMPOSITIONCHANGED is a broadcast, so the answering window is not
     /// fixed.
     /// </summary>
+    /// <summary>
+    /// UCEERR_RENDERTHREADFAILURE. Read from the maintainer's log and the dialog
+    /// he captured, not recalled.
+    /// </summary>
+    private const int RenderThreadFailure = unchecked((int)0x88980406);
+
+    /// <summary>
+    /// True when WPF's render thread has failed under a display-mode change.
+    ///
+    /// Changing a monitor's refresh rate - 240Hz to 144Hz from inside a game -
+    /// is a mode change. WPF answers the resulting window message through
+    /// HwndTarget.UpdateWindowPos, pushes the new geometry to the compositor
+    /// with DUCE.Channel.SyncFlush, and the compositor is gone.
+    ///
+    /// Nothing about filtering is involved. The filters are in the kernel and
+    /// keep enforcing; this is the window's ability to draw. The reader cannot
+    /// act on it, and the dialog it produced appeared over a fullscreen game -
+    /// which is the same harm trap 2.24 was written about.
+    ///
+    /// Three conditions, matching that trap's shape: the TYPE, the HRESULT, and
+    /// a WPF rendering frame. `System.Windows.Media` appears in every captured
+    /// stack - DUCE.Channel.SyncFlush and MediaContext.CompleteRender both live
+    /// under it - while the outer frames vary, exactly as they did for 2.24.
+    ///
+    /// Suppressing the dialog is NOT the same as pretending it did not happen.
+    /// It is counted in the diagnostics footer, and a line naming the remedy is
+    /// written, because unlike the DWM fault this one can leave a window that
+    /// will not redraw. Restarting GunWall rebuilds the render target; filtering
+    /// is unaffected while it is down.
+    /// </summary>
+    private static bool IsRenderThreadFault(Exception ex)
+    {
+        if (ex is not System.Runtime.InteropServices.COMException com) return false;
+        if (com.HResult != RenderThreadFailure) return false;
+        string trace = com.StackTrace ?? "";
+        return trace.Contains("System.Windows.Media", StringComparison.Ordinal);
+    }
+
     private static bool IsDwmCompositionFault(Exception ex)
     {
         if (ex is not System.Runtime.InteropServices.COMException com) return false;
@@ -421,6 +459,21 @@ public partial class App : Application
         if (IsDwmCompositionFault(e.Exception))
         {
             DiagnosticLog.NoteBenignFault("DWM composition handoff (exclusive-fullscreen app)");
+            e.Handled = true;
+            return;
+        }
+
+        // Same family: a display-mode change took the render thread down. The
+        // remedy is logged rather than shown, because the dialog arrives over a
+        // fullscreen game and says nothing the reader can use.
+        if (IsRenderThreadFault(e.Exception))
+        {
+            DiagnosticLog.NoteBenignFault("WPF render thread lost (display mode change)");
+            DiagnosticLog.Log("WPF's render thread failed under a display-mode change "
+                            + "(refresh rate, resolution or GPU reset). Filtering is "
+                            + "unaffected - the filters are in the kernel. If GunWall's "
+                            + "window stops redrawing, close it from the tray and reopen "
+                            + "it; that rebuilds the render target.");
             e.Handled = true;
             return;
         }

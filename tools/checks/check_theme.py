@@ -2904,6 +2904,47 @@ def check_dwm_fault():
         fail("dwm-fault",
              "the fault is not marked handled - WPF would tear the process down")
 
+    # Trap 2.37, the same shape. A display-mode change - changing a monitor's
+    # refresh rate from inside a game - takes WPF's render thread down, and the
+    # dialog lands over the fullscreen game saying nothing the reader can use.
+    rtf = re.search(r"private static bool IsRenderThreadFault\(Exception ex\).*?\n    \}",
+                    app, re.S)
+    if not rtf:
+        fail("dwm-fault",
+             "IsRenderThreadFault is gone; a refresh-rate change raises a modal "
+             "dialog over whatever is fullscreen")
+    else:
+        rb = rtf.group(0)
+        if "COMException" not in rb:
+            fail("dwm-fault", "the render-thread classifier does not check the "
+                              "exception type")
+        if "0x88980406" not in app:
+            fail("dwm-fault", "UCEERR_RENDERTHREADFAILURE is not tested by value")
+        if "HResult" not in rb:
+            fail("dwm-fault",
+                 "the render-thread classifier does not compare an HRESULT; "
+                 "message text is localised and would not match elsewhere")
+        if "System.Windows.Media" not in rb:
+            fail("dwm-fault",
+                 "the render-thread classifier does not require a WPF rendering "
+                 "frame, so it would swallow that HRESULT from anywhere")
+
+    if "IsRenderThreadFault" not in h:
+        fail("dwm-fault", "the handler never calls IsRenderThreadFault")
+    elif "MessageBox.Show" in h and \
+         h.index("IsRenderThreadFault") > h.index("MessageBox.Show"):
+        fail("dwm-fault", "the render-thread check runs after the dialog")
+    else:
+        seg2 = h[h.index("IsRenderThreadFault"):]
+        seg2 = seg2[:seg2.index("MessageBox.Show")] if "MessageBox.Show" in seg2 else seg2
+        if "NoteBenignFault" not in seg2:
+            fail("dwm-fault", "the render-thread fault is suppressed without being "
+                              "counted, so it vanishes instead of being recorded")
+        if "rebuilds the render target" not in seg2:
+            fail("dwm-fault",
+                 "no remedy is logged. Unlike the DWM fault this one can leave a "
+                 "window that will not redraw, so silence is not enough")
+
     if len(failures) == before:
         notes.append("dwm-fault: type + HRESULT + WindowChrome frame, counted, "
                      "runs before the dialog")
