@@ -1474,6 +1474,79 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_own_executable():
+    """GunWall must report its own state truthfully and refuse to block itself.
+
+    Trap 2.35. `EffectiveStatus` returned Blocked for any path without an Allow
+    rule while strict mode was on. GunWall's own executable is permitted by
+    `EnsureSelfConnectivity` through SelfFilterIds, not by an entry in Rules - so
+    the Applications list showed GunWall denied, with a Block button beside it,
+    on a machine where the kernel was permitting it and downloads were working.
+
+    A firewall that misreports its own state is worse than one that misreports an
+    application's: it is the display the reader uses to judge everything else. It
+    also sent a real report chasing a self-block that was not happening.
+
+    Pressing that Block button would have installed block filters for the same
+    path the self-permit permits. Which wins is a question about WFP weights, not
+    about what the user meant - and the consequence is a firewall that cannot
+    fetch its own updates, verify a hash or refresh a blocklist, with no way to
+    undo it from inside an application that is now offline.
+
+    Asserts the identity test exists, that EffectiveStatus consults it before the
+    strict-mode default-deny, and that BlockApp refuses and logs.
+    """
+    before = len(failures)
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+
+    if not re.search(r"public static bool IsOwnExecutable\(string exePath\)", fm):
+        fail("own-exe", "IsOwnExecutable is gone; nothing distinguishes GunWall "
+                        "from any other application it is asked to block")
+        return
+
+    eff = re.search(r"public AppStatus EffectiveStatus\(string exePath\).*?\n    \}", fm, re.S)
+    if not eff:
+        fail("own-exe", "EffectiveStatus not found")
+    else:
+        e = eff.group(0)
+        if "IsOwnExecutable" not in e:
+            fail("own-exe",
+                 "EffectiveStatus does not recognise GunWall's own executable, so "
+                 "the Applications list reports it Blocked while the kernel "
+                 "permits it")
+        elif "_data.StrictMode" in e and \
+             e.index("IsOwnExecutable") > e.index("_data.StrictMode"):
+            fail("own-exe",
+                 "the own-executable test runs after the strict-mode default-deny, "
+                 "which is the branch that produces the wrong answer")
+
+    blk = re.search(r"public void BlockApp\(string exePath, string displayName\).*?\n    \}",
+                    fm, re.S)
+    if not blk:
+        fail("own-exe", "BlockApp not found")
+    else:
+        b = blk.group(0)
+        if "IsOwnExecutable" not in b:
+            fail("own-exe",
+                 "BlockApp will block GunWall's own executable, installing block "
+                 "filters against its own self-permit - after which updates, "
+                 "blocklists and VirusTotal stop working and it cannot be undone "
+                 "from inside the application")
+        elif "BlockApplication" in b and \
+             b.index("IsOwnExecutable") > b.index("BlockApplication"):
+            fail("own-exe",
+                 "BlockApp installs the filters before testing whether the target "
+                 "is GunWall itself")
+        if not re.search(r"^\s*DiagnosticLog\.Log\(", b, re.M):
+            fail("own-exe",
+                 "a refused self-block is not logged, so a user who pressed Block "
+                 "and saw nothing happen has no explanation")
+
+    if len(failures) == before:
+        notes.append("own-exe: reports Allowed via the self-permit, refuses to "
+                     "block itself, and says so")
+
+
 def check_no_save_before_load():
     """The profile must not be written before it has been read.
 
@@ -4143,6 +4216,7 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_own_executable()
     check_no_save_before_load()
     check_self_permit_survives()
     check_type_names()

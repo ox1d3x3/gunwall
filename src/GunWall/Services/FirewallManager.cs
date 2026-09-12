@@ -692,8 +692,24 @@ public sealed class FirewallManager : IDisposable
     /// The user-facing status of an app under the current mode:
     /// explicit block always wins; in strict mode anything not allowed is blocked.
     /// </summary>
+    /// <summary>True for GunWall's own executable, which is permitted by
+    /// SelfFilterIds rather than by a rule.</summary>
+    public static bool IsOwnExecutable(string exePath)
+        => !string.IsNullOrEmpty(exePath)
+           && string.Equals(exePath, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
+
     public AppStatus EffectiveStatus(string exePath)
     {
+        // GunWall is permitted by EnsureSelfConnectivity, not by an entry in
+        // Rules - so the strict-mode test below called it Blocked while the
+        // kernel was permitting it. The Applications list showed GunWall denied,
+        // with a Block button beside it, on a machine where it was working.
+        //
+        // A firewall that misreports its own state is worse than one that
+        // misreports an application's, because it is the thing the reader uses
+        // to judge everything else.
+        if (IsOwnExecutable(exePath)) return AppStatus.Allowed;
+
         if (IsBlocked(exePath)) return AppStatus.Blocked;
         if (_data.StrictMode && !IsAllowed(exePath)) return AppStatus.Blocked;
         return AppStatus.Allowed;
@@ -734,6 +750,22 @@ public sealed class FirewallManager : IDisposable
     /// <summary>Blocks an application and persists the rule. Idempotent.</summary>
     public void BlockApp(string exePath, string displayName)
     {
+        // Refused for our own executable. BlockApplication would install block
+        // filters for the same path EnsureSelfConnectivity permits, and which of
+        // them wins is a question about WFP weights rather than about what the
+        // user meant. The consequence is a firewall that cannot check for its own
+        // updates, verify a hash, or fetch a blocklist - and no way to undo it
+        // from inside the application that is now offline.
+        if (IsOwnExecutable(exePath))
+        {
+            DiagnosticLog.Log("Refused to block GunWall's own executable. It is "
+                            + "permitted by the self-permit so that updates, "
+                            + "blocklists and VirusTotal keep working; use "
+                            + "Settings -> Remove all GunWall filtering to stop "
+                            + "enforcement entirely.");
+            return;
+        }
+
         if (IsBlocked(exePath)) return;
         RemoveAllowRule(exePath); // an explicit block supersedes an allow
 

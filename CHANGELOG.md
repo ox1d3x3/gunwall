@@ -15,6 +15,55 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.141] — 2026-09-11
+
+### Fixed — GunWall reported itself as blocked while it was working
+The Applications list showed **GunWall** with status `Blocked` and a **Block**
+button beside it, on a machine where its own connections were being permitted.
+
+`EffectiveStatus` returns Blocked for any path that has no Allow rule while strict
+mode is on. GunWall is permitted by `EnsureSelfConnectivity` through
+`SelfFilterIds` — not by an entry in `Rules` — so the default-deny branch answered
+for it.
+
+Nothing was actually denied. But a firewall that misreports its own state is worse
+than one that misreports an application's, because that display is what the reader
+uses to judge everything else. It sent a real report chasing a self-block that was
+not happening.
+
+### Fixed — GunWall could be told to block itself
+`BlockApp` would have installed block filters for the same path the self-permit
+permits. Which of them wins is a question about WFP filter weights rather than
+about what the user meant, and the consequence is a firewall that cannot fetch its
+own updates, verify a hash or refresh a blocklist — with no way to undo it from
+inside an application that is now offline.
+
+It now refuses and logs why, pointing at *Settings → Remove all GunWall filtering*
+for anyone who genuinely wants enforcement stopped.
+
+### Added — check `own-executable`
+Asserts the identity test exists, that `EffectiveStatus` consults it **before** the
+strict-mode default-deny, that `BlockApp` refuses before installing anything, and
+that the refusal is logged. Five defects were reintroduced individually and the
+check confirmed failing on each.
+
+Recorded as trap 2.35.
+
+### Verified on hardware — 0.99.139 and 0.99.140
+- The self-permit is restored when protection is re-engaged:
+  `Protection ON` at 19:58:54 is followed by `Self-permit re-asserted` in the same
+  second, after an OFF that removed 276 filters.
+- The profile survives across sessions and days. Seven consecutive reads show it
+  growing — 14,353 bytes and 27 rules through to 32,991 bytes and 66 rules — with
+  `StrictMode=True` preserved and the selected theme retained.
+- Every reconcile since reads `walked == live` exactly and reports all accounted
+  for. Nothing removed.
+- The metered skip works:
+  `Database refresh (GeoIP): skipped - this connection is metered.`
+- A GeoIP download interrupted mid-transfer left the existing database intact.
+
+---
+
 ## [0.99.140] — 2026-09-10
 
 ### Fixed — every launch destroyed the profile before reading it
