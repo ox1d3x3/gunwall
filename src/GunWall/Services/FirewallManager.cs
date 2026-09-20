@@ -1549,6 +1549,42 @@ public sealed class FirewallManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Re-installs filtering at startup when the kernel has lost it.
+    ///
+    /// Filters stopped being persistent in 0.99.143, so a restart clears every
+    /// one of them. That was deliberate - it is the recovery path that stops an
+    /// orphaned block-everything filter bricking a machine. What was NOT done at
+    /// the time is the other half: putting the filtering back.
+    ///
+    /// Nothing did. The tamper watchdog happened to, because missing filters
+    /// look exactly like tampering, and it fired 1,172 times in seven days doing
+    /// it. When that watchdog was switched off - a user preference, in Settings -
+    /// the restore stopped with it, and eighteen hours later 187 of 360 filters
+    /// were absent while the interface read Protected.
+    ///
+    /// A firewall reporting protection it is not providing is the worst state it
+    /// can be in, worse than failing loudly. Restoring your own filtering after a
+    /// restart is not tamper *detection* and must not be gated behind a
+    /// preference about it.
+    ///
+    /// Returns the number of filters installed, or 0 when nothing was needed.
+    /// </summary>
+    public int RestoreFilteringIfLost()
+    {
+        if (!EngineStarted || !_data.StrictMode) return 0;
+
+        var report = _engine.CheckFilters(AllKnownFilterIds());
+        if (report.Intact) return 0;
+
+        DiagnosticLog.Log($"Startup: {report.Missing} of {report.Expected} filter(s) are "
+                        + "absent from the kernel - filters do not survive a restart. "
+                        + "Re-installing from the saved rules.");
+        int made = RepairFiltering();
+        DiagnosticLog.Log($"Startup: filtering restored, {made} filter(s) installed.");
+        return made;
+    }
+
     /// <summary>Re-installs filtering from the saved rules. Returns how many
     /// filters were created.</summary>
     public int RepairFiltering()

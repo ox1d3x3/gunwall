@@ -15,6 +15,55 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.146] — 2026-09-20
+
+### Fixed — filtering was not restored after a restart
+**GunWall could read *Protected* while enforcing nothing.** Introduced by 0.99.143
+and hidden until now.
+
+Filters stopped being persistent in 0.99.143 so that an orphaned
+block-everything filter could never brick a machine — a restart always clears it.
+That was the right call and only half the work. Nothing put the filtering back
+after the restart that cleared it.
+
+Nothing deliberate, at least. The **tamper watchdog** did it by accident, because
+filters missing from the kernel look exactly like filters someone removed. It
+fired **1,172 times in seven days** doing so, which read as a defect in the
+watchdog and was in fact the only thing holding the product together.
+
+`TamperWatchEnabled` is a preference in Settings. Switched off for a day, the
+restore stopped with it:
+
+```
+2026-09-19 18:07:35  Filter integrity watch disabled
+2026-09-19 19:05:20  Reconcile input: live=4  walked=348  ruleFilterIdsInStore=336
+2026-09-20 11:55:30  watch=False, expected=360, missing=187  (187 of 360 MISSING)
+```
+
+`live=4` is the self-permit, created seconds earlier by that launch. Every other
+filter was gone, the window read Protected, and 187 were still absent eighteen
+hours later.
+
+`RestoreFilteringIfLost()` now runs at startup, after the orphan reconcile and
+before the dead-rule prune. It checks what is actually in the kernel, and
+reinstalls from the saved rules when filters are missing. It does nothing when
+protection was off, and nothing when the filters are intact.
+
+It is **not** gated on `TamperWatchEnabled`, and a check enforces that.
+Restoring your own filtering after a restart is not tamper detection, and it was
+being treated as optional. `RepairFiltering` already did the work correctly and
+leaves `KnownApps` alone, so approved applications are not re-prompted.
+
+### Added — check `startup-restores-filtering`
+Asserts the restore exists, verifies the kernel before acting, respects
+`StrictMode`, reinstalls, runs from startup after the reconcile, and is not
+guarded by the tamper preference at either end. Six defects were reintroduced
+individually and the check confirmed failing on each.
+
+Recorded as trap 2.38.
+
+---
+
 ## [0.99.145] — 2026-09-13
 
 ### Fixed — changing a monitor's refresh rate raised an error dialog

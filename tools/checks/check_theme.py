@@ -1474,6 +1474,83 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_startup_restores_filtering():
+    """Filtering must be restored at startup, independent of tamper watching.
+
+    Trap 2.38. Filters stopped being persistent in 0.99.143 so that an orphaned
+    block-everything filter could never brick a machine - a reboot always clears
+    it. That was the right call and only half the work. The other half, putting
+    the filtering back after the restart that cleared it, was not done.
+
+    Nothing did it deliberately. The tamper watchdog did it by accident, because
+    filters missing from the kernel look exactly like filters someone removed. It
+    fired 1,172 times in seven days, which read as a defect in the watchdog and
+    was actually it holding the product together.
+
+    `TamperWatchEnabled` is a user preference in Settings. Switched off, the
+    restore stopped with it: eighteen hours later 187 of 360 filters were absent
+    from the kernel while the interface read Protected and `live=4` against
+    `walked=348` in the reconcile. A firewall reporting protection it is not
+    providing is worse than one that fails loudly.
+
+    Asserts the restore exists, that it is called from startup, and that neither
+    it nor its call site is gated on TamperWatchEnabled.
+    """
+    before = len(failures)
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+
+    restore = re.search(r"public int RestoreFilteringIfLost\(\).*?\n    \}", fm, re.S)
+    if not restore:
+        fail("startup-restore",
+             "RestoreFilteringIfLost is gone. Filters do not survive a restart, so "
+             "without it the kernel is empty after every reboot while the window "
+             "still reads Protected")
+        return
+    rb = restore.group(0)
+
+    if "_data.StrictMode" not in rb:
+        fail("startup-restore",
+             "the restore does not check whether protection was on, so it would "
+             "re-engage filtering the user had deliberately turned off")
+    if "CheckFilters" not in rb:
+        fail("startup-restore",
+             "the restore does not verify what is actually in the kernel before "
+             "acting")
+    if "RepairFiltering()" not in rb:
+        fail("startup-restore", "the restore never reinstalls anything")
+    if "TamperWatchEnabled" in rb:
+        fail("startup-restore",
+             "the restore is gated on the tamper preference. Restoring your own "
+             "filtering after a restart is not tamper detection, and making it "
+             "optional is what left 187 of 360 filters absent")
+
+    loaded = re.search(r"private void OnLoaded\(object sender.*?\n    \}", mw, re.S)
+    if not loaded:
+        fail("startup-restore", "MainWindow.OnLoaded not found")
+        return
+    h = loaded.group(0)
+
+    if "RestoreFilteringIfLost()" not in h:
+        fail("startup-restore",
+             "startup never restores filtering; only the tamper watchdog would, "
+             "and that is a preference the user can switch off")
+    elif "ReconcileOrphanFilters()" in h and \
+         h.index("RestoreFilteringIfLost()") < h.index("ReconcileOrphanFilters()"):
+        fail("startup-restore",
+             "the restore runs before the orphan reconcile, so it reinstalls "
+             "filters the reconcile is about to consider unknown")
+
+    if re.search(r"TamperWatchEnabled[^;]*\n?[^;]*RestoreFilteringIfLost", h, re.S):
+        fail("startup-restore",
+             "the startup restore is guarded by the tamper preference at its call "
+             "site")
+
+    if len(failures) == before:
+        notes.append("startup-restore: filtering reinstalled after a restart, "
+                     "not gated on tamper watching")
+
+
 def check_filters_not_permanent():
     """No filter may outlive a reboot, and the block-all may not carry veto.
 
@@ -4379,6 +4456,7 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_startup_restores_filtering()
     check_filters_not_permanent()
     check_own_executable()
     check_no_save_before_load()

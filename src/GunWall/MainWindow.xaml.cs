@@ -298,6 +298,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 try
                 {
                     _firewall.ReconcileOrphanFilters();
+
+                    // Then the other direction. The reconcile removes filters the
+                    // kernel has and the store does not; this installs filters the
+                    // store has and the kernel does not.
+                    //
+                    // Since 0.99.143 filters do not survive a restart, so after
+                    // every reboot the kernel has none of them. Only the tamper
+                    // watchdog was putting them back, and that is a preference the
+                    // user can switch off - which one did, leaving 187 of 360
+                    // filters absent for eighteen hours while the window read
+                    // Protected. Restoring your own filtering is not tamper
+                    // detection and is not optional.
+                    _firewall.RestoreFilteringIfLost();
+
                     // Dead rules go in the same pass: both are "things the store
                     // says that the machine no longer agrees with".
                     if (_firewall.PruneDeadRules() > 0)
@@ -405,7 +419,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartDbRefreshLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.145 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.146 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
