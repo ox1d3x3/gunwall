@@ -71,7 +71,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 be altered by installing, uninstalling, resetting filters, or by a profile that
 fails to parse.*
 
-- ☐ **`--unblock` must not clear the store** — `RemoveAllFiltering()` ends with
+- ✅ **`--unblock` must not clear the store** *(0.99.130)* — `RemoveAllFiltering()` ends with
   `_data = new StoreData(); _store.Save(_data);`, and the uninstaller calls it via
   `GunWall.exe --unblock` in `InitializeUninstall()` *before* asking whether to
   keep the profile. Choosing **No** at that prompt therefore preserves a file that
@@ -79,12 +79,12 @@ fails to parse.*
   the VirusTotal key while reporting that it kept them. Removing filters and
   discarding decisions are two operations sharing one path; the uninstaller needs
   only the first. Splitting them makes the prompt honest.
-- ☐ **Credentials must survive a filter reset** — `ResetSettingsToDefaults` has a
+- ✅ **Credentials must survive a filter reset** *(0.99.130)* — `ResetSettingsToDefaults` has a
   keep-list naming `VirusTotalApiKey`; `RemoveAllFiltering` writes
   `new StoreData()` unconditionally and has no equivalent. The key is issued by
   another service and cannot be regenerated from inside GunWall, so it should
   outlive an operation about filters.
-- ☐ **A corrupt profile is discarded silently** — `RuleStore.Load()` catches every
+- ✅ **A corrupt profile is discarded silently** *(0.99.135 — kept as `rules.json.unreadable-<timestamp>`)* — `RuleStore.Load()` catches every
   exception and returns a fresh `StoreData` with no log line. The next save then
   overwrites a possibly recoverable file with defaults. Log it, and keep a `.bak`
   before the first overwrite.
@@ -104,12 +104,30 @@ fails to parse.*
   is a `"A key is saved."` line beside an empty-looking box, which reads as data
   loss. Show masked dots or the last four characters. Never the key.
 
+- ☐ **Restore toggle-applied blocks after a restart** — system rules, per-app scope
+  blocks and the WFP half of curated blocklists are not reinstalled at startup
+  since filters stopped being persistent in 0.99.143. They read as enabled while
+  nothing enforces them, and their stale ids make the watchdog repair every thirty
+  seconds. Each needs its own restore: `SetSystemRule` returns early when a rule is
+  recorded as on, and `SetBlocklistEnabled` is entangled with the DNS provider and
+  the hosts file. Test each with the feature switched on.
+
+### Updates
+- ✅ **Automatic update checking** *(0.99.147)* — Daily / Weekly / Monthly, off by
+  default; optional download, skipped on metered connections; the installer is
+  re-verified at install time and never run without a press; yellow tray dot while
+  protection is on.
+
+### Network scan
+- ✅ **Copy device details** *(0.99.147)* — IP, MAC, vendor, host, a row, or the whole
+  table as tab-separated text; `Ctrl+C` on selected rows.
+
 ### Database freshness
 *Managed C# throughout. No kernel risk. Both databases are already downloaded on
 demand and stored beside the profile; this is about keeping them current and about
 the first-run experience.*
 
-- ☐ **Daily background refresh of the GeoIP and MAC vendor databases** —
+- ✅ **Daily background refresh of the GeoIP and MAC vendor databases** *(0.99.134)* —
   **off by default**, enabled from Settings. A stale country table quietly
   misattributes connections and a stale IEEE registry quietly misattributes
   hardware, and neither failure announces itself. Requirements:
@@ -123,7 +141,7 @@ the first-run experience.*
     failing for a month must be visible, not assumed working.
   - Replace only on a complete, validated download. A truncated file must not
     overwrite a working table.
-- ☐ **First-run offer to download the databases** — on a genuinely fresh install
+- ✅ **First-run offer to download the databases** *(0.99.134)* — on a genuinely fresh install
   with neither database present, ask once whether to download them. Conditions:
   - **Never shown after an upgrade.** Users enable and disable these deliberately,
     and re-asking every release is how a prompt becomes something people dismiss

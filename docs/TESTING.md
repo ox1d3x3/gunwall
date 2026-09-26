@@ -227,6 +227,39 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.147 — updates, protection off, network scan copying
+
+**Protection off must leave the network alone.**
+1. Protection ON, then OFF. **PASS:** browsing works. If filters were left behind
+   by earlier builds, the log shows `Protection OFF: removed N filter(s) no list
+   named`.
+2. Repeat ON → OFF three times. Browsing works every time it is off.
+3. Reboot with protection on. **PASS:** one `Startup: … Re-installing` line, and
+   **no** `TAMPERING DETECTED` repeating every thirty seconds afterwards.
+4. An application you have blocked stays blocked after the reboot, and after an
+   OFF → ON cycle.
+
+**Updates** — Settings → UPDATES.
+5. *Check now* reports the latest release. Both options are **off** on a fresh
+   profile.
+6. With a newer release published: tick *Check automatically*, then *Download
+   updates* — the installer downloads to `%ProgramData%\GunWall\updates`, the card
+   reads *downloaded and verified*, and the tray is **yellow**.
+7. Turn protection OFF — the tray is **red**, not yellow. Back ON — yellow.
+8. *Update now* re-checks, runs the installer after UAC, and closes GunWall
+   **without** asking about the firewall. After installing, the new version starts
+   **green** with no *Update now* button and an empty `updates` folder.
+
+**Network scan.**
+9. Right-click a device → *Copy all devices*, paste into Excel. **PASS:** a header
+   row and one field per cell.
+10. Select several rows bottom-up, `Ctrl+C`, paste. **PASS:** they paste in list
+    order, not selection order.
+
+**Known limitation to confirm, not to pass.** Enable a system rule, reboot, and note
+that it reads as on but is not enforced until toggled off and on. Recorded; not yet
+fixed.
+
 ### 0.99.132 — database downloads cannot damage a working database
 
 Nothing about *when* downloads happen has changed. This verifies they are still

@@ -1474,6 +1474,472 @@ def check_reset_path():
         notes.append("reset-path: filters before sublayer, store cleared, IN_USE handled")
 
 
+def check_version_not_lowered():
+    """A lowered version must be deliberate and must not be releasable.
+
+    The version was dropped below the published release on purpose, so the
+    updater would find one and the UPDATES card could be tested end to end. That
+    is a reasonable thing to do and a dangerous thing to forget: a build
+    published from such a tree leaves every machine that installs it seeing the
+    published release as newer, for ever, with no way to move forward.
+
+    So the lowered state is allowed only while TEST-BUILD-DO-NOT-RELEASE exists
+    at the repository root. Deleting the marker without restoring the version -
+    or restoring the version without deleting the marker - fails here rather than
+    on someone's machine.
+
+    The highest version in CHANGELOG.md is the yardstick, because it is the one
+    thing that is maintained per release and cannot be forgotten separately.
+    """
+    before = len(failures)
+    marker = ROOT / "TEST-BUILD-DO-NOT-RELEASE"
+
+    csproj = (APP / "GunWall.csproj").read_text(encoding="utf-8")
+    m = re.search(r"<Version>(\d+)\.(\d+)\.(\d+)</Version>", csproj)
+    if not m:
+        fail("version-floor", "no <Version> in GunWall.csproj")
+        return
+    cur = tuple(int(g) for g in m.groups())
+
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    released = [tuple(int(x) for x in v)
+                for v in re.findall(r"^## \[(\d+)\.(\d+)\.(\d+)\]", changelog, re.M)]
+    if not released:
+        fail("version-floor", "no released versions found in CHANGELOG.md")
+        return
+    top = max(released)
+
+    lowered = cur < top
+    if lowered and not marker.exists():
+        fail("version-floor",
+             f"the build version {'.'.join(map(str, cur))} is BELOW the newest "
+             f"changelog entry {'.'.join(map(str, top))}, and no "
+             "TEST-BUILD-DO-NOT-RELEASE marker is present. Publishing this would "
+             "leave every machine that installs it permanently behind")
+    if marker.exists() and not lowered:
+        fail("version-floor",
+             "TEST-BUILD-DO-NOT-RELEASE is present but the version is not "
+             "lowered. Delete the marker - left behind, it makes the next real "
+             "lowering invisible")
+
+    if lowered and marker.exists():
+        notes.append(f"version-floor: {'.'.join(map(str, cur))} is a TEST build, "
+                     "deliberately below the newest release - not for publishing")
+    elif len(failures) == before:
+        notes.append(f"version-floor: {'.'.join(map(str, cur))} is at or above the "
+                     "newest changelog entry")
+
+
+def check_no_orphaning_rebuilds():
+    """Rebuilding filtering must never leave filters the store cannot name.
+
+    Trap 2.39. RepairFiltering overwrote every id it rebuilt without removing
+    the filter the old id named. Harmless after a reboot, when the kernel is
+    empty; catastrophic when the watchdog called it with 4 of 384 missing. It
+    installed 380 duplicates and forgot the 380 originals, every thirty seconds.
+    On 2026-09-21 the sublayer held 1140 filters against 384 tracked.
+
+    The four that were always missing were a Blocked rule: neither repair nor
+    engaging protection ever reinstalled Blocked rules, so after a reboot their
+    ids named nothing, permanently, and drove the loop.
+
+    Among the orphans were copies of the condition-less block-all. Protection OFF
+    removes only what the store names, so those survived it - and a machine with
+    protection off denied every connection (ERR_NETWORK_ACCESS_DENIED) until it
+    was switched back on and fresh permits outranked them. The same failure the
+    no-network report of 2026-09-12 described, reached by a different road.
+
+    Asserts, for each road:
+      - repair snapshots the store's ids BEFORE rebuilding and deletes the ones
+        no longer named AFTER, in that order
+      - repair and engage rebuild Blocked rules, not only Allowed ones, and never
+        block GunWall itself
+      - disengage deletes one id at a time (RemoveFilters stops at the first
+        failure, and ClearAllFilterIds then forgot the rest) and sweeps whatever
+        the store never named
+      - that sweep subtracts the tracked set and stops when protection returns,
+        so it can never delete a filter a later engage installed
+      - the service re-apply that runs on every launch removes what it replaces
+    """
+    before = len(failures)
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+
+    def body(sig):
+        m = re.search(sig + r".*?\n    \}", fm, re.S)
+        return m.group(0) if m else None
+
+    rep = body(r"public int RepairFiltering\(\)")
+    if not rep:
+        fail("no-orphans", "RepairFiltering not found")
+    else:
+        snap = rep.find("var previous = AllKnownFilterIds().ToList()")
+        build = rep.find("_engine.EngageStrictMode()")
+        sweep = rep.find("TryDeleteFilter(id)")
+        if snap < 0:
+            fail("no-orphans", "repair does not snapshot the store's ids before rebuilding, "
+                               "so the filters those ids named are forgotten, still installed")
+        elif sweep < 0:
+            fail("no-orphans", "repair never removes what it superseded; every call "
+                               "orphans a full set, block-all included")
+        elif not (snap < build < sweep):
+            fail("no-orphans", "repair does not snapshot, rebuild, then remove - in that "
+                               "order. Removing first leaves nothing installed; not "
+                               "snapshotting first loses the old ids")
+        if "Status == AppStatus.Allowed)" in rep and "InstallBlock(rule)" not in rep:
+            fail("no-orphans", "repair rebuilds only Allowed rules; a Blocked rule stays "
+                               "permanently missing after a reboot and drives the loop")
+        if "InstallBlock(rule)" not in rep:
+            fail("no-orphans", "repair does not restore Blocked rules")
+        if "lock (_dataLock)" not in rep:
+            fail("no-orphans", "repair mutates the store outside the lock the reconcile uses")
+
+    ib = body(r"private List<ulong> InstallBlock\(FirewallRule rule\)")
+    if not ib:
+        fail("no-orphans", "InstallBlock not found")
+    else:
+        if "IsOwnExecutable(" not in ib:
+            fail("no-orphans", "a Blocked rule on GunWall's own path would be reinstalled, "
+                               "cutting off updates and blocklists")
+        if "BlockApplicationDirectional" not in ib:
+            fail("no-orphans", "directional blocks are reinstalled as full blocks")
+
+    ssm = body(r"public void SetStrictMode\(bool enabled\)")
+    if not ssm:
+        fail("no-orphans", "SetStrictMode not found")
+    else:
+        on_part, _, off_part = ssm.partition("else")
+        if "InstallBlock(rule)" not in on_part:
+            fail("no-orphans", "engaging protection drops every explicit block")
+        if "_engine.RemoveFilters(" in off_part:
+            fail("no-orphans", "disengage uses RemoveFilters, which stops at the first "
+                               "failure; the rest are then forgotten by ClearAllFilterIds")
+        if "lock (_dataLock)" not in off_part:
+            fail("no-orphans", "disengage walks the store outside the lock")
+        if "SweepUntrackedFilters()" not in off_part:
+            fail("no-orphans", "disengage never removes filters the store does not name, so "
+                               "an orphaned block-all keeps blocking with protection off")
+
+    sw = body(r"public int SweepUntrackedFilters\(\)")
+    if not sw:
+        fail("no-orphans", "SweepUntrackedFilters not found")
+    else:
+        if "!tracked.Contains(id)" not in sw:
+            fail("no-orphans", "the sweep does not subtract the tracked set and would delete "
+                               "live, owned filters")
+        if sw.count("if (_data.StrictMode) break;") < 2:
+            fail("no-orphans", "the sweep does not stop when protection is re-engaged, both "
+                               "before enumerating and before deleting")
+        if "MaxPasses" not in sw:
+            fail("no-orphans", "the sweep does not re-enumerate; netsh returns a partial set")
+
+    svc = body(r"public void ReapplyServiceBlocks\(\)")
+    if svc and "TryDeleteFilter(id)" not in svc:
+        fail("no-orphans", "the service re-apply that runs on every launch overwrites ids "
+                           "without removing the filters they named")
+
+    if len(failures) == before:
+        notes.append("no-orphans: repair snapshots, rebuilds, then removes; Blocked rules "
+                     "restored; OFF deletes one by one and sweeps the unnamed")
+
+
+def check_device_copy():
+    """Network scan rows can be copied, and the menu's note editor cannot crash.
+
+    DeviceNoteMenu_Click reaches DeviceNote_Edit with a null MouseButtonEventArgs,
+    because the editor is wired to double-click but never reads the event. That is
+    safe exactly as long as it stays true - a later `e.Handled = true` would turn
+    the menu item into a NullReferenceException. Asserted, not assumed.
+    """
+    before = len(failures)
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+
+    for h in ("CopyDeviceIp_Click", "CopyDeviceMac_Click", "CopyDeviceVendor_Click",
+              "CopyDeviceHost_Click", "CopyDeviceRow_Click", "CopyAllDevices_Click",
+              "DeviceNoteMenu_Click"):
+        if f'Click="{h}"' not in xaml:
+            fail("device-copy", f"the device list menu no longer offers {h}")
+    if 'PreviewKeyDown="DevicesList_KeyDown"' not in xaml:
+        fail("device-copy", "Ctrl+C no longer copies from the device list")
+
+    ed = re.search(r"private void DeviceNote_Edit\(object sender, MouseButtonEventArgs e\)"
+                   r".*?\n    \}", mw, re.S)
+    if not ed:
+        fail("device-copy", "DeviceNote_Edit not found")
+    elif "DeviceNote_Edit(sender, null!)" in mw:
+        body = ed.group(0).split("\n", 1)[1]
+        if re.search(r"\be\s*[.\[]|\(\s*e\s*[,)]|,\s*e\s*\)", body):
+            fail("device-copy",
+                 "DeviceNote_Edit now uses its event argument, but the context menu "
+                 "passes null - Edit note would crash")
+
+    sel = re.search(r"private List<NetworkScanner\.Device> SelectedDevices\(\).*?;\n", mw, re.S)
+    if not sel or "_devices.IndexOf" not in sel.group(0):
+        fail("device-copy",
+             "copied rows are not put in list order; ListView returns SelectedItems in "
+             "click order, so a range selected bottom-up copies upside down")
+
+    ct = re.search(r"private static void CopyText\(string text\).*?\n    \}", mw, re.S)
+    if not ct or "IsNullOrEmpty(text)) return" not in ct.group(0):
+        fail("device-copy", "empty text reaches the clipboard")
+
+    if len(failures) == before:
+        notes.append("device-copy: IP, MAC, vendor, host, row and table; Ctrl+C; list "
+                     "order kept; note editor safe from the menu")
+
+
+def check_update_checking():
+    """Update checking must be opt-in, never install on its own, and never lose
+    what it knows.
+
+    The first implementation passed every assertion here and an audit then found
+    eleven defects in it. This check now pins each one:
+
+      A  every check deleted the installer downloaded by the previous check,
+         because an empty path was passed and a changed path deletes the file
+      B  a FAILED check (offline, rate-limited) cleared the pending update and
+         deleted its verified installer
+      C  the card's refresh forced the startup suppression flag off, arming ten
+         settings handlers during launch (see suppression-flag)
+      D  after installing an update, the new version still recorded that release
+         as pending - yellow tray, offering to install itself, for ever
+      E  Update now left GunWall running for the installer to kill, where the
+         existing updater exits cleanly
+      F  nothing stopped two checks or downloads running at once
+      G  the file was hashed, closed, and launched by path - a gap in which it
+         could be replaced before an ELEVATED run
+      H  a failed check advanced the timestamp, so on Monthly one bad hour meant
+         a month without a check
+      I  switching the download option on did nothing until the next scheduled
+         check, and Check now downloaded over metered connections
+      J  the dashboard check never recorded a pending release, so the two update
+         paths disagreed about whether anything was waiting
+      K  the tooltip embedded an unbounded version string from a GitHub tag
+    """
+    before = len(failures)
+    store = (APP / "Services" / "RuleStore.cs").read_text(encoding="utf-8")
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    mw_raw = (APP / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+
+    def body(pattern, src):
+        m = re.search(pattern + r".*?\n    \}", src, re.S)
+        return m.group(0) if m else None
+
+    for field in ("AutoUpdateCheck", "AutoUpdateDownload"):
+        m = re.search(rf"public bool {field} \{{ get; set; \}}(.*?)(?:\n|$)", store)
+        if not m:
+            fail("update-check", f"{field} is gone from the store")
+        elif "=" in m.group(1):
+            fail("update-check", f"{field} does not default to off")
+
+    if not re.search(r"public int UpdateCheckDays =>\s*\n?\s*_data\.UpdateCheckDays is 1 or 7 or 30", fm):
+        fail("update-check", "the interval is not clamped on read")
+
+    # H - timestamp only on success.
+    note = body(r"public void NoteUpdateCheck\(string result, bool succeeded\)", fm)
+    if not note:
+        fail("update-check", "NoteUpdateCheck no longer takes a success flag")
+    elif not re.search(r"if\s*\(\s*succeeded\s*\)\s*_data\.LastUpdateCheckUtc", note):
+        fail("update-check", "[H] a failed check advances the timestamp; on Monthly one "
+                             "bad hour becomes a month without a check")
+
+    # A, B - the bookkeeping.
+    rec = body(r"private bool RecordReleaseCheck\(UpdateService\.Result r\)", mw)
+    if not rec:
+        fail("update-check", "RecordReleaseCheck is gone")
+    else:
+        ok_at = rec.find("if (!r.Ok)")
+        if ok_at < 0:
+            fail("update-check", "[B] a failed check is not handled separately")
+        else:
+            # The failure block itself, brace-matched. The first version only
+            # tested that nothing came BEFORE the test, and passed with a
+            # SetPendingUpdate("", "") placed inside it.
+            open_at = rec.find("{", ok_at)
+            depth, k = 0, open_at
+            while k < len(rec):
+                if rec[k] == "{": depth += 1
+                elif rec[k] == "}":
+                    depth -= 1
+                    if depth == 0: break
+                k += 1
+            block = rec[open_at:k + 1]
+            if "SetPendingUpdate(" in block or "return false;" not in block:
+                fail("update-check", "[B] a failed check changes pending state; an hour "
+                                     "offline would delete a verified installer")
+        if "? _firewall.PendingUpdatePath : \"\"" not in rec:
+            fail("update-check", "[A] a check does not keep the downloaded file for the "
+                                 "same version, so every check deletes and re-downloads it")
+
+    for name in ("RunUpdateCheckAsync", "UpdNow_Click", "UpdAutoDownload_Changed",
+                 "RecordReleaseCheck"):
+        b = body(rf"(?:private|public)[^\n]*\b{name}\(", mw)
+        if b and "!r.Ok || !r.UpdateAvailable" in b:
+            fail("update-check", f"[B] {name} treats a failed check as 'no update' and "
+                                 "clears what is known")
+
+    run = body(r"private async System\.Threading\.Tasks\.Task RunUpdateCheckAsync\(bool manual\)", mw)
+    if not run:
+        fail("update-check", "RunUpdateCheckAsync not found")
+    else:
+        if "UpdateCheckDue()" not in run:
+            fail("update-check", "the scheduled path ignores the interval")
+        if "_updateBusy" not in run:
+            fail("update-check", "[F] checks are not serialised")
+        if "RecordReleaseCheck(" not in run:
+            fail("update-check", "the check bypasses the shared bookkeeping")
+        if "AutoUpdateDownload" not in run:
+            fail("update-check", "the check downloads without consulting the setting")
+
+    fetch = body(r"private async System\.Threading\.Tasks\.Task FetchPendingIfNeededAsync", mw)
+    if not fetch:
+        fail("update-check", "FetchPendingIfNeededAsync not found")
+    else:
+        if "NetworkCost.IsMetered()" not in fetch:
+            fail("update-check", "[I] automatic downloads do not skip metered connections")
+        if "File.Exists(path)) return" not in fetch:
+            fail("update-check", "[A] an installer already on disk is downloaded again")
+
+    tog = body(r"private async void UpdAutoDownload_Changed", mw)
+    if not tog or "FetchPendingIfNeededAsync" not in tog:
+        fail("update-check", "[I] switching the download option on does not fetch a "
+                             "release that is already waiting")
+
+    now = body(r"private async void UpdNow_Click", mw)
+    if not now:
+        fail("update-check", "UpdNow_Click is gone; nothing can install an update")
+    else:
+        if "_updateBusy" not in now:
+            fail("update-check", "[F] Update now can run alongside a download")
+        if "RecordReleaseCheck(" not in now:
+            fail("update-check", "Update now does not re-read the current release")
+        # Exact token. "FileShare.Read" is a prefix of "FileShare.ReadWrite",
+        # which permits exactly the replacement this handle exists to prevent -
+        # and a substring test passed on it.
+        m_share = re.search(r"FileShare\.Read\)", now)
+        share = m_share.start() if m_share else -1
+        hashed = now.find("HashDataAsync(hold)")
+        start_ = now.find("Process.Start(")
+        if share < 0 or hashed < 0:
+            fail("update-check", "[G] the installer is not hashed through a handle that "
+                                 "denies writers")
+        elif start_ < 0 or not (share < hashed < start_):
+            fail("update-check", "[G] the installer is not launched after hashing, "
+                                 "through the same held handle")
+        if "ExitForUpdate()" not in now:
+            fail("update-check", "[E] Update now leaves GunWall running for the installer "
+                                 "to kill")
+
+    ex = body(r"private void ExitForUpdate\(\)", mw)
+    if not ex:
+        fail("update-check", "ExitForUpdate is gone")
+    elif "MessageBox" in ex:
+        fail("update-check", "[E] the update hand-off asks a question on top of the "
+                             "installer's own prompt")
+
+    # Only two methods may launch anything elevated.
+    #
+    # Scanned with string literals KEPT. The first version scanned strip_cs
+    # output, which blanks strings, so `Verb = "runas"` read as `Verb = ""` and
+    # the scan found no launches at all - it could never fail. Trap 2.30.
+    kept = strip_cs(mw_raw, keep_strings=True).splitlines()
+    sig_lines = [(i, l) for i, l in enumerate(kept)
+                 if re.match(r"\s*(private|public|internal|protected)\b[^=;]*\(", l)]
+    owners = set()
+    for i, l in enumerate(kept):
+        if 'Verb = "runas"' not in l:
+            continue
+        sig = max((x for x in sig_lines if x[0] <= i), key=lambda x: x[0], default=(0, ""))[1]
+        names = re.findall(r"\b(\w+)\s*\(", sig)
+        owners.add(names[0] if names else "?")
+    if not owners:
+        fail("update-check", "no elevated launch found at all - the scan is broken, "
+                             "or neither update button can run an installer")
+    extra = owners - {"DownloadAndInstallAsync", "UpdNow_Click"}
+    if extra:
+        fail("update-check", f"elevated launches in {sorted(extra)}; only the two update "
+                             "buttons may run an installer, or there is a silent upgrade")
+
+    # D - post-upgrade cleanup.
+    stale = body(r"public void ClearStalePendingUpdate\(\)", fm)
+    if not stale or "UpdateService.IsNewer(" not in stale:
+        fail("update-check", "[D] a pending update is never recognised as already "
+                             "installed; the new version would offer to install itself")
+    loaded = body(r"private void OnLoaded\(object sender", mw)
+    if loaded:
+        c_at, r_at = loaded.find("ClearStalePendingUpdate()"), loaded.find("RefreshUpdatesUi()")
+        if c_at < 0:
+            fail("update-check", "[D] startup never clears a stale pending update")
+        elif r_at >= 0 and c_at > r_at:
+            fail("update-check", "[D] the card is painted before stale state is cleared")
+
+    # J - the dashboard path records too.
+    dash = body(r"private async void CheckUpdate_Click", mw)
+    if not dash or "RecordReleaseCheck(" not in dash:
+        fail("update-check", "[J] the dashboard check does not record a pending release, "
+                             "so the two update paths disagree")
+
+    tray = body(r"private void UpdateTrayIcon\(\)", mw)
+    if not tray:
+        fail("update-check", "UpdateTrayIcon not found")
+    else:
+        if not re.search(r"var state\s*=\s*!active\s*\?\s*TrayState\.Off", tray):
+            fail("update-check", "protection state does not take priority in the tray")
+        if "[..63]" not in tray:
+            fail("update-check", "[K] the tooltip is not length-capped")
+
+    for name in ("UpdAutoCheck", "UpdAutoDownload", "UpdIntervalCombo", "UpdNowBtn"):
+        if f'x:Name="{name}"' not in xaml:
+            fail("update-check", f"the Settings control {name} is missing")
+
+    if len(failures) == before:
+        notes.append("update-check: opt-in, keeps what it knows through failures, "
+                     "re-verifies through a held handle, exits cleanly, clears itself "
+                     "after upgrading, one elevated launch per button")
+
+
+def check_suppression_flag():
+    """Nothing called inside OnLoaded's suppression block may switch it off.
+
+    OnLoaded sets _suppressModeEvent while it copies the store into the settings
+    controls, so their change handlers do not fire and write back. A helper that
+    ends with `_suppressModeEvent = false;` switches that off for every control
+    initialised after it. RefreshUpdatesUi did exactly that, arming ten handlers
+    during launch. Trap 2.34's family.
+
+    Helpers must save and restore the previous value instead. This check finds
+    every method called inside the block and fails if any of them forces the
+    flag to false.
+    """
+    before = len(failures)
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    m = re.search(r"private void OnLoaded\(object sender.*?\n    \}", mw, re.S)
+    if not m:
+        fail("suppression-flag", "OnLoaded not found")
+        return
+    h = m.group(0)
+    on, off = h.find("_suppressModeEvent = true;"), h.find("_suppressModeEvent = false;")
+    if on < 0 or off < 0 or off < on:
+        fail("suppression-flag", "OnLoaded no longer brackets its settings copy with the "
+                                 "suppression flag")
+        return
+    window = h[on:off]
+    called = set(re.findall(r"\b([A-Z]\w+)\(\);", window))
+    for name in sorted(called):
+        b = re.search(rf"(?:private|public)[^\n]*\b{name}\(\).*?\n    \}}", mw, re.S)
+        if b and re.search(r"_suppressModeEvent\s*=\s*false\s*;", b.group(0)):
+            fail("suppression-flag",
+                 f"{name}() is called inside OnLoaded's suppression block and forces "
+                 "_suppressModeEvent to false, re-arming every settings handler "
+                 "initialised after it. Save and restore the previous value")
+
+    if len(failures) == before:
+        notes.append(f"suppression-flag: {len(called)} helper(s) inside the startup "
+                     "block, none forces the flag off")
+
+
 def check_startup_restores_filtering():
     """Filtering must be restored at startup, independent of tamper watching.
 
@@ -4456,6 +4922,11 @@ def main():
     check_no_duplicate_members()
     check_unresolved_countries()
     check_profile_survives_update()
+    check_version_not_lowered()
+    check_no_orphaning_rebuilds()
+    check_device_copy()
+    check_update_checking()
+    check_suppression_flag()
     check_startup_restores_filtering()
     check_filters_not_permanent()
     check_own_executable()

@@ -459,6 +459,43 @@ public sealed class StoreData
     public string GeoIpLastRefreshResult { get; set; } = "";
     public string OuiLastRefreshResult { get; set; } = "";
 
+    // ---- Update checking ---------------------------------------------------
+    //
+    // OFF by default, for the same reason the database refresh is: GunWall does
+    // not reach the network on a schedule nobody asked for, and its own traffic
+    // gets no exemption from that. An unsigned tool that cannot announce its own
+    // fixes is a real cost, and it is the user's to accept rather than ours to
+    // assume.
+    public bool AutoUpdateCheck { get; set; }
+
+    /// <summary>Days between checks: 1, 7 or 30. Clamped when read, so a
+    /// hand-edited profile cannot produce a busy loop against GitHub.</summary>
+    public int UpdateCheckDays { get; set; } = 7;
+
+    /// <summary>Fetch the installer as soon as a release is found, so pressing
+    /// Update now does not then wait on a download. NEVER installs anything -
+    /// that is always a deliberate press.</summary>
+    public bool AutoUpdateDownload { get; set; }
+
+    /// <summary>Last ATTEMPTED check, UTC round-trip. Empty means never.</summary>
+    public string LastUpdateCheckUtc { get; set; } = "";
+
+    /// <summary>Outcome of the last attempt, successful or not - a check failing
+    /// every week for a month has to be visible, and a timestamp alone hides
+    /// that.</summary>
+    public string LastUpdateCheckResult { get; set; } = "";
+
+    /// <summary>Version found waiting, empty when none. Kept apart from the file
+    /// below so "an update exists" survives the download being cleaned up.</summary>
+    public string PendingUpdateVersion { get; set; } = "";
+
+    /// <summary>Full path of a downloaded, verified installer, empty when none.
+    ///
+    /// Its hash is checked AGAIN immediately before it is run. A file that sat on
+    /// disk for a week is not the file that was verified a week ago, and this one
+    /// is executed elevated.</summary>
+    public string PendingUpdatePath { get; set; } = "";
+
     /// <summary>Set the first time GunWall completes a launch, and by the
     /// installer when it detects an upgrade.
     ///

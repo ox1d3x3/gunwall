@@ -15,6 +15,238 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.147] — 2026-09-26
+
+*Developed and tested as `0.99.120`, deliberately below the published release so the
+updater had something to find. The `version-not-lowered` check refused to let that
+build pass as a release, and this entry is the same code at its real number.*
+
+### Added — automatic update checking
+**Settings → UPDATES**, alongside the existing *Check for updates* on the
+dashboard.
+
+- ☐ **Check for updates automatically** → **Daily / Weekly / Monthly**
+- ☐ **Download updates when one is found** — disabled unless checking is on,
+  because it has nothing to act on otherwise
+- When the check last ran and what it found, including failures
+- **Update now**, shown only when a release is waiting
+
+**Off by default**, both settings. A firewall that contacts a server on a
+schedule nobody chose is the behaviour GunWall exists to make visible, and its
+own traffic gets no exemption. The interval is clamped on read as well as write,
+so a hand-edited profile cannot produce a busy loop against someone else's
+server.
+
+**Nothing installs itself.** Downloading ahead is a convenience so *Update now*
+does not then wait; running the installer is always a deliberate press. There is
+no silent upgrade and no setting that produces one — asserted by a check that
+fails if a second code path ever runs the pending installer.
+
+**The checksum is verified again at install time**, against the release that is
+current at that moment rather than the one published when the file was fetched. A
+file that has sat in a folder for a month is not the file that was verified a
+month ago, and it runs elevated. If it no longer matches, or is for a different
+version, it is discarded and fetched again rather than run.
+
+**Metered connections** skip the download and still perform the check: a release
+listing is kilobytes, an installer is tens of megabytes of someone else's
+allowance. *Update now* always works.
+
+Pending installers are kept in `%ProgramData%\GunWall\updates`, not `%TEMP%` —
+Windows clears temp, and "downloaded and ready" would quietly stop being true.
+
+### Fixed — turning protection off could block every connection
+With protection **off**, Chrome reported `ERR_NETWORK_ACCESS_DENIED`; turning it
+back on restored everything. Reported on 0.99.146.
+
+Cause: repair created orphans, and nothing removed them.
+
+`RepairFiltering` rebuilt filtering by overwriting every id it installed, without
+removing the filter the old id named. After a reboot that is harmless — the kernel
+is empty. But the watchdog called it whenever filters were missing, and four were
+**always** missing:
+
+```
+17:34:47  Startup: filtering restored, 380 filter(s) installed.
+17:35:27  TAMPERING DETECTED: 4 of 384 missing. Re-applying.
+17:35:27  Filtering re-applied: 380 filter(s) installed.
+17:35:57  TAMPERING DETECTED: 4 of 384 missing. Re-applying.
+...
+18:38:43  Startup reconcile: 1140 filter(s) in the sublayer, 384 tracked
+```
+
+The four were a **Blocked** rule. Neither repair nor engaging protection ever
+reinstalled Blocked rules, so after a reboot — filters have not survived one since
+0.99.143 — their ids named nothing, permanently. Each repair installed 380
+duplicates to fix four it could not fix, and forgot the 380 originals.
+
+Those orphans included copies of the condition-less block-all. Protection OFF
+removes only what the store names, so they survived it, and every connection was
+denied until protection came back and fresh permits outranked them.
+
+Four changes:
+
+- **Repair snapshots, rebuilds, then removes.** The store's ids are captured before
+  anything is reinstalled; whatever is no longer named afterwards is deleted. In
+  that order, so enforcement never drops — briefly doubled, never empty.
+- **Blocked rules are restored** by repair and by engaging protection, including
+  directional blocks, which are recorded only in the rule's display name. An
+  explicit block carries veto, so losing it on every OFF/ON cycle mattered even
+  though the baseline still denied the app.
+- **Protection OFF deletes one filter at a time, then sweeps.** It used
+  `RemoveFilters`, which stops at the first failure — and `ClearAllFilterIds` then
+  forgot the rest, leaving them installed. A background sweep now removes every
+  filter in the sublayer the store does not name. It subtracts the tracked set and
+  stops when protection is re-engaged, so it cannot touch a filter a later engage
+  installs.
+- **Service blocks re-applied at every launch** now remove what they replace; they
+  had the same overwrite-and-forget defect on any restart that was not a reboot.
+
+The protection-off sweep also now holds `_dataLock`, the one store walk left
+outside it.
+
+### Known limitation — some blocks are not restored after a restart
+Since 0.99.143 a restart clears every filter, and at startup GunWall reinstalls the
+baseline, itself, application rules — allowed **and** blocked — service blocks and
+lockdown. Three kinds of block are not reinstalled:
+
+- **system rules** (the presets in Settings)
+- **per-application scope blocks** (for example, blocking an app's direct
+  connections)
+- **the address filters behind a curated blocklist**. The blocklist's hosts-file
+  and DNS entries persist on their own; only the WFP half is lost
+
+Each is only ever applied from its settings toggle, so after a restart it still
+reads as enabled while nothing enforces it. Switching it off and on again restores
+it. With the tamper watchdog on, the ids those filters left behind are also
+reported missing, and repair runs every thirty seconds — no longer harmful, since
+repair now removes what it replaces, but wasteful.
+
+Blocks created per connection are **not** affected: country and ASN blocks,
+domain blocks, access-policy blocks and P2P blocks are re-created by the traffic
+that triggers them, as they always were.
+
+Not fixed here. `SetSystemRule` returns early when a rule is already recorded as
+on, so re-running it after a restart installs nothing; `SetBlocklistEnabled` is
+entangled with DNS provider selection and the hosts file. Each needs a restore
+written for its own semantics and tested with that feature switched on.
+
+### Added — copying from Network scan
+Right-click a device: **Copy IP address**, **Copy MAC address**, **Copy vendor**,
+**Copy host name**, **Copy row**, **Copy all devices**, and **Edit note...**. `Ctrl+C`
+copies the selected rows.
+
+Rows are tab-separated, so a paste into a spreadsheet lands one field per cell;
+*Copy all devices* includes a header row. Several rows can be selected and are
+copied in the order the list shows them — `ListView` returns selections in click
+order, so a range chosen bottom-up would otherwise paste upside down. Empty fields
+are skipped when copying a single column, so a device with no vendor match does
+not leave a blank line in a list of vendors.
+
+### Added — checks `no-orphaning-rebuilds` and `device-copy`
+`no-orphaning-rebuilds` asserts repair snapshots, rebuilds and removes in that
+order; that repair and engage restore Blocked rules and never block GunWall itself;
+that disengage deletes individually, under the lock, and sweeps; that the sweep
+subtracts the tracked set and yields to a re-engage; and that the per-launch service
+re-apply removes what it replaces. Eleven defects reintroduced, eleven caught.
+
+`device-copy` asserts the menu and keyboard hook, list order, the empty-text guard,
+and that the note editor — reached from the menu with a null mouse argument — still
+never reads it. Five defects reintroduced, five caught.
+
+Recorded as trap 2.39.
+
+### Fixed — eleven defects found by audit before this build was tested
+The first implementation passed every check written for it. A line-by-line audit
+then found these, all fixed, each now pinned by an assertion:
+
+- **Every check deleted the installer the previous check downloaded.** An empty
+  path was recorded for a release already on disk, and changing the recorded path
+  deletes the old file — so with a daily interval the same ~55 MB installer was
+  fetched again every day.
+- **A failed check erased what was known.** Offline, or rate-limited by GitHub,
+  it cleared the pending update and deleted the verified installer. A failed check
+  now records the failure and changes nothing else. *Update now* did the same, and
+  now reports that it could not verify and runs nothing.
+- **Painting the card switched off startup event suppression.** `OnLoaded`
+  suppresses change handlers while it copies the profile into the settings
+  controls; the card's refresh ended by forcing that flag to false, so ten handlers
+  fired during every launch. It now restores the previous value.
+- **After installing an update, the new version offered to install itself.** The
+  profile survives upgrades, so the pending record did too: yellow tray, *Update
+  now* offering what was already running — permanently, with checking off. Startup
+  now clears any pending version that is not newer than the running build, and
+  sweeps leftover installers from the updates folder.
+- **Update now left GunWall running for the installer to kill.** It now exits
+  cleanly, the same hand-off the dashboard updater uses.
+- **Nothing stopped two checks or downloads running together.** The hourly loop,
+  *Check now*, *Update now* and the download toggle are now serialised.
+- **The installer was hashed, closed, then launched by path.** That leaves a gap in
+  which the file could be replaced before an elevated run. It is now hashed and
+  launched through one handle that denies writers.
+- **A failed check pushed the next one a whole interval away.** On Monthly, one
+  bad hour meant a month without a check. The timestamp now advances only on
+  success; a failure is retried on the next hourly tick.
+- **Switching the download option on did nothing** until the next scheduled check,
+  up to a month away. It now fetches a release that is already waiting.
+- **Check now downloaded over metered connections.** Only *Update now* does — it is
+  the one control that means "download".
+- **The two update paths disagreed.** A release found by the dashboard's *Check for
+  updates* now turns the tray yellow and appears on the card.
+- **The tray tooltip embedded an unbounded version string** from a hand-typed
+  GitHub tag. It is now shortened and length-capped.
+
+### Changed — the dashboard updater no longer asks about the firewall mid-install
+It called `ExitFromTray`, which — with protection on — asks whether to turn the
+firewall off, and put that question on screen alongside the installer's own
+prompt. During an upgrade there is one right answer: keep filtering, because the
+new version picks the filters up at startup. Both update paths now exit with
+protection kept on, asking nothing.
+
+### Added — check `suppression-flag`
+Finds every method called inside `OnLoaded`'s suppression block and fails if any of
+them forces `_suppressModeEvent` to false. Applies to anything added later, not
+only the updates card.
+
+### Note — three faults in this build's own checks
+Found by falsification, each a pattern this project has recorded before:
+
+- the failed-check assertion tested that nothing came *before* the failure branch,
+  and passed with the defect placed *inside* it
+- the handle assertion looked for `FileShare.Read`, which `FileShare.ReadWrite`
+  contains — the neighbourhood match
+- the elevated-launch scan read comment-and-string-stripped text, in which
+  `Verb = "runas"` becomes `Verb = ""`, so it found no launches and could never
+  fail — trap 2.30. It now also fails if it finds **none**, so it cannot go inert
+  unnoticed
+
+Fifteen defects were reintroduced individually across both checks and each
+confirmed failing.
+
+### Added — the tray icon shows a waiting update
+The dot gains a third state, yellow, when a release is available.
+
+**Red always wins.** Yellow means "there is a newer version"; red means "you are
+not protected right now". An update notice must never be the reason someone stops
+seeing that the firewall is off, so yellow only appears while protection is
+actually active. The tooltip names both states. A check asserts the order rather
+than merely the presence of the branches — the first version of that assertion
+passed with the priority reversed.
+
+### Added — checks `update-checking` and `version-not-lowered`
+`update-checking` asserts both settings default to off, the interval is clamped,
+the schedule honours it, metered connections skip the download, the installer is
+re-verified before it runs, only one code path can run it, and protection
+outranks the update notice in the tray. Eight defects were reintroduced
+individually and the check confirmed failing on each.
+
+`version-not-lowered` compares the build version against the newest changelog
+entry and fails unless `TEST-BUILD-DO-NOT-RELEASE` is present — and fails the
+other way if the marker outlives the lowered version. Both directions were
+falsified.
+
+---
+
 ## [0.99.146] — 2026-09-20
 
 ### Fixed — filtering was not restored after a restart

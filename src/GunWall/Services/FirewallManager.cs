@@ -404,8 +404,16 @@ public sealed class FirewallManager : IDisposable
         if (_data.BlockedServices.Count == 0) return;
         foreach (var name in _data.BlockedServices.Keys.ToList())
         {
+            // Add, then remove what it replaces. Runs on every launch, and after
+            // an app restart that was not a reboot the previous filters are still
+            // installed - overwriting their ids orphaned them, the same defect as
+            // RepairFiltering.
+            var old = _data.BlockedServices[name];
             var ids = _engine.AddServiceBlock(name);
-            if (ids.Count > 0) _data.BlockedServices[name] = ids;
+            if (ids.Count == 0) continue;
+            _data.BlockedServices[name] = ids;
+            foreach (ulong id in old)
+                if (!ids.Contains(id)) _engine.TryDeleteFilter(id);
         }
         SaveStore();
         DiagnosticLog.Log($"Re-applied {_data.BlockedServices.Count} service block(s).");
@@ -1262,6 +1270,49 @@ public sealed class FirewallManager : IDisposable
     /// "done".</summary>
     public PurgeResult? LastPurge { get; private set; }
 
+    /// <summary>
+    /// Removes every filter in GunWall's sublayer that the store does not name.
+    ///
+    /// Unlike PurgeSublayer this NEVER deletes a tracked filter, so it is safe to
+    /// run while protection may be switched back on. It re-checks StrictMode each
+    /// pass and stops as soon as protection is re-engaged; and it only deletes ids
+    /// that were untracked at the moment they were enumerated, so a filter created
+    /// by a later engage can never be among them.
+    ///
+    /// Looped for the same reason the purge is: netsh returns a different partial
+    /// set on each call.
+    /// </summary>
+    public int SweepUntrackedFilters()
+    {
+        const int MaxPasses = 12;
+        int removed = 0;
+        for (int pass = 0; pass < MaxPasses; pass++)
+        {
+            if (_data.StrictMode) break;
+
+            List<ulong> live;
+            try { live = _engine.FindAllSublayerFilterIds(); }
+            catch (Exception ex) { DiagnosticLog.LogException("SweepUntracked/enumerate", ex); break; }
+
+            HashSet<ulong> tracked;
+            lock (_dataLock) tracked = new HashSet<ulong>(AllKnownFilterIds());
+            if (_data.StrictMode) break;
+
+            var untracked = live.Where(id => !tracked.Contains(id)).ToList();
+            if (untracked.Count == 0) break;
+
+            int thisPass = 0;
+            foreach (ulong id in untracked)
+                if (_engine.TryDeleteFilter(id) == 0) { removed++; thisPass++; }
+            if (thisPass == 0) break;
+        }
+
+        if (removed > 0)
+            DiagnosticLog.Log($"Protection OFF: removed {removed} filter(s) no list named - "
+                            + "orphans that would otherwise keep blocking with protection off.");
+        return removed;
+    }
+
     /// <summary>Outcome of a sublayer purge, for reporting to a console or a dialog.</summary>
     public readonly record struct PurgeResult(
         int Passes, int Removed, int AlreadyGone, int Failed, int Remaining, bool SublayerGone);
@@ -1592,34 +1643,104 @@ public sealed class FirewallManager : IDisposable
         int made = 0;
         try
         {
-            if (_data.StrictMode)
+            lock (_dataLock)
             {
-                _data.StrictFilterIds = _engine.EngageStrictMode();
-                made += _data.StrictFilterIds.Count;
-            }
-            _data.SelfFilterIds = _engine.PermitApplication(Environment.ProcessPath ?? "");
-            made += _data.SelfFilterIds.Count;
+                // Snapshot what the store names BEFORE rebuilding.
+                //
+                // This used to overwrite every id it rebuilt without removing the
+                // filter the old id named. After a reboot that is harmless - the
+                // kernel is empty. Called by the watchdog when four of 384 filters
+                // were missing, it installed 380 duplicates and forgot the 380
+                // originals: 380 orphans every thirty seconds. On 2026-09-21 the
+                // sublayer reached 1140 filters against 384 tracked.
+                //
+                // Among the orphans were copies of the condition-less block-all.
+                // Protection OFF removes only what the store names, so those stayed,
+                // and a machine with protection OFF denied every connection -
+                // ERR_NETWORK_ACCESS_DENIED - until protection was turned back on
+                // and fresh permits outranked them.
+                //
+                // Rebuild first, THEN remove what is no longer named. Removing first
+                // would leave a window with nothing installed, not even the
+                // block-all; this order keeps enforcement continuous, briefly
+                // doubled, which is harmless.
+                var previous = AllKnownFilterIds().ToList();
 
-            foreach (var rule in _data.Rules.Where(r => r.Status == AppStatus.Allowed))
-            {
-                try { rule.FilterIds = _engine.PermitApplication(rule.ExecutablePath); made += rule.FilterIds.Count; }
-                catch { }
+                if (_data.StrictMode)
+                {
+                    _data.StrictFilterIds = _engine.EngageStrictMode();
+                    made += _data.StrictFilterIds.Count;
+                }
+                _data.SelfFilterIds = _engine.PermitApplication(Environment.ProcessPath ?? "");
+                made += _data.SelfFilterIds.Count;
+
+                // Blocked rules too. They were skipped, so after a reboot a
+                // Blocked rule's ids named filters that no longer existed and
+                // nothing would ever recreate. That is the permanently "missing"
+                // set that made the watchdog repair every thirty seconds.
+                foreach (var rule in _data.Rules)
+                {
+                    try
+                    {
+                        rule.FilterIds = rule.Status == AppStatus.Allowed
+                            ? _engine.PermitApplication(rule.ExecutablePath)
+                            : InstallBlock(rule);
+                        made += rule.FilterIds.Count;
+                    }
+                    catch (Exception ex)
+                    {
+                        rule.FilterIds = new List<ulong>();
+                        DiagnosticLog.LogException($"RepairFiltering/rule {rule.DisplayName}", ex);
+                    }
+                }
+
+                foreach (var name in _data.BlockedServices.Keys.ToList())
+                {
+                    var ids = _engine.AddServiceBlock(name);
+                    if (ids.Count > 0) { _data.BlockedServices[name] = ids; made += ids.Count; }
+                }
+                if (_data.LockdownEngaged)
+                {
+                    _data.LockdownFilterIds = _engine.EngageLockdown();
+                    made += _data.LockdownFilterIds.Count;
+                }
+                SaveStore();
+
+                var current = new HashSet<ulong>(AllKnownFilterIds());
+                int superseded = 0, failed = 0;
+                foreach (ulong id in previous)
+                {
+                    if (current.Contains(id)) continue;
+                    uint r = _engine.TryDeleteFilter(id);
+                    if (r == 0) superseded++;
+                    else if (r != 0x80320003) failed++;   // not-found: already gone, which is why we are here
+                }
+
+                DiagnosticLog.Log($"Filtering re-applied: {made} filter(s) installed, "
+                                + $"{superseded} superseded filter(s) removed"
+                                + (failed > 0 ? $", {failed} would not delete" : "") + ".");
             }
-            foreach (var name in _data.BlockedServices.Keys.ToList())
-            {
-                var ids = _engine.AddServiceBlock(name);
-                if (ids.Count > 0) { _data.BlockedServices[name] = ids; made += ids.Count; }
-            }
-            if (_data.LockdownEngaged)
-            {
-                _data.LockdownFilterIds = _engine.EngageLockdown();
-                made += _data.LockdownFilterIds.Count;
-            }
-            SaveStore();
-            DiagnosticLog.Log($"Filtering re-applied after tampering: {made} filter(s) installed.");
         }
         catch (Exception ex) { DiagnosticLog.LogException("RepairFiltering", ex); }
         return made;
+    }
+
+    /// <summary>
+    /// Installs a Blocked rule's filters, honouring a directional block.
+    ///
+    /// FirewallRule has no direction field. BlockAppDirection records the
+    /// direction only in the display-name suffix, so that is what is read here -
+    /// the existing contract, not a guess. Never for GunWall itself: a block on its
+    /// own path would outrank nothing useful and cut off updates and blocklists.
+    /// </summary>
+    private List<ulong> InstallBlock(FirewallRule rule)
+    {
+        if (IsOwnExecutable(rule.ExecutablePath)) return new List<ulong>();
+        if (rule.DisplayName.EndsWith(" (outbound blocked)", StringComparison.Ordinal))
+            return _engine.BlockApplicationDirectional(rule.ExecutablePath, outbound: true);
+        if (rule.DisplayName.EndsWith(" (inbound blocked)", StringComparison.Ordinal))
+            return _engine.BlockApplicationDirectional(rule.ExecutablePath, outbound: false);
+        return _engine.BlockApplication(rule.ExecutablePath);
     }
 
     /// <summary>Proves GunWall can still add and remove its own filters - the
@@ -1667,9 +1788,18 @@ public sealed class FirewallManager : IDisposable
             SaveStore();
 
             // 2) Re-create permits for previously allowed apps.
-            foreach (var rule in _data.Rules.Where(r => r.Status == AppStatus.Allowed))
+            // Blocked rules as well. Only Allowed rules were rebuilt here, so an
+            // explicit block - which carries veto, and so holds even against
+            // another product's permit - was silently dropped by every OFF/ON
+            // cycle, leaving the app denied only by the baseline.
+            foreach (var rule in _data.Rules)
             {
-                try { rule.FilterIds = _engine.PermitApplication(rule.ExecutablePath); }
+                try
+                {
+                    rule.FilterIds = rule.Status == AppStatus.Allowed
+                        ? _engine.PermitApplication(rule.ExecutablePath)
+                        : InstallBlock(rule);
+                }
                 catch { /* exe may be gone; rule stays recorded */ }
             }
             SaveStore();
@@ -1719,19 +1849,48 @@ public sealed class FirewallManager : IDisposable
             // forget. The rules themselves are kept - the user asked to stop
             // enforcing, not to lose their decisions - but every filter behind them
             // goes, and re-engaging reinstalls from the surviving rules.
-            var ids = new HashSet<ulong>();
-            CollectFilterIds(_data, ids, new HashSet<object>(ReferenceEqualityComparer.Instance));
-            if (ids.Count > 0)
+            // Under the lock: the startup reconcile walks the same store on a
+            // background thread, and this was the one walk left outside it.
+            lock (_dataLock)
             {
-                DiagnosticLog.Log($"Protection OFF: removing {ids.Count} filter(s) - "
-                                + "baseline, app rules, system rules, blocklists and scopes.");
-                try { _engine.RemoveFilters(ids.ToList()); }
-                catch (Exception ex) { DiagnosticLog.LogException("SetStrictMode/off", ex); }
+                var ids = new HashSet<ulong>();
+                CollectFilterIds(_data, ids, new HashSet<object>(ReferenceEqualityComparer.Instance));
+                if (ids.Count > 0)
+                {
+                    DiagnosticLog.Log($"Protection OFF: removing {ids.Count} filter(s) - "
+                                    + "baseline, app rules, system rules, blocklists and scopes.");
+
+                    // One at a time. RemoveFilters throws on the first real failure,
+                    // so every id after it was skipped - and ClearAllFilterIds below
+                    // then forgot them all anyway, leaving them installed with
+                    // nothing naming them. One failed delete could orphan the
+                    // block-all.
+                    int failed = 0;
+                    foreach (ulong id in ids)
+                    {
+                        uint r = _engine.TryDeleteFilter(id);
+                        if (r != 0 && r != 0x80320003) failed++;
+                    }
+                    if (failed > 0)
+                        DiagnosticLog.Log($"Protection OFF: {failed} filter(s) would not delete; "
+                                        + "the sweep that follows will try them again.");
+                }
+
+                ClearAllFilterIds(_data);
+                _data.StrictMode = false;
+                SaveStore();
             }
 
-            ClearAllFilterIds(_data);
-            _data.StrictMode = false;
-            SaveStore();
+            // Then anything the store never named. OFF promises "nothing is being
+            // blocked", and an orphaned block-all breaks that promise without being
+            // on any list above. Background, because the enumeration shells out to
+            // netsh; it stops the moment protection is re-engaged, and it can only
+            // ever delete filters the store does not name.
+            _ = System.Threading.Tasks.Task.Run(() =>
+            {
+                try { SweepUntrackedFilters(); }
+                catch (Exception ex) { DiagnosticLog.LogException("SetStrictMode/sweep", ex); }
+            });
         }
     }
 
@@ -1892,6 +2051,129 @@ public sealed class FirewallManager : IDisposable
 
     public string UiFontFamily => _data.UiFontFamily ?? "";
     public void SetUiFontFamily(string v) { _data.UiFontFamily = v ?? ""; SaveStore(); }
+
+    // ---- Update checking ----------------------------------------------------
+
+    public bool AutoUpdateCheck => _data.AutoUpdateCheck;
+    public bool AutoUpdateDownload => _data.AutoUpdateDownload;
+
+    /// <summary>Clamped on READ as well as write, so a hand-edited 0 cannot mean
+    /// "check on every tick" against someone else's server.</summary>
+    public int UpdateCheckDays =>
+        _data.UpdateCheckDays is 1 or 7 or 30 ? _data.UpdateCheckDays : 7;
+
+    public void SetAutoUpdateCheck(bool on)
+    {
+        _data.AutoUpdateCheck = on;
+        // Downloading is meaningless without checking - it has nothing to act
+        // on. Turned off together so the interface cannot show a setting that
+        // does nothing.
+        if (!on) _data.AutoUpdateDownload = false;
+        SaveStore();
+    }
+
+    public void SetAutoUpdateDownload(bool on)
+    { _data.AutoUpdateDownload = on; SaveStore(); }
+
+    public void SetUpdateCheckDays(int days)
+    { _data.UpdateCheckDays = days is 1 or 7 or 30 ? days : 7; SaveStore(); }
+
+    public DateTime? LastUpdateCheck => ParseUtc(_data.LastUpdateCheckUtc);
+    public string LastUpdateCheckResult => _data.LastUpdateCheckResult;
+    public string PendingUpdateVersion => _data.PendingUpdateVersion;
+    public string PendingUpdatePath => _data.PendingUpdatePath;
+
+    /// <summary>True when the scheduled check is due. False when checking is off,
+    /// so the caller cannot accidentally check anyway.</summary>
+    public bool UpdateCheckDue()
+    {
+        if (!_data.AutoUpdateCheck) return false;
+        var last = ParseUtc(_data.LastUpdateCheckUtc);
+        return last is null || DateTime.UtcNow - last.Value >= TimeSpan.FromDays(UpdateCheckDays);
+    }
+
+    /// <summary>
+    /// Records the outcome of a check. The timestamp advances ONLY on success.
+    ///
+    /// The first version advanced it either way, reasoning that a server which is
+    /// down should not be retried hourly. With a Monthly interval that turned one
+    /// failed attempt - offline at the wrong hour, a GitHub rate limit - into a
+    /// month without a check. Retrying on the hourly tick while it fails costs
+    /// nothing when offline and stays far inside GitHub's limits.
+    /// </summary>
+    public void NoteUpdateCheck(string result, bool succeeded)
+    {
+        if (succeeded) _data.LastUpdateCheckUtc = DateTime.UtcNow.ToString("o");
+        _data.LastUpdateCheckResult = result;
+        SaveStore();
+    }
+
+    /// <summary>
+    /// Clears a pending update that is no longer newer than what is running.
+    ///
+    /// The profile survives upgrades, by design. So after Update now installed
+    /// the release, the NEW version started with the old record still saying
+    /// that release was waiting: yellow tray, Update now offering to install what
+    /// was already running. With automatic checking off - the default - nothing
+    /// would ever have cleared it.
+    /// </summary>
+    public void ClearStalePendingUpdate()
+    {
+        string v = _data.PendingUpdateVersion;
+        if (v.Length == 0 || UpdateService.IsNewer(v)) return;
+        DiagnosticLog.Log($"Update: {v} is not newer than the running "
+                        + $"{UpdateService.CurrentVersion} - clearing the pending update.");
+        SetPendingUpdate("", "");
+    }
+
+    /// <summary>
+    /// Removes installers in the updates folder that are not the pending one.
+    ///
+    /// SetPendingUpdate deletes a superseded file, but a delete can fail - the
+    /// installer that just ran may still be open when the new version starts.
+    /// Swept on every launch, so a file that could not go once goes next time
+    /// rather than accumulating.
+    /// </summary>
+    public void CleanUpdateFolder()
+    {
+        try
+        {
+            if (!System.IO.Directory.Exists(UpdateFolder)) return;
+            foreach (string f in System.IO.Directory.GetFiles(UpdateFolder))
+            {
+                if (string.Equals(f, _data.PendingUpdatePath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                try { System.IO.File.Delete(f); }
+                catch { /* still in use; retried at the next launch */ }
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("CleanUpdateFolder", ex); }
+    }
+
+    /// <summary>Records a release waiting to be installed, and the verified file
+    /// if one was downloaded. Pass an empty version to clear both.</summary>
+    public void SetPendingUpdate(string version, string path)
+    {
+        // A file for a version we are no longer offering is not a saving, it is
+        // a stale installer that Update now might run. Removed here so the two
+        // can never disagree.
+        string old = _data.PendingUpdatePath;
+        if (old.Length > 0 && !string.Equals(old, path, StringComparison.OrdinalIgnoreCase))
+        {
+            try { if (System.IO.File.Exists(old)) System.IO.File.Delete(old); }
+            catch (Exception ex) { DiagnosticLog.LogException("SetPendingUpdate/cleanup", ex); }
+        }
+
+        _data.PendingUpdateVersion = version ?? "";
+        _data.PendingUpdatePath = path ?? "";
+        SaveStore();
+    }
+
+    /// <summary>Where a pending installer is kept.
+    ///
+    /// Beside the profile, not in %TEMP%: Windows clears temp, and "downloaded
+    /// and ready" would quietly stop being true without anything saying so.</summary>
+    public string UpdateFolder => System.IO.Path.Combine(_store.ProfileFolder, "updates");
 
     // ---- Additional data: GeoIP and MAC vendor databases -------------------
 

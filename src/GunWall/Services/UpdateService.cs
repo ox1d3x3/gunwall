@@ -13,7 +13,7 @@ namespace GunWall.Services;
 public static class UpdateService
 {
     // Current shipped version. Bump alongside the csproj <Version>.
-    public const string CurrentVersion = "0.99.146";
+    public const string CurrentVersion = "0.99.147";
 
     private const string ReleasesApi =
         "https://api.github.com/repos/ox1d3x3/gunwall/releases/latest";
@@ -314,6 +314,12 @@ public static class UpdateService
     }
 
     /// <summary>Returns &gt;0 if a is newer, &lt;0 if older, 0 if equal.</summary>
+    /// <summary>True when <paramref name="version"/> is newer than the running
+    /// build. Public so stale pending-update state can be recognised at startup
+    /// using the same comparison the check itself uses.</summary>
+    public static bool IsNewer(string version) =>
+        CompareVersions(NormalizeVersion(version), CurrentVersion) > 0;
+
     private static int CompareVersions(string a, string b)
     {
         var pa = a.Split('.');

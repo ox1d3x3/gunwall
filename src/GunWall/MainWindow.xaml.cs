@@ -366,6 +366,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
                     ? "No key set." : "A key is saved.";
             RefreshAdditionalDataUi();
+            // After an upgrade the profile still records the release that was just
+            // installed. Cleared before painting, or the new version starts yellow
+            // and offers to install itself.
+            _firewall.ClearStalePendingUpdate();
+            _firewall.CleanUpdateFolder();
+            RefreshUpdatesUi();
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
@@ -417,9 +423,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // minutes before its first check; the first-run offer does not,
             // because it is the one thing a new user should see immediately.
             StartDbRefreshLoop();
+            StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.146 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.147 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5259,6 +5266,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             var r = await UpdateService.CheckAsync();
             UpdateStatus.Text = r.Message;
+            // Same bookkeeping as the UPDATES card, so a release found here turns
+            // the tray yellow and appears there too, instead of the two update
+            // paths disagreeing about whether anything is waiting.
+            RecordReleaseCheck(r);
+            RefreshUpdatesUi();
             if (!r.Ok || !r.UpdateAvailable) return;
 
             // No installer attached to the release - offer the page, as before.
@@ -5336,7 +5348,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             });
             Services.DiagnosticLog.Log(
                 $"Update: launched installer for {r.Latest} (verified={d.Verified}). Exiting.");
-            ExitFromTray();
+            ExitForUpdate();
         }
         catch (Exception ex)
         {
@@ -6007,6 +6019,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private bool _dbBusyGeo, _dbBusyOui;
     private System.Threading.CancellationTokenSource? _dbRefreshCts;
+    private System.Threading.CancellationTokenSource? _updateCts;
 
     /// <summary>Reads current state onto the Additional data card. Safe to call
     /// at any time; every control is null-checked because Settings may not have
@@ -6047,6 +6060,417 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         static string Stamp(DateTime? utc) =>
             utc is null ? "Never refreshed." : $"Updated {utc.Value.ToLocalTime():yyyy-MM-dd HH:mm}.";
+    }
+
+    // ---- Updates -----------------------------------------------------------
+
+    /// <summary>One check, download or install at a time. The hourly loop, Check
+    /// now, Update now and switching the download option on can all start work,
+    /// and two of them downloading to the same path, or one deleting the file the
+    /// other is verifying, is not a state worth reasoning about.</summary>
+    private bool _updateBusy;
+
+    /// <summary>A version fit for display. The tag is typed by hand on GitHub and
+    /// nothing bounds it.</summary>
+    private static string ShortVersion(string v) =>
+        v.Length <= 20 ? v : v[..20] + "...";
+
+    /// <summary>Paints the UPDATES card from the store. Called after every check,
+    /// download and toggle so the card never describes a previous state.</summary>
+    private void RefreshUpdatesUi()
+    {
+        // Saved and RESTORED - never forced to false. This runs inside OnLoaded's
+        // own suppression block, and the first version ended with
+        // `finally { _suppressModeEvent = false; }`, which switched suppression
+        // off for every settings control initialised after it: ten change
+        // handlers fired during startup. Trap 2.34's shape, found by audit.
+        bool wasSuppressed = _suppressModeEvent;
+        _suppressModeEvent = true;
+        try
+        {
+            if (UpdAutoCheck != null) UpdAutoCheck.IsChecked = _firewall.AutoUpdateCheck;
+            if (UpdAutoDownload != null)
+            {
+                UpdAutoDownload.IsChecked = _firewall.AutoUpdateDownload;
+                // Downloading has nothing to act on without checking.
+                UpdAutoDownload.IsEnabled = _firewall.AutoUpdateCheck;
+            }
+            if (UpdIntervalCombo != null)
+                foreach (System.Windows.Controls.ComboBoxItem it in UpdIntervalCombo.Items)
+                    if (it.Tag is string t && int.TryParse(t, out int d)
+                        && d == _firewall.UpdateCheckDays)
+                    { UpdIntervalCombo.SelectedItem = it; break; }
+        }
+        finally { _suppressModeEvent = wasSuppressed; }
+
+        if (UpdCheckStatus != null)
+        {
+            var last = _firewall.LastUpdateCheck;
+            string when = last is null
+                ? "Never checked."
+                : $"Last successful check {last.Value.ToLocalTime():yyyy-MM-dd HH:mm}.";
+            string res = _firewall.LastUpdateCheckResult;
+            UpdCheckStatus.Text = res.Length > 0 ? $"{when} {res}" : when;
+        }
+
+        string pendingVer = ShortVersion(_firewall.PendingUpdateVersion);
+        bool havePending = pendingVer.Length > 0;
+        bool haveFile = havePending && _firewall.PendingUpdatePath.Length > 0
+                        && System.IO.File.Exists(_firewall.PendingUpdatePath);
+        if (UpdNowBtn != null)
+            UpdNowBtn.Visibility = havePending ? Visibility.Visible : Visibility.Collapsed;
+        if (UpdPendingStatus != null)
+            UpdPendingStatus.Text = !havePending ? ""
+                : haveFile ? $"Version {pendingVer} is downloaded and verified, ready to install."
+                           : $"Version {pendingVer} is available. Update now will download it first.";
+
+        UpdateTrayIcon();   // the yellow dot follows the pending state
+    }
+
+    /// <summary>
+    /// Records what a check found, without downloading. True when THIS check
+    /// found a newer release that can be acted on.
+    ///
+    /// Three outcomes, which the first version did not keep apart:
+    ///
+    ///   - the check FAILED - offline, rate-limited, GitHub down. Record that and
+    ///     change nothing else. The first version cleared the pending update and
+    ///     deleted its verified installer here, so an hour without connectivity
+    ///     erased what was known.
+    ///   - no newer release - clear pending state. This is what tidies up after
+    ///     an update has been installed.
+    ///   - a newer release - record it, KEEPING an already-downloaded file when it
+    ///     is for the same version. The first version passed an empty path, and
+    ///     SetPendingUpdate deletes the stored file whenever the path changes, so
+    ///     every check threw away the installer it downloaded last time.
+    /// </summary>
+    private bool RecordReleaseCheck(UpdateService.Result r)
+    {
+        if (!r.Ok)
+        {
+            _firewall.NoteUpdateCheck("The last attempt could not reach the release: "
+                                    + r.Message, succeeded: false);
+            return false;
+        }
+
+        _firewall.NoteUpdateCheck(r.Message, succeeded: true);
+
+        if (!r.UpdateAvailable)
+        {
+            _firewall.SetPendingUpdate("", "");
+            return false;
+        }
+
+        string keep = string.Equals(_firewall.PendingUpdateVersion, r.Latest,
+                                    StringComparison.OrdinalIgnoreCase)
+                      ? _firewall.PendingUpdatePath : "";
+        _firewall.SetPendingUpdate(r.Latest, keep);
+        return true;
+    }
+
+    private void UpdAutoCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressModeEvent) return;
+        _firewall.SetAutoUpdateCheck(UpdAutoCheck?.IsChecked == true);
+        RefreshUpdatesUi();
+        // Switched on means "check", not "check sometime within a month".
+        if (_firewall.AutoUpdateCheck) _ = RunUpdateCheckAsync(manual: true);
+    }
+
+    private async void UpdAutoDownload_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressModeEvent) return;
+        _firewall.SetAutoUpdateDownload(UpdAutoDownload?.IsChecked == true);
+        RefreshUpdatesUi();
+
+        // Switched on with a release already waiting: fetch it now rather than at
+        // the next scheduled check, which could be a month away. Needs a fresh
+        // check - the download URL and checksum come from the release itself.
+        if (!_firewall.AutoUpdateDownload || _firewall.PendingUpdateVersion.Length == 0
+            || _updateBusy) return;
+        _updateBusy = true;
+        try
+        {
+            var r = await UpdateService.CheckAsync();
+            if (RecordReleaseCheck(r)) await FetchPendingIfNeededAsync(r);
+            RefreshUpdatesUi();
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("UpdateAutoDownload", ex); }
+        finally { _updateBusy = false; }
+    }
+
+    private void UpdInterval_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressModeEvent) return;
+        if (UpdIntervalCombo?.SelectedItem is System.Windows.Controls.ComboBoxItem it
+            && it.Tag is string t && int.TryParse(t, out int days))
+            _firewall.SetUpdateCheckDays(days);
+    }
+
+    private async void UpdCheckNow_Click(object sender, RoutedEventArgs e)
+        => await RunUpdateCheckAsync(manual: true);
+
+    /// <summary>Checks for a release and, when the download option is on, fetches
+    /// it. `manual` only bypasses the interval - it is not a request to download
+    /// over a metered connection, which is Update now's job alone.</summary>
+    private async System.Threading.Tasks.Task RunUpdateCheckAsync(bool manual)
+    {
+        if (!manual && !_firewall.UpdateCheckDue()) return;
+        if (_updateBusy)
+        {
+            if (manual && UpdCheckStatus != null)
+                UpdCheckStatus.Text = "A check or download is already in progress.";
+            return;
+        }
+
+        _updateBusy = true;
+        try
+        {
+            if (manual && UpdCheckStatus != null) UpdCheckStatus.Text = "Checking...";
+            var r = await UpdateService.CheckAsync();
+            bool found = RecordReleaseCheck(r);
+            RefreshUpdatesUi();
+            if (found && _firewall.AutoUpdateDownload)
+                await FetchPendingIfNeededAsync(r);
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("UpdateCheck", ex);
+            _firewall.NoteUpdateCheck("The check could not be completed: " + ex.Message,
+                                      succeeded: false);
+            RefreshUpdatesUi();
+        }
+        finally { _updateBusy = false; }
+    }
+
+    /// <summary>
+    /// Downloads the pending release unless a file is already on disk, honouring
+    /// the metered setting.
+    ///
+    /// Reached from the schedule, from Check now, and from switching the download
+    /// option on - none of which is a request to download. The card says
+    /// downloads are skipped on metered connections and that has to be true for
+    /// all three; only Update now overrides it, because pressing it is the
+    /// request.
+    /// </summary>
+    private async System.Threading.Tasks.Task FetchPendingIfNeededAsync(UpdateService.Result r)
+    {
+        string path = _firewall.PendingUpdatePath;
+        if (path.Length > 0 && System.IO.File.Exists(path)) return;   // re-verified at install
+
+        if (Services.NetworkCost.IsMetered())
+        {
+            _firewall.NoteUpdateCheck(
+                $"Version {ShortVersion(r.Latest)} is available. The download was skipped - "
+                + "this connection is metered. Update now will fetch it.", succeeded: true);
+            RefreshUpdatesUi();
+            return;
+        }
+
+        await DownloadPendingUpdateAsync(r);
+    }
+
+    /// <summary>Fetches the installer into the profile folder, keeping it only if
+    /// its hash verified. An unverified file is never kept: offering to run it
+    /// later is exactly what the published checksum exists to prevent.</summary>
+    private async System.Threading.Tasks.Task<bool> DownloadPendingUpdateAsync(
+        UpdateService.Result release)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(_firewall.UpdateFolder);
+            var dl = await UpdateService.DownloadInstallerAsync(release, null);
+
+            if (!dl.Ok || !dl.Verified)
+            {
+                try
+                {
+                    if (dl.Path.Length > 0 && System.IO.File.Exists(dl.Path))
+                        System.IO.File.Delete(dl.Path);
+                }
+                catch { }
+                _firewall.SetPendingUpdate(release.Latest, "");
+                _firewall.NoteUpdateCheck($"Version {ShortVersion(release.Latest)} is "
+                    + "available, but the download was not kept: " + dl.Message, succeeded: true);
+                RefreshUpdatesUi();
+                return false;
+            }
+
+            string dest = System.IO.Path.Combine(_firewall.UpdateFolder,
+                                                 System.IO.Path.GetFileName(dl.Path));
+            try
+            {
+                if (!string.Equals(dl.Path, dest, StringComparison.OrdinalIgnoreCase))
+                    System.IO.File.Move(dl.Path, dest, overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                // Keeping it where it landed beats losing it; it is re-verified
+                // before it is run either way.
+                Services.DiagnosticLog.LogException("UpdateDownload/move", ex);
+                dest = dl.Path;
+            }
+
+            _firewall.SetPendingUpdate(release.Latest, dest);
+            _firewall.NoteUpdateCheck($"Version {ShortVersion(release.Latest)} is downloaded "
+                                    + "and verified.", succeeded: true);
+            RefreshUpdatesUi();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("UpdateDownload", ex);
+            _firewall.NoteUpdateCheck("The download failed: " + ex.Message, succeeded: true);
+            RefreshUpdatesUi();
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Installs a pending update - on a deliberate press, and never otherwise.
+    ///
+    /// The release is re-read and the file hashed AGAIN against what is published
+    /// NOW, not when the file was fetched. And it is hashed and launched through
+    /// one open handle that denies writers, so nothing can replace the file in the
+    /// gap between the two. A verified path is not a verified file; this runs
+    /// elevated.
+    /// </summary>
+    private async void UpdNow_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updateBusy)
+        {
+            if (UpdPendingStatus != null)
+                UpdPendingStatus.Text = "A check or download is already in progress.";
+            return;
+        }
+
+        _updateBusy = true;
+        if (UpdNowBtn != null) UpdNowBtn.IsEnabled = false;
+        try
+        {
+            if (UpdPendingStatus != null) UpdPendingStatus.Text = "Checking the release...";
+            var r = await UpdateService.CheckAsync();
+
+            if (!RecordReleaseCheck(r))
+            {
+                RefreshUpdatesUi();
+                // A failed check changes nothing and runs nothing - including not
+                // deleting the file that is waiting. No newer release has already
+                // been cleared by RecordReleaseCheck.
+                if (!r.Ok && UpdPendingStatus != null)
+                    UpdPendingStatus.Text = "Could not reach the release to verify the "
+                        + "installer, so nothing was run. Try again when online.";
+                return;
+            }
+
+            // Pressing Update now IS the request, so metered is not consulted.
+            string path = _firewall.PendingUpdatePath;
+            if (path.Length == 0 || !System.IO.File.Exists(path))
+            {
+                if (UpdPendingStatus != null) UpdPendingStatus.Text = "Downloading...";
+                if (!await DownloadPendingUpdateAsync(r)) return;
+                path = _firewall.PendingUpdatePath;
+                if (path.Length == 0) return;
+            }
+
+            if (r.AssetSha256 is not { Length: 64 })
+            {
+                if (UpdPendingStatus != null)
+                    UpdPendingStatus.Text = "This release did not publish a checksum, so "
+                        + "Update now will not install it. Check for updates on the "
+                        + "dashboard can, with a warning.";
+                return;
+            }
+
+            bool launched = false;
+            using (var hold = new System.IO.FileStream(path, System.IO.FileMode.Open,
+                                   System.IO.FileAccess.Read, System.IO.FileShare.Read))
+            {
+                string actual = Convert.ToHexString(
+                    await System.Security.Cryptography.SHA256.HashDataAsync(hold))
+                    .ToLowerInvariant();
+
+                if (string.Equals(actual, r.AssetSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    Services.DiagnosticLog.Log($"Update: running the verified installer for "
+                                             + $"{r.Latest}.");
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path)
+                    {
+                        UseShellExecute = true,
+                        Verb = "runas",
+                    });
+                    launched = true;
+                }
+            }
+
+            if (!launched)
+            {
+                Services.DiagnosticLog.Log("Update: the stored installer no longer matches "
+                    + "the published checksum. Deleted rather than run.");
+                _firewall.SetPendingUpdate(r.Latest, "");   // deletes the file
+                RefreshUpdatesUi();
+                if (UpdPendingStatus != null)
+                    UpdPendingStatus.Text = "The stored installer no longer matched the "
+                        + "published checksum and was deleted. Press Update now to fetch it "
+                        + "again.";
+                return;
+            }
+
+            ExitForUpdate();
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("UpdateNow", ex);
+            ShowError(ex);
+        }
+        finally
+        {
+            _updateBusy = false;
+            if (UpdNowBtn != null) UpdNowBtn.IsEnabled = true;
+        }
+    }
+
+    /// <summary>
+    /// Exits so the installer can replace the files, keeping protection ON and
+    /// asking nothing.
+    ///
+    /// The dashboard updater called ExitFromTray, which - with protection on -
+    /// asks whether to turn the firewall off, and puts that question on screen at
+    /// the same moment as the installer's own prompt. During an upgrade it has one
+    /// right answer: keep filtering, because the new version picks the filters up
+    /// at startup. Yes would leave the machine unprotected until someone noticed;
+    /// Cancel would keep this process alive for the installer to kill.
+    /// </summary>
+    private void ExitForUpdate()
+    {
+        _reallyExit = true;
+        Close();
+    }
+
+    private void StartUpdateCheckLoop()
+    {
+        _updateCts = new System.Threading.CancellationTokenSource();
+        var ct = _updateCts.Token;
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(TimeSpan.FromMinutes(3), ct);
+                while (!ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Dispatcher.InvokeAsync(async () =>
+                            await RunUpdateCheckAsync(manual: false));
+                    }
+                    catch (Exception ex)
+                    { Services.DiagnosticLog.LogException("UpdateCheckLoop", ex); }
+
+                    await System.Threading.Tasks.Task.Delay(TimeSpan.FromHours(1), ct);
+                }
+            }
+            catch (OperationCanceledException) { }
+        }, ct);
     }
 
     private async void DbGeoDownload_Click(object sender, RoutedEventArgs e)
@@ -6278,6 +6702,77 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// actually randomise - GunWall already knows which those are from the U/L
     /// bit, so a blanket caution on every device would be noise that teaches
     /// people to dismiss it.</summary>
+    // ---- Network scan: copying ---------------------------------------------
+
+    /// <summary>Column order for copied rows. Tab-separated so a paste into a
+    /// spreadsheet lands one field per cell.</summary>
+    private const string DeviceHeader =
+        "IP address\tMAC address\tHost\tVendor\tLikely OS\tFlags\tNote";
+
+    private static string DeviceLine(NetworkScanner.Device d) =>
+        string.Join("\t", d.Ip, d.Mac, d.Host, d.Vendor, d.Os, d.Kind, d.Note);
+
+    /// <summary>The selection, in the order the list shows it. ListView returns
+    /// SelectedItems in the order they were CLICKED, so a shift-selected range
+    /// copied bottom-up otherwise.</summary>
+    private List<NetworkScanner.Device> SelectedDevices() =>
+        DevicesList == null
+            ? new List<NetworkScanner.Device>()
+            : DevicesList.SelectedItems.OfType<NetworkScanner.Device>()
+                .OrderBy(d => _devices.IndexOf(d)).ToList();
+
+    /// <summary>Clipboard access can fail when another process holds it open.
+    /// Recorded rather than shown - a copy that did not happen is visible the
+    /// moment the user pastes.</summary>
+    private static void CopyText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        try { Clipboard.SetText(text); }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("Clipboard", ex); }
+    }
+
+    /// <summary>One value per selected device, one per line. Empty values are
+    /// skipped rather than copied as blank lines - a device with no vendor match
+    /// should not leave a gap in a list of vendors.</summary>
+    private void CopyDeviceField(Func<NetworkScanner.Device, string> field) =>
+        CopyText(string.Join(Environment.NewLine,
+            SelectedDevices().Select(field).Where(v => !string.IsNullOrWhiteSpace(v))));
+
+    private void CopyDeviceIp_Click(object sender, RoutedEventArgs e) => CopyDeviceField(d => d.Ip);
+    private void CopyDeviceMac_Click(object sender, RoutedEventArgs e) => CopyDeviceField(d => d.Mac);
+    private void CopyDeviceVendor_Click(object sender, RoutedEventArgs e) => CopyDeviceField(d => d.Vendor);
+    private void CopyDeviceHost_Click(object sender, RoutedEventArgs e) => CopyDeviceField(d => d.Host);
+
+    private void CopyDeviceRow_Click(object sender, RoutedEventArgs e)
+    {
+        var rows = SelectedDevices();
+        if (rows.Count == 0) return;
+        CopyText(string.Join(Environment.NewLine, rows.Select(DeviceLine)));
+    }
+
+    /// <summary>Every device, with a header row, so the scan can be pasted into a
+    /// spreadsheet or a ticket as a table.</summary>
+    private void CopyAllDevices_Click(object sender, RoutedEventArgs e)
+    {
+        if (_devices.Count == 0) return;
+        CopyText(DeviceHeader + Environment.NewLine
+               + string.Join(Environment.NewLine, _devices.Select(DeviceLine)));
+    }
+
+    private void DevicesList_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            CopyDeviceRow_Click(sender, e);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>The note editor from the menu. DeviceNote_Edit takes the mouse
+    /// event only because it is wired to double-click; it never reads it.</summary>
+    private void DeviceNoteMenu_Click(object sender, RoutedEventArgs e) =>
+        DeviceNote_Edit(sender, null!);
+
     private void DeviceNote_Edit(object sender, MouseButtonEventArgs e)
     {
         if (DevicesList?.SelectedItem is not Services.NetworkScanner.Device d) return;
@@ -7331,18 +7826,25 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr hIcon);
 
-    private System.Drawing.Icon? _trayIconOn, _trayIconOff;
+    private System.Drawing.Icon? _trayIconOn, _trayIconOff, _trayIconUpdate;
 
     /// <summary>Renders the app icon with a glowing status dot bottom-right:
     /// green when protection is active, red when the firewall is disabled.
     /// Fully qualified System.Drawing throughout (WPF types share names).</summary>
-    private System.Drawing.Icon? MakeTrayIcon(bool active)
+    /// <summary>What the tray dot is saying. Ordered by how badly the reader
+    /// needs to know: Off outranks UpdateAvailable, always.</summary>
+    private enum TrayState { Off, UpdateAvailable, Active }
+
+    private System.Drawing.Icon? MakeTrayIcon(TrayState state)
     {
         try
         {
-            var dot = active
-                ? System.Drawing.Color.FromArgb(48, 209, 88)    // iOS green
-                : System.Drawing.Color.FromArgb(255, 69, 58);   // iOS red
+            var dot = state switch
+            {
+                TrayState.Active          => System.Drawing.Color.FromArgb(48, 209, 88),  // iOS green
+                TrayState.UpdateAvailable => System.Drawing.Color.FromArgb(255, 204, 0),  // iOS yellow
+                _                         => System.Drawing.Color.FromArgb(255, 69, 58),  // iOS red
+            };
             using var bmp = new System.Drawing.Bitmap(32, 32);
             using (var g = System.Drawing.Graphics.FromImage(bmp))
             {
@@ -7377,17 +7879,46 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch { return null; }
     }
 
-    /// <summary>Swap the tray icon + tooltip to match the current protection state.</summary>
+    /// <summary>
+    /// Swap the tray icon + tooltip to match the current state.
+    ///
+    /// RED ALWAYS WINS. Yellow means "there is a newer version"; red means "you
+    /// are not protected right now". An update notice must never be the reason
+    /// someone stops seeing that the firewall is off, so the pending update is
+    /// only allowed to colour the dot while protection is actually active.
+    /// </summary>
     private void UpdateTrayIcon()
     {
         if (_tray == null) return;
         try
         {
             bool active = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
-            var icon = active ? (_trayIconOn ??= MakeTrayIcon(true))
-                              : (_trayIconOff ??= MakeTrayIcon(false));
+            bool pending = _firewall.PendingUpdateVersion.Length > 0;
+
+            var state = !active ? TrayState.Off
+                      : pending ? TrayState.UpdateAvailable
+                                : TrayState.Active;
+
+            var icon = state switch
+            {
+                TrayState.Active          => _trayIconOn     ??= MakeTrayIcon(TrayState.Active),
+                TrayState.UpdateAvailable => _trayIconUpdate ??= MakeTrayIcon(TrayState.UpdateAvailable),
+                _                         => _trayIconOff    ??= MakeTrayIcon(TrayState.Off),
+            };
             if (icon != null) _tray.Icon = icon;
-            _tray.Text = active ? "GunWall - protection active" : "GunWall - firewall disabled";
+
+            string tip = state switch
+            {
+                TrayState.Active          => "GunWall - protection active",
+                TrayState.UpdateAvailable =>
+                    $"GunWall - protected, {ShortVersion(_firewall.PendingUpdateVersion)} available",
+                _                         => "GunWall - firewall disabled",
+            };
+            // Capped. The version comes from a hand-typed GitHub tag that nothing
+            // bounds, and NotifyIcon limits tooltip length - an over-long value
+            // fails inside this try, leaving the icon changed and the tooltip
+            // describing the previous state.
+            _tray.Text = tip.Length <= 63 ? tip : tip[..63];
         }
         catch { }
     }

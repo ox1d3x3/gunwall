@@ -2406,7 +2406,20 @@
                     </StackPanel>
                 </Grid>
                 <Border Grid.Row="1" Padding="0">
-                    <ListView x:Name="DevicesList" gw:Table.EmptyTitle="No devices found" gw:Table.EmptyText="Run a scan to look for other hosts on your network." VirtualizingPanel.IsVirtualizing="True" MouseDoubleClick="DeviceNote_Edit">
+                    <ListView x:Name="DevicesList" gw:Table.EmptyTitle="No devices found" gw:Table.EmptyText="Run a scan to look for other hosts on your network." VirtualizingPanel.IsVirtualizing="True" MouseDoubleClick="DeviceNote_Edit" PreviewKeyDown="DevicesList_KeyDown">
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Copy IP address" Click="CopyDeviceIp_Click" />
+                                <MenuItem Header="Copy MAC address" Click="CopyDeviceMac_Click" />
+                                <MenuItem Header="Copy vendor" Click="CopyDeviceVendor_Click" />
+                                <MenuItem Header="Copy host name" Click="CopyDeviceHost_Click" />
+                                <Separator />
+                                <MenuItem Header="Copy row" InputGestureText="Ctrl+C" Click="CopyDeviceRow_Click" />
+                                <MenuItem Header="Copy all devices" Click="CopyAllDevices_Click" />
+                                <Separator />
+                                <MenuItem Header="Edit note..." Click="DeviceNoteMenu_Click" />
+                            </ContextMenu>
+                        </ListView.ContextMenu>
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
 
@@ -3129,6 +3142,56 @@
                                        Margin="0,0,0,2" TextWrapping="Wrap" Text="" />
                             <TextBlock x:Name="DbOuiResult" Style="{StaticResource Muted}"
                                        TextWrapping="Wrap" Text="" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}" />
+                            <TextBlock Text="GunWall can look for new releases on its GitHub project. Checking sends nothing about you - it reads the release list. Nothing is ever installed on its own: an update waits until you press Update now."
+                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock x:Name="UpdCheckStatus" Style="{StaticResource Muted}"
+                                           VerticalAlignment="Center" TextWrapping="Wrap"
+                                           Margin="0,0,140,0" Text="Never checked." />
+                                <Button x:Name="UpdCheckBtn" Content="Check now" MinWidth="120"
+                                        Style="{StaticResource ActionButton}" Click="UpdCheckNow_Click"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <CheckBox x:Name="UpdAutoCheck" Margin="0,4,0,0"
+                                      Content="Check for updates automatically"
+                                      Checked="UpdAutoCheck_Changed" Unchecked="UpdAutoCheck_Changed" />
+                            <TextBlock Text="Off by default. GunWall does not reach the network on a schedule you did not choose."
+                                       Style="{StaticResource Muted}" Margin="24,2,0,6" TextWrapping="Wrap" />
+
+                            <StackPanel Orientation="Horizontal" Margin="24,0,0,8">
+                                <TextBlock Text="Check every" Style="{StaticResource Muted}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox x:Name="UpdIntervalCombo" Width="150"
+                                          SelectionChanged="UpdInterval_Changed">
+                                    <ComboBoxItem Content="Daily" Tag="1" />
+                                    <ComboBoxItem Content="Weekly" Tag="7" />
+                                    <ComboBoxItem Content="Monthly" Tag="30" />
+                                </ComboBox>
+                            </StackPanel>
+
+                            <CheckBox x:Name="UpdAutoDownload" Margin="24,0,0,0"
+                                      Content="Download updates when one is found"
+                                      Checked="UpdAutoDownload_Changed" Unchecked="UpdAutoDownload_Changed" />
+                            <TextBlock Text="Downloads and verifies the installer so Update now does not have to wait. It is still never run for you. Skipped on metered connections."
+                                       Style="{StaticResource Muted}" Margin="48,2,0,8" TextWrapping="Wrap" />
+
+                            <Grid Margin="0,4,0,0">
+                                <TextBlock x:Name="UpdPendingStatus" Style="{StaticResource Muted}"
+                                           VerticalAlignment="Center" TextWrapping="Wrap"
+                                           Margin="0,0,140,0" Text="" />
+                                <Button x:Name="UpdNowBtn" Content="Update now" MinWidth="120"
+                                        Style="{StaticResource PrimaryButton}" Click="UpdNow_Click"
+                                        Visibility="Collapsed"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
                         </StackPanel>
                     </Border>
 

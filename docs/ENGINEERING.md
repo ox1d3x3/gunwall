@@ -763,6 +763,39 @@ paths were trusting it.
 
 **Check:** `filters-not-permanent`, seven falsifying mutations.
 
+### 2.39 A repair that assumes everything is missing
+
+`RepairFiltering` was written for one situation — after a reboot, when the kernel
+holds none of GunWall's filters — and it overwrote every filter id it rebuilt,
+because in that situation there was nothing for the old id to name.
+
+It was then called in a second situation. The tamper watchdog invokes it whenever
+anything is missing, and after 0.99.143 made filters non-persistent something was
+always missing: a Blocked rule, which no code path ever reinstalled. So every thirty
+seconds it installed a full set of 380 filters to fix four it could not fix, and
+forgot the 380 already there. Among them was the block-all, which then outlived
+protection being switched off.
+
+**Rule:** a function that replaces state must remove what it replaces, even when
+its first caller never had anything to remove. The second caller is the one that
+finds out.
+
+**Rule:** "repair" must be able to repair everything it counts as broken. The
+watchdog counted Blocked rules as missing; repair could not restore them. A check
+that can never be satisfied turns a repair loop into a generator — here, of
+orphans.
+
+**Rule:** when making something non-persistent, enumerate everything that relied on
+persistence to be restored. 0.99.143 removed one flag; 0.99.146 added a restore for
+part of what it lost; this release found a second part; a third — system rules,
+blocklists, country and scope blocks — is still outstanding and recorded as such.
+
+**Rule:** removal that aborts on the first failure, followed by clearing the record
+of everything, is worse than no removal: the survivors become unnamed. Delete one
+at a time, keep going, and sweep afterwards for anything no record names.
+
+**Check:** `no-orphaning-rebuilds`, eleven falsifying mutations.
+
 ---
 
 ## 3. Working agreements
