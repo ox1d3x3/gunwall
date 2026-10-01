@@ -42,6 +42,22 @@
                                                                      dark's is lighter - a derived
                                                                      "hover = brighten" would invert
                                                                      this one wrongly. -->
+    <!-- Connection prompt action row. Named for their role rather than borrowed
+         from 'brand-hi', which is scoped to link hover. The secondary border is
+         a real edge, not the card hairline: a pale button on a pale card was
+         what made the row dissolve. The secondary FILL sits a step below the
+         card here and a step above it in the dark theme - a white fill on this
+         near-white card, as 0.99.149 shipped, measured 1.09:1 and read as an
+         empty white box. The fill is the button's body; the border only
+         outlines it. The primary border is the deeper brand step
+         in this theme - darker here, lighter in the other - so the edge is
+         defined against its own fill either way. -->
+    <SolidColorBrush x:Key="PromptSecondaryFill" Color="#E1E4EA" />
+    <SolidColorBrush x:Key="PromptSecondaryFillHover" Color="#D8DCE3" />
+    <SolidColorBrush x:Key="PromptSecondaryBorder" Color="#AEB5C0" />
+    <SolidColorBrush x:Key="PromptSecondaryBorderHover" Color="#8F97A3" />
+    <SolidColorBrush x:Key="PromptPrimaryBorder" Color="#B32410" />
+    <SolidColorBrush x:Key="PromptPrimaryHover" Color="#B32410" />
     <SolidColorBrush x:Key="WarnText" Color="#9A6100" />        <!-- 'warn' -->
     <SolidColorBrush x:Key="WarnFill" Color="#1C9A6100" />      <!-- 'warn-bg' -->
     <SolidColorBrush x:Key="InfoText" Color="#858D99" />        <!-- neutral pill uses 't3' -->

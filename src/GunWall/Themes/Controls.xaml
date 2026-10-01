@@ -54,19 +54,25 @@
          so the safe answer is also the free one. -->
     <!-- The prompt's action row: Block, Allow and the details chevron.
 
-         SQUARE, by maintainer decision. They previously followed
-         ControlCornerRadius, the 4px WPF-UI radius the main window's buttons
-         use, and before that CornerRadius="7". At 125% display scaling the 4px
-         corners still read as rounded in a small, decisive surface, and the row
-         is meant to read as boxes. This is a deliberate difference from the main
-         window's buttons, not drift - the check `prompt-corners` holds it.
+         8px corners - proportioned to the 44px subject tile above them (11px)
+         rather than borrowed from the library's 4px control radius. Each button
+         carries a real border defined against its own fill: a cool-grey edge on
+         the secondary actions, a deeper brand step on Allow. The previous
+         square version had a hairline on a pale fill, and the row dissolved into
+         the card around it.
 
-         All three share it: squaring two buttons of one row would look like a
-         mistake. Their focus ring is the square variant for the same reason. -->
+         All three share one shape: a row whose buttons differ in shape reads as
+         a mistake. Pressed is a dip in opacity; the hover colours are named
+         prompt tokens, not 'brand-hi', which is scoped to links. Held by the
+         check prompt-buttons. -->
     <Style x:Key="PromptSecondary" TargetType="Button">
-        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingSquare}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingPrompt}" />
         <Setter Property="Height" Value="36" />
-        <Setter Property="MinWidth" Value="92" />
+        <!-- Wide enough for the icon, its gap and the label, so this IS the
+             rendered width. hint-width derives the countdown's budget from it,
+             and asserts the content fits - a button that grew past MinWidth
+             would shrink the hint without the budget knowing. -->
+        <Setter Property="MinWidth" Value="96" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
@@ -75,15 +81,22 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" CornerRadius="0" Padding="15,0"
-                            Background="Transparent"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    <Border x:Name="Bd" CornerRadius="8" Padding="15,0"
+                            Background="{DynamicResource PromptSecondaryFill}"
+                            BorderBrush="{DynamicResource PromptSecondaryBorder}" BorderThickness="1"
                             SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PromptSecondaryFillHover}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PromptSecondaryBorderHover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.82" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -172,21 +185,26 @@
     </Style>
 
     <Style x:Key="PromptChevron" TargetType="Button">
-        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingSquare}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingPrompt}" />
         <Setter Property="Width" Value="30" />
         <Setter Property="Height" Value="30" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" CornerRadius="0" Background="Transparent"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    <Border x:Name="Bd" CornerRadius="8"
+                            Background="{DynamicResource PromptSecondaryFill}"
+                            BorderBrush="{DynamicResource PromptSecondaryBorder}" BorderThickness="1"
                             SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PromptSecondaryFillHover}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PromptSecondaryBorderHover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.82" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -200,16 +218,21 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" CornerRadius="0" Padding="17,0"
+                    <Border x:Name="Bd" CornerRadius="8" Padding="17,0"
                             Background="{DynamicResource BlockText}"
-                            BorderBrush="{DynamicResource BlockText}" BorderThickness="1"
+                            BorderBrush="{DynamicResource PromptPrimaryBorder}" BorderThickness="1"
                             SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrandHi}" />
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BrandHi}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PromptPrimaryHover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.82" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -847,14 +870,14 @@
         </Setter>
     </Style>
 
-    <!-- The same ring with square corners, for the prompt's square action row.
-         The shared ring is rounded to match the rest of the interface; drawn 3px
-         outside a square button it would read as a mistake. -->
-    <Style x:Key="FocusRingSquare">
+    <!-- The prompt's ring. Drawn 3px outside a control with 8px corners, so its
+         radius is 11 - concentric with the button. The shared ring's 8 would
+         pinch in at the corners around these. -->
+    <Style x:Key="FocusRingPrompt">
         <Setter Property="Control.Template">
             <Setter.Value>
                 <ControlTemplate>
-                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="0" RadiusY="0"
+                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="11" RadiusY="11"
                                Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
                 </ControlTemplate>
             </Setter.Value>

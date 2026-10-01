@@ -791,6 +791,31 @@ def check_hint_width():
     free = row - int(chev) - (2 * int(btnw) + int(gap)) - (int(hm[0]) + int(hm[1]))
     per_char = float(fs) * adv / upm
     budget = int(free // per_char)
+    # MinWidth is only the button's width while the content fits inside it. With
+    # icons added, Allow's content would have measured wider than the old
+    # MinWidth of 92, the button would have grown, and the hint would have lost
+    # those pixels while this budget still assumed 92. Measured, not assumed.
+    bfs = one(r'x:Key="PromptSecondary".*?<Setter Property="FontSize" Value="([\d.]+)"',
+              ctrls, "button font size")
+    if bfs is not None:
+        btn_char = float(bfs) * adv / upm
+        for key, name in (("PromptSecondary", "BlockButton"), ("PromptPrimary", "AllowButton")):
+            pm = re.search(rf'x:Key="{key}".*?Padding="(\d+),0"', ctrls, re.S)
+            bm = re.search(rf'<Button x:Name="{name}".*?</Button>', alert_x, re.S)
+            if not (pm and bm):
+                fail("hint-width", f"cannot measure {name}"); continue
+            body = bm.group(0)
+            iw = re.search(r'<Path Width="(\d+)"', body)
+            ig = re.search(r'<Path [^>]*?Margin="0,0,(\d+),0"', body, re.S)
+            lb = re.search(r'<TextBlock Text="([^"]+)"', body)
+            if not (iw and ig and lb):
+                fail("hint-width", f"{name}'s icon, gap or label could not be read"); continue
+            content = (2 * int(pm.group(1)) + 2 + int(iw.group(1)) + int(ig.group(1))
+                       + len(lb.group(1)) * btn_char)
+            if content > int(btnw):
+                fail("hint-width",
+                     f"{name} measures {content:.1f}px against MinWidth {btnw}; it renders "
+                     "wider than the budget assumes, and the hint loses the difference")
 
     if budget != int(budget_decl):
         fail("hint-width",
@@ -1790,58 +1815,191 @@ def check_list_sync():
                      "in place or are replaced; three live values notify")
 
 
-def check_prompt_corners():
-    """The prompt's action row is square, by maintainer decision.
+def check_button_labels():
+    """No TextBlock inside a Button may silently take the app-wide text colour.
 
-    Block, Allow and the details chevron followed ControlCornerRadius - WPF-UI's
-    4px, shared with the main window's buttons. At 125% display scaling those
-    corners still read as rounded in the prompt, and the row is meant to read as
-    boxes. The difference from the main window is deliberate; this check stops it
-    being "fixed" back as drift.
+    Controls.xaml carries an application-wide TextBlock style that sets
+    Foreground to TextPrimary. A style setter outranks an inherited value, so a
+    TextBlock placed inside a button IGNORES the button's foreground - while a
+    Path beside it, bound to that foreground, follows it. Text generated from a
+    plain-string Content is created inside the template and escapes the style,
+    which is why the difference stays invisible until a label is written out.
 
-    All three are held together: squaring two buttons of one row looks like a
-    mistake. Their focus ring is the square variant, because the shared ring is
-    rounded at 8px and drawn 3px outside the control.
+    Two buttons showed it. The connection prompt's Allow label went near-black on
+    red in the light theme when its content became icon plus TextBlock in
+    0.99.149. The lockdown button's label had done the same since 0.99.43: engaged
+    turns it red with a white foreground, the padlock went white, "Release
+    lockdown" stayed near-black. Both read correctly in the dark theme, where
+    TextPrimary is already near-white - so the defect lives in one theme only.
+
+    Every TextBlock inside every Button, in every window, must state its colour:
+    an explicit Foreground, or a Style (Style="{x:Null}" opts out and inherits).
+    """
+    before = len(failures)
+    import xml.etree.ElementTree as ET
+    NS = "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}"
+    X = "{http://schemas.microsoft.com/winfx/2006/xaml}"
+    seen = 0
+    for f in sorted(APP.glob("*.xaml")):
+        if f.name == "App.xaml":
+            continue
+        try:
+            root = ET.parse(f).getroot()
+        except ET.ParseError as ex:
+            fail("button-labels", f"{f.name} does not parse: {ex}"); continue
+        for btn in root.iter(NS + "Button"):
+            for tb in btn.iter(NS + "TextBlock"):
+                seen += 1
+                if tb.get("Foreground") is None and tb.get("Style") is None:
+                    who = btn.get(X + "Name") or "(unnamed)"
+                    what = tb.get(X + "Name") or tb.get("Text") or "?"
+                    fail("button-labels",
+                         f"{f.name}: '{what}' inside {who} takes TextPrimary from the "
+                         "app-wide style, not the button's foreground - wrong whenever "
+                         "the button's text colour differs, in one theme or both")
+    if len(failures) == before:
+        notes.append(f"button-labels: {seen} label(s) inside buttons, each states its colour")
+
+
+def check_prompt_buttons():
+    """The prompt's action row: rounded at 8, bordered so it can be seen.
+
+    History, because each step was a maintainer decision about this exact row:
+    it was 7px, then the library's 4px to match the main window, then square in
+    0.99.148, which read as bland - Block was a pale fill with a hairline on a
+    pale card, and the row dissolved into the card. 0.99.149 settles on 8px
+    corners, proportioned to the 44px subject tile above them, and a real
+    border on every button.
+
+    "A real border" is pinned as a number rather than a description, because a
+    border that is present but faint is exactly the failure being fixed. The
+    secondary edge must reach a contrast ratio of at least 1.4:1 against the card
+    in BOTH themes - the hairline it replaces was about 1.2 - and Allow's edge
+    must differ from Allow's own fill by at least 1.2:1, or it is a border in
+    the XAML and nothing on screen.
+
+    Also held: all three styles share the radius; the focus ring is concentric
+    (its radius is the button radius plus the 3px it is drawn outside); there is
+    a pressed state; hover colours are prompt tokens rather than 'brand-hi',
+    which is scoped to links; and Block and Allow carry their icons, drawn in
+    the button's own foreground.
     """
     before = len(failures)
     ctl = (APP / "Themes" / "Controls.xaml").read_text(encoding="utf-8")
+    alert = (APP / "AlertWindow.xaml").read_text(encoding="utf-8")
 
     def style(key):
         m = re.search(rf'<Style x:Key="{key}".*?</Style>', ctl, re.S)
         return m.group(0) if m else None
 
+    RADIUS = "8"
     for key in ("PromptSecondary", "PromptPrimary", "PromptChevron"):
         b = style(key)
         if not b:
-            fail("prompt-corners", f"{key} not found"); continue
+            fail("prompt-buttons", f"{key} not found"); continue
         radii = re.findall(r'CornerRadius="([^"]*)"', b)
-        if not radii:
-            fail("prompt-corners", f"{key} sets no corner radius on its border")
-        elif any(r != "0" for r in radii):
-            fail("prompt-corners",
-                 f"{key} has CornerRadius {radii}; the prompt's action row is square")
+        if not radii or any(r != RADIUS for r in radii):
+            fail("prompt-buttons", f"{key} has CornerRadius {radii}; the row is {RADIUS}px")
+        if 'BorderThickness="1"' not in b:
+            fail("prompt-buttons", f"{key} has no 1px border")
+        if 'Property="IsPressed"' not in b:
+            fail("prompt-buttons", f"{key} has no pressed state")
+        if "BrandHi" in b:
+            fail("prompt-buttons", f"{key} uses BrandHi, which is scoped to link hover")
 
     for key in ("PromptSecondary", "PromptChevron"):
         b = style(key) or ""
-        if "{StaticResource FocusRingSquare}" not in b:
-            fail("prompt-corners",
-                 f"{key} does not use the square focus ring; the rounded shared ring "
-                 "drawn around a square button reads as a mistake")
+        if 'BorderBrush="{DynamicResource PromptSecondaryBorder}"' not in b:
+            fail("prompt-buttons", f"{key} is not edged with PromptSecondaryBorder - "
+                                   "the card hairline is what made the row dissolve")
+        if "{StaticResource FocusRingPrompt}" not in b:
+            fail("prompt-buttons", f"{key} does not use the concentric focus ring")
     prim = style("PromptPrimary") or ""
+    if 'BorderBrush="{DynamicResource PromptPrimaryBorder}"' not in prim:
+        fail("prompt-buttons", "Allow is not edged with PromptPrimaryBorder")
     if 'BasedOn="{StaticResource PromptSecondary}"' not in prim:
-        fail("prompt-corners", "PromptPrimary no longer inherits from PromptSecondary")
-    elif "{StaticResource FocusRing}" in prim:
-        fail("prompt-corners", "PromptPrimary overrides the square focus ring with the "
-                               "rounded one")
+        fail("prompt-buttons", "PromptPrimary no longer inherits from PromptSecondary")
 
-    ring = style("FocusRingSquare")
-    if not ring or 'RadiusX="0"' not in ring or 'RadiusY="0"' not in ring:
-        fail("prompt-corners", "FocusRingSquare is missing or not square")
+    ring = style("FocusRingPrompt")
+    if not ring:
+        fail("prompt-buttons", "FocusRingPrompt is missing")
+    else:
+        rm = re.search(r'Margin="-(\d+)"', ring)
+        rx = re.search(r'RadiusX="(\d+)"', ring)
+        ry = re.search(r'RadiusY="(\d+)"', ring)
+        if not (rm and rx and ry) or rx.group(1) != ry.group(1) \
+           or int(rx.group(1)) != int(RADIUS) + int(rm.group(1)):
+            fail("prompt-buttons", "the focus ring is not concentric: its radius must be "
+                                   f"{RADIUS} plus the distance it is drawn outside")
+
+    # Contrast, both themes.
+    def lum(hexc):
+        h = hexc.lstrip("#")[-6:]
+        ch = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        ch = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in ch]
+        return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+    def ratio(a, b):
+        la, lb = sorted((lum(a), lum(b)), reverse=True)
+        return (la + 0.05) / (lb + 0.05)
+    for theme in ("Light", "Dark"):
+        t = (APP / "Themes" / f"Theme.{theme}.xaml").read_text(encoding="utf-8")
+        def tok(k):
+            m = re.search(rf'x:Key="{k}"\s+Color="(#[0-9A-Fa-f]{{6,8}})"', t)
+            return m.group(1) if m else None
+        need = ("PromptSecondaryFill", "PromptSecondaryFillHover", "PromptSecondaryBorder",
+                "PromptSecondaryBorderHover", "PromptPrimaryBorder", "PromptPrimaryHover",
+                "BgElevated", "BlockText")
+        vals = {k: tok(k) for k in need}
+        missing = [k for k, v in vals.items() if not v]
+        if missing:
+            fail("prompt-buttons", f"Theme.{theme} lacks {missing}"); continue
+        r1 = ratio(vals["PromptSecondaryBorder"], vals["BgElevated"])
+        if r1 < 1.4:
+            fail("prompt-buttons", f"{theme}: the secondary border is {r1:.2f}:1 against the "
+                                   "card - under 1.4 it is a hairline again and the row "
+                                   "dissolves")
+        # The FILL is the button's body, and the first version of this check
+        # measured only the border. The light theme shipped a white fill on a
+        # near-white card - 1.09:1, an empty white box with a pale outline -
+        # while the dark theme's 1.15:1 read correctly as a raised shape.
+        r0 = ratio(vals["PromptSecondaryFill"], vals["BgElevated"])
+        if r0 < 1.12:
+            fail("prompt-buttons", f"{theme}: the secondary fill is {r0:.2f}:1 against the "
+                                   "card - under 1.12 the button has no body and reads "
+                                   "as empty")
+        r2 = ratio(vals["PromptPrimaryBorder"], vals["BlockText"])
+        if r2 < 1.2:
+            fail("prompt-buttons", f"{theme}: Allow's edge is {r2:.2f}:1 against its own "
+                                   "fill - present in the XAML, invisible on screen")
+
+    for name, icon, label in (("BlockButton", "IconBlock", "Block"),
+                              ("AllowButton", "IconCheck", "Allow")):
+        m = re.search(rf'<Button x:Name="{name}".*?</Button>', alert, re.S)
+        if not m:
+            fail("prompt-buttons", f"{name} not found"); continue
+        b = m.group(0)
+        if f'Data="{{StaticResource {icon}}}"' not in b:
+            fail("prompt-buttons", f"{name} has lost its {icon} icon")
+        if "RelativeSource AncestorType=Button" not in b:
+            fail("prompt-buttons", f"{name}'s icon is not drawn in the button's foreground")
+        # The label must inherit from the button. Controls.xaml carries an
+        # application-wide TextBlock style (TextPrimary, 13px, Medium) that applies
+        # to an explicit TextBlock but not to text generated from a plain string -
+        # so moving the label into a TextBlock silently swapped Allow's white for
+        # near-black on red in the light theme, and made hint-width measure 12.5px
+        # text that would render at 13.
+        if not re.search(rf'<TextBlock Text="{label}"[^>]*Style="\{{x:Null\}}"', b):
+            fail("prompt-buttons", f"{name}'s label takes the application-wide TextBlock "
+                                   "style instead of the button's colour, size and weight")
+        if f'AutomationProperties.Name="{label}"' not in b:
+            fail("prompt-buttons", f"{name} has no accessible name now its content is not "
+                                   "a plain string")
+    if 'x:Key="IconBlock"' not in (APP / "Themes" / "Icons.xaml").read_text(encoding="utf-8"):
+        fail("prompt-buttons", "IconBlock is not defined")
 
     if len(failures) == before:
-        notes.append("prompt-corners: Block, Allow and chevron square, with a square "
-                     "focus ring")
-
+        notes.append("prompt-buttons: 8px, bordered at real contrast in both themes, "
+                     "concentric focus ring, pressed state, icons")
 
 def check_ui_idle_and_scrolling():
     """Nothing may be painted for a window nobody can see, and lists scroll smoothly.
@@ -5262,7 +5420,8 @@ def main():
     check_device_copy()
     check_list_sync()
     check_effect_layers()
-    check_prompt_corners()
+    check_button_labels()
+    check_prompt_buttons()
     check_ui_idle_and_scrolling()
     check_update_checking()
     check_suppression_flag()

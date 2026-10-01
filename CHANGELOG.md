@@ -15,6 +15,106 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.150] — 2026-10-01
+
+### Fixed — Block was an empty white box in the light theme
+0.99.149 measured the secondary button's **border** against the card and never its
+**fill**, and the fill is the button's body. In the dark theme the fill sits a step
+above the card at 1.15:1 and reads as a raised shape. In the light theme it was
+pure white on a near-white card, 1.09:1, and read as an empty box with a pale
+outline.
+
+The light fill now sits a step **below** the card at 1.17:1 — mirroring the dark
+theme's step above — with a firmer edge at 1.89:1. Hover deepens both. The chevron
+shares the tokens and gains the same body. The dark theme is unchanged.
+
+### Fixed — button labels ignored their button's colour
+`Controls.xaml` carries an application-wide `TextBlock` style that sets
+`Foreground` to `TextPrimary`. A style setter outranks an inherited value, so a
+`TextBlock` inside a button ignores the button's foreground — while a `Path` beside
+it, bound to that foreground, follows it. Text generated from a plain-string
+`Content` escapes the style, which kept the difference invisible until a label was
+written out as a `TextBlock`.
+
+- **Allow** (since 0.99.149): its label would have been near-black on red in the
+  light theme, beside a white check. The labels in the prompt now opt out of the
+  base style and inherit their button's colour, size and weight — which also makes
+  `hint-width`'s measurement true, since the base style's 13px would otherwise have
+  applied where 12.5px was measured.
+- **Lockdown** (since 0.99.43): engaged turns the button red with a white
+  foreground. The padlock turned white; **"Release lockdown" stayed near-black on
+  red** in the light theme. Its label is now bound to the button's foreground, as
+  the padlock already was.
+
+Both read correctly in the dark theme, where `TextPrimary` is already near-white —
+which is how the lockdown case went unseen for over a hundred releases.
+
+### Added — check `button-labels`; extended `prompt-buttons`
+`button-labels` fails any `TextBlock` inside any `Button`, in every window, that
+states neither a `Foreground` nor a `Style` and would therefore take the app-wide
+colour. `prompt-buttons` now also requires the secondary fill to reach 1.12:1
+against the card in both themes, and the prompt's labels to inherit from their
+buttons. Six defects reintroduced, six caught — including the white fill at its
+measured 1.09:1.
+
+Recorded as trap 2.41.
+
+---
+
+## [0.99.149] — 2026-10-01
+
+### Changed — the connection prompt's action row
+The square buttons of 0.99.148 read as bland. The underlying fault was never the
+corners: Block was a pale fill with a hairline border on a pale card, so the row
+had no edge of its own and dissolved into the card around it.
+
+- **8px corners** on Block, Allow and the details chevron, proportioned to the
+  44px subject tile above them rather than borrowed from the library's 4px control
+  radius
+- **A real border on every button**, defined against its own fill: a cool-grey edge
+  on Block and the chevron, a deeper brand step on Allow — darker than the fill in
+  the light theme, lighter in the dark
+- **Icons** — a circle-and-slash on Block, a check on Allow — drawn in each button's
+  own foreground, so they follow hover and both themes
+- **A pressed state**, which the row did not have, and a disabled state
+- **A concentric focus ring**: drawn 3px outside 8px corners, its radius is 11
+
+The border is held as a measured contrast ratio, because a border that exists but
+cannot be seen is the defect being fixed. Block's edge reaches 1.54:1 against the
+card in light and 1.70:1 in dark, where the hairline it replaces managed 1.22:1 and
+1.20:1. Allow's edge differs from its own fill by 1.36:1 and 1.26:1.
+
+Hover colours are six new prompt tokens in each theme rather than `BrandHi`, which
+the theme scopes to link hover. The previous Allow hover used it; that use is gone.
+
+### Changed — the countdown hint's budget is 17 characters
+Each button gained a 13px icon and a 7px gap, so `MinWidth` rose from 92 to 96 —
+enough that Allow, the wider of the two at 93.5px measured, still renders exactly
+at `MinWidth`. That costs the hint one character of budget, from 18 to 17. The
+longest string it ever shows is 14, so nothing it displays changes.
+
+### Changed — check `hint-width` measures the buttons
+It derived the hint's budget from the buttons' `MinWidth` on the assumption that
+`MinWidth` is their rendered width. That holds only while the content fits inside
+it — with the icons, Allow would have measured 93.5px against the old 92, grown,
+and taken the difference from the hint while the budget still assumed 92. The check
+now measures each button's content — padding, border, icon, gap and label at the
+font's real advance width, read from the TTF — and fails if it exceeds `MinWidth`.
+
+### Changed — check `prompt-corners` is now `prompt-buttons`
+It asserts the 8px radius on all three styles; the secondary border at 1.4:1 or more
+against the card and Allow's edge at 1.2:1 or more against its own fill, in both
+themes; every token present in both themes; a pressed state on each; no `BrandHi`;
+a concentric focus ring, computed from the button radius and the ring's offset;
+the two icons drawn in the button's foreground; and an accessible name on each
+button now that its content is no longer a plain string.
+
+Seventeen defects were reintroduced individually across both checks and each
+confirmed failing — including the original hairline colours, which fail at their
+measured 1.22:1 and 1.20:1.
+
+---
+
 ## [0.99.148] — 2026-10-01
 
 ### Performance — GunWall no longer renders while nobody is looking

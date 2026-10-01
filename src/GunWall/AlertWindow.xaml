@@ -231,10 +231,38 @@
                                    Foreground="{DynamicResource TextTertiary}" />
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <Button x:Name="BlockButton" Content="Block" Click="Block_Click"
-                                    Style="{StaticResource PromptSecondary}" Margin="0,0,8,0" />
-                            <Button x:Name="AllowButton" Content="Allow" Click="Allow_Click"
-                                    Style="{StaticResource PromptPrimary}" />
+                            <!-- Each label opts out of the application-wide TextBlock
+                                 style with Style="{x:Null}", and so inherits the
+                                 button's foreground, size and weight. Without it the
+                                 base style's TextPrimary, 13px and Medium apply:
+                                 Allow's label went near-black on red in the light
+                                 theme, and the width check measured the wrong size. -->
+                            <Button x:Name="BlockButton" Click="Block_Click"
+                                    Style="{StaticResource PromptSecondary}" Margin="0,0,8,0"
+                                    AutomationProperties.Name="Block">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Width="13" Height="13" Stretch="Uniform"
+                                          VerticalAlignment="Center" Margin="0,0,7,0"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="2" StrokeLineJoin="Round"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="{StaticResource IconBlock}" Fill="{x:Null}" />
+                                    <TextBlock Text="Block" VerticalAlignment="Center" Style="{x:Null}" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="AllowButton" Click="Allow_Click"
+                                    Style="{StaticResource PromptPrimary}"
+                                    AutomationProperties.Name="Allow">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Width="13" Height="13" Stretch="Uniform"
+                                          VerticalAlignment="Center" Margin="0,0,7,0"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="2" StrokeLineJoin="Round"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="{StaticResource IconCheck}" Fill="{x:Null}" />
+                                    <TextBlock Text="Allow" VerticalAlignment="Center" Style="{x:Null}" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </Grid>
                 </StackPanel>

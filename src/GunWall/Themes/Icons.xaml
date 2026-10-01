@@ -160,6 +160,11 @@
          polyline in the source, and closing it would draw a triangle. -->
     <PathGeometry x:Key="IconCheck" Figures="M4,12.5 L9.5,18 L20,6.5" />
 
+    <!-- Block: a circle with a diagonal, on the same 24-unit stroke grid as the
+         others. Two semicircles make the ring exactly closed; the slash runs at
+         45 degrees and meets the ring, since 12 +/- 8.5*cos(45) is 6 and 18. -->
+    <PathGeometry x:Key="IconBlock" Figures="M3.5,12 A8.5,8.5 0 1 0 20.5,12 A8.5,8.5 0 1 0 3.5,12 Z M6,6 L18,18" />
+
     <!-- Lockdown padlock, drawn for the posture module in 0.99.43. -->
     <PathGeometry x:Key="IconLock" Figures="M6.5,10.5 L17.5,10.5 A2,2 0 0 1 19.5,12.5 L19.5,18.5 A2,2 0 0 1 17.5,20.5 L6.5,20.5 A2,2 0 0 1 4.5,18.5 L4.5,12.5 A2,2 0 0 1 6.5,10.5 Z M8,10.5 V7.8 a4,4 0 0 1 8,0 v2.7" />
 

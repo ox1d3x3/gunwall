@@ -322,7 +322,8 @@ public partial class AlertWindow : Window
     //   - 192  Block 92 + gap 8 + Allow 92 (PromptSecondary MinWidth)
     //   -  20  the hint's own 10px margins
     //   = 126px, and JetBrainsMono is 0.600em per glyph flat, so at 11.5px
-    //     every character is 6.9px and the budget is 18 CHARACTERS.
+    //     every character is 6.9px and the budget is 17 CHARACTERS - 18 until
+    //     0.99.149, when the action buttons gained icons and widened to 96.
     //
     // "Blocks automatically in 18s" was 27 and ran under the Block button. The
     // word "automatically" carried none of the meaning - the sentence says the
@@ -333,7 +334,7 @@ public partial class AlertWindow : Window
     // limit that nothing enforced: the tracking helper's "proportional fonts
     // only" sat at the top of its file for three releases and then the default
     // font became monospace.
-    private const int HintBudgetChars = 18;
+    private const int HintBudgetChars = 17;
 
     /// <summary>Shown when no timer is running: closing the prompt without
     /// answering blocks the app. Fail-closed is the guarantee, so it is stated

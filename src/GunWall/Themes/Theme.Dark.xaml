@@ -38,6 +38,18 @@
     <SolidColorBrush x:Key="BlockText" Color="#FF3B21" />       <!-- 'brand' -->
     <SolidColorBrush x:Key="BlockFill" Color="#24FF3B21" />     <!-- 'brand-bg' -->
     <SolidColorBrush x:Key="BrandHi" Color="#FF6A55" />         <!-- 'brand-hi': link hover ONLY -->
+    <!-- Connection prompt action row. Named for their role rather than borrowed
+         from 'brand-hi', which is scoped to link hover. The secondary border is
+         a real edge, not the card hairline: a pale button on a pale card was
+         what made the row dissolve. The primary border is the deeper brand step
+         in this theme - darker here, lighter in the other - so the edge is
+         defined against its own fill either way. -->
+    <SolidColorBrush x:Key="PromptSecondaryFill" Color="#22262C" />
+    <SolidColorBrush x:Key="PromptSecondaryFillHover" Color="#2A2F36" />
+    <SolidColorBrush x:Key="PromptSecondaryBorder" Color="#3B414A" />
+    <SolidColorBrush x:Key="PromptSecondaryBorderHover" Color="#59616D" />
+    <SolidColorBrush x:Key="PromptPrimaryBorder" Color="#FF6A55" />
+    <SolidColorBrush x:Key="PromptPrimaryHover" Color="#FF6A55" />
     <SolidColorBrush x:Key="WarnText" Color="#FFB020" />        <!-- 'warn' -->
     <SolidColorBrush x:Key="WarnFill" Color="#21FFB020" />      <!-- 'warn-bg' -->
     <SolidColorBrush x:Key="InfoText" Color="#646B75" />        <!-- neutral pill uses 't3' -->

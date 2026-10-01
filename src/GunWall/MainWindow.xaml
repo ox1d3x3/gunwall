@@ -266,8 +266,14 @@
                                       StrokeThickness="2" StrokeLineJoin="Round"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                       Data="{StaticResource IconLock}" Fill="{x:Null}" />
+                                <!-- Foreground bound to the button, like the padlock beside
+                                     it. The application-wide TextBlock style sets
+                                     TextPrimary, which outranks inheritance - so when
+                                     engaged turns the button red with a white foreground,
+                                     this label stayed near-black on red in the light theme. -->
                                 <TextBlock x:Name="LockdownLabel" Text="Engage lockdown" FontSize="12"
-                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                                           FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                             </StackPanel>
                         </Button>
 

@@ -827,6 +827,37 @@ the window is shown.
 **Check:** `ui-idle-and-scrolling`, nineteen falsifying mutations shared with
 `prompt-corners`.
 
+### 2.41 A label that only looks right in one theme
+
+An application-wide implicit `TextBlock` style set `Foreground` to `TextPrimary`.
+Inside a button whose foreground changes — white on red when engaged, white on the
+brand fill for a primary action — a written-out `TextBlock` keeps `TextPrimary`,
+because a style setter outranks inheritance. Text generated from a plain-string
+`Content` is created inside the template and escapes the style, so the behaviour
+differs depending on how the label is written, not what it says.
+
+`TextPrimary` is near-white in the dark theme, so every case looked correct there.
+The lockdown button's label was near-black on red in the light theme from 0.99.43
+to 0.99.150.
+
+The same release showed the same shape in colour: a border measured against the
+card in both themes, a fill measured in neither. The dark fill happened to sit
+above the card and read well; the light fill was white on near-white.
+
+**Rule:** a theme-dependent property must be verified in every theme. Looking right
+in the theme you work in is evidence about that theme only.
+
+**Rule:** when restyling a control, measure every layer that gives it shape — fill
+against its surround, edge against its fill, content against its fill — not only
+the layer that was asked about.
+
+**Rule:** an implicit style for a non-control element such as `TextBlock` applies
+to instances written in content and not to instances generated inside templates.
+Converting `Content="Text"` into a written-out `TextBlock` changes which style it
+gets.
+
+**Check:** `button-labels`, and the fill assertion in `prompt-buttons`.
+
 ---
 
 ## 3. Working agreements

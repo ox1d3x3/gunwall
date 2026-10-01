@@ -227,6 +227,30 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.150 — light-theme buttons and labels
+
+Do these in the **light** theme — every defect in this release was invisible in dark.
+1. Trigger a connection prompt. **PASS:** Block and the chevron are a visible grey
+   button with a clear edge, not a white box; Allow's label is **white**, matching
+   its check icon.
+2. Dashboard → **Engage lockdown**. **PASS:** the button turns red and "Release
+   lockdown" is **white**, matching the padlock. Release it afterwards.
+3. Switch to the dark theme and repeat both. **PASS:** unchanged from before.
+
+### 0.99.149 — connection prompt buttons
+
+1. Trigger a connection prompt (start an application you have not approved).
+   **PASS:** Block, Allow and the chevron have 8px rounded corners and a border you
+   can see clearly; Block shows a circle-and-slash icon, Allow a check.
+2. Hover each. **PASS:** Block's border darkens; Allow darkens in the light theme
+   and lightens in the dark. Press and hold — each dims slightly.
+3. Press **Tab** to move focus onto the buttons. **PASS:** the focus outline
+   follows the rounded corners evenly, with no pinch at the corners.
+4. Switch to the other theme (header sun/moon button) and trigger a prompt again.
+   **PASS:** the borders are equally visible.
+5. Leave the prompt open with a timeout set. **PASS:** the countdown hint
+   ("Blocks in 30s") is complete, never cut off with "...".
+
 ### 0.99.148 — idle rendering, hidden panels, scrolling, prompt corners
 
 **GunWall goes idle when you are not looking.** Task Manager → **Details** → right-click
