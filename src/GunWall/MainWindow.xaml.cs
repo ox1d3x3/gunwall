@@ -27,8 +27,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private readonly ObservableCollection<ConnectionInfo> _connections = new();
     private readonly ObservableCollection<NetActivityEvent> _activity = new();
     private readonly ObservableCollection<PacketLogEntry> _packets = new();
-    private readonly ObservableCollection<ServicesService.ServiceItem> _services = new();
-    private readonly ObservableCollection<NetworkScanner.Device> _devices = new();
+    private readonly RangeObservableCollection<ServicesService.ServiceItem> _services = new();
+    private readonly RangeObservableCollection<NetworkScanner.Device> _devices = new();
     private readonly NetworkStatsService _stats = new();
     private readonly AppUsageService _usage = new();   // approximate per-app data usage
     // In the data folder, not beside the executable. This is the user's traffic
@@ -36,8 +36,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // application, and left behind by every uninstall.
     private static string UsageHistoryPath =>
         Services.ProfilePaths.FileIn("usage-history.json");
-    private readonly ObservableCollection<CountryStat> _trafficCountries = new();
-    private readonly ObservableCollection<AppStat> _trafficApps = new();
+    private readonly RangeObservableCollection<CountryStat> _trafficCountries = new();
+    private readonly RangeObservableCollection<AppStat> _trafficApps = new();
 
     // §3 GunWall's own local DNS resolver (loopback only; never touches system DNS).
     private readonly DnsResolver _dnsResolver = new();
@@ -208,6 +208,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         DevicesList.ItemsSource = _devices;
         Loaded += OnLoaded;
         StateChanged += OnStateChanged;
+        IsVisibleChanged += (_, _) => OnScreenChanged();   // tray hide / show
         Closing += OnClosing;
         Closed += OnClosed;
     }
@@ -400,7 +401,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
             catch { }
 
-            System.Windows.Media.CompositionTarget.Rendering += OnGraphFrame; // frame-driven graph
+            UpdateGraphFrameHook();   // frame-driven graph, attached only while on screen
             _graphTimer = new System.Windows.Threading.DispatcherTimer
             { Interval = TimeSpan.FromMilliseconds(250) };
             _graphTimer.Tick += GraphTimer_Tick;
@@ -426,7 +427,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.147 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.148 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -631,13 +632,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             EnforceP2pBlocks(snap.Conns, snap.Procs);
             EnforceBlockedDomains(snap.Conns);
             TamperWatchTick();
-            // Uptime is a clock, so it has to be repainted rather than only set
-            // when the state changes.
-            if (PanelDashboard.Visibility == Visibility.Visible)
-            {
-                UpdateHero();
-                RefreshDashboardLists();
-            }
+            // Uptime is a clock, so the dashboard is repainted on every snapshot -
+            // by RefreshVisiblePanel below, with the other panels, and only while
+            // the window is on screen.
             EnforceAccessPolicies(snap.Conns, snap.Procs);
 
             var nowUtc = DateTime.UtcNow;
@@ -714,15 +711,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex) { SampleStepError("stats", ex); }
         try { UpdateSessionTotals(); } catch (Exception ex) { SampleStepError("UpdateSessionTotals", ex); }
 
-        try { if (PanelTraffic.Visibility == Visibility.Visible) RefreshTraffic(); }
-        catch (Exception ex) { SampleStepError("RefreshTraffic", ex); }
-        try { if (PanelConnections.Visibility == Visibility.Visible) RebuildConnList(); }
-        catch (Exception ex) { SampleStepError("RebuildConnList", ex); }
-        try { if (PanelFirewall.Visibility == Visibility.Visible) RebuildAppsList(); }
-        catch (Exception ex) { SampleStepError("RebuildAppsList", ex); }
+        // Painting only - enforcement above runs whether or not anyone is looking.
+        if (OnScreen) RefreshVisiblePanel();
         // graph is driven by its own 250ms live sampler (GraphTimer_Tick)
-        try { if (PanelSettings.Visibility == Visibility.Visible) UpdateHealthCard(); }
-        catch (Exception ex) { SampleStepError("UpdateHealthCard", ex); }
+
     }
 
     // Records (and, on first occurrence, logs) a failure in one ApplySnapshot step
@@ -760,12 +752,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void RefreshTraffic()
     {
         if (TrafficCountries == null) return;
-        _trafficCountries.Clear();
+        // Built aside and swapped in once: this runs on every snapshot while the
+        // Traffic panel is showing, and a row-by-row refill raised a notification
+        // per row.
+        var countryRows = new List<CountryStat>();
         foreach (var (code, count) in _stats.TopCountries(25))
-            _trafficCountries.Add(new CountryStat(code, GunWall.Services.GeoData.CountryName(code), count));
-        _trafficApps.Clear();
+            countryRows.Add(new CountryStat(code, GunWall.Services.GeoData.CountryName(code), count));
+        _trafficCountries.ReplaceAll(countryRows);
+        var appRows = new List<AppStat>();
         foreach (var (app, count, countries) in _stats.TopApps(25))
-            _trafficApps.Add(new AppStat(app, count, countries));
+            appRows.Add(new AppStat(app, count, countries));
+        _trafficApps.ReplaceAll(appRows);
         if (TrafficSubtitle != null)
         {
             if (_stats.TotalDestinations == 0)
@@ -3186,7 +3183,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // (e.g. while a right-click context menu is open).
         string? keepPath = (AppsList.SelectedItem as AppInfo)?.ExecutablePath;
 
-        _apps.Clear();
+        var desired = new List<AppInfo>();
         foreach (var a in view
                      .OrderByDescending(a => a.Status == AppStatus.Blocked) // blocked pinned on top
                      .ThenByDescending(a => a.ActiveConnections)
@@ -3194,8 +3191,21 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             ComputeSpark(a);
             AttachServices(a);
-            _apps.Add(a);
+            desired.Add(a);
         }
+
+        // Connection count and sparkline change every second for an active app;
+        // they update in place on the existing row. Anything else that differs
+        // replaces the row.
+        SyncList(_apps, desired,
+                 a => a.ExecutablePath.ToLowerInvariant(),
+                 (cur, next) => SameValues(cur, next, AppLiveProps),
+                 (cur, next) =>
+                 {
+                     cur.ActiveConnections = next.ActiveConnections;
+                     if (!SamePoints(cur.Spark, next.Spark)) cur.Spark = next.Spark;
+                     cur.SparkTip = next.SparkTip;
+                 });
 
         if (!string.IsNullOrEmpty(keepPath))
         {
@@ -3231,6 +3241,135 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch { return AppCategory.Unknown; }
     }
 
+    // ---- Keeping lists in step without rebuilding them ------------------------
+
+    /// <summary>
+    /// Makes <paramref name="target"/> hold exactly <paramref name="desired"/>, in
+    /// order, with the fewest edits - instead of Clear() then Add() for every row.
+    ///
+    /// The Applications and Connections lists were cleared and refilled every
+    /// second while visible. On an ObservableCollection, Clear() tells the list to
+    /// discard every row's visual container and build it again, and each Add()
+    /// raises its own notification - several hundred a second on Connections. The
+    /// selection was lost and hunted back by key each time, rows flickered under
+    /// the pointer, and a right-click menu could lose the row it was opened on.
+    ///
+    /// Here an unchanged row is left alone: same object, same container, same
+    /// selection. A row whose key moved is moved; a new row is inserted; a gone
+    /// row is removed. When a kept row's values differ, <paramref name="same"/>
+    /// decides whether <paramref name="refresh"/> can update it in place (values
+    /// that announce their own changes) or whether the row object is replaced.
+    ///
+    /// Duplicate keys are numbered by occurrence so they pair up one-to-one. That
+    /// numbering is what keeps step 3 purely defensive: an unnumbered variant still
+    /// produced the right list in a 20,000-case fuzz against a full rebuild, but
+    /// only by leaning on step 3 27,581 times. With it, step 3 never fired.
+    /// </summary>
+    private static void SyncList<T>(ObservableCollection<T> target, IReadOnlyList<T> desired,
+                                    Func<T, string> key, Func<T, T, bool> same,
+                                    Action<T, T>? refresh = null) where T : class
+    {
+        static List<string> Keys(IEnumerable<T> items, Func<T, string> key)
+        {
+            var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+            var result = new List<string>();
+            foreach (var it in items)
+            {
+                string k = key(it);
+                seen.TryGetValue(k, out int n);
+                seen[k] = n + 1;
+                result.Add(n == 0 ? k : k + "\u0001" + n);
+            }
+            return result;
+        }
+
+        List<string> want = Keys(desired, key);
+        var wanted = new HashSet<string>(want, StringComparer.Ordinal);
+        List<string> have = Keys(target, key);
+
+        // 1. Remove rows that are no longer wanted.
+        for (int i = have.Count - 1; i >= 0; i--)
+            if (!wanted.Contains(have[i])) { target.RemoveAt(i); have.RemoveAt(i); }
+
+        // 2. Walk the wanted order, fixing one position at a time. Positions before
+        //    i are final, and keys are unique, so a match can only lie after i.
+        for (int i = 0; i < want.Count; i++)
+        {
+            T next = desired[i];
+            if (!(i < have.Count && have[i] == want[i]))
+            {
+                int j = i + 1 <= have.Count ? have.IndexOf(want[i], i + 1) : -1;
+                if (j >= 0)
+                {
+                    target.Move(j, i);
+                    string k = have[j]; have.RemoveAt(j); have.Insert(i, k);
+                }
+                else
+                {
+                    target.Insert(i, next);
+                    have.Insert(i, want[i]);
+                    continue;
+                }
+            }
+
+            T cur = target[i];
+            if (object.ReferenceEquals(cur, next)) continue;
+            if (same(cur, next)) refresh?.Invoke(cur, next);
+            else target[i] = next;
+        }
+
+        // 3. Defensive: with occurrence-numbered keys this never fires.
+        while (target.Count > want.Count) target.RemoveAt(target.Count - 1);
+    }
+
+    /// <summary>Public readable properties of a row type, looked up once.</summary>
+    private static class RowProps<T>
+    {
+        public static readonly System.Reflection.PropertyInfo[] All =
+            typeof(T).GetProperties(System.Reflection.BindingFlags.Public
+                                  | System.Reflection.BindingFlags.Instance)
+                     .Where(pi => pi.CanRead && pi.GetIndexParameters().Length == 0)
+                     .ToArray();
+    }
+
+    /// <summary>
+    /// True when every public property of two rows holds an equal value, except
+    /// those named in <paramref name="ignore"/>.
+    ///
+    /// Every property, not a hand-picked list of columns: a list of columns goes
+    /// stale the first time someone adds one, and the symptom - a cell that stops
+    /// updating - is silent. Comparing everything costs a replacement too many,
+    /// never a stale value.
+    /// </summary>
+    private static bool SameValues<T>(T a, T b, HashSet<string>? ignore = null)
+    {
+        foreach (var pi in RowProps<T>.All)
+        {
+            if (ignore != null && ignore.Contains(pi.Name)) continue;
+            if (!Equals(pi.GetValue(a), pi.GetValue(b))) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Sparklines are rebuilt as new objects every second, so they are
+    /// compared by their points: an unchanged curve does not redraw.</summary>
+    private static bool SamePoints(PointCollection? a, PointCollection? b)
+    {
+        if (object.ReferenceEquals(a, b)) return true;
+        if (a is null || b is null || a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++) if (a[i] != b[i]) return false;
+        return true;
+    }
+
+    /// <summary>The three AppInfo values that update in place rather than
+    /// replacing the row.</summary>
+    private static readonly HashSet<string> AppLiveProps =
+        new HashSet<string>(StringComparer.Ordinal)
+        { nameof(AppInfo.ActiveConnections), nameof(AppInfo.Spark), nameof(AppInfo.SparkTip) };
+
+    private static string ConnKey(ConnectionInfo c) =>
+        $"{c.ProcessId}|{c.Protocol}|{c.LocalAddress}:{c.LocalPort}|{c.RemoteAddress}:{c.RemotePort}";
+
     private void RebuildConnList()
     {
         IEnumerable<ConnectionInfo> view = _lastConns;
@@ -3257,7 +3396,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _connRebuilding = true;
         try
         {
-            _connections.Clear();
+            var desired = new List<ConnectionInfo>();
             bool geo = _firewall.GeoIpActive;
             // Dedupe GeoIP lookups within this refresh: many sockets often share one remote
             // IP (e.g. a browser holding dozens of connections to the same CDN), so resolve
@@ -3275,8 +3414,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     }
                     if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; }
                 }
-                _connections.Add(c);
+                desired.Add(c);
             }
+
+            SyncList(_connections, desired, ConnKey, (a, b) => SameValues(a, b));
 
             if (keepConn != null)
             {
@@ -3756,6 +3897,85 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Per frame (monitor refresh rate): slide the already-built waveform left by
     // the fraction of the way to the next sample. No geometry work here — just a
     // transform offset — so it glides continuously instead of snapping/refreshing.
+    /// <summary>
+    /// True when the window can actually be seen.
+    ///
+    /// Tab visibility alone is not that. A panel's Visibility stays Visible while
+    /// the whole window is minimised or hidden in the tray - which is how GunWall
+    /// spends most of its life - so the connection table, the application list
+    /// and the traffic breakdown were rebuilt on every snapshot for a window
+    /// nobody could see.
+    /// </summary>
+    private bool OnScreen => IsVisible && WindowState != WindowState.Minimized;
+
+    /// <summary>
+    /// Repaints whichever panel is showing. Called on every snapshot while the
+    /// window is on screen, and once the moment it comes back, so returning from
+    /// the tray never shows a table that stopped updating when it was hidden.
+    /// </summary>
+    private void RefreshVisiblePanel()
+    {
+        try { if (PanelTraffic.Visibility == Visibility.Visible) RefreshTraffic(); }
+        catch (Exception ex) { SampleStepError("RefreshTraffic", ex); }
+        try { if (PanelConnections.Visibility == Visibility.Visible) RebuildConnList(); }
+        catch (Exception ex) { SampleStepError("RebuildConnList", ex); }
+        try { if (PanelFirewall.Visibility == Visibility.Visible) RebuildAppsList(); }
+        catch (Exception ex) { SampleStepError("RebuildAppsList", ex); }
+        try { if (PanelSettings.Visibility == Visibility.Visible) UpdateHealthCard(); }
+        catch (Exception ex) { SampleStepError("UpdateHealthCard", ex); }
+        try
+        {
+            if (PanelDashboard.Visibility == Visibility.Visible)
+            {
+                UpdateHero();
+                RefreshDashboardLists();
+            }
+        }
+        catch (Exception ex) { SampleStepError("Dashboard", ex); }
+    }
+
+    /// <summary>
+    /// Everything that depends on whether the window is on screen, re-evaluated
+    /// at each transition that can change it.
+    ///
+    /// The repaint waits for IsLoaded. IsVisibleChanged is raised when the window
+    /// is first shown, BEFORE Loaded - before the profile is read and the engine
+    /// started - and a rebuild attempted then would fail inside its guard and be
+    /// recorded as a session error on every launch.
+    /// </summary>
+    private void OnScreenChanged()
+    {
+        UpdateGraphFrameHook();
+        if (OnScreen && IsLoaded) RefreshVisiblePanel();
+    }
+
+    private bool _graphFrameHooked;
+
+    /// <summary>
+    /// Attaches the per-frame graph handler only while there is a graph on screen.
+    ///
+    /// CompositionTarget.Rendering is raised once per displayed frame, and while
+    /// any handler is attached WPF keeps producing frames. It used to be attached
+    /// once at startup and never removed, so GunWall rendered at the monitor's
+    /// refresh rate - up to 240 times a second - for its whole lifetime: minimised,
+    /// hidden in the tray, on another tab, and underneath a fullscreen game. The
+    /// handler's own early return saved its few lines and none of the frames.
+    ///
+    /// Called on every transition that can hide the graph: switching tabs,
+    /// minimising, and hiding to or showing from the tray.
+    /// </summary>
+    private void UpdateGraphFrameHook()
+    {
+        bool want = IsVisible
+                 && WindowState != WindowState.Minimized
+                 && PanelDashboard?.Visibility == Visibility.Visible;
+        if (want == _graphFrameHooked) return;
+
+        if (want) System.Windows.Media.CompositionTarget.Rendering += OnGraphFrame;
+        else      System.Windows.Media.CompositionTarget.Rendering -= OnGraphFrame;
+        _graphFrameHooked = want;
+    }
+
     private void OnGraphFrame(object? sender, EventArgs e)
     {
         if (PanelDashboard == null || PanelDashboard.Visibility != Visibility.Visible) return;
@@ -3941,10 +4161,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         lineGeo.Freeze();
 
+        // Frozen like the fill brush and both geometries above. An unfrozen brush
+        // is watched for changes for as long as it is drawn; this one never
+        // changes and is replaced four times a second.
+        var stroke = new SolidColorBrush(color);
+        stroke.Freeze();
+
         canvas.Children.Add(new System.Windows.Shapes.Path
         {
             Data = lineGeo,
-            Stroke = new SolidColorBrush(color),
+            Stroke = stroke,
             StrokeThickness = 1.3,
             StrokeLineJoin = PenLineJoin.Round,
             IsHitTestVisible = false,
@@ -4549,6 +4775,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (PanelDashboard == null) return; // during init
         string tag = (string)((RadioButton)sender).Tag;
         PanelDashboard.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
+        UpdateGraphFrameHook();
         PanelFirewall.Visibility = tag == "Firewall" ? Visibility.Visible : Visibility.Collapsed;
         PanelConnections.Visibility = tag == "Connections" ? Visibility.Visible : Visibility.Collapsed;
         PanelTraffic.Visibility = tag == "Traffic" ? Visibility.Visible : Visibility.Collapsed;
@@ -5893,12 +6120,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         try
         {
-            _services.Clear();
+            // One notification for a few hundred services, not one each.
+            var serviceRows = new List<ServicesService.ServiceItem>();
             foreach (var s in ServicesService.GetServices())
             {
                 s.Blocked = _firewall.IsServiceBlocked(s.Name);
-                _services.Add(s);
+                serviceRows.Add(s);
             }
+            _services.ReplaceAll(serviceRows);
         }
         catch (Exception ex) { ShowError(ex); }
     }
@@ -6870,7 +7099,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     if (NetworkSubtitle != null) NetworkSubtitle.Text = $"Scanning... {pct}%";
                 }));
 
-            foreach (var d in found) _devices.Add(d);
+            _devices.ReplaceAll(found);
             GunWall.Controls.Table.SetPhase(DevicesList, GunWall.Controls.TablePhase.Ready);
             if (NetworkSubtitle != null)
                 NetworkSubtitle.Text = $"Found {found.Count} device(s) on your local network.";
@@ -6987,15 +7216,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ===== §1 entity rules (country / continent / ASN blocking) =====
-    private readonly System.Collections.ObjectModel.ObservableCollection<EntityRule> _entityRules = new();
+    private readonly RangeObservableCollection<EntityRule> _entityRules = new();
     private string _entityAppPath = "";
 
     private void RefreshEntityRules()
     {
         if (EntityRuleList == null) return;
         if (EntityRuleList.ItemsSource != _entityRules) EntityRuleList.ItemsSource = _entityRules;
-        _entityRules.Clear();
-        foreach (var r in _firewall.EntityRules) _entityRules.Add(r);
+        _entityRules.ReplaceAll(_firewall.EntityRules);
         UpdateEntityStatus();
     }
 
@@ -7987,6 +8215,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // Minimize hides to tray (filters keep enforcing - they live in the OS).
         if (WindowState == WindowState.Minimized && _tray != null)
             Hide();
+        OnScreenChanged();
     }
 
     /// <summary>Opens the window on a chosen screen, from the tray.

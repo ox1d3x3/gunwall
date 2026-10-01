@@ -796,6 +796,37 @@ at a time, keep going, and sweep afterwards for anything no record names.
 
 **Check:** `no-orphaning-rebuilds`, eleven falsifying mutations.
 
+### 2.40 A subscription's cost is its lifetime, not its body
+
+`CompositionTarget.Rendering` was subscribed once and its handler began with
+`if (dashboard hidden) return;`. The early return made the handler cheap and did
+nothing about the cost that mattered: while any handler is attached, WPF keeps
+producing frames. The expensive thing was the subscription existing, not what it
+did.
+
+The same shape appeared a second time. Per-snapshot rebuilds were gated on
+`PanelX.Visibility == Visible` — tab visibility — which stays true while the whole
+window is minimised or in the tray. The gate looked like "only when visible" and
+meant "only when this tab is the selected one".
+
+**Rule:** for event subscriptions that have a cost of their own — per-frame events,
+timers, OS hooks — control the subscription, not the handler. Attach while needed,
+detach otherwise, and re-evaluate on every transition that changes "needed".
+
+**Rule:** "visible" has three layers in a desktop application: the element, its
+panel, and the window. A guard that checks fewer than all three is guarding
+something narrower than it reads.
+
+**Rule:** when gating work on visibility, separate painting from enforcement
+explicitly, and assert the separation. Moving an enforcement call inside a
+visibility guard would make protection depend on whether the window is open.
+
+**Rule:** anything run from `IsVisibleChanged` runs before `Loaded` the first time
+the window is shown.
+
+**Check:** `ui-idle-and-scrolling`, nineteen falsifying mutations shared with
+`prompt-corners`.
+
 ---
 
 ## 3. Working agreements

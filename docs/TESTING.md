@@ -227,6 +227,35 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.148 — idle rendering, hidden panels, scrolling, prompt corners
+
+**GunWall goes idle when you are not looking.** Task Manager → **Details** → right-click
+a column header → **Select columns** → tick **GPU** and **CPU**.
+1. GunWall open on the **Dashboard** — some CPU/GPU is expected; the graph is
+   animating.
+2. **Minimise** it. **PASS:** `GunWall.exe` settles to near zero CPU and GPU within a
+   few seconds. **FAIL:** it stays at the same level as step 1.
+3. Open it again on the **Connections** tab, then minimise. Same **PASS**.
+4. Restore it. **PASS:** the table is current immediately — no stale rows from before
+   minimising.
+
+**Protection still works while hidden.**
+5. Minimise GunWall to the tray, then start an application you have **not** approved.
+   **PASS:** it is blocked and the prompt appears.
+
+**Scrolling.**
+6. **Firewall** tab, mouse wheel. **PASS:** the list glides rather than jumping a
+   whole row per notch. Repeat on **Connections** and **Network scan**.
+
+**Prompt.**
+7. Trigger a connection prompt. **PASS:** **Block**, **Allow** and the chevron have
+   square corners. Press **Tab** to move focus onto them — the focus outline is
+   square too.
+
+**Health.**
+8. Export diagnostics after a restart. **PASS:** `Errors this session: 0` — no
+   `ApplySnapshot step` errors recorded at launch.
+
 ### 0.99.147 — updates, protection off, network scan copying
 
 **Protection off must leave the network alone.**

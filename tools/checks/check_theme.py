@@ -493,6 +493,13 @@ def check_local_calls():
         {"Activate", "BeginAnimation", "Close", "DragMove", "FindResource",
          "TryFindResource", "Hide", "Show", "InitializeComponent",
          "Shutdown"}   # Application.Shutdown, from the emergency-unblock path
+        # 1b. Protected members of ObservableCollection<T>, called unqualified by
+        #     RangeObservableCollection, which derives from it. Verified against
+        #     dotnet/runtime release/8.0, System.ObjectModel/.../ObservableCollection.cs:
+        #     OnPropertyChanged(PropertyChangedEventArgs) line 163,
+        #     OnCollectionChanged(NotifyCollectionChangedEventArgs) line 183,
+        #     CheckReentrancy() line 223.
+        | {"CheckReentrancy", "OnCollectionChanged", "OnPropertyChanged"}
         # 2. Attribute constructors, which are syntactically calls.
         | {"DllImport", "FieldOffset", "MarshalAs", "StructLayout"}
         # 3. Generic BCL types whose construction spans a line break, so the
@@ -748,8 +755,13 @@ def check_hint_width():
         return m[0]
 
     win = one(r'\n\s*Width="(\d+)" SizeToContent="Height"', alert_x, "window width")
-    # Border Margin, BorderThickness, then the inner StackPanel's Margin.
-    marg = one(r'CornerRadius="12" Margin="(\d+)"', alert_x, "card margin")
+    # The card's inset from the window edge, its BorderThickness, then the inner
+    # StackPanel's Margin. The inset is on the Grid that wraps the card and its
+    # shadow layer - the shadow moved off the card so hovering the buttons no
+    # longer re-runs the blur - and is anchored to that wrapper specifically, not
+    # to whichever Margin happens to come first.
+    marg = one(r'<Grid Margin="(\d+)">\s*<!-- The shadow is drawn by this empty layer',
+               alert_x, "card margin")
     bord = one(r'BorderBrush="\{DynamicResource BorderBrush\}" BorderThickness="(\d+)"',
                alert_x, "card border")
     pad = one(r'<StackPanel Margin="16,(\d+),16,(\d+)">', alert_x, "content padding")
@@ -1688,6 +1700,311 @@ def check_device_copy():
                      "order kept; note editor safe from the menu")
 
 
+def check_list_sync():
+    """The live lists are kept in step row by row, never cleared and refilled.
+
+    Trap 2.40. RebuildAppsList and RebuildConnList ran every second while their
+    panel was visible, and both began with Clear(). On an ObservableCollection
+    that discards every row's visual container; each Add() then raised its own
+    notification - several hundred a second on Connections. Selection was lost
+    and hunted back by key every second, rows flickered under the pointer, and a
+    right-click menu could lose the row it was opened on.
+
+    SyncList edits the collection minimally. Its algorithm was fuzzed against a
+    full rebuild over 20,000 random transitions with heavy duplicate keys before
+    it was written in C#; this check pins the parts that made it correct:
+    occurrence-numbered keys, removal first, move-or-insert per position, and the
+    choice between refreshing a kept row in place and replacing it.
+
+    Also pinned: rows are compared on EVERY public property (a hand-picked column
+    list goes stale silently the first time a column is added), and AppInfo's
+    three per-second values announce their changes so they redraw one cell
+    instead of replacing the row.
+    """
+    before = len(failures)
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    models = strip_cs((APP / "Models" / "Models.cs").read_text(encoding="utf-8"))
+
+    def body(sig):
+        m = re.search(sig + r".*?\n    \}", mw, re.S)
+        return m.group(0) if m else None
+
+    for name, coll in (("RebuildConnList", "_connections"), ("RebuildAppsList", "_apps")):
+        b = body(rf"private void {name}\(\)")
+        if not b:
+            fail("list-sync", f"{name} not found"); continue
+        if f"{coll}.Clear()" in b:
+            fail("list-sync", f"{name} clears {coll} again - every row container is "
+                              "discarded and rebuilt each second")
+        if re.search(rf"{coll}\.Add\(", b):
+            fail("list-sync", f"{name} adds rows one by one instead of syncing")
+        if "SyncList(" not in b:
+            fail("list-sync", f"{name} does not use SyncList")
+
+    sl = body(r"private static void SyncList<T>\(")
+    if not sl:
+        fail("list-sync", "SyncList not found")
+    else:
+        # Searched in source with string literals KEPT: the separator IS a string
+        # literal, and strip_cs blanks those - the first version of this line
+        # could never find it. Trap 2.30.
+        mw_kept = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"),
+                           keep_strings=True)
+        sl_kept = re.search(r"private static void SyncList<T>\(.*?\n    \}", mw_kept, re.S)
+        if not sl_kept or '"\\u0001"' not in sl_kept.group(0):
+            fail("list-sync", "duplicate keys are no longer numbered by occurrence; the "
+                              "fuzz showed the defensive tail trim then carries the "
+                              "algorithm")
+        if "!wanted.Contains(have[i])" not in sl:
+            fail("list-sync", "rows that are gone are no longer removed first")
+        if "target.Move(j, i)" not in sl or "target.Insert(i, next)" not in sl:
+            fail("list-sync", "a row is no longer moved or inserted into position")
+        if not re.search(r"if \(same\(cur, next\)\) refresh\?\.Invoke\(cur, next\);\s*else target\[i\] = next;", sl):
+            fail("list-sync", "a changed row is no longer either refreshed in place or "
+                              "replaced; stale values would stay on screen")
+
+    sv = body(r"private static bool SameValues<T>\(")
+    if not sv or "RowProps<T>.All" not in sv:
+        fail("list-sync", "rows are no longer compared on every public property; a "
+                          "hand-picked list goes stale when a column is added")
+
+    for prop in ("ActiveConnections", "Spark", "SparkTip"):
+        if not re.search(rf"public [\w.?<>]+ {prop}\s*\{{[^}}]*Changed\(nameof\({prop}\)\)", models, re.S):
+            fail("list-sync", f"AppInfo.{prop} no longer announces its change, so an "
+                              "in-place refresh would never reach the screen")
+    if "INotifyPropertyChanged" not in models:
+        fail("list-sync", "AppInfo no longer implements INotifyPropertyChanged")
+    live = re.search(r"AppLiveProps\s*=.*?\{(.*?)\}", mw, re.S)
+    if not live or sorted(re.findall(r"nameof\(AppInfo\.(\w+)\)", live.group(1))) != \
+            ["ActiveConnections", "Spark", "SparkTip"]:
+        fail("list-sync", "AppLiveProps does not name exactly the three properties that "
+                          "announce their changes - one updated in place without "
+                          "notifying would never redraw")
+
+    apps = body(r"private void RebuildAppsList\(\)")
+    if apps and "SamePoints(cur.Spark, next.Spark)" not in apps:
+        fail("list-sync", "every sparkline redraws every second, changed or not")
+
+    if len(failures) == before:
+        notes.append("list-sync: both live lists sync row by row; changed rows refresh "
+                     "in place or are replaced; three live values notify")
+
+
+def check_prompt_corners():
+    """The prompt's action row is square, by maintainer decision.
+
+    Block, Allow and the details chevron followed ControlCornerRadius - WPF-UI's
+    4px, shared with the main window's buttons. At 125% display scaling those
+    corners still read as rounded in the prompt, and the row is meant to read as
+    boxes. The difference from the main window is deliberate; this check stops it
+    being "fixed" back as drift.
+
+    All three are held together: squaring two buttons of one row looks like a
+    mistake. Their focus ring is the square variant, because the shared ring is
+    rounded at 8px and drawn 3px outside the control.
+    """
+    before = len(failures)
+    ctl = (APP / "Themes" / "Controls.xaml").read_text(encoding="utf-8")
+
+    def style(key):
+        m = re.search(rf'<Style x:Key="{key}".*?</Style>', ctl, re.S)
+        return m.group(0) if m else None
+
+    for key in ("PromptSecondary", "PromptPrimary", "PromptChevron"):
+        b = style(key)
+        if not b:
+            fail("prompt-corners", f"{key} not found"); continue
+        radii = re.findall(r'CornerRadius="([^"]*)"', b)
+        if not radii:
+            fail("prompt-corners", f"{key} sets no corner radius on its border")
+        elif any(r != "0" for r in radii):
+            fail("prompt-corners",
+                 f"{key} has CornerRadius {radii}; the prompt's action row is square")
+
+    for key in ("PromptSecondary", "PromptChevron"):
+        b = style(key) or ""
+        if "{StaticResource FocusRingSquare}" not in b:
+            fail("prompt-corners",
+                 f"{key} does not use the square focus ring; the rounded shared ring "
+                 "drawn around a square button reads as a mistake")
+    prim = style("PromptPrimary") or ""
+    if 'BasedOn="{StaticResource PromptSecondary}"' not in prim:
+        fail("prompt-corners", "PromptPrimary no longer inherits from PromptSecondary")
+    elif "{StaticResource FocusRing}" in prim:
+        fail("prompt-corners", "PromptPrimary overrides the square focus ring with the "
+                               "rounded one")
+
+    ring = style("FocusRingSquare")
+    if not ring or 'RadiusX="0"' not in ring or 'RadiusY="0"' not in ring:
+        fail("prompt-corners", "FocusRingSquare is missing or not square")
+
+    if len(failures) == before:
+        notes.append("prompt-corners: Block, Allow and chevron square, with a square "
+                     "focus ring")
+
+
+def check_ui_idle_and_scrolling():
+    """Nothing may be painted for a window nobody can see, and lists scroll smoothly.
+
+    Three defects, one family:
+
+      - CompositionTarget.Rendering was attached once at startup and never removed.
+        While any handler is attached WPF keeps producing frames, so GunWall
+        rendered at the monitor's refresh rate - up to 240 a second - minimised,
+        in the tray, on other tabs and under fullscreen games. The handler's early
+        return saved its own few lines and none of the frames.
+      - The connection table, application list, traffic breakdown, health card and
+        dashboard were rebuilt on every snapshot whenever their TAB was selected -
+        including while the whole window was minimised or hidden in the tray.
+      - Five collections were refilled with Clear() and a loop of Add(): one change
+        notification per row, a few hundred for the services list, fifty-two per
+        snapshot for the traffic breakdown.
+
+    And one smoothness gap: all twelve virtualised lists scrolled a whole row per
+    wheel notch, and five did not recycle row containers.
+
+    Enforcement is the thing that must NOT be gated: the P2P, domain, access-policy
+    and tamper calls in ApplySnapshot run whether or not anyone is looking, and
+    this check fails if any of them moves inside the on-screen guard.
+    """
+    before = len(failures)
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+
+    def body(sig):
+        m = re.search(sig + r".*?\n    \}", mw, re.S)
+        return m.group(0) if m else ""
+
+    # --- render hook
+    hook = body(r"private void UpdateGraphFrameHook\(\)")
+    adds = re.findall(r"CompositionTarget\.Rendering\s*\+=", mw)
+    if not hook:
+        fail("ui-idle", "UpdateGraphFrameHook is gone")
+    else:
+        if len(adds) != 1 or not re.search(r"CompositionTarget\.Rendering\s*\+=", hook):
+            fail("ui-idle", f"CompositionTarget.Rendering is attached in {len(adds)} "
+                            "place(s); only UpdateGraphFrameHook may attach it, or it "
+                            "renders every frame for the life of the process")
+        if not re.search(r"CompositionTarget\.Rendering\s*-=", hook):
+            fail("ui-idle", "the per-frame hook is never detached")
+        for cond in ("IsVisible", "WindowState != WindowState.Minimized",
+                     "PanelDashboard?.Visibility == Visibility.Visible"):
+            if cond not in hook:
+                fail("ui-idle", f"the per-frame hook does not consider '{cond}'")
+
+    nav = body(r"private void Nav_Checked\(object sender, RoutedEventArgs e\)")
+    if "UpdateGraphFrameHook()" not in nav:
+        fail("ui-idle", "switching tabs does not re-evaluate the per-frame hook")
+    osc = body(r"private void OnScreenChanged\(\)")
+    if "UpdateGraphFrameHook()" not in osc or "RefreshVisiblePanel()" not in osc:
+        fail("ui-idle", "coming back on screen does not re-hook the graph and repaint")
+    elif not re.search(r"if\s*\(\s*OnScreen\s*&&\s*IsLoaded\s*\)\s*RefreshVisiblePanel\(\);", osc):
+        fail("ui-idle", "the repaint on becoming visible does not wait for Loaded; the "
+                        "window is first shown before the profile is read, and every "
+                        "launch would record paint failures as session errors")
+    if not re.search(r"IsVisibleChanged\s*\+=\s*\(_, _\)\s*=>\s*OnScreenChanged\(\)", mw):
+        fail("ui-idle", "hiding to or showing from the tray is not observed")
+    if "OnScreenChanged()" not in body(r"private void OnStateChanged\(object\? sender, EventArgs e\)"):
+        fail("ui-idle", "minimising and restoring are not observed")
+
+    # --- painting only while on screen, enforcement always
+    snap = body(r"private void ApplySnapshot\(Snapshot snap\)")
+    if not snap:
+        fail("ui-idle", "ApplySnapshot not found")
+    else:
+        for paint in ("RebuildConnList()", "RebuildAppsList()", "RefreshTraffic()",
+                      "UpdateHealthCard()", "UpdateHero()", "RefreshDashboardLists()"):
+            if paint in snap:
+                fail("ui-idle", f"ApplySnapshot calls {paint} directly; painting goes "
+                                "through RefreshVisiblePanel under the on-screen guard")
+        if not re.search(r"if\s*\(\s*OnScreen\s*\)\s*RefreshVisiblePanel\(\);", snap):
+            fail("ui-idle", "per-snapshot painting is not guarded by OnScreen")
+        for enforce in ("EnforceP2pBlocks(", "EnforceBlockedDomains(", "TamperWatchTick(",
+                        "EnforceAccessPolicies("):
+            if enforce not in snap:
+                fail("ui-idle", f"{enforce.rstrip('(')} is no longer called on every "
+                                "snapshot")
+            elif re.search(r"if\s*\([^)]*OnScreen[^)]*\)[^;]*" + re.escape(enforce), snap):
+                fail("ui-idle", f"{enforce.rstrip('(')} is gated on the window being "
+                                "visible - enforcement must run regardless")
+    if not re.search(r"private bool OnScreen\s*=>\s*IsVisible\s*&&\s*WindowState\s*!=\s*"
+                     r"WindowState\.Minimized;", mw):
+        fail("ui-idle", "OnScreen no longer means visible and not minimised")
+
+    # --- one notification per refill
+    for m in re.finditer(r"(_\w+)\.Clear\(\);", mw):
+        name = m.group(1)
+        tail = mw[m.end(): m.end() + 600]
+        if re.search(rf"foreach[^;{{]*\)\s*\n?\s*{re.escape(name)}\.Add\(", tail) or \
+           re.search(rf"foreach[^{{]*\{{[^}}]*{re.escape(name)}\.Add\(", tail):
+            fail("ui-idle", f"{name} is refilled with Clear() and a loop of Add() - one "
+                            "notification per row. Build the rows aside and ReplaceAll")
+    for f in ("_trafficCountries", "_trafficApps", "_services", "_devices", "_entityRules"):
+        if not re.search(rf"RangeObservableCollection<[^>]+>\s+{f}\b", mw):
+            fail("ui-idle", f"{f} is no longer a RangeObservableCollection")
+
+    # --- scrolling
+    lists = re.findall(r'<ListView\b[^>]*VirtualizingPanel\.IsVirtualizing="True"[^>]*>',
+                       xaml, re.S)
+    if len(lists) < 12:
+        fail("ui-idle", f"only {len(lists)} virtualised lists found; expected at least 12")
+    for tag in lists:
+        name = (re.search(r'x:Name="([^"]+)"', tag) or [None, "?"])[1]
+        if 'VirtualizingPanel.ScrollUnit="Pixel"' not in tag:
+            fail("ui-idle", f"{name} scrolls a whole row per wheel notch")
+        if 'VirtualizingPanel.VirtualizationMode="Recycling"' not in tag:
+            fail("ui-idle", f"{name} creates and destroys row containers while scrolling")
+
+    if len(failures) == before:
+        notes.append(f"ui-idle: render hook only while the graph is on screen; painting "
+                     f"only while visible, enforcement always; single-notification "
+                     f"refills; {len(lists)} lists pixel-scrolled and recycled")
+
+
+def check_effect_layers():
+    """No shader effect may sit on an element that has content.
+
+    An Effect is a pixel shader, and one on an element is recomputed whenever
+    anything inside that element changes. The command palette carried a 60px
+    DropShadowEffect on the Border holding its search box and results, so every
+    keystroke re-ran the blur across the whole panel; the connection prompt's
+    card did the same on every hover over Block or Allow.
+
+    The shadow belongs on an empty layer behind the content, which renders once.
+    Checked across every XAML file, so the next effect added anywhere is held to
+    the same rule.
+    """
+    before = len(failures)
+    import xml.etree.ElementTree as ET
+    count = 0
+    for f in sorted(APP.rglob("*.xaml")):
+        if any(part in ("obj", "bin") for part in f.parts):
+            continue
+        try:
+            root = ET.parse(f).getroot()
+        except ET.ParseError as ex:
+            fail("effect-layers", f"{f.name} does not parse: {ex}"); continue
+        for el in root.iter():
+            local = el.tag.split("}")[-1]
+            for child in el:
+                if child.tag.split("}")[-1].endswith(".Effect"):
+                    count += 1
+                    content = [c for c in el if "." not in c.tag.split("}")[-1]]
+                    if content:
+                        fail("effect-layers",
+                             f"{f.name}: a {local} carries an Effect and also holds "
+                             f"{len(content)} child element(s). The shader reruns on "
+                             "every change inside it - move the effect to an empty "
+                             "layer behind the content")
+                    elif el.get("IsHitTestVisible") != "False":
+                        fail("effect-layers",
+                             f"{f.name}: a shadow layer is hit-testable and can take "
+                             "clicks meant for what is behind it")
+
+    if len(failures) == before:
+        notes.append(f"effect-layers: {count} effect(s), each on an empty static layer")
+
+
 def check_update_checking():
     """Update checking must be opt-in, never install on its own, and never lose
     what it knows.
@@ -2410,6 +2727,10 @@ def check_type_names():
     before = len(failures)
 
     FRAMEWORK = {
+        # Event arguments raised by RangeObservableCollection. Namespaces verified
+        # from the usings of ObservableCollection.cs in dotnet/runtime release/8.0:
+        # System.ComponentModel and System.Collections.Specialized.
+        "PropertyChangedEventArgs", "NotifyCollectionChangedEventArgs",
         "Action", "ArgumentException", "BitmapImage", "ByteArrayContent",
         "CancellationTokenSource", "CornerRadius", "DateTime", "DockPanel",
         "Duration", "EventLog", "EventSourceCreationData", "Exception",
@@ -2442,14 +2763,28 @@ def check_type_names():
                            "scan is broken and would pass on anything")
         return
 
+    # Generic type parameters are names too, declared by the method or type that
+    # introduces them. Recognised only at a DECLARATION - `SyncList<T>(` after a
+    # modifier, or `class RowProps<T>` - never from a call such as `Make<Bogus>()`,
+    # which would otherwise mask a type that genuinely does not exist. The first
+    # generic method in MainWindow was reported as 'T is declared nowhere'.
+    GPARAM_METHOD = (r"\b(?:private|public|internal|protected|static)\b[^;=\n(]*?"
+                     r"\b\w+\s*<\s*([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)\s*>\s*\(")
+    GPARAM_TYPE = (r"\b(?:class|struct|interface|record)\s+\w+\s*<\s*"
+                   r"([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)\s*>")
+
     for f in files:
         code = strip_cs(f.read_text(encoding="utf-8"))
+        gparams = set()
+        for pat in (GPARAM_METHOD, GPARAM_TYPE):
+            for gm in re.finditer(pat, code):
+                gparams.update(x.strip() for x in gm.group(1).split(","))
         seen_here = set()
         for m in re.finditer(USE, code):
             name = next(g for g in m.groups() if g)
             if not name or not name[0].isupper():
                 continue
-            if name in declared or name in FRAMEWORK or name in seen_here:
+            if name in declared or name in FRAMEWORK or name in seen_here or name in gparams:
                 continue
             seen_here.add(name)
             fail("type-names",
@@ -4925,6 +5260,10 @@ def main():
     check_version_not_lowered()
     check_no_orphaning_rebuilds()
     check_device_copy()
+    check_list_sync()
+    check_effect_layers()
+    check_prompt_corners()
+    check_ui_idle_and_scrolling()
     check_update_checking()
     check_suppression_flag()
     check_startup_restores_filtering()

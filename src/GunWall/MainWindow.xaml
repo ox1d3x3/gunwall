@@ -946,7 +946,7 @@
                 </StackPanel>
 
                 <Border Grid.Row="1" Padding="0">
-                    <ListView x:Name="AppsList" gw:Table.EmptyTitle="No applications yet" gw:Table.EmptyText="They appear here the first time each one tries to reach the network." VirtualizingPanel.IsVirtualizing="True"
+                    <ListView x:Name="AppsList" gw:Table.EmptyTitle="No applications yet" gw:Table.EmptyText="They appear here the first time each one tries to reach the network." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"
                               VirtualizingPanel.VirtualizationMode="Recycling"
                               PreviewMouseRightButtonDown="Row_RightClickSelect">
                         <ListView.Resources>
@@ -1191,7 +1191,7 @@
                     </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Padding="0">
-                    <ListView x:Name="ConnList" gw:Table.EmptyTitle="No active connections" gw:Table.EmptyText="Nothing is talking to the network right now." VirtualizingPanel.IsVirtualizing="True"
+                    <ListView x:Name="ConnList" gw:Table.EmptyTitle="No active connections" gw:Table.EmptyText="Nothing is talking to the network right now." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"
                               VirtualizingPanel.VirtualizationMode="Recycling"
                               SizeChanged="ConnList_SizeChanged"
                               SelectionChanged="ConnSelected"
@@ -1491,7 +1491,7 @@
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="TOP COUNTRIES" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
                             <ListView x:Name="TrafficCountries" Height="190" gw:Table.EmptyTitle="No traffic by country yet" gw:Table.EmptyText="Destinations are grouped here once GeoIP can place them." BorderThickness="0" Background="Transparent"
-                                      VirtualizingPanel.IsVirtualizing="True">
+                                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
 
@@ -1548,7 +1548,7 @@
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="MOST ACTIVE APPS" Style="{StaticResource SectionLabel}" Margin="0,0,0,10" />
                             <ListView x:Name="TrafficApps" Height="190" gw:Table.EmptyTitle="No per-app traffic yet" gw:Table.EmptyText="Byte counts appear once applications start moving data." BorderThickness="0" Background="Transparent"
-                                      VirtualizingPanel.IsVirtualizing="True">
+                                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
 
@@ -1629,7 +1629,7 @@
                                        Text="Drag from point A to point B on the timeline to see which apps were active then, busiest first." />
                         </DockPanel>
                         <ListView x:Name="UsageList" gw:Table.EmptyTitle="No usage recorded" gw:Table.EmptyText="Per-app totals build up as traffic flows." BorderThickness="0" Background="Transparent" MaxHeight="260"
-                                  VirtualizingPanel.IsVirtualizing="True">
+                                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
 
@@ -1848,7 +1848,7 @@
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="QUERY LOG" Style="{StaticResource SectionLabel}" Margin="4,2,0,8" />
                             <ListView x:Name="DnsLog" gw:Table.EmptyTitle="Nothing is using this resolver yet" gw:Table.EmptyText="This log fills only with lookups sent to 127.0.0.1. Set an adapter's DNS server to 127.0.0.1 to route them here - 'Watch system DNS lookups' does not fill this log." BorderThickness="0" Background="Transparent"
-                                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
 
@@ -1951,7 +1951,7 @@
                         <TextBlock x:Name="AlertsEmpty" Text="Nothing yet - GunWall will note important events here."
                                    Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <ListView x:Name="AlertsList" gw:Table.EmptyTitle="No alerts" gw:Table.EmptyText="Nothing has needed your attention. That is the good outcome." BorderThickness="0" Background="Transparent"
-                                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
 
@@ -2031,7 +2031,7 @@
                 </Grid>
 
                 <Border Grid.Row="1" Padding="0">
-                    <ListView x:Name="PacketsList" gw:Table.EmptyTitle="No packets logged yet" gw:Table.EmptyText="Every allow and block decision the kernel makes will appear here as it happens." VirtualizingPanel.IsVirtualizing="True"
+                    <ListView x:Name="PacketsList" gw:Table.EmptyTitle="No packets logged yet" gw:Table.EmptyText="Every allow and block decision the kernel makes will appear here as it happens." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"
                               VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
@@ -2186,7 +2186,7 @@
 
                 <!-- Rules list -->
                 <Border Grid.Row="2" Padding="0">
-                    <ListView x:Name="RulesList" gw:Table.EmptyTitle="No custom rules" gw:Table.EmptyText="Rules you add from a prompt, or from Applications, collect here." VirtualizingPanel.IsVirtualizing="True">
+                    <ListView x:Name="RulesList" gw:Table.EmptyTitle="No custom rules" gw:Table.EmptyText="Rules you add from a prompt, or from Applications, collect here." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
 
@@ -2319,7 +2319,7 @@
                     </StackPanel>
                 </Grid>
                 <Border Grid.Row="1" Padding="0">
-                    <ListView x:Name="ServicesList" gw:Table.EmptyTitle="No services loaded" gw:Table.EmptyText="Windows services appear here once they have been enumerated." VirtualizingPanel.IsVirtualizing="True"
+                    <ListView x:Name="ServicesList" gw:Table.EmptyTitle="No services loaded" gw:Table.EmptyText="Windows services appear here once they have been enumerated." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"
                               VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
@@ -2406,7 +2406,7 @@
                     </StackPanel>
                 </Grid>
                 <Border Grid.Row="1" Padding="0">
-                    <ListView x:Name="DevicesList" gw:Table.EmptyTitle="No devices found" gw:Table.EmptyText="Run a scan to look for other hosts on your network." VirtualizingPanel.IsVirtualizing="True" MouseDoubleClick="DeviceNote_Edit" PreviewKeyDown="DevicesList_KeyDown">
+                    <ListView x:Name="DevicesList" gw:Table.EmptyTitle="No devices found" gw:Table.EmptyText="Run a scan to look for other hosts on your network." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" MouseDoubleClick="DeviceNote_Edit" PreviewKeyDown="DevicesList_KeyDown">
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Copy IP address" Click="CopyDeviceIp_Click" />
@@ -2632,7 +2632,7 @@
                 </Grid>
 
                 <Border Grid.Row="1" Padding="0">
-                    <ListView x:Name="ActivityList" gw:Table.EmptyTitle="No activity yet" gw:Table.EmptyText="Connection events for this session will appear here." VirtualizingPanel.IsVirtualizing="True"
+                    <ListView x:Name="ActivityList" gw:Table.EmptyTitle="No activity yet" gw:Table.EmptyText="Connection events for this session will appear here." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"
                               VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
@@ -3277,72 +3277,77 @@
              lit would look like a dialog belonging to one panel. -->
         <Grid x:Name="Palette" Grid.ColumnSpan="2" Visibility="Collapsed" Panel.ZIndex="90">
             <Rectangle Fill="{DynamicResource Scrim}" MouseLeftButtonUp="PaletteScrim_Click" />
-            <Border Width="620" VerticalAlignment="Top" HorizontalAlignment="Center"
-                    Margin="0,130,0,0" CornerRadius="14"
-                    Background="{DynamicResource BgElevated}"
-                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                <Border.Effect>
-                    <DropShadowEffect BlurRadius="60" ShadowDepth="20" Direction="270"
-                                      Opacity="0.55" Color="#000000" />
-                </Border.Effect>
-                <StackPanel>
-                    <Border Padding="18,16" BorderThickness="0,0,0,1"
-                            BorderBrush="{DynamicResource Divider}">
-                        <Grid>
-                            <Path Width="16" Height="16" Stretch="Uniform" HorizontalAlignment="Left"
-                                  VerticalAlignment="Center" Fill="{x:Null}"
-                                  Stroke="{DynamicResource TextTertiary}" StrokeThickness="2"
-                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                  Data="{DynamicResource IconSearch}" />
-                            <TextBox x:Name="PaletteInput" Margin="28,0,44,0" FontSize="15"
-                                     Style="{StaticResource SearchField}"
-                                     TextChanged="PaletteInput_TextChanged"
-                                     PreviewKeyDown="PaletteInput_PreviewKeyDown" />
-                            <TextBlock x:Name="PaletteHint" Text="Type a command or search..."
-                                       Margin="28,0,0,0" FontSize="15" VerticalAlignment="Center"
-                                       IsHitTestVisible="False"
-                                       Foreground="{DynamicResource TextTertiary}" />
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Center"
-                                    CornerRadius="4" Padding="6,3" BorderThickness="1"
-                                    BorderBrush="{DynamicResource BorderBrush}">
-                                <TextBlock Text="ESC" FontSize="10.5"
-                                           FontFamily="{DynamicResource MonoFont}"
-                                           Foreground="{DynamicResource TextTertiary}" />
-                            </Border>
-                        </Grid>
-                    </Border>
+            <Grid Width="620" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,130,0,0">
+                <!-- The shadow is drawn by this empty layer, not by the card. An Effect is a pixel shader, and one on an element is recomputed whenever anything inside it changes - here, every keystroke in the palette's search re-ran a 60px blur across the whole panel. Nothing inside this layer ever changes, so its shadow renders once. -->
+                <Border CornerRadius="14" Background="{DynamicResource BgElevated}" IsHitTestVisible="False">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="60" ShadowDepth="20" Direction="270"
+                                          Opacity="0.55" Color="#000000" />
+                    </Border.Effect>
+                </Border>
 
-                    <ListBox x:Name="PaletteList" MaxHeight="420" BorderThickness="0"
-                             Margin="8,10,8,12" Background="Transparent"
-                             ItemContainerStyle="{StaticResource SearchResultRow}"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             MouseLeftButtonUp="PaletteList_Click">
-                        <ListBox.GroupStyle>
-                            <GroupStyle>
-                                <GroupStyle.HeaderTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding Name}" FontSize="10"
-                                                   FontWeight="SemiBold" Margin="12,10,12,6"
-                                                   Foreground="{DynamicResource TextTertiary}" />
-                                    </DataTemplate>
-                                </GroupStyle.HeaderTemplate>
-                            </GroupStyle>
-                        </ListBox.GroupStyle>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="12,10">
-                                    <TextBlock Text="{Binding Label}" FontSize="13.5"
-                                               TextTrimming="CharacterEllipsis"
-                                               Foreground="{DynamicResource TextPrimary}" />
-                                    <TextBlock Text="{Binding Detail}" FontSize="11.5"
-                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                <Border CornerRadius="14"
+                        Background="{DynamicResource BgElevated}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                    <StackPanel>
+                        <Border Padding="18,16" BorderThickness="0,0,0,1"
+                                BorderBrush="{DynamicResource Divider}">
+                            <Grid>
+                                <Path Width="16" Height="16" Stretch="Uniform" HorizontalAlignment="Left"
+                                      VerticalAlignment="Center" Fill="{x:Null}"
+                                      Stroke="{DynamicResource TextTertiary}" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="{DynamicResource IconSearch}" />
+                                <TextBox x:Name="PaletteInput" Margin="28,0,44,0" FontSize="15"
+                                         Style="{StaticResource SearchField}"
+                                         TextChanged="PaletteInput_TextChanged"
+                                         PreviewKeyDown="PaletteInput_PreviewKeyDown" />
+                                <TextBlock x:Name="PaletteHint" Text="Type a command or search..."
+                                           Margin="28,0,0,0" FontSize="15" VerticalAlignment="Center"
+                                           IsHitTestVisible="False"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        CornerRadius="4" Padding="6,3" BorderThickness="1"
+                                        BorderBrush="{DynamicResource BorderBrush}">
+                                    <TextBlock Text="ESC" FontSize="10.5"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                Foreground="{DynamicResource TextTertiary}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </StackPanel>
-            </Border>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <ListBox x:Name="PaletteList" MaxHeight="420" BorderThickness="0"
+                                 Margin="8,10,8,12" Background="Transparent"
+                                 ItemContainerStyle="{StaticResource SearchResultRow}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 MouseLeftButtonUp="PaletteList_Click">
+                            <ListBox.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" FontSize="10"
+                                                       FontWeight="SemiBold" Margin="12,10,12,6"
+                                                       Foreground="{DynamicResource TextTertiary}" />
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ListBox.GroupStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="12,10">
+                                        <TextBlock Text="{Binding Label}" FontSize="13.5"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource TextPrimary}" />
+                                        <TextBlock Text="{Binding Detail}" FontSize="11.5"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextTertiary}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+            </Grid>
         </Grid>
         </Grid>
     </Grid>

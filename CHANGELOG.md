@@ -15,6 +15,103 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.148] — 2026-10-01
+
+### Performance — GunWall no longer renders while nobody is looking
+The traffic graph's per-frame handler was attached to
+`CompositionTarget.Rendering` once at startup and never removed. While any handler
+is attached WPF keeps producing frames, so GunWall rendered at the monitor's
+refresh rate — up to 240 frames a second on a 240 Hz display — for its entire
+lifetime: minimised, hidden in the tray, on other tabs, and underneath fullscreen
+games. The handler returned early when the dashboard was hidden, which saved its
+own few lines and none of the frames.
+
+It is now attached only while the graph is actually on screen, and re-evaluated on
+every transition that can change that: switching tabs, minimising and restoring,
+and hiding to or showing from the tray.
+
+A background application drawing continuously while a game owns the GPU is the
+kind of contention behind the two rendering faults classified in 0.99.128 and
+0.99.145. That link is not proven; the continuous rendering is.
+
+### Performance — panels are not rebuilt for a hidden window
+The connection table, the application list, the traffic breakdown, the Settings
+health card and the dashboard were rebuilt on every connection snapshot whenever
+their **tab** was selected. A tab stays selected while the whole window is
+minimised or in the tray — how GunWall spends most of its time — so with the
+Connections or Firewall tab open, those tables were rebuilt indefinitely for a
+window nobody could see.
+
+Painting now runs only while the window is visible and not minimised, and the
+visible panel is repainted the moment the window returns, so it never shows a
+table that stopped updating while hidden. The repaint waits for the window to
+finish loading: it is first shown before the profile is read, and an earlier
+attempt would have recorded paint failures as session errors on every launch.
+
+**Enforcement is unaffected.** P2P, domain, access-policy and tamper enforcement
+run on every snapshot whether or not the window is visible; a check fails if any
+of them is ever moved behind the on-screen guard.
+
+### Performance — lists refill with one notification
+Five lists were refilled by clearing them and adding rows one at a time, raising a
+change notification per row: the traffic breakdown (fifty-two per snapshot while
+that tab is open), the services list (one per Windows service, a few hundred), the
+network scan results and the country rules. They are now built aside and swapped
+in with a single notification — the same one clearing the list raised before, so
+each list ends in exactly the state it reached before.
+
+### Smoother — scrolling
+All twelve virtualised lists scrolled a whole row per mouse-wheel notch. They now
+scroll by pixel, with virtualisation kept. Five of them also created and destroyed
+row containers while scrolling; all twelve now recycle them. No code reads or
+writes state on row containers, so recycling changes nothing but the cost.
+
+### Changed — the connection prompt's action row is square
+**Block**, **Allow** and the details chevron were rounded at 4px, following the
+radius the main window's buttons use. At 125% display scaling those corners still
+read as rounded in the prompt, and the row is meant to read as boxes. All three
+are square — squaring two buttons of one row would look like a mistake — and they
+use a square focus ring, since the shared ring is rounded at 8px and drawn 3px
+outside the control.
+
+This is a deliberate difference from the main window's buttons, recorded in the
+style and held by a check so it is not later "fixed" back as drift.
+
+### Not changed — the prompt's shadow
+The connection prompt's 30px shadow and the command palette's 60px shadow were
+examined as candidates. Both are already drawn by an empty, non-interactive layer
+behind the content, so they render once and are not recomputed when content
+changes. `effect-layers` already enforces that for every XAML file.
+
+### Added — checks `ui-idle-and-scrolling` and `prompt-corners`
+`ui-idle-and-scrolling` asserts that the per-frame handler is attached in exactly
+one place, is detached, and considers visibility, minimisation and the selected
+tab; that tab switches, tray hide/show and minimise/restore are all observed; that
+per-snapshot painting goes only through the on-screen guard while all four
+enforcement calls stay outside it; that the repaint on return waits for load; that
+no collection is refilled row by row; and that every virtualised list pixel-scrolls
+and recycles.
+
+`prompt-corners` asserts the three action styles are square, the two that set a
+focus ring use the square one, `PromptPrimary` still inherits it, and the square
+ring is square. It replaces the assertion inside `effect-layers` that held the
+previous, rounded decision.
+
+Nineteen defects were reintroduced individually across both checks and each
+confirmed failing — including enforcement gated on visibility, and the repaint
+running before load.
+
+### Verified — framework members
+`RangeObservableCollection<T>` calls `CheckReentrancy`, `OnPropertyChanged` and
+`OnCollectionChanged`, inherited from `ObservableCollection<T>`. Their signatures
+and the namespaces of `PropertyChangedEventArgs` and
+`NotifyCollectionChangedEventArgs` were read from `dotnet/runtime` release/8.0
+before being added to the suite's allow-lists.
+
+Recorded as trap 2.40.
+
+---
+
 ## [0.99.147] — 2026-09-26
 
 *Developed and tested as `0.99.120`, deliberately below the published release so the

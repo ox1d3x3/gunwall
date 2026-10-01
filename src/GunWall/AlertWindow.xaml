@@ -36,203 +36,209 @@
          Machine values are JetBrains Mono, prose is Instrument Sans.
          ============================================================ -->
 
-    <Border Background="{DynamicResource BgElevated}"
-            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-            CornerRadius="12" Margin="14">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="30" ShadowDepth="6" Direction="270"
-                              Opacity="0.40" Color="#000000" />
-        </Border.Effect>
+    <Grid Margin="14">
+        <!-- The shadow is drawn by this empty layer, not by the card. An Effect is a pixel shader, and one on an element is recomputed whenever anything inside it changes - here, every hover over Block or Allow re-shaded the whole card. Nothing inside this layer ever changes, so its shadow renders once. -->
+        <Border CornerRadius="12" Background="{DynamicResource BgElevated}" IsHitTestVisible="False">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="30" ShadowDepth="6" Direction="270"
+                                  Opacity="0.40" Color="#000000" />
+            </Border.Effect>
+        </Border>
 
-        <StackPanel>
-            <!-- The state strip was retired in 0.99.71. It carried a role dot,
-                 an uppercase kicker and the countdown. The subject tile now takes
-                 the role colour and the subtitle under the question states the
-                 kind of moment, so two of its three jobs were being done twice -
-                 and the duplicate x:Name for the kicker was a compile error, which
-                 is a blunt way of being told the same thing.
+        <Border Background="{DynamicResource BgElevated}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12">
 
-                 The countdown moved to the actions row, where the consequence it
-                 describes is next to the buttons that avoid it. -->
-            <StackPanel Margin="16,15,16,15">
-                <!-- Subject column, then content. The reference format this follows
-                     puts an icon beside the question and gives each fact its own
-                     leading glyph, and both earn their place here:
+            <StackPanel>
+                <!-- The state strip was retired in 0.99.71. It carried a role dot,
+                     an uppercase kicker and the countdown. The subject tile now takes
+                     the role colour and the subtitle under the question states the
+                     kind of moment, so two of its three jobs were being done twice -
+                     and the duplicate x:Name for the kicker was a compile error, which
+                     is a blunt way of being told the same thing.
 
-                       - the tile anchors the dialog to a subject, so it reads as
-                         "this application is asking" rather than as a bare sentence
-                       - an app icon and a country flag are recognised before either
-                         is read, which on a prompt answered in two seconds is most
-                         of the decision
+                     The countdown moved to the actions row, where the consequence it
+                     describes is next to the buttons that avoid it. -->
+                <StackPanel Margin="16,15,16,15">
+                    <!-- Subject column, then content. The reference format this follows
+                         puts an icon beside the question and gives each fact its own
+                         leading glyph, and both earn their place here:
 
-                     The tile takes the ROLE colour, so a blocked-app prompt arrives
-                     visibly different from a first-connection one. -->
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                           - the tile anchors the dialog to a subject, so it reads as
+                             "this application is asking" rather than as a bare sentence
+                           - an app icon and a country flag are recognised before either
+                             is read, which on a prompt answered in two seconds is most
+                             of the decision
 
-                    <Border x:Name="SubjectTile" Grid.Column="0" Width="44" Height="44"
-                            CornerRadius="11" Margin="0,2,14,0" VerticalAlignment="Top"
-                            Background="{DynamicResource WarnFill}">
-                        <Path x:Name="SubjectIcon" Width="21" Height="21" Stretch="Uniform"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                              Fill="{x:Null}" Stroke="{DynamicResource WarnText}"
-                              StrokeThickness="1.8" StrokeLineJoin="Round"
-                              Data="{DynamicResource IconSecurity}" />
+                         The tile takes the ROLE colour, so a blocked-app prompt arrives
+                         visibly different from a first-connection one. -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border x:Name="SubjectTile" Grid.Column="0" Width="44" Height="44"
+                                CornerRadius="11" Margin="0,2,14,0" VerticalAlignment="Top"
+                                Background="{DynamicResource WarnFill}">
+                            <Path x:Name="SubjectIcon" Width="21" Height="21" Stretch="Uniform"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Fill="{x:Null}" Stroke="{DynamicResource WarnText}"
+                                  StrokeThickness="1.8" StrokeLineJoin="Round"
+                                  Data="{DynamicResource IconSecurity}" />
+                        </Border>
+
+                        <StackPanel Grid.Column="1">
+                            <TextBlock x:Name="SummaryText" Text="An app wants to connect out"
+                                       FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock x:Name="HeaderText" Text="First connection" FontSize="12"
+                                       Margin="0,3,0,0"
+                                       Foreground="{DynamicResource TextTertiary}" />
+
+                            <!-- Fact rows. Glyph, value, then a trailing chip where one
+                                 adds something - the signature verdict here. -->
+                            <Grid Margin="0,13,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Image x:Name="AppIcon" Grid.Column="0" Width="16" Height="16"
+                                       VerticalAlignment="Center" Margin="0,0,9,0"
+                                       RenderOptions.BitmapScalingMode="HighQuality" />
+                                <TextBlock x:Name="NameText" Grid.Column="1" Text="app.exe" FontSize="12.5"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <Border Grid.Column="2" CornerRadius="4" Padding="6,1" Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Background="{DynamicResource InfoFill}">
+                                    <TextBlock x:Name="SignatureText" Text="Checking..." FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextSecondary}" />
+                                </Border>
+                            </Grid>
+
+                            <Grid Margin="0,9,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Image x:Name="FlagIcon" Grid.Column="0" Width="20" Height="14"
+                                       VerticalAlignment="Center" Margin="0,0,7,0" Stretch="Uniform"
+                                       SnapsToDevicePixels="True" />
+                                <TextBlock x:Name="AddressText" Grid.Column="1" Text="&#x2014;" FontSize="12"
+                                           VerticalAlignment="Center"
+                                           FontFamily="{DynamicResource MonoFont}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Detail, collapsed. Everything a decision might need that the
+                         two lines above do not carry. -->
+                    <Border x:Name="DetailsPanel" Visibility="Collapsed" Margin="0,12,0,0"
+                            CornerRadius="8" Padding="12,4"
+                            Background="{DynamicResource BgCard}"
+                            BorderBrush="{DynamicResource Divider}" BorderThickness="1">
+                        <StackPanel>
+                            <Grid Margin="0,7">
+                                <TextBlock Text="Port" FontSize="11.5"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                                <TextBlock x:Name="PortText" Text="&#x2014;" FontSize="11.5"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           HorizontalAlignment="Right"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                            </Grid>
+                            <Grid Margin="0,7">
+                                <TextBlock Text="Reverse DNS" FontSize="11.5"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                                <TextBlock x:Name="HostText" Text="Resolving..." FontSize="11.5"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"
+                                           MaxWidth="240"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </Grid>
+                            <Grid Margin="0,7">
+                                <TextBlock Text="Time" FontSize="11.5"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                                <TextBlock x:Name="DateText" Text="&#x2014;" FontSize="11.5"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           HorizontalAlignment="Right"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </Grid>
+                            <Grid Margin="0,7">
+                                <TextBlock Text="Path" FontSize="11.5" VerticalAlignment="Top"
+                                           Foreground="{DynamicResource TextTertiary}" />
+                                <TextBlock x:Name="PathText" Text="&#x2014;" FontSize="11"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           HorizontalAlignment="Right" TextWrapping="Wrap"
+                                           MaxWidth="290" TextAlignment="Right"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </Grid>
+                        </StackPanel>
                     </Border>
 
-                    <StackPanel Grid.Column="1">
-                        <TextBlock x:Name="SummaryText" Text="An app wants to connect out"
-                                   FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextPrimary}" />
-                        <TextBlock x:Name="HeaderText" Text="First connection" FontSize="12"
-                                   Margin="0,3,0,0"
+                    <!-- Actions. The chevron is a real 30x30 button this time, sized
+                         from its own padding rather than inheriting thirty pixels of
+                         it from a shared style and clipping the glyph to a dot.
+
+                         THREE REAL COLUMNS, as of 0.99.72. Until then this was a
+                         single-cell Grid holding three children aligned left, left
+                         and right - which positions them but reserves nothing for
+                         any of them. The hint was bounded by MaxWidth="210" instead,
+                         a number chosen against the buttons as they measured when it
+                         was written, and nothing enforced it: 40px of left margin
+                         plus 210 reaches 250px into a row where the buttons begin at
+                         176. The hint ran underneath the Block button.
+
+                         That is trap 2.8 with the direction reversed - not sizing a
+                         column for the string that happens to be visible, but
+                         letting a string assume space that belongs to something
+                         else. Here the buttons are the fixed part and the hint's
+                         width is DERIVED, so the star column hands it exactly what
+                         is left over and it ellipsises inside its own cell rather
+                         than sliding under a neighbour. The overlap is now
+                         structurally impossible rather than arithmetically avoided.
+
+                         The 10px margins are the visible gap either side. They are
+                         deliberately explicit rather than borrowed from the
+                         chevron's internal whitespace or the Block button's 15px
+                         padding, because both of those belong to styles that can
+                         change without anyone thinking about this row. -->
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button x:Name="DetailsButton" Grid.Column="0"
+                                Style="{StaticResource PromptChevron}" Click="Details_Click"
+                                ToolTip="Show everything known about this connection.">
+                            <Path x:Name="DetailsChevron" Width="13" Height="13" Stretch="Uniform"
+                                  Stroke="{DynamicResource TextSecondary}" StrokeThickness="2.2"
+                                  StrokeLineJoin="Round" StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round" Fill="{x:Null}"
+                                  Data="{StaticResource IconChevronDown}" />
+                        </Button>
+
+                        <TextBlock x:Name="CountdownHint" Grid.Column="1" FontSize="11.5"
+                                   Margin="10,0,10,0"
+                                   VerticalAlignment="Center" HorizontalAlignment="Left"
+                                   TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextTertiary}" />
 
-                        <!-- Fact rows. Glyph, value, then a trailing chip where one
-                             adds something - the signature verdict here. -->
-                        <Grid Margin="0,13,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Image x:Name="AppIcon" Grid.Column="0" Width="16" Height="16"
-                                   VerticalAlignment="Center" Margin="0,0,9,0"
-                                   RenderOptions.BitmapScalingMode="HighQuality" />
-                            <TextBlock x:Name="NameText" Grid.Column="1" Text="app.exe" FontSize="12.5"
-                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                       Foreground="{DynamicResource TextPrimary}" />
-                            <Border Grid.Column="2" CornerRadius="4" Padding="6,1" Margin="8,0,0,0"
-                                    VerticalAlignment="Center"
-                                    Background="{DynamicResource InfoFill}">
-                                <TextBlock x:Name="SignatureText" Text="Checking..." FontSize="10"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextSecondary}" />
-                            </Border>
-                        </Grid>
-
-                        <Grid Margin="0,9,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Image x:Name="FlagIcon" Grid.Column="0" Width="20" Height="14"
-                                   VerticalAlignment="Center" Margin="0,0,7,0" Stretch="Uniform"
-                                   SnapsToDevicePixels="True" />
-                            <TextBlock x:Name="AddressText" Grid.Column="1" Text="&#x2014;" FontSize="12"
-                                       VerticalAlignment="Center"
-                                       FontFamily="{DynamicResource MonoFont}"
-                                       TextTrimming="CharacterEllipsis"
-                                       Foreground="{DynamicResource TextSecondary}" />
-                        </Grid>
-                    </StackPanel>
-                </Grid>
-
-                <!-- Detail, collapsed. Everything a decision might need that the
-                     two lines above do not carry. -->
-                <Border x:Name="DetailsPanel" Visibility="Collapsed" Margin="0,12,0,0"
-                        CornerRadius="8" Padding="12,4"
-                        Background="{DynamicResource BgCard}"
-                        BorderBrush="{DynamicResource Divider}" BorderThickness="1">
-                    <StackPanel>
-                        <Grid Margin="0,7">
-                            <TextBlock Text="Port" FontSize="11.5"
-                                       Foreground="{DynamicResource TextTertiary}" />
-                            <TextBlock x:Name="PortText" Text="&#x2014;" FontSize="11.5"
-                                       FontFamily="{StaticResource MonoFont}"
-                                       HorizontalAlignment="Right"
-                                       Foreground="{DynamicResource TextPrimary}" />
-                        </Grid>
-                        <Grid Margin="0,7">
-                            <TextBlock Text="Reverse DNS" FontSize="11.5"
-                                       Foreground="{DynamicResource TextTertiary}" />
-                            <TextBlock x:Name="HostText" Text="Resolving..." FontSize="11.5"
-                                       FontFamily="{StaticResource MonoFont}"
-                                       HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"
-                                       MaxWidth="240"
-                                       Foreground="{DynamicResource TextSecondary}" />
-                        </Grid>
-                        <Grid Margin="0,7">
-                            <TextBlock Text="Time" FontSize="11.5"
-                                       Foreground="{DynamicResource TextTertiary}" />
-                            <TextBlock x:Name="DateText" Text="&#x2014;" FontSize="11.5"
-                                       FontFamily="{StaticResource MonoFont}"
-                                       HorizontalAlignment="Right"
-                                       Foreground="{DynamicResource TextSecondary}" />
-                        </Grid>
-                        <Grid Margin="0,7">
-                            <TextBlock Text="Path" FontSize="11.5" VerticalAlignment="Top"
-                                       Foreground="{DynamicResource TextTertiary}" />
-                            <TextBlock x:Name="PathText" Text="&#x2014;" FontSize="11"
-                                       FontFamily="{StaticResource MonoFont}"
-                                       HorizontalAlignment="Right" TextWrapping="Wrap"
-                                       MaxWidth="290" TextAlignment="Right"
-                                       Foreground="{DynamicResource TextSecondary}" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Actions. The chevron is a real 30x30 button this time, sized
-                     from its own padding rather than inheriting thirty pixels of
-                     it from a shared style and clipping the glyph to a dot.
-
-                     THREE REAL COLUMNS, as of 0.99.72. Until then this was a
-                     single-cell Grid holding three children aligned left, left
-                     and right - which positions them but reserves nothing for
-                     any of them. The hint was bounded by MaxWidth="210" instead,
-                     a number chosen against the buttons as they measured when it
-                     was written, and nothing enforced it: 40px of left margin
-                     plus 210 reaches 250px into a row where the buttons begin at
-                     176. The hint ran underneath the Block button.
-
-                     That is trap 2.8 with the direction reversed - not sizing a
-                     column for the string that happens to be visible, but
-                     letting a string assume space that belongs to something
-                     else. Here the buttons are the fixed part and the hint's
-                     width is DERIVED, so the star column hands it exactly what
-                     is left over and it ellipsises inside its own cell rather
-                     than sliding under a neighbour. The overlap is now
-                     structurally impossible rather than arithmetically avoided.
-
-                     The 10px margins are the visible gap either side. They are
-                     deliberately explicit rather than borrowed from the
-                     chevron's internal whitespace or the Block button's 15px
-                     padding, because both of those belong to styles that can
-                     change without anyone thinking about this row. -->
-                <Grid Margin="0,14,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <Button x:Name="DetailsButton" Grid.Column="0"
-                            Style="{StaticResource PromptChevron}" Click="Details_Click"
-                            ToolTip="Show everything known about this connection.">
-                        <Path x:Name="DetailsChevron" Width="13" Height="13" Stretch="Uniform"
-                              Stroke="{DynamicResource TextSecondary}" StrokeThickness="2.2"
-                              StrokeLineJoin="Round" StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round" Fill="{x:Null}"
-                              Data="{StaticResource IconChevronDown}" />
-                    </Button>
-
-                    <TextBlock x:Name="CountdownHint" Grid.Column="1" FontSize="11.5"
-                               Margin="10,0,10,0"
-                               VerticalAlignment="Center" HorizontalAlignment="Left"
-                               TextTrimming="CharacterEllipsis"
-                               Foreground="{DynamicResource TextTertiary}" />
-
-                    <StackPanel Grid.Column="2" Orientation="Horizontal">
-                        <Button x:Name="BlockButton" Content="Block" Click="Block_Click"
-                                Style="{StaticResource PromptSecondary}" Margin="0,0,8,0" />
-                        <Button x:Name="AllowButton" Content="Allow" Click="Allow_Click"
-                                Style="{StaticResource PromptPrimary}" />
-                    </StackPanel>
-                </Grid>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button x:Name="BlockButton" Content="Block" Click="Block_Click"
+                                    Style="{StaticResource PromptSecondary}" Margin="0,0,8,0" />
+                            <Button x:Name="AllowButton" Content="Allow" Click="Allow_Click"
+                                    Style="{StaticResource PromptPrimary}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
             </StackPanel>
-        </StackPanel>
-    </Border>
+        </Border>
+    </Grid>
 </Window>

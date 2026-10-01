@@ -82,8 +82,23 @@ public enum AppStatus
 public enum AppCategory { Unknown, Signed, Unsigned, System, Invalid }
 
 /// <summary>An application known to GunWall, with its current policy.</summary>
-public sealed class AppInfo
+/// <summary>
+/// One row of the Applications list.
+///
+/// Three values change every second for an active application - the connection
+/// count, and the sparkline with its tooltip - and those three announce their
+/// changes. The list is kept in sync row by row rather than cleared and refilled,
+/// so an unchanged row keeps its visual container, its selection and its place,
+/// and a change to one of these three redraws only that cell. Everything else on
+/// the row is compared by value and, when it differs, the row object is replaced.
+/// </summary>
+public sealed class AppInfo : System.ComponentModel.INotifyPropertyChanged
 {
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    private void Changed(string name) =>
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
+
     public string Name { get; set; } = "";
     public string ExecutablePath { get; set; } = "";
     public AppStatus Status { get; set; } = AppStatus.Allowed;
@@ -115,7 +130,12 @@ public sealed class AppInfo
     public string PackageFamily { get; set; } = "";
 
     /// <summary>Number of live connections currently attributed to this app.</summary>
-    public int ActiveConnections { get; set; }
+    public int ActiveConnections
+    {
+        get => _activeConnections;
+        set { if (_activeConnections != value) { _activeConnections = value; Changed(nameof(ActiveConnections)); } }
+    }
+    private int _activeConnections;
 
     /// <summary>SHA-256 of the executable (for display / tamper awareness).</summary>
     public string Hash { get; set; } = "";
@@ -133,10 +153,20 @@ public sealed class AppInfo
 
     /// <summary>Pre-scaled sparkline of this app's last-30-minutes traffic
     /// (points in a 90x20 box); recomputed on every list rebuild.</summary>
-    public System.Windows.Media.PointCollection? Spark { get; set; }
+    public System.Windows.Media.PointCollection? Spark
+    {
+        get => _spark;
+        set { if (!object.ReferenceEquals(_spark, value)) { _spark = value; Changed(nameof(Spark)); } }
+    }
+    private System.Windows.Media.PointCollection? _spark;
 
     /// <summary>Tooltip for the sparkline ("2.4 MB in the last 30 min").</summary>
-    public string SparkTip { get; set; } = "";
+    public string SparkTip
+    {
+        get => _sparkTip;
+        set { if (_sparkTip != value) { _sparkTip = value; Changed(nameof(SparkTip)); } }
+    }
+    private string _sparkTip = "";
 
     /// <summary>Coloring level for the verdict: "clean", "flagged", "pending", "none".</summary>
     public string VtLevel { get; set; } = "";

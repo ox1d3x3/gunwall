@@ -52,8 +52,19 @@
          a red Block turns a security decision into a reflex, and the reflex
          people learn is to press the coloured one. Closing the window blocks,
          so the safe answer is also the free one. -->
+    <!-- The prompt's action row: Block, Allow and the details chevron.
+
+         SQUARE, by maintainer decision. They previously followed
+         ControlCornerRadius, the 4px WPF-UI radius the main window's buttons
+         use, and before that CornerRadius="7". At 125% display scaling the 4px
+         corners still read as rounded in a small, decisive surface, and the row
+         is meant to read as boxes. This is a deliberate difference from the main
+         window's buttons, not drift - the check `prompt-corners` holds it.
+
+         All three share it: squaring two buttons of one row would look like a
+         mistake. Their focus ring is the square variant for the same reason. -->
     <Style x:Key="PromptSecondary" TargetType="Button">
-        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingSquare}" />
         <Setter Property="Height" Value="36" />
         <Setter Property="MinWidth" Value="92" />
         <Setter Property="FontSize" Value="12.5" />
@@ -64,7 +75,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" CornerRadius="7" Padding="15,0"
+                    <Border x:Name="Bd" CornerRadius="0" Padding="15,0"
                             Background="Transparent"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                             SnapsToDevicePixels="True">
@@ -161,14 +172,14 @@
     </Style>
 
     <Style x:Key="PromptChevron" TargetType="Button">
-        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingSquare}" />
         <Setter Property="Width" Value="30" />
         <Setter Property="Height" Value="30" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" CornerRadius="7" Background="Transparent"
+                    <Border x:Name="Bd" CornerRadius="0" Background="Transparent"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                             SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -189,7 +200,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" CornerRadius="7" Padding="17,0"
+                    <Border x:Name="Bd" CornerRadius="0" Padding="17,0"
                             Background="{DynamicResource BlockText}"
                             BorderBrush="{DynamicResource BlockText}" BorderThickness="1"
                             SnapsToDevicePixels="True">
@@ -830,6 +841,20 @@
             <Setter.Value>
                 <ControlTemplate>
                     <Rectangle Margin="-3" StrokeThickness="2" RadiusX="8" RadiusY="8"
+                               Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- The same ring with square corners, for the prompt's square action row.
+         The shared ring is rounded to match the rest of the interface; drawn 3px
+         outside a square button it would read as a mistake. -->
+    <Style x:Key="FocusRingSquare">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="0" RadiusY="0"
                                Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
                 </ControlTemplate>
             </Setter.Value>
