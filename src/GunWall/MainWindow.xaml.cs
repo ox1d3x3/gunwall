@@ -175,8 +175,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // while someone is waiting for a scan to finish.
         try
         {
+            Services.PerfMonitor.MarkStartup("vendor database start");
             _oui.LoadFromFile(OuiCachePath);
             Services.NetworkScanner.Oui = _oui;
+            Services.PerfMonitor.MarkStartup("vendor database loaded");
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("OuiLoad", ex); }
         Services.NetworkScanner.NoteLookup = m => _firewall.GetDeviceNote(m);
@@ -265,6 +267,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        Services.PerfMonitor.MarkStartup("window");
         // The store must be read before any setting is used. Until it is,
         // _data is a default-constructed StoreData and every property returns
         // its DEFAULT - silently. This line read ThemeDark thirty lines above
@@ -288,6 +291,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             _firewall.Initialize();
+            Services.PerfMonitor.MarkStartup("engine");
+            Services.PerfMonitor.Start();     // five-minute performance summary
+            StartUiLagProbe();                // freezes caught as they happen
             _engineReady = true;
 
             // AFTER Initialize(), because that is where the store is read. Placed
@@ -427,7 +433,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.150 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.152 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -553,6 +559,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 ApplySnapshot(snap); // continuation resumes on the UI thread
                 if (_sampleTicks == 0)
                     Services.DiagnosticLog.Log($"First snapshot applied: {snap.Conns.Count} connections.");
+                    Services.PerfMonitor.MarkStartup("first snapshot");
+                    Services.PerfMonitor.LogStartup();
                 _sampleTicks++;
             }
             catch (OperationCanceledException) { return; }
@@ -614,6 +622,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void ApplySnapshot(Snapshot snap)
     {
+        using var _perf = PerfMonitor.Measure("ApplySnapshot");
         // Set the shared snapshot FIRST so the Connections panel and the inspector
         // always have data even if a later UI step misbehaves.
         _lastConns = snap.Conns;
@@ -751,6 +760,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// <summary>Repopulate the Traffic panel's top-countries / top-apps tables.</summary>
     private void RefreshTraffic()
     {
+        using var _perf = PerfMonitor.Measure("RefreshTraffic");
         if (TrafficCountries == null) return;
         // Built aside and swapped in once: this runs on every snapshot while the
         // Traffic panel is showing, and a row-by-row refill raised a notification
@@ -1538,6 +1548,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// </summary>
     private void TamperWatchTick()
     {
+        using var _perf = PerfMonitor.Measure("TamperWatchTick");
         try
         {
             if (!_firewall.TamperWatchEnabled) return;
@@ -1567,6 +1578,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// </summary>
     private void EnforceBlockedDomains(List<ConnectionInfo> conns)
     {
+        using var _perf = PerfMonitor.Measure("EnforceBlockedDomains");
         try
         {
             if (_dnsResolver.BlockedDomainCount == 0) return;
@@ -1674,6 +1686,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void EnforceP2pBlocks(List<ConnectionInfo> conns,
                                   Dictionary<int, (string Name, string Path)> procs)
     {
+        using var _perf = PerfMonitor.Measure("EnforceP2pBlocks");
         try
         {
             // Observations now come from the passive watcher as well as the
@@ -2035,6 +2048,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void EnforceAccessPolicies(List<ConnectionInfo> conns,
                                        Dictionary<int, (string Name, string Path)> procs)
     {
+        using var _perf = PerfMonitor.Measure("EnforceAccessPolicies");
         try
         {
             if (_firewall.ActiveAccessPolicies.Count == 0) return;
@@ -2475,6 +2489,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// diagnostics export records, refreshed each tick while the page is open.</summary>
     private void UpdateHealthCard()
     {
+        using var _perf = PerfMonitor.Measure("UpdateHealthCard");
         if (HealthPipeline == null) return;
 
         HealthPipeline.Text =
@@ -3117,6 +3132,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // ================================================================ lists
     private void RebuildAppsList()
     {
+        using var _perf = PerfMonitor.Measure("RebuildAppsList");
         var source = _showAllApps
             ? _processes.GetAllApps(_lastConns, _lastProcs)
             : _processes.GetNetworkedApps(_lastConns, _lastProcs);
@@ -3372,6 +3388,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void RebuildConnList()
     {
+        using var _perf = PerfMonitor.Measure("RebuildConnList");
         IEnumerable<ConnectionInfo> view = _lastConns;
         if (!string.IsNullOrWhiteSpace(_connFilter))
             view = view.Where(c =>
@@ -3875,6 +3892,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // happened a quarter-second ago — real-time, not a delayed recording.
     private void GraphTimer_Tick(object? sender, EventArgs e)
     {
+        using var _perf = PerfMonitor.Measure("GraphTimer_Tick");
         if (PanelDashboard == null || PanelDashboard.Visibility != Visibility.Visible) return;
         try
         {
@@ -3949,6 +3967,42 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (OnScreen && IsLoaded) RefreshVisiblePanel();
     }
 
+    private int _uiProbeOutstanding;
+
+    /// <summary>
+    /// Measures UI responsiveness once a second: posts an empty item to the UI
+    /// thread at input priority and records how long it waited to run. That wait
+    /// is what a click or keystroke would have waited.
+    ///
+    /// One probe at a time. Posting on a fixed beat while the thread was frozen
+    /// would queue a probe per second and turn one ten-second freeze into ten
+    /// recorded ones as they drained.
+    /// </summary>
+    private void StartUiLagProbe()
+    {
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                while (true)
+                {
+                    await System.Threading.Tasks.Task.Delay(1000);
+                    if (Dispatcher.HasShutdownStarted) return;
+                    if (System.Threading.Interlocked.CompareExchange(ref _uiProbeOutstanding, 1, 0) != 0)
+                        continue;
+                    long t0 = Stopwatch.GetTimestamp();
+                    _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() =>
+                    {
+                        Services.PerfMonitor.RecordUiLag(
+                            (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency);
+                        System.Threading.Interlocked.Exchange(ref _uiProbeOutstanding, 0);
+                    }));
+                }
+            }
+            catch (Exception ex) { Services.DiagnosticLog.LogException("UiLagProbe", ex); }
+        });
+    }
+
     private bool _graphFrameHooked;
 
     /// <summary>
@@ -3983,6 +4037,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         double elapsed = (DateTime.UtcNow - _lastGraphSample).TotalMilliseconds;
         double frac = Math.Clamp(elapsed / _graphInterval, 0.0, 1.0);
         _graphScroll.X = -frac * _graphStepX;
+        Services.PerfMonitor.RecordFrame();   // counted, not timed: this runs every frame
     }
 
     // Rebuilt once per sample (~1/sec). Lays out points so the newest sits just off
@@ -5420,6 +5475,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             $"rangesV4={_firewall.GeoIpRangeCount:N0}, rangesV6={_firewall.GeoIpRangeCountV6:N0}, "
             + $"active={_firewall.GeoIpActive}" +
             (_firewall.GeoIpActive ? "" : "  WARNING: no country/ASN data - those rules cannot match"));
+        // Performance evidence for the whole session: memory, GC, CPU,
+        // responsiveness, the costliest operations and startup phases.
+        foreach (var perfLine in Services.PerfMonitor.SessionSummaryLines())
+            Services.DiagnosticLog.Log(perfLine);
         var tamper = _firewall.CheckIntegrity(repair: false);
         // Rules whose executable is gone. An application that updates into a
         // versioned folder - Kaspersky 21.25 -> 21.26, GitHub Desktop app-3.5.12
@@ -7632,6 +7691,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// dashboard tick; both are capped at what the design shows.</summary>
     private void RefreshDashboardLists()
     {
+        using var _perf = PerfMonitor.Measure("RefreshDashboardLists");
         try
         {
             if (TopTalkersList != null)
@@ -7674,6 +7734,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void UpdateHero()
     {
+        using var _perf = PerfMonitor.Measure("UpdateHero");
         try
         {
             if (HeroTitle == null) return;

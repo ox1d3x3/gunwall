@@ -581,11 +581,20 @@
                     <Grid>
                         <Border x:Name="tint" CornerRadius="7" Opacity="0"
                                 Background="{DynamicResource SurfaceHover}" />
-                        <Rectangle x:Name="marker" Width="2" Height="0"
+                        <!-- The selection marker grows by SCALE, not by Height. Animating
+                             Height forced a layout pass on every frame of the transition -
+                             up to 240 a second on a high-refresh display - for a 2px bar.
+                             A transform is applied at render time and touches no layout.
+                             Centred origin, so it grows from the middle exactly as before. -->
+                        <Rectangle x:Name="marker" Width="2" Height="16"
                                    RadiusX="1" RadiusY="1"
                                    HorizontalAlignment="Left" VerticalAlignment="Center"
-                                   Margin="-12,0,0,0"
-                                   Fill="{DynamicResource BlockText}" />
+                                   Margin="-12,0,0,0" RenderTransformOrigin="0.5,0.5"
+                                   Fill="{DynamicResource BlockText}">
+                            <Rectangle.RenderTransform>
+                                <ScaleTransform ScaleY="0" />
+                            </Rectangle.RenderTransform>
+                        </Rectangle>
                         <Border Padding="{TemplateBinding Padding}">
                             <ContentPresenter x:Name="cp" VerticalAlignment="Center"
                                               TextElement.Foreground="{TemplateBinding Foreground}"
@@ -621,8 +630,8 @@
                                                          Storyboard.TargetProperty="Opacity"
                                                          To="1" Duration="0:0:0.12" />
                                         <DoubleAnimation Storyboard.TargetName="marker"
-                                                         Storyboard.TargetProperty="Height"
-                                                         To="16" Duration="0:0:0.15" />
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                         To="1" Duration="0:0:0.15" />
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
@@ -633,7 +642,7 @@
                                                          Storyboard.TargetProperty="Opacity"
                                                          To="0" Duration="0:0:0.12" />
                                         <DoubleAnimation Storyboard.TargetName="marker"
-                                                         Storyboard.TargetProperty="Height"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
                                                          To="0" Duration="0:0:0.12" />
                                     </Storyboard>
                                 </BeginStoryboard>

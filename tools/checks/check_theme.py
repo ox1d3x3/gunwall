@@ -1815,6 +1815,206 @@ def check_list_sync():
                      "in place or are replaced; three live values notify")
 
 
+def check_perf_evidence():
+    """The diagnostics carry performance evidence, cheaply and without personal data.
+
+    Until 0.99.152 the log held lifecycle events and errors and nothing about
+    cost, so every optimisation started from reading code. PerfMonitor records a
+    five-minute summary (memory four ways, GC pause share, CPU, threads, handles,
+    UI responsiveness, costliest operations), times the operations that repeat or
+    gate startup, catches UI freezes as they happen with their likely cause, and
+    writes a session summary into every export.
+
+    Held here:
+      - it is started, the freeze probe is started, and the export includes it
+      - every timed method is labelled with its own name - a copy-pasted label
+        would send an optimisation after the wrong code
+      - the per-frame handler counts frames and is not timed: a lock per frame at
+        240 Hz is the kind of cost this exists to find, not add
+      - the probe keeps one item in flight, so a single long freeze is recorded
+        once rather than once per second it lasted
+      - the summary is no more frequent than every minute
+      - every label is a plain literal: an interpolated label could carry a path,
+        an address or an application name into a bundle a user shares
+    """
+    before = len(failures)
+    pm_path = APP / "Services" / "PerfMonitor.cs"
+    if not pm_path.exists():
+        fail("perf-evidence", "PerfMonitor.cs is gone"); return
+    pm = strip_cs(pm_path.read_text(encoding="utf-8"))
+    for member in ("public static string SampleLine()", "public static IEnumerable<string> SessionSummaryLines()",
+                   "public static void RecordUiLag(double ms)", "public static Scope Measure(string name)",
+                   "public static void RecordFrame()", "public static void MarkStartup(string phase)"):
+        if member not in pm:
+            fail("perf-evidence", f"PerfMonitor lacks {member}")
+    m = re.search(r"SampleEvery\s*=\s*TimeSpan\.From(Minutes|Seconds)\((\d+)\)", pm)
+    if not m or (m.group(1) == "Seconds" and int(m.group(2)) < 60):
+        fail("perf-evidence", "the summary runs more often than once a minute and will flood the log")
+
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    mw_kept = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"), keep_strings=True)
+    fm_kept = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"), keep_strings=True)
+    loaded = re.search(r"private void OnLoaded\(object sender.*?\n    \}", mw, re.S)
+    lb = loaded.group(0) if loaded else ""
+    if "PerfMonitor.Start()" not in lb:
+        fail("perf-evidence", "the five-minute summary is never started")
+    if "StartUiLagProbe()" not in lb:
+        fail("perf-evidence", "the UI freeze probe is never started")
+    if "PerfMonitor.SessionSummaryLines()" not in mw:
+        fail("perf-evidence", "the export does not include the session's performance summary")
+    if "PerfMonitor.LogStartup()" not in mw:
+        fail("perf-evidence", "startup phase timings are never written")
+
+    probe = re.search(r"private void StartUiLagProbe\(\).*?\n    \}", mw, re.S)
+    if not probe or "CompareExchange(ref _uiProbeOutstanding, 1, 0)" not in probe.group(0):
+        fail("perf-evidence", "the probe can queue several items while the UI is frozen, turning "
+                              "one freeze into many")
+    elif not re.search(r"Task\.Delay\((\d{4,})\)", probe.group(0)):
+        fail("perf-evidence", "the probe runs more often than once a second")
+
+    frame = re.search(r"private void OnGraphFrame\(.*?\n    \}", mw, re.S)
+    if frame:
+        if "PerfMonitor.Measure(" in frame.group(0):
+            fail("perf-evidence", "the per-frame handler is timed - a lock per frame is cost "
+                                  "added, not measured")
+        if "PerfMonitor.RecordFrame()" not in frame.group(0):
+            fail("perf-evidence", "graph frames are not counted")
+
+    for kept, fname in ((mw_kept, "MainWindow.xaml.cs"), (fm_kept, "FirewallManager.cs")):
+        for m in re.finditer(r"PerfMonitor\.Measure\(\s*([^)]*)\)", kept):
+            arg = m.group(1).strip()
+            if not re.fullmatch(r'"[A-Za-z][\w .]*"', arg):
+                fail("perf-evidence", f"{fname}: Measure({arg}) is not a plain literal - a label "
+                                      "could carry personal data into a shared bundle")
+                continue
+            label = arg.strip('"')
+            # The method this sits in must be the one it names.
+            head = kept[:m.start()]
+            sig = list(re.finditer(r"^    (?:private|public|internal)[^\n=;]*?\b(\w+)\(", head, re.M))
+            owner = sig[-1].group(1) if sig else "?"
+            if owner != label:
+                fail("perf-evidence", f"{fname}: Measure(\"{label}\") sits in {owner}() - the "
+                                      "evidence would point at the wrong code")
+
+    expected = {"ApplySnapshot", "RebuildConnList", "RebuildAppsList", "RefreshTraffic",
+                "UpdateHealthCard", "RepairFiltering", "PurgeSublayer", "ReconcileOrphanFilters",
+                "LoadGeoIp", "SetStrictMode"}
+    found = set(re.findall(r'PerfMonitor\.Measure\("(\w+)"\)', mw_kept + fm_kept))
+    missing = sorted(expected - found)
+    if missing:
+        fail("perf-evidence", f"no longer timed: {missing}")
+
+    if len(failures) == before:
+        notes.append(f"perf-evidence: {len(found)} operations timed and correctly labelled, "
+                     "summary every 5 min, freeze probe, session summary in exports")
+
+
+def check_geoip_load():
+    """The GeoIP tables load by streaming, share their strings, and give memory back.
+
+    Measured on data shaped like the real iptoasn files - 538,417 IPv4 and 182,861
+    IPv6 ranges, ~66,000 distinct owners - by compiling the real GeoIpService.cs
+    against a harness (tools/bench/geoip):
+
+                                   before      after
+        retained after load        106.6 MB    33.6 MB
+        peak working set            363 MB     205 MB
+        working set, settled        364 MB     116 MB   (after ReturnFreedMemory)
+        load time (median of 5)    1362 ms    1110 ms
+        250,000 lookups            identical, byte for byte
+
+    Three causes, each held here:
+      - File.ReadAllText put the whole dataset in one UTF-16 string, twice the
+        file's size, before parsing began
+      - every range kept its own copy of its country and owner, because Split makes
+        fresh strings per line - the same values held hundreds of thousands of times
+      - the runtime kept the freed half-gigabyte committed: working set after
+        settling equalled working set straight after the load
+
+    The load runs on the UI thread at startup (FirewallManager.Initialize), before
+    the first connection is judged - country and ASN blocks need the tables - so
+    its speed is part of every launch.
+    """
+    before = len(failures)
+    geo = strip_cs((APP / "Services" / "GeoIpService.cs").read_text(encoding="utf-8"))
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+
+    if "File.ReadAllText(" in geo:
+        fail("geoip-load", "GeoIpService reads a whole file into one string again; the load "
+                           "peaked at 363 MB that way")
+    for name, reader in (("LoadFromFile", "LoadFromReader"), ("LoadV6FromFile", "LoadV6FromReader")):
+        m = re.search(rf"public void {name}\(string path\).*?\n    \}}", geo, re.S)
+        if not m or "OpenShared(path)" not in m.group(0) or f"{reader}(reader)" not in m.group(0):
+            fail("geoip-load", f"{name} does not stream through OpenShared into {reader}")
+    op = re.search(r"private static StreamReader OpenShared\(string path\).*?;\n", geo, re.S)
+    if not op or "FileShare.Delete" not in op.group(0):
+        fail("geoip-load", "the streaming reader blocks replacement of the file it reads; a "
+                           "refreshed database could not be moved into place mid-load")
+
+    for reader in ("LoadFromReader", "LoadV6FromReader"):
+        m = re.search(rf"private void {reader}\(TextReader reader\).*?\n    \}}", geo, re.S)
+        if not m:
+            fail("geoip-load", f"{reader} not found"); continue
+        body = m.group(0)
+        if not re.search(r"countries\.Add\(Share\(pool,", body):
+            fail("geoip-load", f"{reader} stores a fresh country string per range")
+        if not re.search(r"owners\.Add\(Share\(pool,", body):
+            fail("geoip-load", f"{reader} stores a fresh owner string per range - the bulk of "
+                               "the 73 MB this saves")
+
+    rf = re.search(r"public static [^\n]*?\bReturnFreedMemory\(\).*?\n    \}", geo, re.S)
+    if not rf or "GCCollectionMode.Aggressive" not in rf.group(0):
+        fail("geoip-load", "ReturnFreedMemory is gone or no longer returns memory to Windows")
+    for method in ("LoadGeoIp", "DownloadAndLoadGeoIp"):
+        m = re.search(rf"public (void|int) {method}\(\).*?\n    \}}", fm, re.S)
+        if not m:
+            fail("geoip-load", f"FirewallManager.{method} not found")
+        elif "GeoIpService.ReturnFreedMemory()" not in m.group(0):
+            fail("geoip-load", f"{method} loads the tables but leaves ~90 MB of freed memory "
+                               "committed")
+    if re.search(r"ReturnFreedMemory\(\)", re.sub(r"public (void|int) (LoadGeoIp|DownloadAndLoadGeoIp)"
+                                                 r"\(\).*?\n    \}", "", fm, flags=re.S)):
+        fail("geoip-load", "ReturnFreedMemory is called outside the two load paths; a forced "
+                           "collection is justified after a load and nowhere else")
+
+    if len(failures) == before:
+        notes.append("geoip-load: streamed, strings shared, freed memory returned once per load")
+
+
+def check_layout_free_animation():
+    """No animation anywhere may drive a layout property.
+
+    The sidebar's selection marker grew by animating Height, which forces measure
+    and arrange on every frame of the transition - up to 240 times a second on a
+    high-refresh display, for a 2px bar. It now scales with a RenderTransform,
+    which is applied at render time and touches no layout. Opacity and transforms
+    are the properties to animate; size, margin, padding and font size are not.
+
+    Tree-wide, XAML and code-behind both, so the next animation added is held to
+    it too.
+    """
+    before = len(failures)
+    LAYOUT = r"(Height|Width|Margin|Padding|MinHeight|MinWidth|MaxHeight|MaxWidth|FontSize)"
+    for f in sorted(APP.rglob("*.xaml")):
+        t = f.read_text(encoding="utf-8")
+        for m in re.finditer(rf'TargetProperty="(\(FrameworkElement\.)?{LAYOUT}\)?"', t):
+            line = t[:m.start()].count("\n") + 1
+            fail("layout-anim", f"{f.name}:{line} animates {m.group(2)}, forcing a layout pass "
+                                "every frame - animate a transform or opacity instead")
+    for f in sorted(APP.rglob("*.cs")):
+        t = strip_cs(f.read_text(encoding="utf-8"))
+        for m in re.finditer(rf"BeginAnimation\(\s*(\w+\.)?{LAYOUT}Property", t):
+            fail("layout-anim", f"{f.name} animates {m.group(2)} from code")
+
+    ctl = (APP / "Themes" / "Controls.xaml").read_text(encoding="utf-8")
+    mk = re.search(r'<Rectangle x:Name="marker".*?</Rectangle>', ctl, re.S)
+    if not mk or "<ScaleTransform" not in mk.group(0) or 'RenderTransformOrigin="0.5,0.5"' not in mk.group(0):
+        fail("layout-anim", "the sidebar marker no longer scales from its centre")
+
+    if len(failures) == before:
+        notes.append("layout-anim: no animation in XAML or code drives a layout property")
+
+
 def check_button_labels():
     """No TextBlock inside a Button may silently take the app-wide text colour.
 
@@ -5420,6 +5620,9 @@ def main():
     check_device_copy()
     check_list_sync()
     check_effect_layers()
+    check_perf_evidence()
+    check_geoip_load()
+    check_layout_free_animation()
     check_button_labels()
     check_prompt_buttons()
     check_ui_idle_and_scrolling()

@@ -181,12 +181,16 @@ public sealed class FirewallManager : IDisposable
 
     public void LoadGeoIp()
     {
+        using var _perf = PerfMonitor.Measure("LoadGeoIp");
         if (GeoIpApiActive) { _geo.EnableApi(GeoIpApiUrl); return; }
         _geo.DisableApi();
         try { _geo.LoadFromFile(GeoIpCachePath); } catch { }
         // Separate try: a corrupt or missing v6 file must not stop the v4 table
         // loading. Partial coverage beats none.
         try { _geo.LoadV6FromFile(GeoIpCachePathV6); } catch { }
+        var freed = GeoIpService.ReturnFreedMemory();   // once, after both tables
+        DiagnosticLog.Log($"Perf: GeoIP tables loaded; returning freed memory took the working "
+                        + $"set from {freed.BeforeMb:F0} to {freed.AfterMb:F0} MB in {freed.Ms} ms.");
     }
 
     /// <summary>Switch the GeoIP source at runtime and persist the choice.</summary>
@@ -465,6 +469,7 @@ public sealed class FirewallManager : IDisposable
     /// <summary>Download the free CC0 database, then load it. Returns ranges loaded.</summary>
     public int DownloadAndLoadGeoIp()
     {
+        using var _perf = PerfMonitor.Measure("DownloadAndLoadGeoIp");
         GeoIpService.DownloadDatabase(GeoIpCachePath);
         _geo.LoadFromFile(GeoIpCachePath);
 
@@ -484,6 +489,9 @@ public sealed class FirewallManager : IDisposable
                             + $"downloaded ({ex.GetType().Name}). IPv6 destinations will show no "
                             + "country until it is retried.");
         }
+        var freed = GeoIpService.ReturnFreedMemory();   // once, after both tables
+        DiagnosticLog.Log($"Perf: GeoIP tables loaded; returning freed memory took the working "
+                        + $"set from {freed.BeforeMb:F0} to {freed.AfterMb:F0} MB in {freed.Ms} ms.");
         return _geo.RangeCount;
     }
 
@@ -1284,6 +1292,7 @@ public sealed class FirewallManager : IDisposable
     /// </summary>
     public int SweepUntrackedFilters()
     {
+        using var _perf = PerfMonitor.Measure("SweepUntrackedFilters");
         const int MaxPasses = 12;
         int removed = 0;
         for (int pass = 0; pass < MaxPasses; pass++)
@@ -1341,6 +1350,7 @@ public sealed class FirewallManager : IDisposable
     /// </summary>
     public PurgeResult PurgeSublayer(Action<string>? report = null)
     {
+        using var _perf = PerfMonitor.Measure("PurgeSublayer");
         const int MaxPasses = 12;
         int passes = 0, removed = 0, gone = 0, failed = 0;
 
@@ -1577,6 +1587,7 @@ public sealed class FirewallManager : IDisposable
     /// </summary>
     public TamperReport CheckIntegrity(bool repair)
     {
+        using var _perf = PerfMonitor.Measure("CheckIntegrity");
         if (!EngineStarted) return new TamperReport(0, 0, false, "engine not running");
         try
         {
@@ -1623,6 +1634,7 @@ public sealed class FirewallManager : IDisposable
     /// </summary>
     public int RestoreFilteringIfLost()
     {
+        using var _perf = PerfMonitor.Measure("RestoreFilteringIfLost");
         if (!EngineStarted || !_data.StrictMode) return 0;
 
         var report = _engine.CheckFilters(AllKnownFilterIds());
@@ -1640,6 +1652,7 @@ public sealed class FirewallManager : IDisposable
     /// filters were created.</summary>
     public int RepairFiltering()
     {
+        using var _perf = PerfMonitor.Measure("RepairFiltering");
         int made = 0;
         try
         {
@@ -1762,6 +1775,7 @@ public sealed class FirewallManager : IDisposable
 
     public void SetStrictMode(bool enabled)
     {
+        using var _perf = PerfMonitor.Measure("SetStrictMode");
         if (enabled == _data.StrictMode) return;
 
         // Logged, because enforcement posture is the single most important
@@ -2452,6 +2466,7 @@ public sealed class FirewallManager : IDisposable
 
     public int ReconcileOrphanFilters()
     {
+        using var _perf = PerfMonitor.Measure("ReconcileOrphanFilters");
         // GUARD TWO. 0.99.92 fired this from the window's field initialisers, two
         // minutes of wall-clock before the store had anything in it. Ordering, not
         // logic, was what made it destructive.

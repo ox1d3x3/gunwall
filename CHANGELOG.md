@@ -15,6 +15,137 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.152] — 2026-10-02
+
+### Added — performance evidence in the diagnostics
+The log recorded lifecycle events and errors, and nothing about cost: no memory,
+CPU, garbage collection or responsiveness figures, and no timing for any
+operation. Every optimisation had to begin by reading code. `PerfMonitor` now
+records:
+
+- **A summary every five minutes** — working set, private bytes, managed heap and
+  committed GC memory; collections per generation and the share of time paused for
+  them; CPU; threads and handles; UI responsiveness as median, 95th percentile and
+  worst; graph frames per second; and the costliest operations in that window
+- **Timing for 21 operations** — each snapshot and its enforcement steps, each panel
+  rebuild, repair, purge, reconcile, the untracked-filter sweep, protection on and
+  off, the integrity check, and the GeoIP load
+- **UI freezes as they happen** — a probe asks the UI thread to run an empty item
+  once a second and records how long it waited, which is how long a click would
+  have waited. A wait of 250 ms or more is logged with the operation that most
+  likely caused it, or marked *unattributed*, which says the cause lies in code not
+  yet measured
+- **Startup phases**, from process start: app, vendor database, window, engine and
+  first snapshot
+- **What returning GeoIP's freed memory achieved**, as the working set before and
+  after, each time the tables load
+- **A session summary in every export** — uptime, average CPU, memory and its peak,
+  collections and total pause, responsiveness, the costliest operations over the
+  whole session, and the startup phases
+
+Cost is kept below what it measures: a measured operation adds two timestamp reads
+and one short lock, with nothing allocated; the probe keeps a single item in flight,
+so one long freeze is recorded once rather than once per second it lasted; the
+per-frame graph handler is counted, not timed. The summary adds about 290 lines a
+day to a log that rotates at 2 MB.
+
+Nothing recorded identifies the user. Operation names are fixed code names; a check
+fails any label that is not a plain literal, since an interpolated one could carry
+a path, an address or an application name into a bundle that gets shared.
+
+`PerfMonitor`, `DiagnosticLog` and `ProfilePaths` were compiled together and
+exercised in a harness against the .NET 8.0.31 runtime before integration: a slow
+operation is named, a freeze straight after it is attributed to it, a later one is
+marked unattributed, a third inside five seconds is counted without a duplicate
+line, and each window resets cleanly. That run also exposed a CPU figure of 117.9%
+from two samples taken milliseconds apart; a window under a second now reports
+`n/a`.
+
+`GeoIpService.ReturnFreedMemory` now returns the working set before and after and
+the pause, so its effect is logged rather than assumed. The GeoIP benchmark still
+returns byte-identical lookups.
+
+### Added — the remaining optimisation work, in `ROADMAP.md`
+Ranked by evidence: the vendor database load, which repeats the pattern GeoIP had;
+9.6 MB of embedded Nerd Font weights whose icon glyphs nothing uses; GeoIP's parse
+garbage; recovery commands that load GeoIP they never use; and filter enumeration.
+The rest will be ranked from what these diagnostics show.
+
+### Added — check `perf-evidence`
+Asserts the summary, the probe and the export summary are all wired; that every
+timed method carries its own name, since a copied label would send an optimisation
+after the wrong code; that labels are plain literals; that the per-frame handler is
+counted and not timed; that the probe cannot pile up and runs no more than once a
+second; that the summary runs no more than once a minute; and that the core
+operations stay timed. Twelve defects reintroduced, twelve caught — including a
+mislabelled timing and a label carrying a file path.
+
+---
+
+## [0.99.151] — 2026-10-01
+
+### Performance — the GeoIP tables use about a third of the memory
+Measured by compiling the real `GeoIpService.cs` against data shaped like the
+published iptoasn files — 538,417 IPv4 and 182,861 IPv6 ranges — with the .NET
+8.0.31 runtime, median of five interleaved runs:
+
+| | 0.99.150 | 0.99.151 |
+|---|---|---|
+| Load time | 1362 ms | 1110 ms |
+| Retained after load | 106.6 MB | 33.6 MB |
+| Peak working set during load | 363 MB | 205 MB |
+| Working set once settled | 364 MB | 116 MB |
+| Garbage allocated by the load | 728 MB | 518 MB |
+
+**All 250,000 sampled lookups return byte-identical answers** before and after.
+
+Three changes:
+
+- **Identical strings are shared.** Every range kept its own copy of its country
+  and owner, because splitting each line creates fresh strings, so the same "US"
+  and the same owner name were held hundreds of thousands of times. There are a
+  few hundred countries and tens of thousands of owners against more than 700,000
+  ranges. Each distinct value is now stored once.
+- **The files are streamed.** Both loaders read the whole file into a single
+  string first, holding the dataset as UTF-16 at twice the file's size before
+  parsing began. They now read line by line, and permit the file to be replaced
+  while they read, as before.
+- **Freed memory is returned after each load.** The runtime freed the load's
+  half-gigabyte of temporary data internally but kept the pages committed: the
+  working set after settling equalled the working set immediately after the load.
+  One aggressive collection, straight after the tables load — at startup and after
+  a database refresh, never on a schedule — returns it in about 50 ms.
+
+The load runs on the startup path, before the first connection is judged, because
+country and ASN blocks depend on it. It was deliberately left there; loading it in
+the background would leave a window at startup in which those blocks silently do
+not apply. Making it faster shortens every launch instead.
+
+### Smoother — the sidebar selection marker
+The bar beside the selected sidebar item grew by animating its height, which forced
+a layout pass on every frame of the transition — up to 240 a second on a
+high-refresh display. It now scales with a transform, applied at render time with
+no layout, growing from its centre exactly as before. No animation anywhere in the
+interface now drives a layout property.
+
+### Added — `tools/bench/geoip`
+The benchmark behind the figures above: a deterministic generator for
+realistically shaped data, and a console program that compiles
+`GeoIpService.cs` unchanged and reports load time, memory and a hash of 250,000
+lookups. Running it against old and new source on the same data proves a loader
+change preserves behaviour. It needs no network access, is not part of the
+solution, and its `nuget.config` does not apply to the application's build.
+
+### Added — checks `geoip-load` and `layout-free-animation`
+`geoip-load` holds the streaming, the string sharing in both loaders, replacement
+of the file while it is read, and the memory release after both load paths — and
+fails if that release is ever called from anywhere else. `layout-free-animation`
+fails any animation, in XAML or code, that targets a size, margin, padding or font
+size, and requires the marker to scale from its centre. Twelve defects
+reintroduced, twelve caught.
+
+---
+
 ## [0.99.150] — 2026-10-01
 
 ### Fixed — Block was an empty white box in the light theme

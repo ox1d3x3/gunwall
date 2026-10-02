@@ -227,6 +227,34 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.152 — the 24-hour run
+
+Use GunWall normally for a day: leave it in the tray, game, switch tabs, run a
+network scan, turn protection off and on once, and restart the PC once.
+
+1. At the start, note GunWall's **Memory** in Task Manager → **Details**.
+2. After 24 hours, note it again. **PASS:** within a few tens of MB of the start.
+   **FAIL:** steadily higher — a leak worth chasing.
+3. **Settings → Export diagnostics**, and send the bundle.
+4. **PASS** in the log: a `Perf: startup ...` line after each launch, a `Perf:` line
+   roughly every five minutes while running, and a `Performance:` block near the end
+   of the export. `Errors this session: 0`.
+5. Any `Perf: UI froze for ...` lines are not failures by themselves — they are what
+   this build exists to find. Note what you were doing around those times if you can.
+
+### 0.99.151 — GeoIP memory, sidebar animation
+
+1. Before installing, note GunWall's **Memory** in Task Manager → **Details**, with
+   the window open on the Dashboard for a minute.
+2. Install 0.99.151, start it, wait a minute on the Dashboard, and read it again.
+   **PASS:** noticeably lower. **FAIL:** the same or higher.
+3. Connections tab — countries and owners still show for every remote address,
+   and a country block still blocks. **PASS:** unchanged from before.
+4. Click through the sidebar items. **PASS:** the red marker beside the selected
+   item still grows from its centre; transitions feel at least as smooth.
+5. After a restart, export diagnostics. **PASS:** `GeoIP: mode=local` with the
+   same range counts as before, and `Errors this session: 0`.
+
 ### 0.99.150 — light-theme buttons and labels
 
 Do these in the **light** theme — every defect in this release was invisible in dark.

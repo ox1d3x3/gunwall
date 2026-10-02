@@ -122,6 +122,38 @@ fails to parse.*
 - ✅ **Copy device details** *(0.99.147)* — IP, MAC, vendor, host, a row, or the whole
   table as tab-separated text; `Ctrl+C` on selected rows.
 
+### Optimisation
+Ranked by evidence. Items below the line are measured from 0.99.152 onwards by
+`PerfMonitor` and will be ordered by what the diagnostics show.
+
+- ✅ **Idle rendering, hidden-window painting, list refills, scrolling** *(0.99.148)*
+- ✅ **GeoIP memory** *(0.99.151)* — shared strings, streaming, freed memory
+  returned: 364 MB to 116 MB for the tables, lookups byte-identical. Measured in
+  use: 354 MB to 221 MB for the whole application.
+- ✅ **Layout-free animation** *(0.99.151)* — nothing animates a size or margin
+- ✅ **Performance evidence in diagnostics** *(0.99.152)*
+- ☐ **Vendor database load** — the same pattern GeoIP had: `File.ReadAllText`, a
+  string per entry, and a 4 MB parse in the window's constructor, on the UI thread
+  before the window appears. Streaming and shared strings, proven with a benchmark
+  like `tools/bench/geoip`. Its cost now appears in the startup line.
+- ☐ **Embedded fonts** — 9.6 MB of the 10.2 MB of embedded fonts are four weights of
+  JetBrains Mono *Nerd Font*, whose additions are icon glyphs. GunWall uses none:
+  every icon is a vector path, and no private-use code point appears anywhere in
+  the source. Plain JetBrains Mono has identical letters at roughly a tenth of the
+  size. A visual-asset change, so a maintainer decision; the family name in
+  `UiFont` and the advance width read by `hint-width` both need checking.
+- ☐ **GeoIP parse garbage** — a load still allocates 518 MB of short-lived data,
+  mostly from splitting each line. Span-based parsing would cut it, at the cost of
+  rewriting the parser; the benchmark exists to prove the answers do not move.
+- ☐ **Recovery commands load GeoIP they never use** — `--unblock` and
+  `--purge-sublayer` call `Initialize()`, which loads both tables: about a second
+  and a 200 MB peak before a recovery that needs neither.
+- ☐ **Filter enumeration** — `netsh` is slow, shells out, and returns a partial set
+  per call; `FwpmFilterEnum0` would be faster and complete.
+- ☐ *To be ranked from 0.99.152 diagnostics* — per-snapshot cost of each panel and
+  enforcement step, UI freezes and their causes, GC pause share, idle CPU, and
+  whether threads, handles or memory climb over a long session.
+
 ### Database freshness
 *Managed C# throughout. No kernel risk. Both databases are already downloaded on
 demand and stored beside the profile; this is about keeping them current and about
