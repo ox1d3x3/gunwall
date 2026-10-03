@@ -1949,6 +1949,138 @@ def _ttf_names(path):
     return out
 
 
+def _method_body(src, name):
+    m = re.search(r"^    (?:public|private|internal)[^\n=;]*?\b" + name + r"\(.*?\n    \}", src, re.S | re.M)
+    return m.group(0) if m else ""
+
+
+def check_restore_everything():
+    """Everything recorded as ON comes back after a restart, a repair, and protection ON.
+
+    Trap 2.43. Features record what the user switched on separately from the
+    filter ids they installed, and only the ids are lost - to a restart since
+    0.99.143, and to protection OFF, which empties every id list but keeps each
+    record. Repair and protection ON restored strict mode, app rules, services
+    and lockdown, and nothing else: system rules, scope blocks, custom rules, the
+    IP blocklist and the WFP half of curated blocklists read ON after a restart
+    while nothing enforced them, and OFF after OFF-and-ON for good. Custom rules
+    were not even counted by the integrity check.
+
+    Structural, so a store added later fails here until it is restored:
+      - every filter-id store in RuleStore, and each model's FilterIds, is counted
+        by AllKnownFilterIds AND handled by the repair path
+      - the scopes the restore knows are exactly the scopes the UI uses
+      - every "already handled" set an enforcer keeps is cleared on reset
+    """
+    before = len(failures)
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    rs = strip_cs((APP / "Services" / "RuleStore.cs").read_text(encoding="utf-8"))
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    mw_kept = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"), keep_strings=True)
+    fm_kept = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"), keep_strings=True)
+
+    stores = re.findall(r"public (?:List<ulong>|Dictionary<string, ?List<ulong>>) (\w+)", rs)
+    stores += ["Rules", "CustomRules"]          # FirewallRule.FilterIds, CustomRule.FilterIds
+    known = _method_body(fm, "AllKnownFilterIds")
+    handled = "".join(_method_body(fm, n) for n in
+                      ("RepairFiltering", "ReinstallRecordedFeatures", "PruneLostReactiveFilters"))
+    for st in stores:
+        if f"_data.{st}" not in known:
+            fail("restore-everything", f"{st} is not counted by AllKnownFilterIds - its loss is invisible "
+                                       "to every integrity check")
+        if f"_data.{st}" not in handled:
+            fail("restore-everything", f"{st} is not restored or pruned by the repair path - after a "
+                                       "restart it reads ON while nothing enforces it")
+
+    # Mentioning a store proves nothing - an error handler mentions it too. Each
+    # declarative store must be REWRITTEN from its record, by the actual statement.
+    rein_fm = _method_body(fm, "ReinstallRecordedFeatures")
+    for store, pattern in (
+            ("SystemRules", r"foreach \(var key in _data\.SystemRules\.Keys\.ToList\(\)\)\s*\{\s*try \{ _data\.SystemRules\[key\] = InstallSystemRule\(key\)"),
+            ("ScopeFilters", r"foreach \(var key in _data\.ScopeFilters\.Keys\.ToList\(\)\).*?_data\.ScopeFilters\[key\] = _engine\.AddAppScopeBlock\("),
+            ("CustomRules", r"foreach \(var c in _data\.CustomRules\).*?c\.FilterIds = _engine\.AddCustomRule\("),
+            ("BlocklistFilterIds", r"foreach \(var entry in _data\.Blocklist\).*?_data\.BlocklistFilterIds = blocklist;")):
+        if not re.search(pattern, rein_fm, re.S):
+            fail("restore-everything", f"{store} is not rebuilt from its record in ReinstallRecordedFeatures")
+
+    repair = _method_body(fm, "RepairFiltering")
+    for need in ("ReinstallRecordedFeatures()", "PruneLostReactiveFilters(", "RestoreBlocklistWfpInBackground("):
+        if need not in repair:
+            fail("restore-everything", f"RepairFiltering does not call {need}")
+    # String literals are blanked in fm - split on the copy that keeps them.
+    tail = _method_body(fm_kept, "RepairFiltering").split('LogException("RepairFiltering"', 1)
+    if "RestoreBlocklistWfpInBackground(" in repair and (len(tail) < 2 or "RestoreBlocklistWfpInBackground(" not in tail[1]):
+        fail("restore-everything", "the curated-list re-resolve starts inside the repair's lock - "
+                                   "thousands of lookups would hold it")
+    strict = _method_body(fm, "SetStrictMode")
+    on_branch = strict.split("\n        else\n", 1)[0]
+    for need in ("ReinstallRecordedFeatures()", "PruneLostReactiveFilters(",
+                 "Interlocked.Increment(ref _reactiveGeneration)", "RestoreBlocklistWfpInBackground("):
+        if need not in on_branch:
+            fail("restore-everything", f"protection ON does not call {need} - features switched on "
+                                       "before OFF stay off after ON")
+
+    ssr = _method_body(fm, "SetSystemRule")
+    if "InstallSystemRule(key)" not in ssr:
+        fail("restore-everything", "SetSystemRule does not use InstallSystemRule - switching on and "
+                                   "reinstalling can drift apart")
+    outside = fm.replace(_method_body(fm, "InstallSystemRule"), "")
+    if re.search(r"_engine\.(AddSystemRule|AddServiceRule)\(", outside):
+        fail("restore-everything", "a system rule is installed outside InstallSystemRule")
+
+    m = re.search(r"DeclarativeScopes\s*=\s*new\([^)]*\)\s*\{([^}]*)\}", fm_kept)
+    restore_scopes = set(re.findall(r'"(\w+)"', m.group(1))) if m else set()
+    ui_scopes = set(re.findall(r'(?:SetScopeBlock|IsScopeBlocked)\([^,]+,\s*"(\w+)"', mw_kept))
+    if ui_scopes != restore_scopes:
+        fail("restore-everything", f"the UI uses scopes {sorted(ui_scopes)} but the restore knows "
+                                   f"{sorted(restore_scopes)}")
+
+    add = _method_body(fm_kept, "AddCustomRule")
+    am = re.search(r"_engine\.AddCustomRule\(\s*([^;]*?)\);", add, re.S)
+    rein = _method_body(fm_kept, "ReinstallRecordedFeatures")
+    if am:
+        want = re.sub(r"\s+", "", am.group(1)).replace("rule.", "c.")
+        if want not in re.sub(r"\s+", "", rein):
+            fail("restore-everything", "custom rules are reinstalled with different arguments from "
+                                       "the ones they were added with")
+    if "if (!c.Enabled)" not in rein:
+        fail("restore-everything", "disabled custom rules would be reinstalled")
+
+    bg = _method_body(fm, "RestoreBlocklistWfpInBackground")
+    if "Task.Run(" not in bg:
+        fail("restore-everything", "the curated-list re-resolve is not in the background")
+    i_res, i_lock = bg.find("BlockDomainsViaWfp("), bg.find("lock (_dataLock)")
+    if i_res < 0 or i_lock < 0 or i_res > i_lock:
+        fail("restore-everything", "the curated-list re-resolve holds the store lock while resolving")
+    if not re.search(r"lock \(_dataLock\)\s*\{[^}]*_data\.StrictMode\s*&&\s*_data\.EnabledBlocklists\.Contains\(key\)", bg, re.S):
+        fail("restore-everything", "the re-resolve keeps its filters without re-checking that "
+                                   "protection and the list are still on")
+
+    eng = strip_cs((APP / "Services" / "Wfp" / "WfpEngine.cs").read_text(encoding="utf-8"))
+    mf = _method_body(eng, "MissingFilterIds")
+    if "IndicatesRemoved(r)" not in mf or re.search(r"catch\s*\{[^}]*missing\.Add", mf):
+        fail("restore-everything", "MissingFilterIds does not use CheckFilters' rule - its own "
+                                   "failure would count as a filter gone")
+
+    ent = _method_body(fm, "ApplyEntityBlocks")
+    if not re.search(r"gen\s*!=\s*_entityGenerationSeen\)\s*\{\s*_entityBlocked\.Clear\(\)", ent):
+        fail("restore-everything", "country/ASN blocks keep their session memory after a reset")
+    sync = _method_body(mw, "SyncReactiveMemory")
+    if "SyncReactiveMemory()" not in _method_body(mw, "ApplySnapshot"):
+        fail("restore-everything", "SyncReactiveMemory is never called")
+    enforcer_sets = set()
+    for name in re.findall(r"private void (Enforce\w+)\(", mw):
+        enforcer_sets |= set(re.findall(r"if \(!(_\w+)\.Add\(", _method_body(mw, name)))
+    for st in sorted(enforcer_sets):
+        if f"{st}.Clear()" not in sync:
+            fail("restore-everything", f"{st} is not cleared on reset - those blocks stay lost for "
+                                       "the session")
+
+    if len(failures) == before:
+        notes.append(f"restore-everything: {len(stores)} filter-id stores counted and restored; "
+                     f"{len(ui_scopes)} scopes; {len(enforcer_sets)} enforcer memories reset")
+
+
 def check_bundled_font():
     """The bundled monospace face is one family, the one the theme names.
 
@@ -2181,6 +2313,15 @@ def check_perf_evidence():
     if missing:
         fail("perf-evidence", f"no longer timed: {missing}")
 
+    if "taskmgr=" not in pm_kept:
+        fail("perf-evidence", "the summary does not log Task Manager's figure - the log and what "
+                              "the user sees cannot be compared")
+    exp = _method_body(mw_kept, "ExportDiag_Click")
+    if exp and not re.search(r"ShowDialog\(\) != true\) return;.*?PerfMonitor\.Measure\(\"ExportDiag_Click\"\)", exp, re.S):
+        fail("perf-evidence", "the export is not timed, or is timed across the Save dialog")
+    if not probe or "if (!_probeWanted) continue;" not in probe.group(0) \
+            or "_probeWanted = OnScreen;" not in _method_body(mw, "OnScreenChanged"):
+        fail("perf-evidence", "the probe wakes the UI thread while the window is hidden")
     if len(failures) == before:
         notes.append(f"perf-evidence: {len(found)} operations timed and correctly labelled, "
                      "summary every 5 min, freeze probe, session summary in exports")
@@ -5898,6 +6039,7 @@ def main():
     check_list_sync()
     check_effect_layers()
     check_misleading_indentation()
+    check_restore_everything()
     check_bundled_font()
     check_idle_and_bounded()
     check_perf_evidence()

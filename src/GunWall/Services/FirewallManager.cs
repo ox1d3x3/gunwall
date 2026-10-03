@@ -651,6 +651,8 @@ public sealed class FirewallManager : IDisposable
         if (rule == null) return null;
 
         string key = appPath.ToLowerInvariant() + "|" + remoteIp;
+        int gen = ReactiveGeneration;
+        if (gen != _entityGenerationSeen) { _entityBlocked.Clear(); _entityGenerationSeen = gen; }
         if (!_entityBlocked.Add(key)) return null; // already handled this app+remote this session
 
         List<ulong> ids;
@@ -1563,6 +1565,10 @@ public sealed class FirewallManager : IDisposable
         foreach (var id in _data.EntityReactiveFilters) yield return id;
         foreach (var r in _data.Rules)
             foreach (var id in r.FilterIds) yield return id;
+        // Custom rules were missing here, so a restart that cleared them went
+        // unnoticed by every integrity check (trap 2.43).
+        foreach (var c in _data.CustomRules)
+            foreach (var id in c.FilterIds) yield return id;
         foreach (var d in new[] { _data.SystemRules, _data.ScopeFilters, _data.Blocklists,
                                   _data.BlocklistWfpFilters, _data.BlockedServices })
             foreach (var list in d.Values)
@@ -1654,6 +1660,7 @@ public sealed class FirewallManager : IDisposable
     {
         using var _perf = PerfMonitor.Measure("RepairFiltering");
         int made = 0;
+        var wfpToRestore = new List<string>();
         try
         {
             lock (_dataLock)
@@ -1717,6 +1724,12 @@ public sealed class FirewallManager : IDisposable
                     _data.LockdownFilterIds = _engine.EngageLockdown();
                     made += _data.LockdownFilterIds.Count;
                 }
+
+                // Everything else recorded by intent, and the reactive filters the
+                // kernel lost (trap 2.43). Until 0.99.154 neither was here.
+                made += ReinstallRecordedFeatures();
+                if (PruneLostReactiveFilters(wfpToRestore) > 0)
+                    System.Threading.Interlocked.Increment(ref _reactiveGeneration);
                 SaveStore();
 
                 var current = new HashSet<ulong>(AllKnownFilterIds());
@@ -1735,6 +1748,7 @@ public sealed class FirewallManager : IDisposable
             }
         }
         catch (Exception ex) { DiagnosticLog.LogException("RepairFiltering", ex); }
+        if (wfpToRestore.Count > 0) RestoreBlocklistWfpInBackground(wfpToRestore);
         return made;
     }
 
@@ -1844,6 +1858,22 @@ public sealed class FirewallManager : IDisposable
             //    already present.
             try { EnsureSelfConnectivity(); }
             catch (Exception ex) { DiagnosticLog.LogException("SetStrictMode/self", ex); }
+
+            // Protection OFF removed every filter but kept what each feature records
+            // as ON. Put those back, and let reactive blocks re-form from traffic:
+            // the enforcers' session memory still says "handled" (trap 2.43).
+            var wfpToRestore = new List<string>();
+            lock (_dataLock)
+            {
+                int back = ReinstallRecordedFeatures();
+                PruneLostReactiveFilters(wfpToRestore);
+                SaveStore();
+                if (back > 0)
+                    DiagnosticLog.Log($"Protection ON: {back} filter(s) reinstalled for system rules, "
+                                    + "scope blocks, custom rules and the IP blocklist.");
+            }
+            System.Threading.Interlocked.Increment(ref _reactiveGeneration);
+            if (wfpToRestore.Count > 0) RestoreBlocklistWfpInBackground(wfpToRestore);
         }
         else
         {
@@ -2036,9 +2066,7 @@ public sealed class FirewallManager : IDisposable
             // Accept a single IPv4 or an IPv4/prefix subnet. Both apply via the
             // conditioned-filter address+mask path. Non-IP entries are stored
             // but not filtered (kept for a future DNS-resolving blocklist).
-            string ipPart = ip.Contains('/') ? ip[..ip.IndexOf('/')] : ip;
-            if (System.Net.IPAddress.TryParse(ipPart, out var parsed) &&
-                parsed.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            if (IsFilterableBlocklistEntry(ip))
             {
                 var ids = _engine.AddCustomRule(true, true, "Any", ip, 0);
                 _data.BlocklistFilterIds.AddRange(ids);
@@ -2275,12 +2303,7 @@ public sealed class FirewallManager : IDisposable
         if (enabled)
         {
             if (IsSystemRuleOn(key)) return;
-            var preset = Models.SystemRuleCatalog.All.FirstOrDefault(p => p.Key == key);
-            List<ulong> ids;
-            if (preset == null || preset.Special)
-                ids = _engine.AddSystemRule(key);   // special handling (block-all / IPv6)
-            else
-                ids = _engine.AddServiceRule(preset.Block, preset.Direction, preset.Protocol, preset.Ports, preset.Name);
+            var ids = InstallSystemRule(key);
             _data.SystemRules[key] = ids;
             EventLog($"System rule enabled: {key}");
             // Filter count matters: 0 means every layer this rule needs was
@@ -2332,6 +2355,220 @@ public sealed class FirewallManager : IDisposable
         + _data.ScopeFilters.Values.Sum(v => v.Count);
 
     private static string ScopeKey(string exePath, string scope) => exePath.ToLowerInvariant() + "|" + scope;
+
+    // ------------------------------------------------ restore after restart / protection ON
+    //
+    // Trap 2.43. Every feature below records what the user switched ON separately
+    // from the filter ids it installed, and only the ids get lost: to a restart,
+    // since 0.99.143 made filters non-persistent, and to protection OFF, which
+    // removes every filter and empties every id list but keeps each record.
+    // RepairFiltering and protection ON put back strict mode, app rules, services
+    // and lockdown - and nothing else. After a restart these features read ON
+    // while nothing enforced them, and their stale ids made the watchdog "repair"
+    // every thirty seconds with a repair that could not fix them. After OFF and ON
+    // they read OFF and stayed off.
+
+    /// <summary>The five per-app scope blocks. Anything else in ScopeFilters is reactive.</summary>
+    private static readonly HashSet<string> DeclarativeScopes =
+        new(StringComparer.Ordinal) { "local", "lan", "incoming", "internet", "server" };
+
+    private static bool IsDeclarativeScopeKey(string key, out string path, out string scope)
+    {
+        path = scope = "";
+        if (key.StartsWith("domainblock|", StringComparison.Ordinal) ||
+            key.StartsWith("appdomainblock|", StringComparison.Ordinal)) return false;
+        int bar = key.LastIndexOf('|');
+        if (bar <= 0) return false;
+        scope = key[(bar + 1)..];
+        path = key[..bar];
+        return DeclarativeScopes.Contains(scope);
+    }
+
+    private static bool IsReactiveScopeKey(string key) => !IsDeclarativeScopeKey(key, out _, out _);
+
+    /// <summary>Scope keys hold a lowercased path; reinstall with the rule's own spelling when known.</summary>
+    private string OriginalCasePath(string lowered) =>
+        _data.Rules.FirstOrDefault(r => string.Equals(r.ExecutablePath, lowered, StringComparison.OrdinalIgnoreCase))
+             ?.ExecutablePath ?? lowered;
+
+    /// <summary>IPv4 or IPv4/prefix - the user IP blocklist entries enforced as filters.</summary>
+    private static bool IsFilterableBlocklistEntry(string ip)
+    {
+        string ipPart = ip.Contains('/') ? ip[..ip.IndexOf('/')] : ip;
+        return System.Net.IPAddress.TryParse(ipPart, out var parsed)
+            && parsed.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork;
+    }
+
+    /// <summary>Installs one system rule's filters: the single path for switching
+    /// it on and for reinstalling it, so the two cannot drift apart.</summary>
+    private List<ulong> InstallSystemRule(string key)
+    {
+        var preset = Models.SystemRuleCatalog.All.FirstOrDefault(p => p.Key == key);
+        return preset == null || preset.Special
+            ? _engine.AddSystemRule(key)   // special handling (block-all / IPv6)
+            : _engine.AddServiceRule(preset.Block, preset.Direction, preset.Protocol, preset.Ports, preset.Name);
+    }
+
+    /// <summary>
+    /// Reinstalls every feature recorded by intent - system rules, scope blocks,
+    /// custom rules and the user's IP blocklist - from what the store says is ON.
+    /// Replaces ids rather than adding to them; the caller removes what old ids
+    /// named. Called by RepairFiltering and by protection ON. Returns filters made.
+    /// </summary>
+    private int ReinstallRecordedFeatures()
+    {
+        int made = 0;
+        foreach (var key in _data.SystemRules.Keys.ToList())
+        {
+            try { _data.SystemRules[key] = InstallSystemRule(key); made += _data.SystemRules[key].Count; }
+            catch (Exception ex)
+            {
+                _data.SystemRules[key] = new List<ulong>();
+                DiagnosticLog.LogException($"Reinstall/system rule {key}", ex);
+            }
+        }
+        foreach (var key in _data.ScopeFilters.Keys.ToList())
+        {
+            if (!IsDeclarativeScopeKey(key, out string path, out string scope)) continue;
+            try { _data.ScopeFilters[key] = _engine.AddAppScopeBlock(OriginalCasePath(path), scope); made += _data.ScopeFilters[key].Count; }
+            catch (Exception ex)
+            {
+                _data.ScopeFilters[key] = new List<ulong>();
+                DiagnosticLog.LogException($"Reinstall/scope {scope}", ex);
+            }
+        }
+        foreach (var c in _data.CustomRules)
+        {
+            if (!c.Enabled) { c.FilterIds = new List<ulong>(); continue; }
+            try
+            {
+                c.FilterIds = _engine.AddCustomRule(c.Block, c.Outbound, c.Protocol, c.RemoteAddress, c.RemotePort, c.LocalPort);
+                c.Applied = c.FilterIds.Count > 0;
+                made += c.FilterIds.Count;
+            }
+            catch (Exception ex)
+            {
+                c.FilterIds = new List<ulong>(); c.Applied = false;
+                DiagnosticLog.LogException("Reinstall/custom rule", ex);
+            }
+        }
+        var blocklist = new List<ulong>();
+        foreach (var entry in _data.Blocklist)
+        {
+            if (!IsFilterableBlocklistEntry(entry)) continue;
+            try { blocklist.AddRange(_engine.AddCustomRule(true, true, "Any", entry, 0)); }
+            catch (Exception ex) { DiagnosticLog.LogException("Reinstall/blocklist entry", ex); }
+        }
+        _data.BlocklistFilterIds = blocklist;
+        made += blocklist.Count;
+        return made;
+    }
+
+    private int _reactiveGeneration;
+    private int _entityGenerationSeen;
+
+    /// <summary>
+    /// Changes whenever reactive blocks were dropped or removed wholesale. Each
+    /// enforcer keeps a session memory of what it already blocked; when this
+    /// changes it clears that memory on its own thread and blocks again as the
+    /// traffic is next seen. Without it, a block the kernel lost mid-session would
+    /// stay lost: the memory still says "handled", and the id is no longer counted.
+    /// </summary>
+    public int ReactiveGeneration => System.Threading.Volatile.Read(ref _reactiveGeneration);
+
+    /// <summary>
+    /// Drops reactive filter ids the kernel no longer has, and queues curated
+    /// blocklists on the WFP fallback for a fresh resolve. Returns ids dropped.
+    ///
+    /// Reactive filters - P2P, access policy, blocked domains, country and ASN -
+    /// are added per observed connection and the store keeps only their ids, so
+    /// they cannot be rebuilt from it. Left in place, a lost id is counted missing
+    /// by every integrity check and "repaired" by a repair that cannot restore it.
+    /// Curated blocklists are rebuilt instead: their domains are known, only the
+    /// resolution is slow, so it runs in the background.
+    /// </summary>
+    private int PruneLostReactiveFilters(List<string> wfpToRestore)
+    {
+        var reactive = new List<ulong>(_data.EntityReactiveFilters);
+        foreach (var kv in _data.ScopeFilters) if (IsReactiveScopeKey(kv.Key)) reactive.AddRange(kv.Value);
+        foreach (var v in _data.Blocklists.Values) reactive.AddRange(v);
+        foreach (var v in _data.BlocklistWfpFilters.Values) reactive.AddRange(v);
+        var lost = reactive.Count == 0 ? new HashSet<ulong>() : _engine.MissingFilterIds(reactive);
+
+        int dropped = _data.EntityReactiveFilters.RemoveAll(lost.Contains);
+        foreach (var key in _data.ScopeFilters.Keys.Where(IsReactiveScopeKey).ToList())
+        {
+            var ids = _data.ScopeFilters[key];
+            dropped += ids.RemoveAll(lost.Contains);
+            if (ids.Count == 0) _data.ScopeFilters.Remove(key);
+        }
+        foreach (var key in _data.Blocklists.Keys.ToList())
+        {
+            var ids = _data.Blocklists[key];
+            dropped += ids.RemoveAll(lost.Contains);
+            if (ids.Count == 0) _data.Blocklists.Remove(key);
+        }
+        foreach (var key in _data.BlocklistWfpFilters.Keys.ToList())
+        {
+            var ids = _data.BlocklistWfpFilters[key];
+            if (ids.Count > 0 && !ids.Any(lost.Contains)) continue;          // intact
+            // Partly or wholly lost: rebuild the whole list. Clear the survivors so
+            // the result is one fresh set, not survivors plus a fresh set.
+            foreach (ulong id in ids.Where(i => !lost.Contains(i)).ToList())
+                _engine.TryDeleteFilter(id);
+            dropped += ids.Count(lost.Contains);
+            ids.Clear();
+            if (_data.EnabledBlocklists.Contains(key)) wfpToRestore.Add(key);
+        }
+        if (dropped > 0)
+            DiagnosticLog.Log($"Reactive filters: {dropped} id(s) the kernel no longer has were dropped; "
+                            + "those blocks re-form as the traffic is seen.");
+        return dropped;
+    }
+
+    /// <summary>
+    /// Re-resolves curated blocklists enforced through WFP, off the UI thread and
+    /// outside the store lock - thousands of lookups must not hold either. Network
+    /// may not be up at boot, so an empty result is retried, five times a minute
+    /// apart. Before keeping anything it re-checks, under the lock, that protection
+    /// and the list are still on; if not, it removes what it installed.
+    /// </summary>
+    private void RestoreBlocklistWfpInBackground(List<string> keys)
+    {
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            foreach (var key in keys)
+            {
+                var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+                var domains = cat == null ? new List<string>() : DomainsFor(cat);
+                if (domains.Count == 0) { DiagnosticLog.Log($"Blocklist {key}: no domains to restore."); continue; }
+                for (int attempt = 1; attempt <= 5; attempt++)
+                {
+                    List<ulong> ids;
+                    try { ids = BlockDomainsViaWfp(domains); }
+                    catch (Exception ex) { DiagnosticLog.LogException($"RestoreBlocklistWfp/{key}", ex); ids = new List<ulong>(); }
+                    if (ids.Count > 0)
+                    {
+                        bool kept;
+                        lock (_dataLock)
+                        {
+                            kept = _data.StrictMode && _data.EnabledBlocklists.Contains(key)
+                                && _data.BlocklistWfpFilters.ContainsKey(key);
+                            if (kept) { _data.BlocklistWfpFilters[key].AddRange(ids); SaveStore(); }
+                        }
+                        if (!kept) { try { _engine.RemoveFilters(ids); } catch { } }
+                        DiagnosticLog.Log(kept
+                            ? $"Blocklist {key}: restored through WFP, {ids.Count} filter(s)."
+                            : $"Blocklist {key}: switched off while restoring; {ids.Count} filter(s) removed again.");
+                        break;
+                    }
+                    DiagnosticLog.Log($"Blocklist {key}: no addresses resolved (attempt {attempt} of 5)"
+                                    + (attempt < 5 ? " - retrying in a minute." : " - giving up until the next repair."));
+                    if (attempt < 5) await System.Threading.Tasks.Task.Delay(TimeSpan.FromMinutes(1));
+                }
+            }
+        });
+    }
 
     /// <summary>Is the given network scope (local | lan | incoming) currently blocked for this app?</summary>
     public bool IsScopeBlocked(string exePath, string scope) =>

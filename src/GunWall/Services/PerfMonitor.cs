@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace GunWall.Services;
@@ -265,7 +266,7 @@ public static class PerfMonitor
         }
 
         string line =
-            $"Perf: ws={Mb(p.WorkingSet64)} private={Mb(p.PrivateMemorySize64)} " +
+            $"Perf: taskmgr={PrivateWs()} ws={Mb(p.WorkingSet64)} private={Mb(p.PrivateMemorySize64)} " +
             $"heap={Mb(GC.GetTotalMemory(false))} committed={Mb(gcInfo.TotalCommittedBytes)} " +
             $"gc0/1/2=+{g0 - LastGc[0]}/+{g1 - LastGc[1]}/+{g2 - LastGc[2]} gcPause={pausePct:F2}% " +
             // A percentage over a near-empty interval is noise: two samples taken
@@ -289,7 +290,7 @@ public static class PerfMonitor
         var gcInfo = GC.GetGCMemoryInfo();
 
         yield return $"Performance: uptime {up.TotalHours:F1} h, cpu avg {cpuPct:F2}%, " +
-                     $"ws {Mb(p.WorkingSet64)} (peak {Mb(p.PeakWorkingSet64)}), private {Mb(p.PrivateMemorySize64)}, " +
+                     $"Task Manager {PrivateWs()}, ws {Mb(p.WorkingSet64)} (peak {Mb(p.PeakWorkingSet64)}), private {Mb(p.PrivateMemorySize64)}, " +
                      $"heap {Mb(GC.GetTotalMemory(false))}, committed {Mb(gcInfo.TotalCommittedBytes)}, " +
                      $"threads {p.Threads.Count}, handles {p.HandleCount}";
         yield return $"Performance: gc {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)} " +
@@ -342,5 +343,37 @@ public static class PerfMonitor
     }
 
     private static double Ms(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+
+    // ---- private working set ------------------------------------------------
+    // Task Manager's Memory column is the private working set. The log showed only
+    // the full working set, which counts shared Windows, .NET and graphics-driver
+    // pages: ~480 MB beside Task Manager's 141 MB in the first 0.99.153 bundle, and
+    // two numbers that could not be compared. EX2 adds PrivateWorkingSetSize.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemCountersEx2
+    {
+        public uint cb, PageFaultCount;
+        public UIntPtr PeakWorkingSetSize, WorkingSetSize, QuotaPeakPagedPoolUsage, QuotaPagedPoolUsage,
+                       QuotaPeakNonPagedPoolUsage, QuotaNonPagedPoolUsage, PagefileUsage, PeakPagefileUsage,
+                       PrivateUsage, PrivateWorkingSetSize;
+        public ulong SharedCommitUsage;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "K32GetProcessMemoryInfo", SetLastError = true)]
+    private static extern bool GetProcessMemoryInfo(IntPtr process, ref MemCountersEx2 counters, uint cb);
+
+    /// <summary>Task Manager's Memory figure, or "n/a" where Windows cannot give it.</summary>
+    private static string PrivateWs()
+    {
+        if (!OperatingSystem.IsWindows()) return "n/a";
+        try
+        {
+            var c = new MemCountersEx2 { cb = (uint)Marshal.SizeOf<MemCountersEx2>() };
+            if (!GetProcessMemoryInfo((IntPtr)(-1), ref c, c.cb)) return "n/a";   // -1: this process
+            ulong v = (ulong)c.PrivateWorkingSetSize;
+            return v == 0 ? "n/a" : Mb((long)v);
+        }
+        catch { return "n/a"; }
+    }
     private static string Mb(long bytes) => $"{bytes / 1048576.0:F0}MB";
 }

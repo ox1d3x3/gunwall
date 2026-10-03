@@ -436,7 +436,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.153 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.154 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -635,6 +635,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void ApplySnapshot(Snapshot snap)
     {
         using var _perf = PerfMonitor.Measure("ApplySnapshot");
+        SyncReactiveMemory();
         // Set the shared snapshot FIRST so the Connections panel and the inspector
         // always have data even if a later UI step misbehaves.
         _lastConns = snap.Conns;
@@ -2049,6 +2050,31 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     // ------------------------------ §1: per-app access policy enforcement
     private readonly HashSet<string> _accessHandled = new(StringComparer.OrdinalIgnoreCase);
+
+    private int _reactiveGenerationSeen;
+
+    /// <summary>
+    /// Clears the reactive enforcers' "already handled" memory when the firewall
+    /// says reactive blocks were dropped or removed wholesale - after a repair
+    /// pruned ids the kernel had lost, or protection came back on. Runs on the UI
+    /// thread, which owns these sets.
+    ///
+    /// Without it a lost block stayed lost for the session: the memory said
+    /// "handled", and once the lost id was pruned nothing counted it missing
+    /// either (trap 2.43).
+    /// </summary>
+    private void SyncReactiveMemory()
+    {
+        int gen = _firewall.ReactiveGeneration;
+        if (gen == _reactiveGenerationSeen) return;
+        _reactiveGenerationSeen = gen;
+        _p2pHandled.Clear();
+        _domainBlocked.Clear();
+        _appDomainBlocked.Clear();
+        _accessHandled.Clear();
+        Services.DiagnosticLog.Log("Reactive blocks reset: P2P, access-policy and blocked-domain "
+                                 + "blocks re-form as their connections are next seen.");
+    }
 
     /// <summary>
     /// Evaluates each connection of policy-bearing apps against its ordered
@@ -3977,6 +4003,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// </summary>
     private void OnScreenChanged()
     {
+        _probeWanted = OnScreen;   // the freeze probe sleeps while nothing is shown
         UpdateGraphFrameHook();
         if (OnScreen && IsLoaded) RefreshVisiblePanel();
     }
@@ -4039,6 +4066,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
              .ToList();
 
     private int _uiProbeOutstanding;
+    private volatile bool _probeWanted = true;   // written on the UI thread, read by the probe
 
     /// <summary>
     /// Measures UI responsiveness once a second: posts an empty item to the UI
@@ -4051,6 +4079,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// </summary>
     private void StartUiLagProbe()
     {
+        _probeWanted = OnScreen;
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
             try
@@ -4059,6 +4088,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 {
                     await System.Threading.Tasks.Task.Delay(1000);
                     if (Dispatcher.HasShutdownStarted) return;
+                    // Hidden: no wake-up. The 0.99.153 bundle showed probing a hidden
+                    // window costs a UI-thread wake per second for figures nobody
+                    // feels - Windows throttles an idle background process, so its
+                    // waits measure the throttling. Slow work is still timed by Measure.
+                    if (!_probeWanted) continue;
                     if (System.Threading.Interlocked.CompareExchange(ref _uiProbeOutstanding, 1, 0) != 0)
                         continue;
                     long t0 = Stopwatch.GetTimestamp();
@@ -5500,6 +5534,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
         };
         if (dlg.ShowDialog() != true) return;
+        // Timed from here: the seconds spent choosing a folder are not work. The
+        // first 0.99.153 bundle logged an unattributed 280 ms freeze at export.
+        using var _perf = PerfMonitor.Measure("ExportDiag_Click");
 
         string path = dlg.FileName;
         if (ExportDiagBtn != null) ExportDiagBtn.IsEnabled = false;

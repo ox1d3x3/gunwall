@@ -227,6 +227,24 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.154 — everything switched on survives a restart
+
+Each feature must be **switched on** to be tested; a feature that is off proves
+nothing. Use whatever you can test with a command, for example `curl`:
+
+1. **Set up:** turn on one **system rule**; give one app a **scope block** (e.g.
+   Internet for `curl.exe`); add a **custom rule** (e.g. block outbound to
+   `1.1.1.1`); add an address to your **IP blocklist**. Confirm each blocks.
+2. **Restart the PC.** Start GunWall. **PASS:** each still blocks; the system rule
+   and the scope toggle read ON; the log shows `Startup: ... Re-installing` then
+   `Filtering re-applied`, and **no** repeated `FILTER TAMPERING DETECTED` lines
+   afterwards. **FAIL:** anything reads ON but no longer blocks.
+3. **Protection OFF.** **PASS:** none of them blocks. **Protection ON.** **PASS:** all
+   block again, and the system rule and scope toggles read ON again.
+4. Export after a while. **PASS:** `taskmgr=` on the five-minute lines, within a few
+   MB of Task Manager's Memory column; `Filter integrity: ... N/N present`;
+   `Errors this session: 0`.
+
 ### 0.99.153 — fixes from the 24-hour run, and the font
 
 **Font — check first, it is visible at once.**

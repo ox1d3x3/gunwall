@@ -15,6 +15,76 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.154] — 2026-10-04
+
+### Fixed — features switched on did not come back after a restart, or after protection OFF and ON (trap 2.43)
+Each feature records what you switched on separately from the filter ids it
+installed, and only the ids are lost: to a restart, since 0.99.143 made filters
+non-persistent, and to protection OFF, which removes every filter and empties every
+id list but keeps each record. The repair and protection ON put back strict mode,
+app rules, blocked services and lockdown — and nothing else.
+
+- **After a restart**, system rules, per-app scope blocks, custom rules, your IP
+  blocklist and the WFP half of curated blocklists read ON while nothing enforced
+  them. Their stale ids were counted missing by every integrity check and
+  "repaired" every thirty seconds by a repair that could not restore them.
+- **After protection OFF and ON**, the same features read OFF and stayed off, and
+  reactive blocks — P2P, access policy, blocked domains, country and ASN — did not
+  re-form for the rest of the session, because each enforcer's memory still said
+  "already handled".
+- **Custom rules were not counted by the integrity check at all**, so their loss was
+  invisible. Not on the roadmap's list; found while tracing it.
+
+Now, on restart, repair and protection ON:
+- `ReinstallRecordedFeatures` rebuilds system rules (through `InstallSystemRule`,
+  now the only install path), all five scope blocks — `local`, `lan`, `incoming`,
+  `internet`, `server`; the code comment listed three — custom rules with their
+  original arguments, and the IP blocklist, from what the store records as ON.
+- `PruneLostReactiveFilters` drops reactive ids the kernel no longer has — they
+  cannot be rebuilt, since only their ids are kept — and advances
+  `ReactiveGeneration`, which clears every enforcer's memory on its own thread so
+  the blocks re-form as the traffic is next seen. `WfpEngine.MissingFilterIds`
+  reports which ids are gone, by `CheckFilters`' rule: GunWall's own failure to query
+  is never counted as missing.
+- Curated blocklists on the WFP fallback are re-resolved in the background, outside
+  the store lock, retried five times a minute apart if the network is not up yet,
+  and kept only if protection and the list are still on when they finish.
+
+The services layer — `FirewallManager`, the engine, every model — now compiles
+here against stand-ins for WPF and Event Log types only, and did with these changes:
+0 errors, no warnings in new code.
+
+### Changed — the log shows Task Manager's memory figure
+`taskmgr=` on every five-minute line and in the session summary: the private
+working set, which Task Manager shows as Memory. The `ws` figure counts shared
+Windows, .NET and graphics-driver pages — about 480 MB beside Task Manager's 141 MB
+in the last bundle — so the two could not be compared.
+
+### Changed — the freeze probe sleeps while the window is hidden
+It woke the UI thread every second for figures nobody feels: Windows throttles an
+idle background process, so hidden waits measured the throttling. Slow work is still
+timed wherever it runs.
+
+### Changed — the export is timed
+From after the Save dialog closes, so time spent choosing a folder is not counted.
+The last bundle's one visible freeze, 280 ms, was at export and unattributed.
+
+### Checks
+- `restore-everything` is structural: every filter-id store in `RuleStore` and each
+  model's `FilterIds` must be counted by the integrity check and handled by the
+  repair path, so a store added later fails until it is restored; each declarative
+  store must be rebuilt by its actual statement, not merely mentioned; the scopes
+  the restore knows must equal the scopes the UI uses; and every "already handled"
+  set an enforcer keeps must be cleared on reset.
+- `perf-evidence` asserts the Task Manager figure, the export timing after the
+  dialog, and no probing while hidden.
+
+21 mutations, each shown failing — including a store added in future and a scope
+the restore does not know. One escaped the first version of the check, which only
+asked whether a store was *mentioned*; it now requires the rebuild statement.
+
+---
+
 ## [0.99.153] — 2026-10-03
 
 Two parts, kept separate: fixes found by the first 24-hour bundle from 0.99.152,

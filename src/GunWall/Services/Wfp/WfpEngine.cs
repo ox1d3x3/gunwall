@@ -388,6 +388,32 @@ public sealed class WfpEngine : IDisposable
     }
 
     /// <summary>
+    /// The ids from <paramref name="expected"/> that the kernel no longer has.
+    /// Same rule as <see cref="CheckFilters"/>: GunWall's own failure to query a
+    /// filter is never evidence that it is gone, so it is not reported missing.
+    /// Used to prune reactive filters, which cannot be rebuilt from the store
+    /// because the store keeps only their ids.
+    /// </summary>
+    public HashSet<ulong> MissingFilterIds(IEnumerable<ulong> expected)
+    {
+        EnsureReady();
+        var missing = new HashSet<ulong>();
+        foreach (ulong id in expected)
+        {
+            if (id == 0) continue;
+            IntPtr p = IntPtr.Zero;
+            try
+            {
+                uint r = FwpmFilterGetById0(_engine, id, out p);
+                if (IndicatesRemoved(r)) missing.Add(id);
+            }
+            catch { }
+            finally { if (p != IntPtr.Zero) { try { FwpmFreeMemory0(ref p); } catch { } } }
+        }
+        return missing;
+    }
+
+    /// <summary>
     /// Confirms GunWall can still remove its own filtering, which is the escape
     /// hatch every other safeguard depends on. Adds a throwaway permit filter,
     /// deletes it, and reports whether both halves worked - so the recovery path

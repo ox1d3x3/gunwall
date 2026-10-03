@@ -104,13 +104,10 @@ fails to parse.*
   is a `"A key is saved."` line beside an empty-looking box, which reads as data
   loss. Show masked dots or the last four characters. Never the key.
 
-- ☐ **Restore toggle-applied blocks after a restart** — system rules, per-app scope
-  blocks and the WFP half of curated blocklists are not reinstalled at startup
-  since filters stopped being persistent in 0.99.143. They read as enabled while
-  nothing enforces them, and their stale ids make the watchdog repair every thirty
-  seconds. Each needs its own restore: `SetSystemRule` returns early when a rule is
-  recorded as on, and `SetBlocklistEnabled` is entangled with the DNS provider and
-  the hosts file. Test each with the feature switched on.
+- ✅ **Restore toggle-applied blocks after a restart** *(0.99.154)* — system rules,
+  scope blocks, custom rules, the IP blocklist and the WFP half of curated
+  blocklists come back on restart, repair and protection ON; reactive blocks
+  re-form from traffic (trap 2.43)
 
 ### Updates
 - ✅ **Automatic update checking** *(0.99.147)* — Daily / Weekly / Monthly, off by

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Type-checks Services/ and Models/ on a machine without the Windows Desktop
+       pack (e.g. Linux). WpfStubs.cs stands in for the few WPF and Event Log types
+       those layers touch - never GunWall's own. Compile-only: nothing here runs.
+       Expect CA1416 platform warnings on Windows-only calls; errors mean a real
+       problem. Usage: dotnet build -c Release -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../src/GunWall/Services/**/*.cs" />
+    <Compile Include="../../../src/GunWall/Models/**/*.cs" />
+    <Compile Remove="../../../src/GunWall/Services/IconService.cs" />
+    <Compile Include="WpfStubs.cs" />
+  </ItemGroup>
+</Project>

@@ -925,3 +925,25 @@ Indentation is a claim about structure that the compiler does not read.
 `PerfMonitor.MarkStartup` is now bounded regardless of where it is called — so a
 mark misplaced again costs nothing. A recorder should be bounded by design, not by
 the correctness of every call site.
+
+### 2.43 Intent kept, state lost
+
+A feature that records "the user switched this on" separately from "these are its
+filter ids" has two things to lose, and loses only one. 0.99.143 made filters
+non-persistent; protection OFF empties every id list but keeps each record. After
+either, the record still says ON and the ids name nothing. 0.99.146 restored app
+rules after a restart; system rules, scope blocks, custom rules and both blocklist
+paths were left reading ON after a restart and OFF after OFF-and-ON. Custom rules
+were not even counted by the integrity check.
+
+Reactive filters are a third kind: added per observed connection, stored only as
+ids, guarded by a session memory of what was already blocked. They cannot be
+rebuilt; dropping the lost ids without clearing that memory makes the loss
+permanent and invisible at once.
+
+**Rule:** for every store of filter ids, name the path that rebuilds it — from its
+record if declarative, from traffic if reactive — on each of restart, repair and
+protection ON. `restore-everything` enumerates the stores from `RuleStore` itself,
+so a new one fails until it has that path. Trap 2.36's rule was to enumerate what
+relied on persistence; this is the same rule, made mechanical.
+
