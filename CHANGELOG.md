@@ -15,6 +15,86 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.153] — 2026-10-03
+
+Two parts, kept separate: fixes found by the first 24-hour bundle from 0.99.152,
+then the font optimisation.
+
+### Fixed — a startup mark that ran every second (trap 2.42)
+0.99.152 placed two lines under a brace-less `if` that only looked inside it. They
+ran on every snapshot for the life of the process: `MarkStartup` grew a list once
+a second and created an undisposed `Process` each time. After 6.7 hours the export
+wrote one 1.36 MB line. Now braced, and `MarkStartup` is bounded in itself —
+sixteen marks, none after the startup line is written, the process start read
+once — so a misplaced call costs nothing. A harness run of 100,000 repeated marks
+leaves the line at three entries. New check `misleading-indent` fails any line
+indented as part of a brace-less body; it catches this exact defect.
+
+### Fixed — the first application-list build froze the UI
+The bundle attributed three freezes to `RebuildAppsList`: the operation took 3.3,
+2.8 and 2.5 s, freezing the UI for 3.3, 1.9 and 1.7 s — once per launch, on the
+first build, which pays for a signature check and an icon extraction per
+application. `WarmAppCaches` now does that first round on a background thread at
+launch: STA for the shell, below-normal priority, its Dispatcher shut down after.
+Safe because both caches are `ConcurrentDictionary` filled with `GetOrAdd` and
+icons are frozen before caching. If the list builds first, it computes whatever is
+missing exactly as before. `GetIcon` and `Verify` are now timed on their uncached
+path.
+
+### Fixed — the graph timer ran while nothing was on screen
+It was stopped only by the tab. With the Dashboard selected and the window
+minimised it went on ticking, about 980 times per five minutes, drawing nothing.
+It now follows the same visibility rule as the frame hook, and the tick refuses to
+work while off screen.
+
+### Fixed — responsiveness figures mixed hidden and visible time
+Overnight, with the window hidden, Windows throttles a background process: waits
+sat at multiples of the 15.6 ms timer tick and 132 unattributed "freezes" were
+logged. Responsiveness is now reported for visible time only; hidden waits are
+counted separately and a hidden freeze is logged only when a measured operation
+caused it. Freezes are attributed only to work on the UI thread — background work
+runs in parallel and cannot cause one — and slow operations say which thread.
+
+### Changed — JetBrains Mono replaces JetBrainsMono Nerd Font
+The four embedded monospace weights drop from 9.6 MB to 1.1 MB. The Nerd build is
+JetBrains Mono 2.304 with about 10,400 icon glyphs patched in; GunWall draws none
+of them. Plain 2.304, from its official release, was compared glyph by glyph
+against what shipped:
+
+- all 1,363 characters present; every advance width identical
+- typographic line metrics identical, and `USE_TYPO_METRICS` set in both, so line
+  height does not change (the legacy Windows ascent/descent differ, which WPF does
+  not use when that flag is set — still confirmed on screen in testing)
+- 13 outlines differ per weight: glyphs the patcher redrew as icons (U+23FB–23FE,
+  U+26A1, U+2B58 and Powerline private-use points). The interface uses none.
+
+The current upstream release, 2.305, was rejected: it redraws 22–74 glyphs per
+weight, including ASCII letters in Medium and SemiBold. The files and their names
+are exactly as upstream ships them. All four weights resolve to the family
+"JetBrains Mono" — ID 16 where present, ID 1 otherwise — and the theme references
+that name in all three places. The bundled-font name in Settings now reads
+"JetBrains Mono"; a saved choice of the default is stored as empty, not by name, so
+existing profiles are unaffected. The OFL licence is replaced to match.
+
+### Checks
+- `idle-bounded`: graph timer follows visibility; cache warming is background, STA,
+  below normal, started at launch, and its caches concurrent with frozen icons;
+  startup marks bounded; no undisposed `Process`
+- `bundled-font`: four weights, version 2.304, one family that every resource
+  names, no Nerd files, plain size, licence present. Reads the name table itself,
+  so it runs where fontTools is not installed — the older `font-family` check
+  silently skips there
+- `perf-evidence`: hidden time is now checked by structure — the visible histogram
+  must sit in the `else` of the on-screen test — after a mutation pouring hidden
+  waits back into the visible figures passed the old name-based assertion
+- `font-family`: an unreadable file now fails the check instead of crashing the
+  suite, which had hidden every result after it
+
+Mutations: 15 for the fixes and 8 for the font, each shown failing — including
+trap 2.42 itself, and the 0.99.61 family split reproduced by editing a name table.
+
+---
+
 ## [0.99.152] — 2026-10-02
 
 ### Added — performance evidence in the diagnostics

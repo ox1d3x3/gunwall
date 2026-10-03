@@ -23,6 +23,8 @@ public static class IconService
         if (string.IsNullOrWhiteSpace(exePath)) return null;
         return Cache.GetOrAdd(exePath, path =>
         {
+            // Uncached only: the per-file cost the first list build pays.
+            using var _perf = PerfMonitor.Measure("GetIcon");
             try
             {
                 if (!File.Exists(path)) return null;

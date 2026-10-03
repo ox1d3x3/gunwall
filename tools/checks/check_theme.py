@@ -694,8 +694,14 @@ def check_font_families():
 
     groups = {}
     for f in fonts:
-        t = TTFont(str(f), lazy=True)
-        n = t["name"]
+        # A file that is not a font must fail this check, not end the run: a
+        # crash hides every result after it.
+        try:
+            t = TTFont(str(f), lazy=True)
+            n = t["name"]
+        except Exception as e:
+            fail("font-family", f"{f.name} is not a readable font ({type(e).__name__})")
+            continue
         typo, fam = n.getDebugName(16), n.getDebugName(1)
         weight = t["OS/2"].usWeightClass
         t.close()
@@ -780,7 +786,7 @@ def check_hint_width():
     # being monospaced, is the WORST case - Instrument Sans averages narrower.
     # Read the advance from the file rather than recalling 0.6em: trap 2.5 was a
     # font metric taken on trust.
-    font = APP / "Fonts" / "JetBrainsMonoNerdFont-Regular.ttf"
+    font = APP / "Fonts" / "JetBrainsMono-Regular.ttf"
     try:
         adv, upm = _ttf_advance(font, ord("W"))
     except Exception as ex:
@@ -1198,9 +1204,9 @@ def check_header_fit():
     if None in (fs, pad, track):
         return
 
-    font = APP / "Fonts" / "JetBrainsMonoNerdFont-SemiBold.ttf"
+    font = APP / "Fonts" / "JetBrainsMono-SemiBold.ttf"
     if not font.exists():
-        font = APP / "Fonts" / "JetBrainsMonoNerdFont-Regular.ttf"
+        font = APP / "Fonts" / "JetBrainsMono-Regular.ttf"
     try:
         adv, upm = _ttf_advance(font, ord("W"))
     except Exception as ex:
@@ -1264,7 +1270,7 @@ def _check_combo_fit(xaml, per_char_base):
     size = float(m.group(1))
 
     try:
-        adv, upm = _ttf_advance(APP / "Fonts" / "JetBrainsMonoNerdFont-Regular.ttf", ord("W"))
+        adv, upm = _ttf_advance(APP / "Fonts" / "JetBrainsMono-Regular.ttf", ord("W"))
     except Exception as ex:
         fail("header-fit", f"could not read advance: {ex}")
         return
@@ -1815,6 +1821,260 @@ def check_list_sync():
                      "in place or are replaced; three live values notify")
 
 
+def check_misleading_indentation():
+    """No statement may be indented as though it belonged to a brace-less body.
+
+    Trap 2.42. Two lines were added after a brace-less if, indented to match its
+    single-statement body:
+
+        if (_sampleTicks == 0)
+            DiagnosticLog.Log("First snapshot applied ...");
+            PerfMonitor.MarkStartup("first snapshot");   // runs every time
+            PerfMonitor.LogStartup();                    // runs every time
+
+    Only the first line was conditional. The others ran on every snapshot, once a
+    second, for the life of the process - a list growing by an entry per second
+    and an undisposed Process object per call. It read as correct to every eye
+    that looked at it, and C# raises no warning for indentation that disagrees
+    with structure.
+
+    For every brace-less if / else / for / foreach / while / using, this finds
+    the end of its single-statement body - following the statement across lines
+    until it closes - and fails if the next statement is indented at the body's
+    depth rather than the header's. Every C# file in the application.
+    """
+    before = len(failures)
+    HEADER = re.compile(r"^(\s*)(?:(?:else\s+)?if|for|foreach|while|using)\s*\(.*\)\s*$|^(\s*)else\s*$")
+    found = 0
+    for f in sorted(APP.rglob("*.cs")):
+        lines = strip_cs(f.read_text(encoding="utf-8")).split("\n")
+        n = len(lines)
+        def ind(t): return len(t) - len(t.lstrip(" "))
+        def nxt(k):
+            k += 1
+            while k < n and not lines[k].strip():
+                k += 1
+            return k
+        def is_header(t):
+            return bool(HEADER.match(t)) and not t.rstrip().endswith(";") \
+                   and t.count("(") == t.count(")")
+        def stmt_end(j, guard=0):
+            """Last line of the statement that starts at line j - following a
+            brace-less header into its body, braced blocks to their close, and
+            an if's else to the end of the else."""
+            if guard > 50 or j >= n:
+                return min(j, n - 1)
+            if is_header(lines[j]):
+                b = nxt(j)
+                if b >= n:
+                    return j
+                if lines[b].lstrip().startswith("{"):
+                    depth, e = 0, b
+                    while e < n:
+                        depth += lines[e].count("{") - lines[e].count("}")
+                        if depth <= 0:
+                            break
+                        e += 1
+                else:
+                    e = stmt_end(b, guard + 1)
+                q = nxt(e)
+                if q < n and re.match(r"\s*else\b", lines[q]) and ind(lines[q]) == ind(lines[j]):
+                    return stmt_end(q, guard + 1)
+                return e
+            depth, k = 0, j
+            while k < n:
+                t = lines[k]
+                depth += t.count("(") + t.count("{") + t.count("[") \
+                       - t.count(")") - t.count("}") - t.count("]")
+                if depth <= 0 and t.rstrip().endswith(";"):
+                    return k
+                k += 1
+            return n - 1
+
+        for i, line in enumerate(lines):
+            # A header must be complete on its line. "if (a.StartsWith(x)" with
+            # "&& b)" on the next line ends in ')' without being finished - the
+            # first version took the continuation for a body and flagged
+            # correctly braced code in DnsService.
+            if not is_header(line):
+                continue
+            h = ind(line)
+            j = nxt(i)
+            if j >= n or lines[j].lstrip().startswith("{") or ind(lines[j]) <= h:
+                continue
+            body_ind = ind(lines[j])
+            # The body may itself be a brace-less header: the outer body is the
+            # whole inner statement, so follow it to its real end. Skipping
+            # nested headers, as the first version did, missed
+            #     if (a)
+            #         if (b)
+            #             x();
+            #         y();      <- indented as the outer body, runs regardless
+            e = stmt_end(j)
+            q = nxt(e)
+            if q >= n:
+                continue
+            nl = lines[q]
+            if ind(nl) == body_ind and not re.match(r"\s*(else\b|\}|\{|case\b|default\b)", nl):
+                found += 1
+                fail("misleading-indent",
+                     f"{f.name}:{q + 1} is indented as part of the brace-less body at line "
+                     f"{i + 1}, but runs unconditionally: '{nl.strip()[:60]}'")
+    if len(failures) == before:
+        notes.append("misleading-indent: every brace-less body ends where its indentation says")
+
+
+def _ttf_names(path):
+    """Name-table strings by ID, Windows/Unicode English first, then Mac Roman."""
+    import struct
+    b = Path(path).read_bytes()
+    n = struct.unpack(">H", b[4:6])[0]
+    tabs = {}
+    for i in range(n):
+        o = 12 + i * 16
+        tabs[b[o:o + 4].decode("latin-1")] = struct.unpack(">I", b[o + 8:o + 12])[0]
+    t = tabs["name"]
+    count, store = struct.unpack(">HH", b[t + 2:t + 6])
+    out, mac = {}, {}
+    for i in range(count):
+        r = t + 6 + i * 12
+        plat, enc, lang, nid, ln, off = struct.unpack(">HHHHHH", b[r:r + 12])
+        raw = b[t + store + off:t + store + off + ln]
+        if plat == 3 and enc in (0, 1) and lang == 0x409:
+            out.setdefault(nid, raw.decode("utf-16-be", "replace"))
+        elif plat == 1 and enc == 0:
+            mac.setdefault(nid, raw.decode("mac_roman", "replace"))
+    for k, v in mac.items():
+        out.setdefault(k, v)
+    return out
+
+
+def check_bundled_font():
+    """The bundled monospace face is one family, the one the theme names.
+
+    0.99.153 replaced JetBrainsMono Nerd Font (2.4MB per weight, ~10,400 icon
+    glyphs nothing used) with plain JetBrains Mono 2.304 (~270KB). Measured
+    against the Nerd build: every width and the typographic line metrics
+    identical, and only 13 outlines differ - glyphs the patcher redrew as icons,
+    none used by the interface.
+
+    The failure this guards is silent. 0.99.61 renamed font files and gave two
+    of four weights a different typographic family: the family split, a 400
+    request matched nothing, and the whole interface fell back to the system
+    font with no error. So: every weight must resolve - ID 16 when present,
+    else ID 1 - to the exact name every resource references.
+    """
+    before = len(failures)
+    fonts = APP / "Fonts"
+    weights = ("Regular", "Medium", "SemiBold", "Bold")
+    if list(fonts.glob("*NerdFont*")):
+        fail("bundled-font", "a Nerd Font file is still bundled - 2.4MB per weight of icons "
+                             "nothing draws")
+    families = set()
+    for w in weights:
+        f = fonts / f"JetBrainsMono-{w}.ttf"
+        if not f.exists():
+            fail("bundled-font", f"JetBrainsMono-{w}.ttf is missing - that weight falls back "
+                                 "to the system font")
+            continue
+        if f.stat().st_size > 1_000_000:
+            fail("bundled-font", f"JetBrainsMono-{w}.ttf is {f.stat().st_size // 1024}KB - not "
+                                 "the plain face (~270KB)")
+        names = _ttf_names(f)
+        fam = names.get(16) or names.get(1)
+        families.add(fam)
+        if not (names.get(5) or "").startswith("Version 2.304"):
+            fail("bundled-font", f"JetBrainsMono-{w}.ttf is {names.get(5)!r}, not 2.304 - the "
+                                 "version measured identical to what shipped before")
+    if len(families) > 1:
+        fail("bundled-font", f"the weights resolve to different families {sorted(families)} - "
+                             "the family is split, as in 0.99.61")
+    xaml = (APP / "Themes" / "Controls.xaml").read_text(encoding="utf-8")
+    refs = re.findall(r'<FontFamily x:Key="(UiFontMono|UiFont|MonoFont)">pack://application:,,,/Fonts/#([^<]+)</FontFamily>', xaml)
+    if len(refs) != 3:
+        fail("bundled-font", f"expected UiFontMono, UiFont and MonoFont to reference a bundled "
+                             f"family, found {len(refs)}")
+    for key, fam in refs:
+        if families and fam not in families:
+            fail("bundled-font", f"{key} references #{fam}, but the bundled weights are "
+                                 f"{sorted(families)} - every monospace text falls back silently")
+    if not (ROOT / "third-party-licenses" / "JetBrainsMono-OFL.txt").exists():
+        fail("bundled-font", "the font's OFL licence is not shipped with it")
+    if len(failures) == before:
+        notes.append(f"bundled-font: four weights resolve to {sorted(families)[0]!r} 2.304, all "
+                     "three resources reference it, no Nerd files, licence present")
+
+
+def check_idle_and_bounded():
+    """Work stops when nothing is shown; background work is safe; nothing grows.
+
+    From the first 24-hour bundle (0.99.152):
+      - the graph's sampling timer ran four times a second with the window
+        minimised, ~980 ticks per five minutes drawing nothing - it was stopped
+        only by the tab, never by visibility
+      - the first application-list build froze the UI for up to 3.3 s per launch,
+        paying for a signature check and an icon extraction per application; that
+        first round now runs on a background thread, which is only safe if both
+        caches are concurrent and every icon is frozen before it is shared
+      - a startup mark placed under a brace-less if ran every second: a list that
+        grew for the life of the process, and an undisposed Process per call
+        (trap 2.42)
+    """
+    before = len(failures)
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    hook = re.search(r"private void UpdateGraphFrameHook\(\).*?\n    \}", mw, re.S)
+    if not hook or not re.search(r"_graphTimer\.IsEnabled\s*=\s*want", hook.group(0)):
+        fail("idle-bounded", "the graph timer is not stopped with the frame hook - it ticks "
+                             "four times a second while nothing is on screen")
+    loaded = re.search(r"private void OnLoaded\(object sender.*?\n    \}", mw, re.S)
+    if loaded and "_graphTimer.Start()" in loaded.group(0):
+        fail("idle-bounded", "OnLoaded starts the graph timer unconditionally, whatever the "
+                             "window's state")
+    tick = re.search(r"private void GraphTimer_Tick\(.*?\n    \}", mw, re.S)
+    if not tick or "!OnScreen" not in tick.group(0):
+        fail("idle-bounded", "GraphTimer_Tick does not refuse to work while off screen")
+
+    warm = re.search(r"private static void WarmAppCaches\(.*?\n    \}", mw, re.S)
+    if not warm:
+        fail("idle-bounded", "WarmAppCaches is gone - the first list build is back on the UI thread")
+    else:
+        w = warm.group(0)
+        for need, why in (("IsBackground = true", "it would keep the process alive at exit"),
+                          ("ApartmentState.STA", "shell icon extraction needs an STA thread"),
+                          ("InvokeShutdown()", "the thread's Dispatcher is never shut down"),
+                          ("ThreadPriority.BelowNormal", "it competes with the UI at normal priority")):
+            if need not in w:
+                fail("idle-bounded", f"WarmAppCaches lacks {need}: {why}")
+        if "WarmAppCaches(" not in (loaded.group(0) if loaded else ""):
+            fail("idle-bounded", "WarmAppCaches is never started at launch")
+    for svc, var in (("IconService.cs", "Cache"), ("SignatureService.cs", "Cache")):
+        t = strip_cs((APP / "Services" / svc).read_text(encoding="utf-8"))
+        if not re.search(rf"static readonly ConcurrentDictionary<[^>]+>\s+{var}\b", t):
+            fail("idle-bounded", f"{svc}: the cache is not concurrent, and a background thread "
+                                 "now fills it")
+        if "GetOrAdd(" not in t:
+            fail("idle-bounded", f"{svc}: the cache is not filled atomically with GetOrAdd")
+    icon = strip_cs((APP / "Services" / "IconService.cs").read_text(encoding="utf-8"))
+    if ".Freeze()" not in icon:
+        fail("idle-bounded", "IconService: icons are not frozen before caching - an icon made "
+                             "on the background thread cannot be used by the UI")
+
+    pm = strip_cs((APP / "Services" / "PerfMonitor.cs").read_text(encoding="utf-8"))
+    mark = re.search(r"public static void MarkStartup\(string phase\).*?\n    \}", pm, re.S)
+    if not mark or not re.search(r"_startupLogged\s*\|\|\s*Startup\.Count\s*>=\s*MaxStartupMarks", mark.group(0)):
+        fail("idle-bounded", "MarkStartup is unbounded - a mark in a loop grows the list for "
+                             "the life of the process (trap 2.42)")
+    for m in re.finditer(r"Process\.GetCurrentProcess\(\)", pm):
+        line = pm[pm.rfind("\n", 0, m.start()):pm.find("\n", m.start())]
+        if "using" not in line:
+            fail("idle-bounded", "PerfMonitor takes a Process without disposing it")
+            break
+
+    if len(failures) == before:
+        notes.append("idle-bounded: graph timer follows visibility, first list build warmed "
+                     "off the UI thread safely, startup marks bounded")
+
+
 def check_perf_evidence():
     """The diagnostics carry performance evidence, cheaply and without personal data.
 
@@ -1843,7 +2103,7 @@ def check_perf_evidence():
         fail("perf-evidence", "PerfMonitor.cs is gone"); return
     pm = strip_cs(pm_path.read_text(encoding="utf-8"))
     for member in ("public static string SampleLine()", "public static IEnumerable<string> SessionSummaryLines()",
-                   "public static void RecordUiLag(double ms)", "public static Scope Measure(string name)",
+                   "public static void RecordUiLag(double ms, bool onScreen)", "public static Scope Measure(string name)",
                    "public static void RecordFrame()", "public static void MarkStartup(string phase)"):
         if member not in pm:
             fail("perf-evidence", f"PerfMonitor lacks {member}")
@@ -1865,6 +2125,23 @@ def check_perf_evidence():
     if "PerfMonitor.LogStartup()" not in mw:
         fail("perf-evidence", "startup phase timings are never written")
 
+    # Visible and hidden time recorded apart: mixed, the first 24-hour bundle showed
+    # 132 "freezes" and a degraded median that were Windows idling a hidden
+    # process, not anything a person felt.
+    if not re.search(r"RecordUiLag\([^;]*OnScreen\)", mw):
+        fail("perf-evidence", "the probe does not say whether the window was on screen, so "
+                              "background waits pollute the responsiveness figures")
+    # "while visible" is inside a string literal, and pm has literals blanked -
+    # searched with strings kept (trap 2.30, once more).
+    pm_kept = strip_cs(pm_path.read_text(encoding="utf-8"), keep_strings=True)
+    # Behaviour, not names: a variable called _hidProbes proves nothing if hidden
+    # waits still reach the visible histogram. The visible histogram must sit in
+    # the else of an onScreen test whose other branch counts hidden waits.
+    rec = re.search(r"public static void RecordUiLag\(double ms, bool onScreen\).*?\n    \}", pm, re.S)
+    if (not rec or "while visible" not in pm_kept or not re.search(
+            r"if \(!onScreen\)\s*\{[^}]*?_hidProbes\+\+.*?\}\s*else\s*\{[^}]*?LagHist\[",
+            rec.group(0), re.S)):
+        fail("perf-evidence", "hidden time is not kept apart from visible responsiveness")
     probe = re.search(r"private void StartUiLagProbe\(\).*?\n    \}", mw, re.S)
     if not probe or "CompareExchange(ref _uiProbeOutstanding, 1, 0)" not in probe.group(0):
         fail("perf-evidence", "the probe can queue several items while the UI is frozen, turning "
@@ -5620,6 +5897,9 @@ def main():
     check_device_copy()
     check_list_sync()
     check_effect_layers()
+    check_misleading_indentation()
+    check_bundled_font()
+    check_idle_and_bounded()
     check_perf_evidence()
     check_geoip_load()
     check_layout_free_animation()

@@ -258,32 +258,40 @@
          replacing this entry at runtime repaints the application - the same
          late-binding rule the palettes follow, for the same reason.
 
-         JetBrainsMono Nerd Font is the default, embedded in four weights,
-         EXACTLY AS UPSTREAM SHIPS THEM. It is OFL with fsType 0, so it can be
-         redistributed and embedded; that was checked rather than assumed.
+         JetBrains Mono 2.304 is the default, embedded in four weights, EXACTLY
+         AS UPSTREAM SHIPS THEM - files and names untouched, from the v2.304
+         release. It is OFL with fsType 0, so it can be redistributed and
+         embedded; that was checked rather than assumed.
 
          The name matters and is easy to get wrong. Upstream sets:
 
-             name ID 1  (family)      "JetBrainsMono NF", "...NF Medium", ...
-             name ID 16 (typographic) "JetBrainsMono Nerd Font"   - all four
-             name ID 17 (subfamily)   Regular / Medium / SemiBold / Bold
+             Regular, Bold        name ID 1 "JetBrains Mono", no ID 16
+             Medium, SemiBold     name ID 1 "JetBrains Mono Medium" / "...SemiBold",
+                                  name ID 16 "JetBrains Mono"
 
-         WPF resolves a family by ID 16 when it is present, so referencing
-         "#JetBrainsMono Nerd Font" gets one family with all four weights, and
-         the differing ID 1 values are irrelevant.
+         WPF takes ID 16 when present and ID 1 otherwise, so all four resolve to
+         "JetBrains Mono": one family, four weights. Check `bundled-font` holds
+         this, because getting it wrong is silent.
 
-         0.99.61 renamed these files "to fold the weights into one family". That
-         was solving a problem upstream had already solved, and the rename set
-         ID 16 on two of the four - which SPLIT the family: Regular and Bold kept
-         the upstream typographic name, Medium and SemiBold got the new one. The
-         reference then matched a family containing only 500 and 600, a 400
+         0.99.61 renamed the previous files "to fold the weights into one family".
+         That was solving a problem upstream had already solved, and the rename
+         set ID 16 on two of the four - which SPLIT the family: Regular and Bold
+         kept the upstream typographic name, Medium and SemiBold got the new one.
+         The reference then matched a family containing only 500 and 600, a 400
          request found nothing, and WPF fell back to the system UI font. The
          entire interface silently stopped being monospaced.
 
          The rule this leaves: check name ID 16 before renaming anything, and
          prefer not renaming at all.
 
-         It costs about 9.5MB for 12,503 glyphs per weight - a deliberate trade.
+         Until 0.99.153 this was JetBrainsMono Nerd Font: the same 2.304 face
+         with about 10,400 icon glyphs patched in, at 2.4MB per weight. GunWall
+         drew none of them - every icon is a vector path, and no private-use code
+         point appears in the source. Against 2.304 the Nerd build differed only
+         in 13 glyphs it redrew as icons (U+23FB-23FE, U+26A1, U+2B58 and Powerline
+         private-use points), none of which the interface uses; every width, the
+         typographic line metrics, and every other outline are identical. The
+         plain face is about 270KB per weight.
 
          Instrument Sans remains embedded and selectable. A user-chosen face is
          resolved from the fonts INSTALLED on the machine rather than shipped
@@ -308,15 +316,12 @@
          bundled fonts are broken" rather than "the constructor is wrong".
 
          Code now copies these objects instead of rebuilding them. -->
-    <FontFamily x:Key="UiFontMono">pack://application:,,,/Fonts/#JetBrainsMono Nerd Font</FontFamily>
+    <FontFamily x:Key="UiFontMono">pack://application:,,,/Fonts/#JetBrains Mono</FontFamily>
     <FontFamily x:Key="UiFontSans">pack://application:,,,/Fonts/#Instrument Sans</FontFamily>
 
-    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#JetBrainsMono Nerd Font</FontFamily>
-    <!-- Machine values take the same family as the interface. The Nerd Font build
-         IS JetBrains Mono with an icon set patched in - identical metrics, same
-         drawing - so bundling the stock face alongside it would have meant about
-         11MB of near-duplicate outlines to gain nothing. -->
-    <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrainsMono Nerd Font</FontFamily>
+    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#JetBrains Mono</FontFamily>
+    <!-- Machine values take the same family as the interface. -->
+    <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#JetBrains Mono</FontFamily>
 
     <!-- Type ramp, SPEC.md section 3. Body is 13 and table cells 12.5; the
          design never uppercases anything above 12px, and its tracking widens as

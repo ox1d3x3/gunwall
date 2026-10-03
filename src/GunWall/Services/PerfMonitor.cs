@@ -57,25 +57,41 @@ public static class PerfMonitor
     {
         private readonly string? _name;
         private readonly long _start;
-        internal Scope(string name) { _name = name; _start = Stopwatch.GetTimestamp(); }
-        public void Dispose() { if (_name != null) End(_name, _start); }
+        private readonly int _thread;
+        internal Scope(string name)
+        {
+            _name = name; _start = Stopwatch.GetTimestamp();
+            _thread = Environment.CurrentManagedThreadId;
+        }
+        public void Dispose() { if (_name != null) End(_name, _start, _thread); }
     }
 
-    private static void End(string name, long start)
+    /// <summary>The UI thread, recorded by Start(). Only work done on it can
+    /// explain a UI freeze.</summary>
+    private static int _uiThread = -1;
+
+    private static void End(string name, long start, int thread)
     {
         long now = Stopwatch.GetTimestamp();
         long d = now - start;
         bool logSlow = false;
+        bool onUi = thread == _uiThread;
         lock (Gate)
         {
             if (!Ops.TryGetValue(name, out var o)) Ops[name] = o = new OpStats();
             o.Count++; o.Total += d; if (d > o.Max) o.Max = d;
             o.SCount++; o.STotal += d; if (d > o.SMax) o.SMax = d;
 
-            if (Ms(d) >= 50) { _lastLongName = name; _lastLongTicks = d; _lastLongEnd = now; }
+            // Only UI-thread work can be a freeze's cause. Background work - the
+            // startup reconcile, the purge, warming caches - runs in parallel with
+            // the UI thread, and crediting a freeze to it would send an
+            // optimisation after code that never blocked anything.
+            if (onUi && Ms(d) >= 50) { _lastLongName = name; _lastLongTicks = d; _lastLongEnd = now; }
             if (Ms(d) >= SlowOpMs && Ms(now - _lastSlowLog) >= 5000) { _lastSlowLog = now; logSlow = true; }
         }
-        if (logSlow) DiagnosticLog.Log($"Perf: slow operation {name} took {Ms(d):F0} ms.");
+        if (logSlow)
+            DiagnosticLog.Log($"Perf: slow operation {name} took {Ms(d):F0} ms"
+                            + (onUi ? " on the UI thread." : " in the background."));
     }
 
     // ---- UI responsiveness ------------------------------------------------
@@ -85,36 +101,66 @@ public static class PerfMonitor
     private static double _lagMax, _sLagMax;
     private static long _stalls, _sStalls, _lastStallLog, _stallsUnlogged;
 
-    /// <summary>Records how long the UI thread took to run a probe posted to it.</summary>
-    public static void RecordUiLag(double ms)
+    // Hidden time, kept apart. The first 24-hour bundle mixed the two: overnight,
+    // with the window hidden and every measured operation under a millisecond,
+    // waits sat at 16-50 ms - multiples of the 15.6 ms timer tick, the signature
+    // of Windows throttling a background process - and 132 unattributed
+    // "freezes" were logged. Mixed in, they read as a responsiveness problem the
+    // user never experiences.
+    private static double _hidMax, _sHidMax;
+    private static long _hidProbes, _sHidProbes, _hidStalls, _sHidStalls;
+
+    /// <summary>
+    /// Records how long the UI thread took to run a probe posted to it, and
+    /// whether the window was on screen. Responsiveness figures are for visible
+    /// time only - that is what a person feels. Hidden waits are counted
+    /// separately, and a hidden freeze is logged only when a measured operation
+    /// caused it, since that is real work rather than the system idling a
+    /// background process.
+    /// </summary>
+    public static void RecordUiLag(double ms, bool onScreen)
     {
-        int b = 0;
-        while (b < LagEdges.Length && ms >= LagEdges[b]) b++;
-        string? stallLine = null;
+        string? line = null;
         lock (Gate)
         {
-            LagHist[b]++; SLagHist[b]++;
-            if (ms > _lagMax) _lagMax = ms;
-            if (ms > _sLagMax) _sLagMax = ms;
-            if (ms < StallMs) return;
-
-            _stalls++; _sStalls++;
             long now = Stopwatch.GetTimestamp();
-            // Attribute the freeze to the longest recent operation if that
-            // operation finished inside the window the probe was waiting in.
-            bool attributed = _lastLongTicks > 0
+            bool attributed = ms >= StallMs && _lastLongTicks > 0
                 && Ms(now - _lastLongEnd) <= ms + 100
                 && Ms(_lastLongTicks) >= ms * 0.5;
-            if (Ms(now - _lastStallLog) < 5000) { _stallsUnlogged++; return; }
-            _lastStallLog = now;
-            string extra = _stallsUnlogged > 0 ? $" ({_stallsUnlogged} more since the last report)" : "";
-            _stallsUnlogged = 0;
-            stallLine = attributed
-                ? $"Perf: UI froze for {ms:F0} ms - {_lastLongName} took {Ms(_lastLongTicks):F0} ms.{extra}"
-                : $"Perf: UI froze for {ms:F0} ms - unattributed: no measured operation explains it, "
-                  + $"so the cause is in code not yet measured.{extra}";
+
+            if (!onScreen)
+            {
+                _hidProbes++; _sHidProbes++;
+                if (ms > _hidMax) _hidMax = ms;
+                if (ms > _sHidMax) _sHidMax = ms;
+                if (ms < StallMs) return;
+                _hidStalls++; _sHidStalls++;
+                if (!attributed || Ms(now - _lastStallLog) < 5000) return;
+                _lastStallLog = now;
+                line = $"Perf: UI froze for {ms:F0} ms while hidden - {_lastLongName} took "
+                     + $"{Ms(_lastLongTicks):F0} ms.";
+            }
+            else
+            {
+                int b = 0;
+                while (b < LagEdges.Length && ms >= LagEdges[b]) b++;
+                LagHist[b]++; SLagHist[b]++;
+                if (ms > _lagMax) _lagMax = ms;
+                if (ms > _sLagMax) _sLagMax = ms;
+                if (ms < StallMs) return;
+
+                _stalls++; _sStalls++;
+                if (Ms(now - _lastStallLog) < 5000) { _stallsUnlogged++; return; }
+                _lastStallLog = now;
+                string extra = _stallsUnlogged > 0 ? $" ({_stallsUnlogged} more since the last report)" : "";
+                _stallsUnlogged = 0;
+                line = attributed
+                    ? $"Perf: UI froze for {ms:F0} ms - {_lastLongName} took {Ms(_lastLongTicks):F0} ms.{extra}"
+                    : $"Perf: UI froze for {ms:F0} ms - unattributed: no measured operation explains it, "
+                      + $"so the cause is in code not yet measured.{extra}";
+            }
         }
-        DiagnosticLog.Log(stallLine);
+        if (line != null) DiagnosticLog.Log(line);
     }
 
     // ---- frames -------------------------------------------------------------
@@ -127,13 +173,30 @@ public static class PerfMonitor
     private static readonly List<(string Phase, double Ms)> Startup = new();
     private static bool _startupLogged;
 
-    /// <summary>Marks a startup phase, in milliseconds since the process started.</summary>
+    private static DateTime? _processStart;
+    private const int MaxStartupMarks = 16;
+
+    /// <summary>
+    /// Marks a startup phase, in milliseconds since the process started.
+    ///
+    /// Bounded, and allocation-free after the first call. A mark placed where it
+    /// ran once a second instead of once - which happened - must not become a
+    /// list that grows for the life of the process, or an undisposed Process
+    /// object per call.
+    /// </summary>
     public static void MarkStartup(string phase)
     {
-        double ms;
-        try { ms = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds; }
-        catch { return; }
-        lock (Gate) Startup.Add((phase, ms));
+        if (_processStart is null)
+        {
+            try { using var p = Process.GetCurrentProcess(); _processStart = p.StartTime; }
+            catch { return; }
+        }
+        double ms = (DateTime.Now - _processStart.Value).TotalMilliseconds;
+        lock (Gate)
+        {
+            if (_startupLogged || Startup.Count >= MaxStartupMarks) return;
+            Startup.Add((phase, ms));
+        }
     }
 
     /// <summary>Writes the startup phases as one line, once.</summary>
@@ -164,6 +227,7 @@ public static class PerfMonitor
         lock (Gate)
         {
             if (_timer != null) return;
+            _uiThread = Environment.CurrentManagedThreadId;   // Start() is called on the UI thread
             using (var p = Process.GetCurrentProcess()) { _lastCpu = _cpuAtStart = p.TotalProcessorTime; }
             _lastPause = GC.GetTotalPauseDuration();
             _lastSampleAt = DateTime.UtcNow;
@@ -193,9 +257,11 @@ public static class PerfMonitor
             ops = FormatOps(window: true);
             lag = FormatLag(LagHist, _lagMax);
             long stalls = _stalls;
-            Array.Clear(LagHist); _lagMax = 0; _stalls = 0;
-            foreach (var o in Ops.Values) { o.Count = 0; o.Total = 0; o.Max = 0; }
             lag += stalls > 0 ? $", freezes {stalls}" : "";
+            lag += $"] hidden[{_hidProbes} probes, max {_hidMax:F0} ms, freezes {_hidStalls}";
+            Array.Clear(LagHist); _lagMax = 0; _stalls = 0;
+            _hidProbes = 0; _hidMax = 0; _hidStalls = 0;
+            foreach (var o in Ops.Values) { o.Count = 0; o.Total = 0; o.Max = 0; }
         }
 
         string line =
@@ -234,11 +300,12 @@ public static class PerfMonitor
         List<(string, double)> startup;
         lock (Gate)
         {
-            lag = FormatLag(SLagHist, _sLagMax) + $", freezes {_sStalls}";
+            lag = FormatLag(SLagHist, _sLagMax) + $", freezes {_sStalls}"
+                + $"] hidden[{_sHidProbes} probes, max {_sHidMax:F0} ms, freezes {_sHidStalls}";
             ops = FormatOps(window: false);
             startup = Startup.ToList();
         }
-        yield return $"Performance: ui responsiveness [{lag}]";
+        yield return $"Performance: ui responsiveness while visible [{lag}]";
         yield return $"Performance: costliest operations | {ops}";
         if (startup.Count > 0)
             yield return "Performance: startup " + string.Join(", ", startup.Select(s => $"{s.Item1} {s.Item2:F0} ms"));

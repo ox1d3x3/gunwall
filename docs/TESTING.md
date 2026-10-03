@@ -227,6 +227,26 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.153 — fixes from the 24-hour run, and the font
+
+**Font — check first, it is visible at once.**
+1. Open GunWall. All text should look exactly as in 0.99.152.
+2. **PASS:** the same letters, and every list row the same height as before —
+   compare one screenshot of the Apps list against an old one if you have it.
+   **FAIL:** any text in a different typeface, or rows visibly taller or shorter.
+3. **Settings → Appearance:** the default reads "JetBrains Mono (bundled
+   default)", and selecting it keeps the same look.
+4. The published folder should be about 8.5 MB smaller.
+
+**Fixes.**
+5. Launch, then open the **Apps** tab within a few seconds. **PASS:** no multi-second
+   stall on that first open.
+6. Run normally for several hours, including time minimised, then export.
+   **PASS:** `Errors this session: 0`; no log line longer than a few hundred
+   characters; `Performance: ui responsiveness while visible [...] hidden[...]`
+   present; no `RebuildAppsList` freeze; `GraphTimer_Tick` absent from the
+   five-minute lines while the window was minimised.
+
 ### 0.99.152 — the 24-hour run
 
 Use GunWall normally for a day: leave it in the tray, game, switch tabs, run a

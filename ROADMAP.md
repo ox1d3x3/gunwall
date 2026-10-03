@@ -136,12 +136,14 @@ Ranked by evidence. Items below the line are measured from 0.99.152 onwards by
   string per entry, and a 4 MB parse in the window's constructor, on the UI thread
   before the window appears. Streaming and shared strings, proven with a benchmark
   like `tools/bench/geoip`. Its cost now appears in the startup line.
-- ☐ **Embedded fonts** — 9.6 MB of the 10.2 MB of embedded fonts are four weights of
-  JetBrains Mono *Nerd Font*, whose additions are icon glyphs. GunWall uses none:
-  every icon is a vector path, and no private-use code point appears anywhere in
-  the source. Plain JetBrains Mono has identical letters at roughly a tenth of the
-  size. A visual-asset change, so a maintainer decision; the family name in
-  `UiFont` and the advance width read by `hint-width` both need checking.
+- ✅ **Embedded fonts** *(0.99.153)* — plain JetBrains Mono 2.304 replaces the Nerd
+  Font build of the same version: 9.6 MB to 1.1 MB. Measured identical in every
+  width, the line metrics and all but 13 outlines, which the patcher had redrawn as
+  icons and the interface does not use.
+- ✅ **First application-list build off the UI thread** *(0.99.153)* — signature and
+  icon caches warmed in the background; the first build froze the UI for up to 3.3 s
+- ✅ **Graph timer stops while hidden** *(0.99.153)* — ~980 idle ticks per five
+  minutes with nothing on screen
 - ☐ **GeoIP parse garbage** — a load still allocates 518 MB of short-lived data,
   mostly from splitting each line. Span-based parsing would cut it, at the cost of
   rewriting the parser; the benchmark exists to prove the answers do not move.

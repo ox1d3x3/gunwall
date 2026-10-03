@@ -32,6 +32,8 @@ public static class SignatureService
         if (string.IsNullOrWhiteSpace(exePath)) return SignatureInfo.Unknown;
         return Cache.GetOrAdd(exePath, path =>
         {
+            // Uncached only: the per-file cost the first list build pays.
+            using var _perf = PerfMonitor.Measure("Verify");
             try
             {
                 if (!File.Exists(path)) return SignatureInfo.Unknown;

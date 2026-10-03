@@ -908,3 +908,20 @@ Recorded so they are not mistaken for oversights:
 - **Four table columns the design shows** — Rules `HITS`, Windows services
   `Action`, Network scan `Vendor` and `Latency`, Traffic `Share`. Each needs a
   feature behind it. An empty column looks like conformance and means nothing.
+
+
+### 2.42 A line that only looks inside a block
+
+0.99.152 added two lines after `DiagnosticLog.Log("First snapshot applied...")`,
+indented to match it. That log line was the whole body of a brace-less `if`. The
+new lines looked inside the condition and were not: they ran on every snapshot,
+once a second, for the life of the process. `MarkStartup` appended to a list each
+time and created a `Process` object it never disposed; after 6.7 hours the export
+wrote a 1.36 MB startup line. Found in the first 24-hour bundle.
+
+**What to check:** before inserting after a line, find the statement that owns it.
+Indentation is a claim about structure that the compiler does not read.
+`misleading-indent` fails any line indented as part of a brace-less body, and
+`PerfMonitor.MarkStartup` is now bounded regardless of where it is called — so a
+mark misplaced again costs nothing. A recorder should be bounded by design, not by
+the correctness of every call site.

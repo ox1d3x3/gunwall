@@ -294,6 +294,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Services.PerfMonitor.MarkStartup("engine");
             Services.PerfMonitor.Start();     // five-minute performance summary
             StartUiLagProbe();                // freezes caught as they happen
+            WarmAppCaches(DistinctPaths(_firewall.GetRules().Select(r => r.ExecutablePath)));
             _engineReady = true;
 
             // AFTER Initialize(), because that is where the store is read. Placed
@@ -407,11 +408,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
             catch { }
 
-            UpdateGraphFrameHook();   // frame-driven graph, attached only while on screen
+            // Timer first, then the hook decides whether it runs - the hook used to
+            // run before the timer existed, and the timer was then started
+            // unconditionally whatever the window's state.
             _graphTimer = new System.Windows.Threading.DispatcherTimer
             { Interval = TimeSpan.FromMilliseconds(250) };
             _graphTimer.Tick += GraphTimer_Tick;
-            _graphTimer.Start();
+            UpdateGraphFrameHook();   // frame hook and sampling timer, only while on screen
             InitGeoSourceUi();        // reflect saved GeoIP source (local / API)
             InitDnsPanel();           // §3 reflect saved local-resolver settings
             _usage.LoadFrom(UsageHistoryPath);   // 24h usage survives restarts
@@ -433,7 +436,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.152 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.153 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -557,10 +560,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 var snap = await Task.Run(() => CollectSnapshot(), ct);
                 ApplySnapshot(snap); // continuation resumes on the UI thread
+                // Braced. These two lines were added under a brace-less if and only
+                // LOOKED inside it: they ran on every snapshot, once a second, for the
+                // life of the process - a growing list and an undisposed Process object
+                // per second. Caught in the first 24-hour bundle (trap 2.42).
                 if (_sampleTicks == 0)
+                {
                     Services.DiagnosticLog.Log($"First snapshot applied: {snap.Conns.Count} connections.");
                     Services.PerfMonitor.MarkStartup("first snapshot");
                     Services.PerfMonitor.LogStartup();
+                    // Second pass: running applications, which the list also shows.
+                    WarmAppCaches(DistinctPaths(
+                        _processes.GetAllApps(_lastConns, _lastProcs).Select(app => app.ExecutablePath)));
+                }
                 _sampleTicks++;
             }
             catch (OperationCanceledException) { return; }
@@ -3892,8 +3904,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // happened a quarter-second ago — real-time, not a delayed recording.
     private void GraphTimer_Tick(object? sender, EventArgs e)
     {
+        // Guarded as well as stopped, and measured only past the guard, so the
+        // timing reflects drawing rather than ticks that did nothing.
+        if (!OnScreen || PanelDashboard == null || PanelDashboard.Visibility != Visibility.Visible) return;
         using var _perf = PerfMonitor.Measure("GraphTimer_Tick");
-        if (PanelDashboard == null || PanelDashboard.Visibility != Visibility.Visible) return;
         try
         {
             var (rx, tx) = _monitor.GetCumulativeBytes();
@@ -3967,6 +3981,63 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (OnScreen && IsLoaded) RefreshVisiblePanel();
     }
 
+    /// <summary>
+    /// Fills the signature and icon caches on a background thread, so the first
+    /// build of the application list finds them ready.
+    ///
+    /// The first 24-hour bundle showed RebuildAppsList taking 3.3 s, 2.8 s and
+    /// 2.5 s, freezing the UI for 3.3 s, 1.9 s and 1.7 s - once per launch, on the
+    /// first build, which pays for a
+    /// signature check and an icon extraction per application. Every later build
+    /// is fast because both are cached. This does that first round off the UI
+    /// thread.
+    ///
+    /// Mirrors what the list asks for: icons for every application, signatures
+    /// only outside the Windows folder, which ComputeCategory treats as System
+    /// without verifying. STA, because icon extraction goes through the shell;
+    /// below-normal priority, because nothing waits on it. Both caches are
+    /// concurrent and the icons are frozen before caching, so the UI thread can
+    /// use what this thread made. If the list is built before this finishes, it
+    /// computes whatever is still missing exactly as before.
+    /// </summary>
+    private static void WarmAppCaches(List<string> paths)
+    {
+        if (paths.Count == 0) return;
+        string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var t = new System.Threading.Thread(() =>
+        {
+            using (PerfMonitor.Measure("WarmAppCaches"))
+            {
+                foreach (string path in paths)
+                {
+                    bool system = win.Length > 0
+                        && path.StartsWith(win, StringComparison.OrdinalIgnoreCase);
+                    if (!system)
+                    {
+                        try { Services.SignatureService.Verify(path); } catch { }
+                    }
+                    try { Services.IconService.GetIcon(path); } catch { }
+                }
+            }
+            // Creating the icons gave this thread a Dispatcher it will never run.
+            try { System.Windows.Threading.Dispatcher.FromThread(System.Threading.Thread.CurrentThread)?.InvokeShutdown(); }
+            catch { }
+        })
+        {
+            IsBackground = true,
+            Name = "GunWall-WarmAppCaches",
+            Priority = System.Threading.ThreadPriority.BelowNormal,
+        };
+        t.SetApartmentState(System.Threading.ApartmentState.STA);
+        t.Start();
+    }
+
+    private static List<string> DistinctPaths(IEnumerable<string?> paths) =>
+        paths.Where(p => !string.IsNullOrWhiteSpace(p))
+             .Select(p => p!)
+             .Distinct(StringComparer.OrdinalIgnoreCase)
+             .ToList();
+
     private int _uiProbeOutstanding;
 
     /// <summary>
@@ -3993,8 +4064,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     long t0 = Stopwatch.GetTimestamp();
                     _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() =>
                     {
+                        // OnScreen is read here, on the UI thread, where WPF allows it.
                         Services.PerfMonitor.RecordUiLag(
-                            (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency);
+                            (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency,
+                            OnScreen);
                         System.Threading.Interlocked.Exchange(ref _uiProbeOutstanding, 0);
                     }));
                 }
@@ -4023,6 +4096,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         bool want = IsVisible
                  && WindowState != WindowState.Minimized
                  && PanelDashboard?.Visibility == Visibility.Visible;
+
+        // The sampling timer follows the same rule. It was stopped only by the
+        // tab, so with the Dashboard selected and the window minimised it went on
+        // reading counters and redrawing four times a second - 1,175 ticks at
+        // about 6 ms per five minutes in the first 24-hour bundle, with zero
+        // frames on screen. Stopped, it does not even wake the thread. On return
+        // the first tick averages over the gap, as it always did after a tab
+        // switch.
+        if (_graphTimer != null) _graphTimer.IsEnabled = want;
+
         if (want == _graphFrameHooked) return;
 
         if (want) System.Windows.Media.CompositionTarget.Rendering += OnGraphFrame;
@@ -5103,7 +5186,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _fontUiLoading = true;
         try
         {
-            var names = new List<string> { "JetBrainsMono Nerd Font (bundled default)", "Instrument Sans (bundled)" };
+            var names = new List<string> { "JetBrains Mono (bundled default)", "Instrument Sans (bundled)" };
             names.AddRange(System.Windows.Media.Fonts.SystemFontFamilies
                 .Select(f => f.Source)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
