@@ -45,10 +45,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 - ✅ **Ads & trackers takes the whole internet down** *(0.99.159)* — removed: it only
   switched DNS to AdGuard, and the failure lies outside GunWall. The Filtering DNS
   card uses the same mechanism and now logs every change to diagnostics.
-- ☐ **Signature check on the UI thread for a newly seen application** *(0.99.154
-  bundle)* — `Verify` took 805 ms on the UI thread inside `RebuildAppsList`,
-  freezing the UI for 518 ms. Launch-time warming covers applications known at
-  launch, not ones that appear later. Verify in the background and update the row.
+- ✅ **Signature check off the UI thread for new applications** *(0.99.160)*
 - ☐ **Two unattributed freezes per hour of use, 270–410 ms** *(0.99.154 bundle)* —
   no measured operation explains them, so the cause is UI work not yet timed;
   likely the first render of a panel. Time tab switches to attribute them.

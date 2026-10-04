@@ -1785,6 +1785,16 @@ public sealed class FirewallManager : IDisposable
     }
 
     public bool TamperWatchEnabled => _data.TamperWatchEnabled;
+
+    public bool RememberApprovalsAcrossProtection => _data.RememberApprovalsAcrossProtection;
+
+    public void SetRememberApprovals(bool on)
+    {
+        if (_data.RememberApprovalsAcrossProtection == on) return;
+        _data.RememberApprovalsAcrossProtection = on;
+        SaveStore();
+        DiagnosticLog.Log($"Setting: remember approvals across a protection cycle {(on ? "ON" : "OFF")}.");
+    }
     public void SetTamperWatch(bool on)
     {
         if (_data.TamperWatchEnabled == on) return;
@@ -1817,8 +1827,18 @@ public sealed class FirewallManager : IDisposable
             // When taking full control, forget the "already seen" list so every
             // app must be approved or denied again — the whitelist starts fresh,
             // and the user gets a prompt the next time each app connects.
-            _data.KnownApps.Clear();
-            _knownSet = null;
+            // Unless the user chose to keep them (Settings): then approvals made
+            // before protection went OFF still stand, and nothing re-prompts.
+            // (No else here: checks find the end of this branch at its first "else".)
+            bool keepApprovals = _data.RememberApprovalsAcrossProtection;
+            if (keepApprovals)
+                DiagnosticLog.Log($"Protection ON: kept {_data.KnownApps.Count} approval(s) - "
+                                + "remember approvals across a protection cycle is on.");
+            if (!keepApprovals)
+            {
+                _data.KnownApps.Clear();
+                _knownSet = null;
+            }
             SaveStore();
 
             // 2) Re-create permits for previously allowed apps.
@@ -3590,13 +3610,31 @@ public sealed class FirewallManager : IDisposable
     }
 
     /// <summary>Baked-in + downloaded domains for a category, de-duplicated.</summary>
+    // Parsed lists, keyed by category and stamped with the list file's time and size,
+    // so a refreshed list is re-read and an unchanged one never is. DomainsFor read
+    // and parsed the file on every call - including once per Security card while the
+    // tab drew, on the UI thread: the 251 ms "froze on Security" in the 0.99.159 bundle.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Stamp, List<string> Domains)>
+        _domainsCache = new(StringComparer.Ordinal);
+
     private List<string> DomainsFor(Models.BlocklistCategory cat)
     {
+        using var _perf = PerfMonitor.Measure("DomainsFor");
+        string f = System.IO.Path.Combine(ListsFolder, cat.Key + ".txt");
+        string stamp;
+        try
+        {
+            var fi = new System.IO.FileInfo(f);
+            stamp = fi.Exists ? $"{fi.LastWriteTimeUtc.Ticks}:{fi.Length}" : "none";
+        }
+        catch { stamp = "unreadable"; }
+        if (_domainsCache.TryGetValue(cat.Key, out var hit) && hit.Stamp == stamp)
+            return new List<string>(hit.Domains);   // a copy: callers may change theirs
+
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var h in cat.Hosts) set.Add(h);
         try
         {
-            string f = System.IO.Path.Combine(ListsFolder, cat.Key + ".txt");
             if (System.IO.File.Exists(f))
                 foreach (var line in System.IO.File.ReadAllLines(f))
                 {
@@ -3605,7 +3643,17 @@ public sealed class FirewallManager : IDisposable
                 }
         }
         catch { }
-        return set.ToList();
+        var list = set.ToList();
+        _domainsCache[cat.Key] = (stamp, list);
+        return new List<string>(list);
+    }
+
+    /// <summary>Parses every list once, off the UI thread, so the Security tab's
+    /// first draw finds them ready. Called from the startup task.</summary>
+    public void WarmBlocklistDomains()
+    {
+        foreach (var c in Models.BlocklistCatalog.All)
+            try { DomainsFor(c); } catch { }
     }
 
     public bool IsBlocklistOn(string key)

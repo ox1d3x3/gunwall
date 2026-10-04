@@ -227,6 +227,20 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.160 — no freezes for new apps or the Security tab; approvals setting
+
+1. Start an application GunWall has not seen before (a portable one is easiest) while
+   the **Apps** tab is open. **PASS:** it appears straight away with "Checking…" as
+   publisher, which becomes the real publisher and icon within a second or two; no
+   `UI froze` line naming `RebuildAppsList` or `Verify`.
+2. Open the **Security** tab for the first time after launch. **PASS:** no `UI froze
+   ... on Security`.
+3. **Settings:** "Remember approvals when protection is turned off and on again" is
+   **unticked**. Turn protection OFF and ON. **PASS:** applications prompt again, as
+   before.
+4. Tick it. Turn protection OFF and ON. **PASS:** no re-prompts; the log shows
+   `Protection ON: kept N approval(s)`.
+
 ### 0.99.159 — Ads & trackers removed
 
 1. **Security → Blocklists**: only Telemetry and Windows Update remain; no Ads &

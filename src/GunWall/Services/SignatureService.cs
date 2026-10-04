@@ -64,6 +64,15 @@ public static class SignatureService
 
     /// <summary>A short publisher label for lists ("Microsoft...", "Unsigned",
     /// "Invalid signature").</summary>
+    /// <summary>The publisher label if this file was verified already, else null.
+    /// Never verifies: the Apps list must not wait on WinVerifyTrust on the UI
+    /// thread - 805 ms for one new application in the 0.99.154 bundle.</summary>
+    public static string? PublisherLabelIfKnown(string exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath)) return PublisherLabel(exePath);
+        return Cache.ContainsKey(exePath) ? PublisherLabel(exePath) : null;
+    }
+
     public static string PublisherLabel(string exePath)
     {
         var s = Verify(exePath);

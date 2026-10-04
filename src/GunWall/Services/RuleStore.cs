@@ -413,6 +413,9 @@ public sealed class StoreData
     /// <summary>Periodically confirm GunWall's filters are still in the kernel,
     /// and re-apply them if something removed them (default: on).</summary>
     public bool TamperWatchEnabled { get; set; } = true;
+    /// <summary>Keep approvals when protection goes OFF and back ON. Off by default:
+    /// zero-trust re-prompts every application after a protection cycle.</summary>
+    public bool RememberApprovalsAcrossProtection { get; set; }
 
     /// <summary>Alerts-page categories the user has silenced
     /// (security / protection / network / rules).</summary>

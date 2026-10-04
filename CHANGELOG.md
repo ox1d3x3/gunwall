@@ -15,6 +15,46 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.160] — 2026-10-04
+
+### Verified — 0.99.159 on hardware
+Ads & trackers gone; DNS automatic; both blocklists switched on and off twice through
+the WFP fallback (117/119 and 67/68 filters — addresses vary between lookups); 0
+errors; all filters present.
+
+### Fixed — a new application froze the Apps list while its signature was checked
+`RebuildAppsList` verified signatures and extracted icons inline; for an application
+that appeared after launch that meant WinVerifyTrust on the UI thread — 805 ms,
+freezing the UI for 518 ms, in the 0.99.154 bundle. It now only *peeks* at the
+caches (`SignatureService.PublisherLabelIfKnown`, `IconService.TryGetCached`). A
+missing entry shows "Checking…", is filled by the existing background warmer, and
+the list redraws once when the batch completes. Each path is queued at most once, so
+a fill cannot loop; one that finishes uncached shows "Unknown". Launch-time warming
+goes through the same path, so nothing is warmed twice.
+
+### Fixed — the Security tab froze on its first draw
+Each blocklist card counted its domains by re-reading and re-parsing the list file,
+on the UI thread — the 251 ms "froze on Security" in the 0.99.159 bundle. Parsed
+lists are now cached, stamped with the file's time and size so a refreshed list is
+re-read and an unchanged one never is; the cache is warmed in the startup task; and
+`BuildBlocklistCard` and `DomainsFor` are timed, so if anything else is slow there,
+the next bundle names it. Callers get a copy, so none can change the cached list.
+
+### Added — remember approvals across a protection cycle (Settings)
+Turning protection OFF and ON cleared every approval, so each application prompted
+again. That stays the default — the strictest choice — and a new setting beside
+"Watch for tampering" keeps approvals instead: **Remember approvals when protection is
+turned off and on again**. Logged either way.
+
+### Check `fill-approvals`
+The Apps list never computes a signature or icon; a path is queued once and marked
+done; lists cached by stamp and warmed at startup; approvals kept only when the
+setting is on; off by default; the checkbox loads and saves it. 9 mutations, each
+shown failing — one escaped the first version (`if (false && …)` still contained the
+condition's text) and the check now anchors the whole condition.
+
+---
+
 ## [0.99.159] — 2026-10-04
 
 ### Verified — 0.99.158 on hardware

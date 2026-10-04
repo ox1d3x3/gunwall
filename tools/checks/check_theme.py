@@ -1954,6 +1954,51 @@ def _method_body(src, name):
     return m.group(0) if m else ""
 
 
+def check_fill_and_approvals():
+    """No signature check or list parse on the UI thread; approvals kept only by choice.
+
+    0.99.160. Verifying one newly seen application inside RebuildAppsList took
+    805 ms on the UI thread; parsing blocklist files while the Security tab drew
+    froze it for 251 ms. And protection ON always cleared approvals - now a setting,
+    off by default (strictest).
+    """
+    before = len(failures)
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    ral = _method_body(mw, "RebuildAppsList")
+    for call in ("SignatureService.PublisherLabel(", "SignatureService.Verify(", "IconService.GetIcon("):
+        if call in ral:
+            fail("fill-approvals", f"RebuildAppsList calls {call} - it computes on the UI thread instead of peeking")
+    need = _method_body(mw, "NeedAppCacheFill")
+    if "_appFillDone.Contains(path)) return false;" not in need or "if (_appFillQueued.Add(path))" not in need:
+        fail("fill-approvals", "a path can be queued for filling more than once - the fill could loop")
+    fill = _method_body(mw, "FillAppCachesInBackground")
+    if "_appFillDone.Add(p)" not in fill or "RebuildAppsList()" not in fill:
+        fail("fill-approvals", "a finished fill is not marked done and redrawn")
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    df = _method_body(fm, "DomainsFor")
+    # The whole condition, anchored: "if (false && _domainsCache...)" contains the same text.
+    if not re.search(r"if \(_domainsCache\.TryGetValue\(cat\.Key, out var hit\) && hit\.Stamp == stamp\)", df):
+        fail("fill-approvals", "DomainsFor re-reads its list file on every call")
+    if "_firewall.WarmBlocklistDomains()" not in _method_body(mw, "OnLoaded"):
+        fail("fill-approvals", "the blocklist parse is not warmed at startup")
+    on = _method_body(fm, "SetStrictMode").split("\n        else\n", 1)[0]
+    if not re.search(r"if \(!keepApprovals\)\s*\{\s*_data\.KnownApps\.Clear\(\);", on) \
+            or "bool keepApprovals = _data.RememberApprovalsAcrossProtection;" not in on:
+        fail("fill-approvals", "protection ON clears or keeps approvals regardless of the setting")
+    rs = strip_cs((APP / "Services" / "RuleStore.cs").read_text(encoding="utf-8"))
+    if not re.search(r"public bool RememberApprovalsAcrossProtection \{ get; set; \}\s*\n", rs):
+        fail("fill-approvals", "remembering approvals is not off by default")
+    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
+    if not re.search(r'x:Name="RememberApprovalsCheck"[^>]*Checked="Pref_Changed" Unchecked="Pref_Changed"', xaml, re.S):
+        fail("fill-approvals", "the setting has no wired checkbox")
+    if "RememberApprovalsCheck.IsChecked = _firewall.RememberApprovalsAcrossProtection" not in mw \
+            or "_firewall.SetRememberApprovals(RememberApprovalsCheck?.IsChecked == true)" not in mw:
+        fail("fill-approvals", "the checkbox does not load or save the setting")
+    if len(failures) == before:
+        notes.append("fill-approvals: Apps list peeks and fills in the background once; lists cached "
+                     "by file stamp and warmed; approvals kept only by choice, off by default")
+
+
 def check_ads_removed():
     """Ads & trackers is gone completely, not half-removed.
 
@@ -2377,7 +2422,9 @@ def check_idle_and_bounded():
                           ("ThreadPriority.BelowNormal", "it competes with the UI at normal priority")):
             if need not in w:
                 fail("idle-bounded", f"WarmAppCaches lacks {need}: {why}")
-        if "WarmAppCaches(" not in (loaded.group(0) if loaded else ""):
+        # Since 0.99.160 launch goes through FillAppCachesInBackground, which calls it.
+        lb = loaded.group(0) if loaded else ""
+        if "WarmAppCaches(" not in lb and "FillAppCachesInBackground(" not in lb:
             fail("idle-bounded", "WarmAppCaches is never started at launch")
     for svc, var in (("IconService.cs", "Cache"), ("SignatureService.cs", "Cache")):
         t = strip_cs((APP / "Services" / svc).read_text(encoding="utf-8"))
@@ -6279,6 +6326,7 @@ def main():
     check_list_sync()
     check_effect_layers()
     check_misleading_indentation()
+    check_fill_and_approvals()
     check_ads_removed()
     check_single_instance()
     check_startup_order()

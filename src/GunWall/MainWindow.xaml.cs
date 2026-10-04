@@ -287,7 +287,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Services.PerfMonitor.MarkStartup("engine");
             Services.PerfMonitor.Start();     // five-minute performance summary
             StartUiLagProbe();                // freezes caught as they happen
-            WarmAppCaches(DistinctPaths(_firewall.GetRules().Select(r => r.ExecutablePath)));
+            FillAppCachesInBackground(DistinctPaths(_firewall.GetRules().Select(r => r.ExecutablePath)));
             _engineReady = true;
 
             // AFTER Initialize(), because that is where the store is read. Placed
@@ -342,6 +342,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 }
                 catch (Exception ex) { Services.DiagnosticLog.LogException("StartupGeoIp", ex); }
                 LoadVendorDatabase();   // after the restore: at boot the disk goes to protection first
+                try { _firewall.WarmBlocklistDomains(); } catch { }   // the Security tab draws without parsing
             });
             _firewall.LoadCategoryColors();      // apply any customised category dot colors
             _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
@@ -371,6 +372,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (AlertCatRulesCheck != null) AlertCatRulesCheck.IsChecked = !muted.Contains("rules");
             if (TraySingleClickCheck != null) TraySingleClickCheck.IsChecked = _firewall.TraySingleClick;
             if (TamperWatchCheck != null) TamperWatchCheck.IsChecked = _firewall.TamperWatchEnabled;
+            if (RememberApprovalsCheck != null) RememberApprovalsCheck.IsChecked = _firewall.RememberApprovalsAcrossProtection;
             if (UiZoomCombo != null)
                 UiZoomCombo.SelectedIndex = _firewall.UiZoomPercent switch
                 { 90 => 0, 100 => 1, 110 => 2, 125 => 3, _ => 1 };
@@ -450,7 +452,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.159 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.160 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -584,7 +586,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     Services.PerfMonitor.MarkStartup("first snapshot");
                     Services.PerfMonitor.LogStartup();
                     // Second pass: running applications, which the list also shows.
-                    WarmAppCaches(DistinctPaths(
+                    FillAppCachesInBackground(DistinctPaths(
                         _processes.GetAllApps(_lastConns, _lastProcs).Select(app => app.ExecutablePath)));
                 }
                 _sampleTicks++;
@@ -3207,10 +3209,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             a.Silent = _firewall.IsSilent(a.ExecutablePath);
             a.Hash = _firewall.GetHash(a.ExecutablePath);
             a.Category = ComputeCategory(a.ExecutablePath);
-            a.Publisher = a.Category == AppCategory.System
+            // Peek, never compute: an application that appeared after launch is not
+            // cached, and verifying it here took 805 ms on the UI thread (0.99.154
+            // bundle). Anything missing is filled in the background, then redrawn.
+            string? pub = a.Category == AppCategory.System
                 ? "Windows / system"
-                : Services.SignatureService.PublisherLabel(a.ExecutablePath);
-            a.Icon = Services.IconService.GetIcon(a.ExecutablePath);
+                : Services.SignatureService.PublisherLabelIfKnown(a.ExecutablePath);
+            a.Publisher = pub ?? (NeedAppCacheFill(a.ExecutablePath) ? "Checking\u2026" : "Unknown");
+            if (Services.IconService.TryGetCached(a.ExecutablePath, out var cachedIcon)) a.Icon = cachedIcon;
+            else { a.Icon = null; NeedAppCacheFill(a.ExecutablePath); }
             a.Note = _firewall.GetNote(a.ExecutablePath);
             a.BypassBlocklists = _firewall.BypassesBlocklists(a.ExecutablePath);
             ApplyVtStatus(a);   // §VT cached verdict + auto-queue on first sight
@@ -4041,7 +4048,51 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// use what this thread made. If the list is built before this finishes, it
     /// computes whatever is still missing exactly as before.
     /// </summary>
-    private static void WarmAppCaches(List<string> paths)
+    // Applications whose signature or icon is not cached yet are filled in the
+    // background and the Apps list redrawn once. A path is queued at most once, so a
+    // fill can never loop; one that is done but still uncached shows "Unknown".
+    private readonly HashSet<string> _appFillQueued = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _appFillDone = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _appFillBatch = new();
+    private bool _appFillScheduled;
+
+    /// <summary>Queues a path for a background fill. True while it is still being filled.</summary>
+    private bool NeedAppCacheFill(string path)
+    {
+        if (string.IsNullOrEmpty(path) || _appFillDone.Contains(path)) return false;
+        if (_appFillQueued.Add(path)) _appFillBatch.Add(path);
+        if (!_appFillScheduled && _appFillBatch.Count > 0)
+        {
+            _appFillScheduled = true;   // one batch per rebuild, sent after it finishes
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+                                   new Action(FlushAppCacheFill));
+        }
+        return true;
+    }
+
+    private void FlushAppCacheFill()
+    {
+        _appFillScheduled = false;
+        if (_appFillBatch.Count == 0) return;
+        var batch = new List<string>(_appFillBatch);
+        _appFillBatch.Clear();
+        FillAppCachesInBackground(batch);
+    }
+
+    /// <summary>Warms the caches off the UI thread, then marks the paths done and
+    /// redraws the Apps list once.</summary>
+    private void FillAppCachesInBackground(List<string> paths)
+    {
+        if (paths.Count == 0) return;
+        foreach (var p in paths) _appFillQueued.Add(p);
+        WarmAppCaches(paths, () => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            foreach (var p in paths) _appFillDone.Add(p);
+            try { RebuildAppsList(); } catch { }
+        })));
+    }
+
+    private static void WarmAppCaches(List<string> paths, Action? done = null)
     {
         if (paths.Count == 0) return;
         string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
@@ -4060,6 +4111,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     try { Services.IconService.GetIcon(path); } catch { }
                 }
             }
+            try { done?.Invoke(); } catch { }
             // Creating the icons gave this thread a Dispatcher it will never run.
             try { System.Windows.Threading.Dispatcher.FromThread(System.Threading.Thread.CurrentThread)?.InvokeShutdown(); }
             catch { }
@@ -5993,6 +6045,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private Border BuildBlocklistCard(Models.BlocklistCategory cat)
     {
+        using var _perf = PerfMonitor.Measure("BuildBlocklistCard");
         bool on = _firewall.IsBlocklistOn(cat.Key);
         int count = _firewall.BlocklistDomainCount(cat.Key);
 
@@ -8105,6 +8158,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _firewall.SetAlertCategoryMuted("rules", AlertCatRulesCheck?.IsChecked != true);
         _firewall.SetTraySingleClick(TraySingleClickCheck?.IsChecked == true);
         _firewall.SetTamperWatch(TamperWatchCheck?.IsChecked == true);
+        _firewall.SetRememberApprovals(RememberApprovalsCheck?.IsChecked == true);
         if (UiZoomCombo?.SelectedItem is ComboBoxItem uzi &&
             int.TryParse(uzi.Tag?.ToString(), out int uzv))
         {

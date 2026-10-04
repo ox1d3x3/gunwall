@@ -18,6 +18,14 @@ public static class IconService
     private static readonly ConcurrentDictionary<string, ImageSource?> Cache =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The icon if extracted already (a cached null counts); false when not
+    /// yet. Never extracts - see SignatureService.PublisherLabelIfKnown.</summary>
+    public static bool TryGetCached(string exePath, out ImageSource? icon)
+    {
+        icon = null;
+        return !string.IsNullOrEmpty(exePath) && Cache.TryGetValue(exePath, out icon);
+    }
+
     public static ImageSource? GetIcon(string exePath)
     {
         if (string.IsNullOrWhiteSpace(exePath)) return null;
