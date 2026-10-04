@@ -41,6 +41,22 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 
 ## ☐ Open
 
+### Fix bucket — known faults, reported from use
+- ☐ **Ads & trackers takes the whole internet down** *(reported 2026-10-04,
+  0.99.154)* — switching it on sets every adapter's DNS to AdGuard's plain servers
+  (`SetDnsProvider("adguard")` → `DnsService.Apply`), and all connectivity is lost
+  until it is switched off. The change is logged only to the activity log, never to
+  diagnostics, so the bundle holds no trace of it. First step: log the change —
+  adapters, servers before and after, and a resolution test through the new server
+  — then reproduce with protection on and off, to separate DNS from filtering.
+- ☐ **Signature check on the UI thread for a newly seen application** *(0.99.154
+  bundle)* — `Verify` took 805 ms on the UI thread inside `RebuildAppsList`,
+  freezing the UI for 518 ms. Launch-time warming covers applications known at
+  launch, not ones that appear later. Verify in the background and update the row.
+- ☐ **Two unattributed freezes per hour of use, 270–410 ms** *(0.99.154 bundle)* —
+  no measured operation explains them, so the cause is UI work not yet timed;
+  likely the first render of a panel. Time tab switches to attribute them.
+
 ### App model & visibility
 *Managed C# throughout. No kernel risk.*
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
@@ -129,10 +145,15 @@ Ranked by evidence. Items below the line are measured from 0.99.152 onwards by
   use: 354 MB to 221 MB for the whole application.
 - ✅ **Layout-free animation** *(0.99.151)* — nothing animates a size or margin
 - ✅ **Performance evidence in diagnostics** *(0.99.152)*
-- ☐ **Vendor database load** — the same pattern GeoIP had: `File.ReadAllText`, a
-  string per entry, and a 4 MB parse in the window's constructor, on the UI thread
-  before the window appears. Streaming and shared strings, proven with a benchmark
-  like `tools/bench/geoip`. Its cost now appears in the startup line.
+- ☐ **Vendor database load — re-ranked by cold-boot evidence** *(0.99.154 restart
+  bundle)* — 57 ms warm, but **5.9 s at cold boot**, on the UI thread in the window
+  constructor. It delays the window, the engine and the startup restore: after a
+  restart, filtering came back ~16 s after GunWall launched. Load it off the UI
+  thread, after the restore has started.
+- ☐ **Self-permit installed twice at startup** — `EnsureSelfConnectivity` runs on the
+  UI thread while the reconcile and restore run in the background, so the restore
+  finds those 4 filters present and the repair reinstalls and supersedes them: the
+  constant "4 present / 4 superseded" in every restart log. Benign; order the two.
 - ✅ **Embedded fonts** *(0.99.153)* — plain JetBrains Mono 2.304 replaces the Nerd
   Font build of the same version: 9.6 MB to 1.1 MB. Measured identical in every
   width, the line metrics and all but 13 outlines, which the patcher had redrawn as

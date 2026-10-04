@@ -15,6 +15,44 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.155] — 2026-10-04
+
+### Verified — restart restore (0.99.154), on hardware
+Two system rules on, PC restarted: `444 of 448 filter(s) are absent` →
+`Filtering re-applied: 448 filter(s) installed` → `448/448 present`, 0 errors.
+
+### Fixed — a saved filter id was trusted and deleted without checking whose filter it was (trap 2.44)
+Filter ids are numbers the kernel hands out afresh each boot, and GunWall's filters
+do not survive one. After a restart every saved id names nothing — or a filter that
+another program, Windows' own firewall included, was given that number this time.
+GunWall treated the number as its own:
+
+- the integrity check counted any filter by that number as present
+- every delete went by number alone — and at each startup the self-permit's
+  previous-boot ids were deleted before anything else, numbers that belong to
+  someone else whenever Windows made more boot-time filters than last time
+
+A successful delete was silent, so nothing in the logs can say whether it ever hit
+another program's filter. Every restart log does show "N−4 of N absent" and "4
+superseded removed"; traced, those 4 are GunWall's own self-permit, installed at
+startup on the UI thread while the restore runs in the background — benign, and
+recorded in the roadmap for tidying.
+
+Now a filter counts as GunWall's only if it sits in GunWall's sublayer, read at an
+offset taken from the same `FWPM_FILTER0` definition every add relies on (80 bytes
+on x64, measured, matching the documented layout). `CheckFilters` and
+`MissingFilterIds` count a foreign filter as missing; `TryDeleteFilter` leaves it
+alone, logs that it did, and reports not-found; `RemoveFilters` goes through it.
+
+### Check `own-filters-only`
+Ownership tested on every check and delete; the offset from the struct, not a
+literal; raw deletes only in the three self-tests, which delete a filter created
+moments earlier in the same call; every one of the 15 filter-creation sites places
+its filter in GunWall's sublayer, since the ownership test would otherwise orphan
+it. 8 mutations, each shown failing.
+
+---
+
 ## [0.99.154] — 2026-10-04
 
 ### Fixed — features switched on did not come back after a restart, or after protection OFF and ON (trap 2.43)

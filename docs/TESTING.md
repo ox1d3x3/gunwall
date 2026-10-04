@@ -227,6 +227,15 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.155 — GunWall touches only its own filters
+
+1. Switch on a system rule, then **restart the PC**. **PASS:** as in 0.99.154 —
+   `Startup: ... absent` → `Filtering re-applied` → `N/N present`, the rule enforcing.
+2. Search the log for `left alone`. Any such line is GunWall **declining** to delete
+   another program's filter — the fix working, not a fault. Note how many there are.
+3. Toggle protection OFF and ON, and a system rule OFF and ON. **PASS:** each behaves
+   as before; no errors.
+
 ### 0.99.154 — everything switched on survives a restart
 
 Each feature must be **switched on** to be tested; a feature that is off proves

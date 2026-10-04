@@ -379,7 +379,10 @@ public sealed class WfpEngine : IDisposable
             try
             {
                 uint r = FwpmFilterGetById0(_engine, id, out p);
-                if (!IndicatesRemoved(r)) present++;
+                // A filter by that number outside GunWall's sublayer is not ours: ids
+                // are reissued every boot, so a saved one can name another program's
+                // filter (trap 2.44). For GunWall's purposes its own filter is gone.
+                if (!IndicatesRemoved(r) && !IsForeign(r, p)) present++;
             }
             catch { present++; }   // our own failure is never evidence of tampering
             finally { if (p != IntPtr.Zero) { try { FwpmFreeMemory0(ref p); } catch { } } }
@@ -405,7 +408,7 @@ public sealed class WfpEngine : IDisposable
             try
             {
                 uint r = FwpmFilterGetById0(_engine, id, out p);
-                if (IndicatesRemoved(r)) missing.Add(id);
+                if (IndicatesRemoved(r) || IsForeign(r, p)) missing.Add(id);
             }
             catch { }
             finally { if (p != IntPtr.Zero) { try { FwpmFreeMemory0(ref p); } catch { } } }
@@ -802,9 +805,52 @@ public sealed class WfpEngine : IDisposable
     /// individual delete actually returned. That is the one fact needed and the
     /// only one not captured.
     /// </summary>
+    /// <summary>
+    /// Where subLayerKey sits in a returned FWPM_FILTER0, read from the same struct
+    /// definition every filter add relies on rather than written as a number. 80 on
+    /// x64, matching the documented layout.
+    /// </summary>
+    private static readonly int FilterSubLayerOffset =
+        (int)Marshal.OffsetOf<FWPM_FILTER0>(nameof(FWPM_FILTER0.subLayerKey));
+
+    /// <summary>
+    /// True when a lookup succeeded but the filter is not in GunWall's sublayer.
+    ///
+    /// Filter ids are numbers the kernel hands out afresh each boot, and GunWall's
+    /// filters do not survive one. So after a restart every saved id names either
+    /// nothing or a filter some other program - Windows' own firewall, another
+    /// security product - was given that number this time. Every add places its
+    /// filter in GunWall's sublayer, so the sublayer is the proof of ownership.
+    /// </summary>
+    private static bool IsForeign(uint lookup, IntPtr filter) =>
+        lookup == ERROR_SUCCESS && filter != IntPtr.Zero
+        && Marshal.PtrToStructure<Guid>(filter + FilterSubLayerOffset) != SublayerKey;
+
+    /// <summary>
+    /// Deletes filter <paramref name="id"/>, only if it is GunWall's (trap 2.44).
+    ///
+    /// Every caller deletes by a saved id, and at every startup the self-permit's
+    /// previous-boot ids are deleted before anything else - numbers that, if Windows
+    /// made more boot-time filters this time, belong to someone else. A successful
+    /// delete was silent, so nothing would ever have shown it. A foreign filter is
+    /// left alone and reported as not found: as far as GunWall is concerned, its own
+    /// filter by that number is already gone.
+    /// </summary>
     public uint TryDeleteFilter(ulong id)
     {
         EnsureReady();
+        IntPtr p = IntPtr.Zero;
+        try
+        {
+            uint g = FwpmFilterGetById0(_engine, id, out p);
+            if (IsForeign(g, p))
+            {
+                DiagnosticLog.Log($"WFP: filter {id} left alone - that number now names another "
+                                + "program's filter (ids are reissued each boot), so GunWall's own is already gone.");
+                return FWP_E_FILTER_NOT_FOUND;
+            }
+        }
+        finally { if (p != IntPtr.Zero) { try { FwpmFreeMemory0(ref p); } catch { } } }
         return FwpmFilterDeleteById0(_engine, id);
     }
 
@@ -822,8 +868,9 @@ public sealed class WfpEngine : IDisposable
         EnsureReady();
         foreach (var id in filterIds)
         {
-            // Ignore "not found" so removal is idempotent across restarts.
-            uint r = FwpmFilterDeleteById0(_engine, id);
+            // Ignore "not found" so removal is idempotent across restarts. Through
+            // TryDeleteFilter, which deletes only GunWall's own (trap 2.44).
+            uint r = TryDeleteFilter(id);
             const uint FWP_E_FILTER_NOT_FOUND = 0x80320003;
             if (r != ERROR_SUCCESS && r != FWP_E_FILTER_NOT_FOUND)
                 throw new WfpException(nameof(FwpmFilterDeleteById0), r);

@@ -947,3 +947,20 @@ protection ON. `restore-everything` enumerates the stores from `RuleStore` itsel
 so a new one fails until it has that path. Trap 2.36's rule was to enumerate what
 relied on persistence; this is the same rule, made mechanical.
 
+### 2.44 An id is a number, not an identity
+
+A WFP filter id is a counter value the kernel issues per boot. Once GunWall's filters
+stopped surviving a restart (0.99.143), every saved id became, after the next boot,
+a number that either names nothing or names a filter some other program was just
+given. Checking "does filter N exist" and "delete filter N" by number alone then
+answers and acts for whoever holds N now — and a successful delete is silent, so the
+damage would never show in a log.
+
+**Rule:** an id GunWall saved is a claim, not a proof. Before trusting or deleting
+it, prove ownership — here, the filter's sublayer. Anything keyed by a value the
+system reissues (ids, handles, PIDs) needs the same treatment.
+
+Also from this trace: a constant in a log ("4 present", every boot) is not noise.
+It was GunWall's own self-permit, installed before the background restore checked —
+but it took the code, not the log, to say so, and the first reading was wrong.
+

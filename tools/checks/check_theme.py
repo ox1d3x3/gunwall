@@ -1954,6 +1954,73 @@ def _method_body(src, name):
     return m.group(0) if m else ""
 
 
+def check_own_filters_only():
+    """GunWall trusts and deletes a saved filter id only if the filter is its own.
+
+    Trap 2.44. Filter ids are numbers the kernel hands out afresh each boot, and
+    GunWall's filters do not survive one, so after a restart every saved id names
+    nothing - or a filter another program was given that number this time. The
+    integrity check counted any filter by that number as present, and every delete
+    went by number alone: at each startup the self-permit's previous-boot ids were
+    deleted before anything else, and a successful delete was silent.
+
+    Held here:
+      - ownership is the sublayer, read at an offset taken from the FWPM_FILTER0
+        definition every add relies on - never a literal
+      - CheckFilters and MissingFilterIds count a foreign filter as missing
+      - TryDeleteFilter refuses a foreign filter before deleting, and RemoveFilters
+        goes through it
+      - a raw delete appears only in the three self-tests, each deleting a filter it
+        created moments earlier in the same call
+      - every filter GunWall creates is placed in its sublayer, or the ownership
+        test would orphan it
+    """
+    before = len(failures)
+    eng_raw = (APP / "Services" / "Wfp" / "WfpEngine.cs").read_text(encoding="utf-8")
+    eng = strip_cs(eng_raw)
+    if not re.search(r"FilterSubLayerOffset\s*=\s*\(int\)Marshal\.OffsetOf<FWPM_FILTER0>\(nameof\(FWPM_FILTER0\.subLayerKey\)\)", eng):
+        fail("own-filters-only", "the sublayer offset is not taken from the FWPM_FILTER0 definition")
+    foreign = _method_body(eng, "IsForeign") or (re.search(r"private static bool IsForeign\(.*?;\n", eng, re.S) or [""])[0]
+    if "!= SublayerKey" not in foreign or "FilterSubLayerOffset" not in foreign:
+        fail("own-filters-only", "IsForeign does not compare the filter's sublayer with GunWall's")
+    for m in ("CheckFilters", "MissingFilterIds"):
+        if "IsForeign(r, p)" not in _method_body(eng, m):
+            fail("own-filters-only", f"{m} counts another program's filter as GunWall's")
+    tdf = _method_body(eng, "TryDeleteFilter")
+    i_chk, i_del = tdf.find("IsForeign("), tdf.find("FwpmFilterDeleteById0(")
+    if i_chk < 0 or i_del < 0 or i_chk > i_del or "return FWP_E_FILTER_NOT_FOUND;" not in tdf:
+        fail("own-filters-only", "TryDeleteFilter can delete a filter that is not GunWall's")
+    rf = _method_body(eng, "RemoveFilters")
+    if "TryDeleteFilter(id)" not in rf or "FwpmFilterDeleteById0(" in rf.replace("nameof(FwpmFilterDeleteById0)", ""):
+        fail("own-filters-only", "RemoveFilters deletes by number without the ownership test")
+    allowed = {"TryDeleteFilter", "VerifyRecoveryPath", "VerifyLayers", "ProbeCondition"}
+    for path in list((APP / "Services").rglob("*.cs")):
+        if path.name == "WfpNative.cs":
+            continue
+        txt = strip_cs(path.read_text(encoding="utf-8"))
+        for m in re.finditer(r"FwpmFilterDeleteById0\(", txt):
+            if txt[max(0, m.start() - 7):m.start()] == "nameof(":
+                continue
+            sig = list(re.finditer(r"^    (?:public|private|internal)[^\n=;]*?\b(\w+)\(", txt[:m.start()], re.M))
+            owner = sig[-1].group(1) if sig else "?"
+            if owner not in allowed:
+                fail("own-filters-only", f"{path.name}: {owner}() deletes a filter by number without "
+                                         "the ownership test")
+    for m in re.finditer(r"new FWPM_FILTER0\b", eng):
+        init = eng[m.end():m.end() + 900]
+        nxt = init.find("new FWPM_FILTER0")
+        if nxt >= 0:
+            init = init[:nxt]
+        if "subLayerKey = SublayerKey" not in init:
+            line = eng[:m.start()].count("\n") + 1
+            fail("own-filters-only", f"the filter created at WfpEngine.cs:{line} is not placed in "
+                                     "GunWall's sublayer - the ownership test would orphan it")
+    if len(failures) == before:
+        n = len(re.findall(r"new FWPM_FILTER0\b", eng))
+        notes.append(f"own-filters-only: ownership by sublayer on every check and delete; {n} filter "
+                     "creation sites all in GunWall's sublayer")
+
+
 def check_restore_everything():
     """Everything recorded as ON comes back after a restart, a repair, and protection ON.
 
@@ -6039,6 +6106,7 @@ def main():
     check_list_sync()
     check_effect_layers()
     check_misleading_indentation()
+    check_own_filters_only()
     check_restore_everything()
     check_bundled_font()
     check_idle_and_bounded()
