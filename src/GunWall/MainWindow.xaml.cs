@@ -329,6 +329,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                         Dispatcher.Invoke(() => { try { RebuildAppsList(); } catch { } });
                 }
                 catch (Exception ex) { Services.DiagnosticLog.LogException("StartupReconcile", ex); }
+                // GeoIP after the restore (0.99.158): inside Initialize it took 6.2 s at
+                // cold boot, ahead of the restore. Country and ASN blocks lose nothing:
+                // a connection seen before the tables arrive matches no rule and is not
+                // marked handled, so the next snapshot checks it again. The tables are
+                // installed by a single reference write, so lookups racing the load see
+                // the old table or the new, never a mix.
+                try
+                {
+                    _firewall.LoadGeoIp();
+                    Dispatcher.BeginInvoke(new Action(() => { try { RefreshAdditionalDataUi(); } catch { } }));
+                }
+                catch (Exception ex) { Services.DiagnosticLog.LogException("StartupGeoIp", ex); }
                 LoadVendorDatabase();   // after the restore: at boot the disk goes to protection first
             });
             _firewall.LoadCategoryColors();      // apply any customised category dot colors
@@ -438,7 +450,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.157 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.158 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -7109,8 +7121,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // not asking at all.
         _firewall.MarkFirstRunComplete();
 
-        bool haveGeo = _firewall.GeoIpRangeCount > 0;
-        bool haveOui = _oui.Loaded;
+        // On disk, not loaded: both now load after startup, and the offer can run first.
+        bool haveGeo = _firewall.GeoIpRangeCount > 0 || _firewall.GeoIpDatabaseOnDisk;
+        bool haveOui = _oui.Loaded || System.IO.File.Exists(OuiCachePath);
         if (haveGeo && haveOui) return;
 
         var answer = MessageBox.Show(

@@ -150,7 +150,9 @@ public sealed class FirewallManager : IDisposable
         // Readiness is a property of this object's state. Nothing outside it can
         // know when that becomes true, so nothing outside it gets to say so.
         ReconcileReady = true;
-        LoadGeoIp();
+        // GeoIP is NOT loaded here (0.99.158). It took 6.2 s at cold boot, ahead of
+        // the startup restore; it now loads in the startup task after the restore.
+        // Recovery commands, which call Initialize, no longer load it at all.
         ReloadCustomList();
         ClearEntityReactiveBlocks(); // §1: drop last session's reactive geo-blocks; they re-form on demand
         // Filters created in previous sessions are PERSISTENT, so they are already
@@ -171,6 +173,10 @@ public sealed class FirewallManager : IDisposable
     public int GeoIpRangeCountV6 => _geo.RangeCountV6;
     private string GeoIpCachePath => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v4.tsv");
     private string GeoIpCachePathV6 => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v6.tsv");
+
+    /// <summary>Whether the GeoIP database is on disk - not whether it has finished
+    /// loading, which since 0.99.158 happens after startup.</summary>
+    public bool GeoIpDatabaseOnDisk => System.IO.File.Exists(GeoIpCachePath);
 
     // GeoIP source selection: "local" (downloaded table) or "api" (self-hosted server).
     public string GeoIpMode => _data.GeoIpMode == "api" ? "api" : "local";

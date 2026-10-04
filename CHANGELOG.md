@@ -15,6 +15,52 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.158] — 2026-10-04
+
+### Verified — 0.99.157 on hardware
+Two launches while GunWall ran: each exited 8 ms after starting, and the running
+window came forward 21 ms after launch. One process throughout; 0 errors.
+
+### Changed — GeoIP loads after the startup restore
+With the vendor database moved (0.99.156), GeoIP was the longest step ahead of the
+restore: 6.2 s at cold boot inside `Initialize`. It now loads in the startup task
+after the restore, before the vendor database. Country and ASN blocks lose nothing:
+`ApplyEntityBlocks` looks an address up before marking it handled, so a connection
+seen before the tables arrive matches no rule, is not remembered, and is checked
+again on the next snapshot. Recovery commands (`--unblock`, `--purge-sublayer`)
+call `Initialize` and so no longer load GeoIP at all — a roadmap item, closed.
+
+### Fixed — a GeoIP lookup could see half of two tables (trap 2.47)
+Each table was five fields written one after another; a lookup landing between two
+writes saw new starts with old ends. Stress-tested — loads racing lookups on two
+threads — the 0.99.157 code threw `IndexOutOfRangeException` 8 times in 22.1 million
+lookups across three runs; the fix none in 23.8 million. It mattered once the
+startup load ran beside every snapshot's lookups, and it was always latent in the
+background GeoIP refresh. Each table is now one immutable object installed by a
+single `volatile` reference write, and a lookup reads that reference once. The
+GeoIP benchmark's 250,000 lookups hash identically (`BF9B055E54EA0950`), with
+retained memory unchanged at 33.6 MB.
+
+### Fixed — smaller
+- The first-run download offer asked whether the databases were *loaded*; both now
+  load after startup, so it asks whether they are *on disk*.
+- `PerfMonitor` learns the UI thread first thing in `OnStartup`. It learned it in
+  `Start()`, after `Initialize`, so GeoIP's load was logged "in the background"
+  while it ran on the UI thread.
+- `tools/bench/geoip/gen.py` creates its `data/` folder, which the package does not
+  ship; on a fresh checkout it failed.
+
+### Checks
+- `geoip-atomic` (new): each table one volatile reference, installed by one write,
+  read once per lookup — no second read of either table
+- `startup-order`: GeoIP not in `Initialize`; loaded between the restore and the
+  vendor database; the first-run offer checks the disk; UI thread registered first
+
+10 mutations, each shown failing. One escaped the first version: a lookup reading
+the *other* table's reference; the check now rejects any table read after the one.
+
+---
+
 ## [0.99.157] — 2026-10-04
 
 ### Verified — 0.99.156 on hardware

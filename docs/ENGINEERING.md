@@ -985,3 +985,16 @@ kernel object, a device — must take that ownership explicitly at startup and r
 to proceed without it. When a log shows two clocks where the code has one, look for
 two processes.
 
+### 2.47 A swap is one write
+
+"Build privately, then swap in" is only safe when the swap is a single write. GeoIP
+built its arrays privately and then installed five of them one after another; a
+reader between two writes saw a table that never existed. The vendor database got
+this right by accident — three dictionaries, each self-contained — and GeoIP's did
+not, because its arrays are parallel: index i in one only means something with index
+i in the others.
+
+**Rule:** state that must be read together is installed together — one object, one
+reference write — and read together: one read of the reference, then only locals.
+Moving work to a background thread is when this stops being theoretical.
+

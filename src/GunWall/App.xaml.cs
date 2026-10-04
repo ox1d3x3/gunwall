@@ -10,6 +10,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
         Services.PerfMonitor.MarkStartup("app");
+        Services.PerfMonitor.RegisterUiThread();   // before anything is timed
 
         DiagnosticLog.Log("App starting (OnStartup).");
 

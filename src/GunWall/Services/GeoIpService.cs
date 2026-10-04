@@ -48,15 +48,24 @@ public sealed class GeoIpService
     // without hand-written carry logic, and hand-written comparison of a 128-bit
     // value split across two words is exactly the kind of arithmetic that is wrong
     // once and then wrong forever in a table nobody re-reads.
-    private UInt128[] _start6 = Array.Empty<UInt128>();
-    private UInt128[] _end6 = Array.Empty<UInt128>();
-    private int[] _asn6 = Array.Empty<int>();
-    private string[] _country6 = Array.Empty<string>();
-    private string[] _owner6 = Array.Empty<string>();
+    /// <summary>
+    /// Each table is ONE object, installed by one reference write. Until 0.99.158
+    /// a table was five fields written one after another; a lookup landing between
+    /// two writes saw new starts with old ends - a wrong answer, or an index past the
+    /// end of an older, shorter array. Harmless while loads happened only on a rare
+    /// background refresh; not once the startup load moved off the UI thread and ran
+    /// alongside every snapshot's lookups. A lookup reads the reference once.
+    /// </summary>
+    private sealed record Table6(UInt128[] Start, UInt128[] End, int[] Asn, string[] Country, string[] Owner)
+    {
+        public static readonly Table6 Empty = new(Array.Empty<UInt128>(), Array.Empty<UInt128>(),
+            Array.Empty<int>(), Array.Empty<string>(), Array.Empty<string>());
+    }
+    private volatile Table6 _t6 = Table6.Empty;
 
     /// <summary>True when the IPv6 table has been loaded as well as the v4 one.</summary>
-    public bool LoadedV6 => _start6.Length > 0;
-    public int RangeCountV6 => _start6.Length;
+    public bool LoadedV6 => _t6.Start.Length > 0;
+    public int RangeCountV6 => _t6.Start.Length;
 
     /// <summary>Packs an IPv6 address into a comparable 128-bit integer, most
     /// significant byte first, matching the ordering the table is sorted in.</summary>
@@ -73,14 +82,16 @@ public sealed class GeoIpService
         return true;
     }
 
-    private uint[] _start = Array.Empty<uint>();
-    private uint[] _end = Array.Empty<uint>();
-    private int[] _asn = Array.Empty<int>();
-    private string[] _country = Array.Empty<string>();
-    private string[] _owner = Array.Empty<string>();
+    /// <summary>The IPv4 table: one object, one reference write - see Table6.</summary>
+    private sealed record Table4(uint[] Start, uint[] End, int[] Asn, string[] Country, string[] Owner)
+    {
+        public static readonly Table4 Empty = new(Array.Empty<uint>(), Array.Empty<uint>(),
+            Array.Empty<int>(), Array.Empty<string>(), Array.Empty<string>());
+    }
+    private volatile Table4 _t4 = Table4.Empty;
 
-    public bool Loaded => _start.Length > 0;
-    public int RangeCount => _start.Length;
+    public bool Loaded => _t4.Start.Length > 0;
+    public int RangeCount => _t4.Start.Length;
 
     // ---- optional self-hosted API mode (iptoasn-webservice) ----
     // When _apiBase is set, Lookup() resolves via the user's HTTP API instead of a
@@ -127,15 +138,16 @@ public sealed class GeoIpService
         if (!LoadedV6) return new GeoInfo("", 0, "");
         if (!TryToUInt128(ip, out UInt128 addr)) return new GeoInfo("", 0, "");
 
-        int lo = 0, hi = _start6.Length - 1, found = -1;
+        var t = _t6;   // one read: every array below from the same table
+        int lo = 0, hi = t.Start.Length - 1, found = -1;
         while (lo <= hi)
         {
             int mid = (int)(((uint)lo + (uint)hi) >> 1);
-            if (_start6[mid] <= addr) { found = mid; lo = mid + 1; }
+            if (t.Start[mid] <= addr) { found = mid; lo = mid + 1; }
             else hi = mid - 1;
         }
-        if (found < 0 || addr > _end6[found]) return new GeoInfo("", 0, "");
-        return new GeoInfo(_country6[found], _asn6[found], _owner6[found]);
+        if (found < 0 || addr > t.End[found]) return new GeoInfo("", 0, "");
+        return new GeoInfo(t.Country[found], t.Asn[found], t.Owner[found]);
     }
 
     /// <summary>Parse an iptoasn IPv6 TSV into the v6 lookup arrays.
@@ -180,11 +192,11 @@ public sealed class GeoIpService
         int[] order = Enumerable.Range(0, starts.Count).ToArray();
         Array.Sort(order, (x, y) => starts[x].CompareTo(starts[y]));
 
-        _start6 = order.Select(i => starts[i]).ToArray();
-        _end6 = order.Select(i => ends[i]).ToArray();
-        _asn6 = order.Select(i => asns[i]).ToArray();
-        _country6 = order.Select(i => countries[i]).ToArray();
-        _owner6 = order.Select(i => owners[i]).ToArray();
+        _t6 = new Table6(order.Select(i => starts[i]).ToArray(),     // one write: see Table6
+                         order.Select(i => ends[i]).ToArray(),
+                         order.Select(i => asns[i]).ToArray(),
+                         order.Select(i => countries[i]).ToArray(),
+                         order.Select(i => owners[i]).ToArray());
     }
 
     /// <summary>Parse the iptoasn TSV text into the sorted lookup arrays.</summary>
@@ -236,7 +248,7 @@ public sealed class GeoIpService
             nc[i] = countries[j]; no[i] = owners[j];
         }
 
-        _start = ns; _end = ne; _asn = na; _country = nc; _owner = no;
+        _t4 = new Table4(ns, ne, na, nc, no);   // one write: see Table6
     }
 
     /// <summary>Look up a remote address. Unknown / IPv6 / invalid returns empty.</summary>
@@ -253,15 +265,16 @@ public sealed class GeoIpService
         if (!Loaded) return new GeoInfo("", 0, "");
 
         // Greatest start <= addr, then confirm addr falls within that range's end.
-        int lo = 0, hi = _start.Length - 1, found = -1;
+        var t = _t4;   // one read: every array below from the same table
+        int lo = 0, hi = t.Start.Length - 1, found = -1;
         while (lo <= hi)
         {
             int mid = (int)(((uint)lo + (uint)hi) >> 1);
-            if (_start[mid] <= addr) { found = mid; lo = mid + 1; }
+            if (t.Start[mid] <= addr) { found = mid; lo = mid + 1; }
             else hi = mid - 1;
         }
-        if (found >= 0 && addr <= _end[found])
-            return new GeoInfo(_country[found], _asn[found], _owner[found]);
+        if (found >= 0 && addr <= t.End[found])
+            return new GeoInfo(t.Country[found], t.Asn[found], t.Owner[found]);
         return new GeoInfo("", 0, "");
     }
 

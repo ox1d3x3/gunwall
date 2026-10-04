@@ -59,13 +59,8 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 
 - ✅ **Single instance** *(0.99.157)* — a second launch shows the running window
   and exits (trap 2.46); likely explains the 18 September protection-OFF case
-- ☐ **GeoIP ahead of the restore at cold boot** *(0.99.156 restart bundle)* — with
-  the vendor database moved, `LoadGeoIp` inside `Initialize` is the longest step
-  before protection returns: 6.2 s at cold boot (~340 ms warm). Country and ASN
-  blocks re-form from traffic anyway; load it after the restore.
-
-### App model & visibility
-*Managed C# throughout. No kernel risk.*
+- ✅ **GeoIP after the restore** *(0.99.158)* — 6.2 s at cold boot no longer stands
+  ahead of protection; tables now swapped in one write (trap 2.47)
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
 - ✅ **Service & network-app categorization** — connections name the hosted service, and services can be blocked individually by their own identity.
 - ◐ **Complete country coverage** — ✅ IPv6 GeoIP, which was the largest gap. ✅ **destinations with no country are counted and reported** instead of silently dropped, and the map draws twice as many connection arcs. Remaining: naming unplaceable addresses in the Connections table rather than leaving the cell blank.
@@ -167,9 +162,7 @@ Ranked by evidence. Items below the line are measured from 0.99.152 onwards by
 - ☐ **GeoIP parse garbage** — a load still allocates 518 MB of short-lived data,
   mostly from splitting each line. Span-based parsing would cut it, at the cost of
   rewriting the parser; the benchmark exists to prove the answers do not move.
-- ☐ **Recovery commands load GeoIP they never use** — `--unblock` and
-  `--purge-sublayer` call `Initialize()`, which loads both tables: about a second
-  and a 200 MB peak before a recovery that needs neither.
+- ✅ **Recovery commands no longer load GeoIP** *(0.99.158)*
 - ☐ **Filter enumeration** — `netsh` is slow, shells out, and returns a partial set
   per call; `FwpmFilterEnum0` would be faster and complete.
 - ☐ *To be ranked from 0.99.152 diagnostics* — per-snapshot cost of each panel and

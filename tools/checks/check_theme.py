@@ -2046,9 +2046,25 @@ def check_startup_order():
     for call in ("EnsureSelfConnectivity()", "ReapplyServiceBlocks()"):
         if call in outside:
             fail("startup-order", f"{call} runs on the UI thread at startup, racing the repair")
+    # GeoIP after the restore (0.99.158): 6.2 s at cold boot inside Initialize.
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    if "LoadGeoIp();" in _method_body(fm, "Initialize"):
+        fail("startup-order", "Initialize loads GeoIP - ahead of the restore, and in every recovery command")
+    i_geo = t.find("_firewall.LoadGeoIp()")
+    if i_geo < 0 or i_geo < i_rest or (i_vend >= 0 and i_geo > i_vend):
+        fail("startup-order", "GeoIP is not loaded in the startup task between the restore and the "
+                              "vendor database")
+    offer = _method_body(mw, "OfferFirstRunDownloadsAsync")
+    if "GeoIpDatabaseOnDisk" not in offer or "File.Exists(OuiCachePath)" not in offer:
+        fail("startup-order", "the first-run offer asks whether the data is loaded, not whether it is on "
+                              "disk - it can run before the background loads finish")
+    app = strip_cs((APP / "App.xaml.cs").read_text(encoding="utf-8"))
+    st = _method_body(app, "OnStartup")
+    if "PerfMonitor.RegisterUiThread()" not in st or st.find("PerfMonitor.RegisterUiThread()") > st.find("ClaimSingleInstance()"):
+        fail("startup-order", "the UI thread is registered late - early UI-thread work is logged as background")
     if len(failures) == before:
-        notes.append("startup-order: restore first; vendor database after it, off the UI thread; "
-                     "self-permit and service blocks refreshed once")
+        notes.append("startup-order: restore first; GeoIP then vendor database after it, off the UI "
+                     "thread; self-permit and service blocks refreshed once; offer checks the disk")
 
 
 def check_own_filters_only():
@@ -2498,6 +2514,37 @@ def check_perf_evidence():
     if len(failures) == before:
         notes.append(f"perf-evidence: {len(found)} operations timed and correctly labelled, "
                      "summary every 5 min, freeze probe, session summary in exports")
+
+
+def check_geoip_tables_atomic():
+    """A GeoIP lookup sees one whole table - never parts of two.
+
+    Each table was five fields written one after another. Stress-tested with loads
+    racing lookups, the 0.99.157 code threw IndexOutOfRangeException 8 times in 22
+    million lookups; the single-reference version none in 24 million. Mattered once
+    the startup load moved off the UI thread (0.99.158) and ran beside every
+    snapshot's lookups; it always mattered for the background refresh.
+    """
+    before = len(failures)
+    g = strip_cs((APP / "Services" / "GeoIpService.cs").read_text(encoding="utf-8"))
+    for tbl in ("Table4 _t4", "Table6 _t6"):
+        if f"private volatile {tbl}" not in g:
+            fail("geoip-atomic", f"{tbl} is not a single volatile reference")
+    if re.search(r"private (?:uint|UInt128|int|string)\[\] _\w+\s*=", g):
+        fail("geoip-atomic", "a table array is a field of its own again - writers can be seen half-done")
+    for tbl, cls in (("_t4", "Table4"), ("_t6", "Table6")):
+        if not re.search(rf"\b{tbl} = new {cls}\(", g):
+            fail("geoip-atomic", f"{tbl} is not installed by one write of a new {cls}")
+    for m in re.finditer(r"var t = (_t[46]);(.*?)\n    \}", g, re.S):
+        # Any table reference after the one read: the same table twice, or the other one.
+        if re.search(r"\b_t[46]\.", m.group(2)):
+            fail("geoip-atomic", f"a lookup reads a table again after its one read of {m.group(1)} - "
+                                 "two reads can see two tables")
+    if len(re.findall(r"var t = _t[46];", g)) < 2:
+        fail("geoip-atomic", "a lookup does not take one read of its table")
+    if len(failures) == before:
+        notes.append("geoip-atomic: each table one volatile reference, installed by one write, read "
+                     "once per lookup")
 
 
 def check_geoip_load():
@@ -6219,6 +6266,7 @@ def main():
     check_bundled_font()
     check_idle_and_bounded()
     check_perf_evidence()
+    check_geoip_tables_atomic()
     check_geoip_load()
     check_layout_free_animation()
     check_button_labels()

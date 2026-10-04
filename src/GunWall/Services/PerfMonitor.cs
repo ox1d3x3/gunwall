@@ -71,6 +71,14 @@ public static class PerfMonitor
     /// explain a UI freeze.</summary>
     private static int _uiThread = -1;
 
+    /// <summary>Names the calling thread as the UI thread. Called first thing in
+    /// OnStartup: Start() comes after Initialize, so work done before it - GeoIP's
+    /// load among it - was labelled "in the background" while it ran on the UI thread.</summary>
+    public static void RegisterUiThread()
+    {
+        if (_uiThread == -1) _uiThread = Environment.CurrentManagedThreadId;
+    }
+
     private static void End(string name, long start, int thread)
     {
         long now = Stopwatch.GetTimestamp();

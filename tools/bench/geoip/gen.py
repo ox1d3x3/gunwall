@@ -35,6 +35,7 @@ def emit_v6(n, path):
             else:
                 a = pick(); f.write(f"{ipaddress.IPv6Address(s)}\t{ipaddress.IPv6Address(e)}\t{a}\t{country[a]}\t{owner[a]}\n")
             s = e + 1
+import os; os.makedirs("data", exist_ok=True)   # data/ is not shipped in the package
 emit_v4(538417, "data/v4.tsv"); emit_v6(182861, "data/v6.tsv")
 with open("data/ips.txt", "w") as f:
     for _ in range(200000): f.write(str(ipaddress.IPv4Address(rnd.randint(2**24, 2**32 - 1))) + "\n")

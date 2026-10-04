@@ -227,6 +227,19 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.158 — GeoIP after the restore
+
+1. **Restart the PC** with a system rule on. **PASS:** `Startup: N of N absent` →
+   `Filtering re-applied` → all present; then a `LoadGeoIp` line, now correctly
+   "in the background", *after* the restore; `Perf: startup ... engine` several
+   seconds earlier than 0.99.157's 13.9 s.
+2. **Connections** tab within a few seconds of boot: countries may be blank briefly,
+   then fill in. **Settings → Additional data:** GeoIP shows its range count.
+3. If you use a country or ASN block, open a site in that country shortly after
+   boot. **PASS:** it is blocked once GeoIP has loaded.
+4. `GunWall.exe --unblock` from an admin prompt. **PASS:** completes without a
+   GeoIP load line.
+
 ### 0.99.157 — only one GunWall at a time
 
 1. With GunWall running in the tray, open it again from the Start menu or a
