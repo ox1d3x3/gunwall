@@ -1972,6 +1972,9 @@ def check_fill_and_approvals():
     if "_appFillDone.Contains(path)) return false;" not in need or "if (_appFillQueued.Add(path))" not in need:
         fail("fill-approvals", "a path can be queued for filling more than once - the fill could loop")
     fill = _method_body(mw, "FillAppCachesInBackground")
+    if not re.search(r"if \(OnScreen && PanelFirewall\.Visibility == Visibility\.Visible\) RebuildAppsList\(\);", fill):
+        fail("fill-approvals", "a finished fill redraws the Apps list while it is hidden - 29 s on the UI "
+                               "thread after a cold boot (0.99.161)")
     if "_appFillDone.Add(p)" not in fill or "RebuildAppsList()" not in fill:
         fail("fill-approvals", "a finished fill is not marked done and redrawn")
     fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))

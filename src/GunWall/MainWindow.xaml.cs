@@ -451,7 +451,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.161 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.162 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4087,7 +4087,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         WarmAppCaches(paths, () => Dispatcher.BeginInvoke(new Action(() =>
         {
             foreach (var p in paths) _appFillDone.Add(p);
-            try { RebuildAppsList(); } catch { }
+            // Redraw only if the list is on screen. Unconditionally (0.99.160) it rebuilt
+            // a hidden list right after a cold boot: 29 s on the UI thread, which held up
+            // the tray, prompts and every snapshot (0.99.161 bundle). Hidden, the list
+            // rebuilds when shown, as it always did.
+            try { if (OnScreen && PanelFirewall.Visibility == Visibility.Visible) RebuildAppsList(); } catch { }
         })));
     }
 

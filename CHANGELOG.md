@@ -15,6 +15,27 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.162] — 2026-10-04
+
+### Fixed — a 32-second UI block after a cold boot (regression from 0.99.160)
+The background fill redrew the Apps list when it finished, whether or not the list
+was on screen. After a restart, with the window hidden, that rebuild took 29 s on the
+UI thread — 31.9 s blocked in all — holding up the tray, prompts and every snapshot.
+Before 0.99.160 a hidden list was never rebuilt. The redraw now happens only when the
+Apps tab is on screen; otherwise the list rebuilds when shown, as it always did.
+
+The 29 s itself is not the signature or icon (no longer computed there) nor the hash
+(a stored lookup). The remaining cold-disk suspects are now timed —
+`StoreAppService.Resolve` and `ProcessService.GetAllApps` / `GetNetworkedApps` — so
+if opening the Apps tab after a cold boot is slow, the next bundle names the step.
+
+### Noted
+A rule for a Store app (Calculator) points at a versioned folder that an app update
+removed: one `FwpmGetAppIdFromFileName0` error (path not found) during the restore.
+`PruneDeadRules` removes such rules right after, so it does not recur.
+
+---
+
 ## [0.99.161] — 2026-10-04
 
 ### Removed — the "remember approvals" setting from 0.99.160

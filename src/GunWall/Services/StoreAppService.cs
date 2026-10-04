@@ -27,6 +27,7 @@ public static class StoreAppService
 
     public static StoreAppInfo Resolve(string exePath)
     {
+        using var _perf = PerfMonitor.Measure("StoreAppService.Resolve");   // a cold-boot suspect (0.99.161 bundle)
         if (string.IsNullOrWhiteSpace(exePath))
             return new StoreAppInfo(false, "", "");
         return Cache.GetOrAdd(exePath, path =>

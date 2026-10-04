@@ -119,6 +119,7 @@ public sealed class ProcessService
     public List<AppInfo> GetNetworkedApps(IEnumerable<ConnectionInfo> connections,
                                           Dictionary<int, (string Name, string Path)> processes)
     {
+        using var _perf = PerfMonitor.Measure("ProcessService.GetNetworkedApps");   // a cold-boot suspect (0.99.161 bundle)
         var byPath = new Dictionary<string, AppInfo>(StringComparer.OrdinalIgnoreCase);
         foreach (var c in connections)
         {
@@ -137,6 +138,7 @@ public sealed class ProcessService
     public List<AppInfo> GetAllApps(IEnumerable<ConnectionInfo> connections,
                                     Dictionary<int, (string Name, string Path)> processes)
     {
+        using var _perf = PerfMonitor.Measure("ProcessService.GetAllApps");   // a cold-boot suspect (0.99.161 bundle)
         var counts = new Dictionary<int, int>();
         foreach (var c in connections)
             counts[c.ProcessId] = counts.TryGetValue(c.ProcessId, out var n) ? n + 1 : 1;
