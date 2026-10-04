@@ -1981,22 +1981,17 @@ def check_fill_and_approvals():
         fail("fill-approvals", "DomainsFor re-reads its list file on every call")
     if "_firewall.WarmBlocklistDomains()" not in _method_body(mw, "OnLoaded"):
         fail("fill-approvals", "the blocklist parse is not warmed at startup")
+    # Approvals and blocks are rules and always persist; protection ON clears only the
+    # "seen" list. The 0.99.160 setting built on a misreading of this is gone (0.99.161).
     on = _method_body(fm, "SetStrictMode").split("\n        else\n", 1)[0]
-    if not re.search(r"if \(!keepApprovals\)\s*\{\s*_data\.KnownApps\.Clear\(\);", on) \
-            or "bool keepApprovals = _data.RememberApprovalsAcrossProtection;" not in on:
-        fail("fill-approvals", "protection ON clears or keeps approvals regardless of the setting")
-    rs = strip_cs((APP / "Services" / "RuleStore.cs").read_text(encoding="utf-8"))
-    if not re.search(r"public bool RememberApprovalsAcrossProtection \{ get; set; \}\s*\n", rs):
-        fail("fill-approvals", "remembering approvals is not off by default")
-    xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
-    if not re.search(r'x:Name="RememberApprovalsCheck"[^>]*Checked="Pref_Changed" Unchecked="Pref_Changed"', xaml, re.S):
-        fail("fill-approvals", "the setting has no wired checkbox")
-    if "RememberApprovalsCheck.IsChecked = _firewall.RememberApprovalsAcrossProtection" not in mw \
-            or "_firewall.SetRememberApprovals(RememberApprovalsCheck?.IsChecked == true)" not in mw:
-        fail("fill-approvals", "the checkbox does not load or save the setting")
+    if not re.search(r"^\s*_data\.KnownApps\.Clear\(\);", on, re.M):
+        fail("fill-approvals", "protection ON no longer resets the seen list - the original design")
+    for path in [APP / "MainWindow.xaml"] + list(APP.rglob("*.cs")):
+        if re.search(r"RememberApprovals", path.read_text(encoding="utf-8")):
+            fail("fill-approvals", f"{path.name} still carries the removed approvals setting")
     if len(failures) == before:
         notes.append("fill-approvals: Apps list peeks and fills in the background once; lists cached "
-                     "by file stamp and warmed; approvals kept only by choice, off by default")
+                     "by file stamp and warmed; approvals setting removed, seen list reset on ON")
 
 
 def check_ads_removed():

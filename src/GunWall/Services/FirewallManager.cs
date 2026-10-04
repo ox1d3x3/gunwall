@@ -1785,16 +1785,6 @@ public sealed class FirewallManager : IDisposable
     }
 
     public bool TamperWatchEnabled => _data.TamperWatchEnabled;
-
-    public bool RememberApprovalsAcrossProtection => _data.RememberApprovalsAcrossProtection;
-
-    public void SetRememberApprovals(bool on)
-    {
-        if (_data.RememberApprovalsAcrossProtection == on) return;
-        _data.RememberApprovalsAcrossProtection = on;
-        SaveStore();
-        DiagnosticLog.Log($"Setting: remember approvals across a protection cycle {(on ? "ON" : "OFF")}.");
-    }
     public void SetTamperWatch(bool on)
     {
         if (_data.TamperWatchEnabled == on) return;
@@ -1824,21 +1814,14 @@ public sealed class FirewallManager : IDisposable
             _data.StrictFilterIds = _engine.EngageStrictMode();
             _data.StrictMode = true;
 
-            // When taking full control, forget the "already seen" list so every
-            // app must be approved or denied again — the whitelist starts fresh,
-            // and the user gets a prompt the next time each app connects.
-            // Unless the user chose to keep them (Settings): then approvals made
-            // before protection went OFF still stand, and nothing re-prompts.
-            // (No else here: checks find the end of this branch at its first "else".)
-            bool keepApprovals = _data.RememberApprovalsAcrossProtection;
-            if (keepApprovals)
-                DiagnosticLog.Log($"Protection ON: kept {_data.KnownApps.Count} approval(s) - "
-                                + "remember approvals across a protection cycle is on.");
-            if (!keepApprovals)
-            {
-                _data.KnownApps.Clear();
-                _knownSet = null;
-            }
+            // Forget the "seen" list: applications GunWall has noticed but the user
+            // never decided on prompt again when they next connect. Approvals and
+            // blocks are not in it - they are rules, saved, kept across restarts and
+            // reinstalled above. (An earlier wording, "every app must be approved or
+            // denied again", read as clearing approvals; it never did. 0.99.160 added
+            // a setting against that misreading; 0.99.161 removed it.)
+            _data.KnownApps.Clear();
+            _knownSet = null;
             SaveStore();
 
             // 2) Re-create permits for previously allowed apps.

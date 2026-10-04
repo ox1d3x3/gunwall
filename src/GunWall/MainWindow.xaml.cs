@@ -372,7 +372,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (AlertCatRulesCheck != null) AlertCatRulesCheck.IsChecked = !muted.Contains("rules");
             if (TraySingleClickCheck != null) TraySingleClickCheck.IsChecked = _firewall.TraySingleClick;
             if (TamperWatchCheck != null) TamperWatchCheck.IsChecked = _firewall.TamperWatchEnabled;
-            if (RememberApprovalsCheck != null) RememberApprovalsCheck.IsChecked = _firewall.RememberApprovalsAcrossProtection;
             if (UiZoomCombo != null)
                 UiZoomCombo.SelectedIndex = _firewall.UiZoomPercent switch
                 { 90 => 0, 100 => 1, 110 => 2, 125 => 3, _ => 1 };
@@ -452,7 +451,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.160 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.161 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -8158,7 +8157,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _firewall.SetAlertCategoryMuted("rules", AlertCatRulesCheck?.IsChecked != true);
         _firewall.SetTraySingleClick(TraySingleClickCheck?.IsChecked == true);
         _firewall.SetTamperWatch(TamperWatchCheck?.IsChecked == true);
-        _firewall.SetRememberApprovals(RememberApprovalsCheck?.IsChecked == true);
         if (UiZoomCombo?.SelectedItem is ComboBoxItem uzi &&
             int.TryParse(uzi.Tag?.ToString(), out int uzv))
         {

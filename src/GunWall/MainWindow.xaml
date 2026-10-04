@@ -2818,10 +2818,6 @@
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed"
                                       ToolTip="Every 30 seconds, confirms GunWall's filters are still installed in the kernel and re-applies any that were removed. It cannot stop a program with administrator rights from deleting them, but it makes doing so visible and short-lived." />
-                            <CheckBox x:Name="RememberApprovalsCheck" Content="Remember approvals when protection is turned off and on again"
-                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
-                                      Checked="Pref_Changed" Unchecked="Pref_Changed"
-                                      ToolTip="Off (default, strictest): turning protection off and on again clears approvals, so every application asks again the next time it connects. On: approvals made before stay in place, and nothing re-prompts." />
                             <CheckBox x:Name="TraySingleClickCheck" Content="Open GunWall with a single tray click (double-click always works)"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />

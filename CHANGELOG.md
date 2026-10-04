@@ -15,6 +15,25 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.161] — 2026-10-04
+
+### Removed — the "remember approvals" setting from 0.99.160
+It answered a problem that did not exist. Approvals and blocks are **rules**: saved,
+kept across restarts, and reinstalled when protection comes back ON — the
+maintainer's two OFF→ON cycles in the 0.99.160 bundle prompted nothing. What
+protection ON clears is only the "seen" list: applications GunWall noticed but the
+user never decided on, which prompt again when they next connect. A code comment
+("every app must be approved or denied again") read as clearing approvals; it is
+rewritten. Original behaviour restored; maintainer decision recorded. A profile
+saved by 0.99.160 still loads — the leftover field is ignored.
+
+### Noted — one freeze on the Firewall tab, 532 ms, unattributed
+Not the signature check (that is timed and was not involved). Most likely the list's
+layout pass after a refresh, which runs after the timed code returns. In the fix
+bucket.
+
+---
+
 ## [0.99.160] — 2026-10-04
 
 ### Verified — 0.99.159 on hardware
