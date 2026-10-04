@@ -1950,8 +1950,61 @@ def _ttf_names(path):
 
 
 def _method_body(src, name):
-    m = re.search(r"^    (?:public|private|internal)[^\n=;]*?\b" + name + r"\(.*?\n    \}", src, re.S | re.M)
+    m = re.search(r"^    (?:public|private|internal|protected)[^\n=;]*?\b" + name + r"\(.*?\n    \}", src, re.S | re.M)
     return m.group(0) if m else ""
+
+
+def check_single_instance():
+    """Only one GunWall manages the filters at a time.
+
+    Trap 2.46. Nothing stopped a second instance: opening GunWall while it sat in
+    the tray started a complete second firewall manager on the same profile and
+    sublayer. The two repaired each other's "tampering" every thirty seconds, left
+    a full set of orphans, and one reinstalled every filter six seconds after
+    protection was turned OFF in the other.
+
+    Held here: the claim comes after the recovery commands (they must still run)
+    and before anything else in OnStartup; a refused launch exits there; the name
+    is machine-wide; the mutex lives in a static; an abandoned mutex counts as
+    acquired; a guard error fails open; the running instance listens and shows
+    its window through RestoreFromTray.
+    """
+    before = len(failures)
+    app_kept = strip_cs((APP / "App.xaml.cs").read_text(encoding="utf-8"), keep_strings=True)
+    app = strip_cs((APP / "App.xaml.cs").read_text(encoding="utf-8"))
+    start = _method_body(app, "OnStartup")
+    i_rec = start.rfind("RunEmergencyUnblock()")
+    i_claim = start.find("ClaimSingleInstance()")
+    i_rest = start.find("DispatcherUnhandledException +=")
+    if not (0 <= i_rec < i_claim < i_rest):
+        fail("single-instance", "the instance claim is not between the recovery commands and the rest "
+                                "of startup")
+    if not re.search(r"if \(!ClaimSingleInstance\(\)\)\s*\{[^}]*Shutdown\(0\);\s*return;", start):
+        fail("single-instance", "a refused launch does not exit before touching the profile")
+    if "ListenForActivation()" not in start:
+        fail("single-instance", "the running instance never listens for a later launch")
+    # strip_cs drops a verbatim string's @" opener - accept either form.
+    if not re.search(r'InstanceMutexName = (?:@")?Global\\GunWall\.', app_kept):
+        fail("single-instance", "the instance name is not machine-wide (Global\\)")
+    claim = _method_body(app, "ClaimSingleInstance")
+    # Start of the statement: "var _instanceMutex = ..." contains the same text.
+    if not re.search(r"^\s*_instanceMutex = new System\.Threading\.Mutex\(true, InstanceMutexName", claim, re.M) \
+            or not re.search(r"private static System\.Threading\.Mutex\? _instanceMutex;", app):
+        fail("single-instance", "the mutex is not held in a static - collected, it would let the "
+                                "next launch through")
+    if not re.search(r"catch \(System\.Threading\.AbandonedMutexException\) \{ return true; \}", claim):
+        fail("single-instance", "an abandoned mutex (GunWall crashed) would block every later start")
+    if not re.search(r"catch \(Exception ex\)\s*\{[^}]*return true;", claim):
+        fail("single-instance", "a guard error does not fail open - it could stop the firewall starting")
+    listen = _method_body(app, "ListenForActivation")
+    if "ShowForSecondLaunch()" not in listen:
+        fail("single-instance", "a later launch does not bring the running window forward")
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    if "RestoreFromTray()" not in _method_body(mw, "ShowForSecondLaunch"):
+        fail("single-instance", "ShowForSecondLaunch does not restore the window")
+    if len(failures) == before:
+        notes.append("single-instance: machine-wide claim after the recovery commands; refused "
+                     "launches exit untouched; abandoned counts as ours; fails open")
 
 
 def check_startup_order():
@@ -6159,6 +6212,7 @@ def main():
     check_list_sync()
     check_effect_layers()
     check_misleading_indentation()
+    check_single_instance()
     check_startup_order()
     check_own_filters_only()
     check_restore_everything()

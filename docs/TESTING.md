@@ -227,6 +227,19 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.157 — only one GunWall at a time
+
+1. With GunWall running in the tray, open it again from the Start menu or a
+   shortcut. **PASS:** the existing window comes to the front; Task Manager shows
+   **one** GunWall process; the log shows `Second launch: GunWall is already running`
+   then `brought the running window to the front`.
+2. Do it twice more, including once with the window already open. **PASS:** still
+   one process.
+3. Turn protection OFF. Wait a minute. **PASS:** internet unrestricted, and no
+   `FILTER TAMPERING DETECTED` or `Filtering re-applied` lines after the OFF.
+4. Run `GunWall.exe --unblock` from an admin prompt while GunWall runs. **PASS:** the
+   recovery still runs (it is exempt from the guard).
+
 ### 0.99.156 — protection first after a reboot
 
 1. Restart the PC with a system rule on. **PASS:** `Startup: N of N filter(s) are

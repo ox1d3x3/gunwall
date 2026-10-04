@@ -51,6 +51,19 @@ public partial class App : Application
             return;
         }
 
+        // ------------------------------------------------ one instance (trap 2.46)
+        // Recovery commands above run regardless - they exist for emergencies. A
+        // normal launch while GunWall is already running asks it to show its window
+        // and exits here, before reading the profile or touching a filter.
+        if (!ClaimSingleInstance())
+        {
+            DiagnosticLog.Log("Second launch: GunWall is already running - asked it to show its window; "
+                            + "exiting before touching the profile or any filter.");
+            Shutdown(0);
+            return;
+        }
+        ListenForActivation();
+
         // Surface unhandled UI-thread exceptions instead of silently dying,
         // and record them for the diagnostics bundle.
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -127,6 +140,86 @@ public partial class App : Application
     /// KeyNotFoundException thrown by GunWall's own code has neither and still
     /// gets the dialog, which is the point — this suppresses a known framework
     /// fault, not a class of exception.</summary>
+    // ================================================================ one instance
+    //
+    // Trap 2.46. Nothing stopped a second GunWall starting. Opening it from the Start
+    // menu or a shortcut while it sat in the tray started a complete second firewall
+    // manager on the same profile and the same WFP sublayer. The 0.99.156 bundle
+    // shows the result: each instance's repair deleted the other's filters, which
+    // the other then "repaired" as tampering, every thirty seconds, leaving a full
+    // set of 456 orphans; and six seconds after protection was turned OFF in one
+    // window, the other reinstalled every filter - OFF on screen, blocking in fact.
+    //
+    // Named for the machine, not the session: two users' instances would fight
+    // over the one sublayer just the same. Creating Global objects needs a privilege
+    // standard users lack, so one cannot squat the name to stop GunWall starting.
+    private const string InstanceMutexName = @"Global\GunWall.Instance.8f1d2b40";
+    private const string ActivateEventName = @"Global\GunWall.Activate.8f1d2b40";
+
+    // Held in a static for the life of the process: a mutex in a local could be
+    // collected, and its release would let the next launch through.
+    private static System.Threading.Mutex? _instanceMutex;
+    private static System.Threading.EventWaitHandle? _activateEvent;
+
+    /// <summary>True when this is the only GunWall UI; otherwise signals the running
+    /// one to show itself and returns false.</summary>
+    private static bool ClaimSingleInstance()
+    {
+        try
+        {
+            _instanceMutex = new System.Threading.Mutex(true, InstanceMutexName, out bool created);
+            if (created) return true;
+            try { if (_instanceMutex.WaitOne(0)) return true; }
+            catch (System.Threading.AbandonedMutexException) { return true; }   // the last holder died: ours now
+            SignalRunningInstance();
+            return false;
+        }
+        catch (Exception ex)
+        {
+            // Fail open: a guard that cannot be checked must not stop the firewall starting.
+            DiagnosticLog.LogException("SingleInstance", ex);
+            return true;
+        }
+    }
+
+    private static void SignalRunningInstance()
+    {
+        // The running instance is in the background; Windows lets it take the
+        // foreground only if the process the user just launched allows it.
+        try { AllowSetForegroundWindow(-1); } catch { }          // ASFW_ANY
+        try
+        {
+            using var ev = System.Threading.EventWaitHandle.OpenExisting(ActivateEventName);
+            ev.Set();
+        }
+        catch { /* still starting up: it will show its own window */ }
+    }
+
+    /// <summary>Shows the window whenever a later launch asks.</summary>
+    private void ListenForActivation()
+    {
+        try
+        {
+            var ev = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.AutoReset, ActivateEventName);
+            _activateEvent = ev;
+            new System.Threading.Thread(() =>
+            {
+                while (true)
+                {
+                    try { ev.WaitOne(); } catch { return; }
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (Current?.MainWindow is GunWall.MainWindow mw) mw.ShowForSecondLaunch();
+                    }));
+                }
+            }) { IsBackground = true, Name = "GunWall activation" }.Start();
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("SingleInstance/listen", ex); }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool AllowSetForegroundWindow(int processId);
+
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]
     private static extern bool AttachConsole(int processId);
 

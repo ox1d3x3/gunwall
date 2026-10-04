@@ -57,6 +57,13 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
   no measured operation explains them, so the cause is UI work not yet timed;
   likely the first render of a panel. Time tab switches to attribute them.
 
+- ✅ **Single instance** *(0.99.157)* — a second launch shows the running window
+  and exits (trap 2.46); likely explains the 18 September protection-OFF case
+- ☐ **GeoIP ahead of the restore at cold boot** *(0.99.156 restart bundle)* — with
+  the vendor database moved, `LoadGeoIp` inside `Initialize` is the longest step
+  before protection returns: 6.2 s at cold boot (~340 ms warm). Country and ASN
+  blocks re-form from traffic anyway; load it after the restore.
+
 ### App model & visibility
 *Managed C# throughout. No kernel risk.*
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.

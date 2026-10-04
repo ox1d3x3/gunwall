@@ -15,6 +15,47 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.157] — 2026-10-04
+
+### Verified — 0.99.156 on hardware
+Restart: `456 of 456 absent` → `456 installed, 0 superseded` → all present. The
+self-permit is installed once; the vendor database is off the startup path, and
+protection returned ~14 s after launch at cold boot (was ~20 s).
+
+### Fixed — a second GunWall could run alongside the first (trap 2.46)
+Nothing stopped a second instance. Opening GunWall from the Start menu or a shortcut
+while it sat in the tray started a complete second firewall manager on the same
+profile and WFP sublayer. The 0.99.156 bundle caught two overlapping pairs:
+
+- each instance's repair deleted the other's filters, which the other then read as
+  tampering and "repaired" — on two 30-second clocks, 8 s apart
+- a full second set of 456 filters was left untracked; protection OFF's sweep
+  caught them as orphans
+- six seconds after protection was switched OFF in one window, the other instance
+  reinstalled every filter: OFF on screen, blocking in fact
+
+This is the likely explanation of the 18 September case (protection OFF left 352
+filters live), unexplained until now — likely, not proven.
+
+Now the first instance holds a machine-wide named mutex for its whole life. A later
+launch tells it to show its window — bringing it out of the tray, with foreground
+permission granted — and exits before reading the profile or touching a filter.
+Recovery commands (`--unblock`, `--purge-sublayer`) still run regardless: they exist
+for emergencies. If GunWall crashed, its mutex is abandoned and the next launch takes
+it; if the guard itself cannot be checked, GunWall starts anyway rather than leave
+the machine without its firewall. The claim logic was compiled as written and run
+across real processes: refused while an owner runs, taken over after the owner is
+killed, claimed after a clean exit.
+
+### Check `single-instance`
+Claim placed after the recovery commands and before the rest of startup; a refused
+launch exits there; machine-wide name; mutex in a static; abandoned counts as
+acquired; fails open; a later launch restores the window. 8 mutations, each shown
+failing — one escaped the first version (a local `var _instanceMutex` matched as a
+substring) and the check now anchors the statement.
+
+---
+
 ## [0.99.156] — 2026-10-04
 
 ### Verified — 0.99.155 on hardware

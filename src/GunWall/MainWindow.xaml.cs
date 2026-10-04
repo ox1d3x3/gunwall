@@ -438,7 +438,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.156 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.157 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -8484,6 +8484,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (child is RadioButton rb) yield return rb;
             foreach (var deeper in FindRadioButtons(child)) yield return deeper;
         }
+    }
+
+    /// <summary>GunWall was launched again while running: show this window, rather
+    /// than a second firewall manager starting on the same profile (trap 2.46).</summary>
+    internal void ShowForSecondLaunch()
+    {
+        RestoreFromTray();
+        Services.DiagnosticLog.Log("Second launch: brought the running window to the front.");
     }
 
     private void RestoreFromTray()

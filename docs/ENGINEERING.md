@@ -973,3 +973,15 @@ figure means something only for time a person could feel it — on screen and in
 front. **Rule:** before trusting a responsiveness figure, check CPU over the same
 window. High latency at idle CPU is waiting, and waiting the OS imposes is not a bug.
 
+### 2.46 Two of a thing that assumes it is the only one
+
+GunWall assumes it alone owns its profile and its WFP sublayer, and nothing enforced
+it. A second launch — the obvious thing to do when the window is in the tray —
+started a second owner. Each read the other's changes as tampering. The log showed it
+as two repair rhythms 8 s apart, and as protection that came back on by itself.
+
+**Rule:** anything that assumes exclusive ownership of shared state — a file, a
+kernel object, a device — must take that ownership explicitly at startup and refuse
+to proceed without it. When a log shows two clocks where the code has one, look for
+two processes.
+
