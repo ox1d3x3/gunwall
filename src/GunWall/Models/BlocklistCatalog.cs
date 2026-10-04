@@ -66,27 +66,6 @@ public static class BlocklistCatalog
         "test.stats.update.microsoft.com",
     };
 
-    // Common ad / tracking endpoints.
-    private static readonly string[] AdsHosts =
-    {
-        "ads.msn.com",
-        "ads1.msn.com",
-        "ads2.msn.com",
-        "adnexus.net",
-        "adsyndication.msn.com",
-        "a.ads1.msn.com",
-        "a.ads2.msn.com",
-        "live.rads.msn.com",
-        "rad.msn.com",
-        "g.msn.com",
-        "flex.msn.com",
-        "c.msn.com",
-        "ec.atdmt.com",
-        "cdn.atdmt.com",
-        "ad.doubleclick.net",
-        "static.ads-twitter.com",
-        "analytics.google.com",
-    };
 
     public static readonly BlocklistCategory Telemetry = new(
         "telemetry", "Windows telemetry & tracking",
@@ -100,17 +79,12 @@ public static class BlocklistCatalog
         UpdateHosts,
         new[] { "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/update.txt" });
 
-    public static readonly BlocklistCategory Ads = new(
-        "ads", "Ads & trackers",
-        "Blocks ads and trackers at the DNS layer via AdGuard.",
-        AdsHosts,
-        new[]
-        {
-            "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
-            "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/extra.txt",
-        });
 
-    public static readonly IReadOnlyList<BlocklistCategory> All = new[] { Telemetry, Update, Ads };
+    // "Ads & trackers" was removed in 0.99.159. It only switched Windows' DNS to
+    // AdGuard - no list, no filters - and on the maintainer's network that took
+    // the whole internet down, for reasons outside GunWall that could not be
+    // verified from here. Anyone who wants AdGuard can set it in Windows Settings.
+    public static readonly IReadOnlyList<BlocklistCategory> All = new[] { Telemetry, Update };
 
     // Online lists are fetched from these open-source, MIT-licensed projects:
     //   WindowsSpyBlocker (crazy-max) and StevenBlack/hosts.

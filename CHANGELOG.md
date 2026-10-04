@@ -15,6 +15,37 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.159] — 2026-10-04
+
+### Verified — 0.99.158 on hardware
+After a restart, protection was back ~6.6 s after launch (0.99.156: ~14 s;
+0.99.155: ~20 s). Restore at 17:23:15.5, GeoIP 6.7 s later in the background.
+Most of what remains is Windows starting the process at boot: 3.9 s to GunWall's
+first line, 1.8 s to the window; GunWall's own engine and restore take ~0.7 s.
+
+### Removed — Ads & trackers
+It only switched Windows' DNS on each active adapter to AdGuard's servers
+(`netsh … set dnsservers static 94.140.14.14`) — no list, no filters — and on the
+maintainer's network that took the whole internet down. Traced: GunWall's filters
+are not the cause (`svchost.exe`, which carries Windows' DNS lookups, has a full
+permit under zero-trust), and nothing in GunWall reacts to the change. The failure
+lies in the network or Windows' DNS settings for that adapter — not something
+GunWall could verify, or make work, from here. Anyone who wants AdGuard can set it
+in Windows Settings. Removed completely: the category, its host list, and every
+special case for it.
+
+### Changed — DNS provider changes are logged to diagnostics
+The Filtering DNS card changes DNS by the same mechanism. It stays, and every change
+now writes the provider, its servers and the adapter count to diagnostics; until
+now it went to the activity log only, which is why the Ads & trackers failure left
+no trace in the bundle.
+
+### Check `ads-removed`
+No special case for the removed key anywhere; DNS changes logged. 2 mutations, each
+shown failing.
+
+---
+
 ## [0.99.158] — 2026-10-04
 
 ### Verified — 0.99.157 on hardware

@@ -42,13 +42,9 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
 ## ☐ Open
 
 ### Fix bucket — known faults, reported from use
-- ☐ **Ads & trackers takes the whole internet down** *(reported 2026-10-04,
-  0.99.154)* — switching it on sets every adapter's DNS to AdGuard's plain servers
-  (`SetDnsProvider("adguard")` → `DnsService.Apply`), and all connectivity is lost
-  until it is switched off. The change is logged only to the activity log, never to
-  diagnostics, so the bundle holds no trace of it. First step: log the change —
-  adapters, servers before and after, and a resolution test through the new server
-  — then reproduce with protection on and off, to separate DNS from filtering.
+- ✅ **Ads & trackers takes the whole internet down** *(0.99.159)* — removed: it only
+  switched DNS to AdGuard, and the failure lies outside GunWall. The Filtering DNS
+  card uses the same mechanism and now logs every change to diagnostics.
 - ☐ **Signature check on the UI thread for a newly seen application** *(0.99.154
   bundle)* — `Verify` took 805 ms on the UI thread inside `RebuildAppsList`,
   freezing the UI for 518 ms. Launch-time warming covers applications known at

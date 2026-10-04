@@ -3610,9 +3610,6 @@ public sealed class FirewallManager : IDisposable
 
     public bool IsBlocklistOn(string key)
     {
-        // Ads & trackers is enforced at the DNS layer (AdGuard), not the hosts
-        // file - 85k domains is impractical as hosts entries or WFP filters.
-        if (key == "ads") return CurrentDnsProvider == "adguard";
         return _data.EnabledBlocklists.Contains(key);
     }
 
@@ -3688,16 +3685,6 @@ public sealed class FirewallManager : IDisposable
     /// </summary>
     public bool SetBlocklistEnabled(string key, bool on)
     {
-        // Ads & trackers: block at the DNS layer with AdGuard rather than the
-        // hosts file. Fast, Defender-proof, and no list upkeep. (This shares the
-        // single system DNS setting with the Filtering DNS card.)
-        if (key == "ads")
-        {
-            SetDnsProvider(on ? "adguard" : "auto");
-            EventLog($"Ads & trackers {(on ? "enabled via AdGuard DNS" : "disabled (DNS set to automatic)")}");
-            return true;
-        }
-
         bool has = _data.EnabledBlocklists.Contains(key);
 
         if (!on)
@@ -3846,6 +3833,11 @@ public sealed class FirewallManager : IDisposable
         _data.DnsProvider = preset.Key;
         SaveStore();
         EventLog($"DNS set to {preset.Name} on {n} adapter(s)");
+        // In diagnostics too: Ads & trackers changed DNS and took the internet down,
+        // and the bundle held no trace of it - the change went to the activity log only.
+        DiagnosticLog.Log($"DNS provider set to {preset.Key} ("
+                        + (preset.Primary.Length > 0 ? $"{preset.Primary}, {preset.Secondary}" : "from the network")
+                        + $") on {n} adapter(s).");
         return n;
     }
 

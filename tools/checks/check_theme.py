@@ -1954,6 +1954,26 @@ def _method_body(src, name):
     return m.group(0) if m else ""
 
 
+def check_ads_removed():
+    """Ads & trackers is gone completely, not half-removed.
+
+    Removed in 0.99.159: it only switched Windows' DNS to AdGuard, and on the
+    maintainer's network that took the whole internet down. A special case left
+    behind for the "ads" key would point at a category that no longer exists.
+    DNS changes from the Filtering DNS card - the same mechanism - are logged.
+    """
+    before = len(failures)
+    for path in list(APP.rglob("*.cs")):
+        txt = strip_cs(path.read_text(encoding="utf-8"), keep_strings=True)
+        if re.search(r'"ads"', txt) or re.search(r"\bAdsHosts\b|BlocklistCatalog\.Ads\b", txt):
+            fail("ads-removed", f"{path.name} still special-cases Ads & trackers")
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    if "DiagnosticLog.Log(" not in _method_body(fm, "SetDnsProvider"):
+        fail("ads-removed", "a DNS provider change is not logged to diagnostics")
+    if len(failures) == before:
+        notes.append("ads-removed: no trace of the Ads & trackers toggle; DNS changes logged")
+
+
 def check_single_instance():
     """Only one GunWall manages the filters at a time.
 
@@ -6259,6 +6279,7 @@ def main():
     check_list_sync()
     check_effect_layers()
     check_misleading_indentation()
+    check_ads_removed()
     check_single_instance()
     check_startup_order()
     check_own_filters_only()

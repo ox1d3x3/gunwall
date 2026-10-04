@@ -450,7 +450,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.158 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.159 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5999,9 +5999,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var name = new TextBlock { Text = cat.Name, FontWeight = FontWeights.SemiBold };
         var desc = new TextBlock
         {
-            Text = cat.Key == "ads"
-                ? $"{cat.Description}  (via AdGuard DNS)"
-                : $"{cat.Description}  ({count:n0} domains)",
+            Text = $"{cat.Description}  ({count:n0} domains)",
             Style = (Style)FindResource("Muted"),
             Margin = new Thickness(0, 2, 0, 0),
             TextWrapping = TextWrapping.Wrap
@@ -6072,17 +6070,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 if (!ok)
                     BlocklistCatStatus.Text =
                         $"Couldn't apply \u201c{cat.Name}\u201d \u2014 it's too large to block without the hosts file, which Windows Defender is blocking here. Use the Filtering DNS option below for ads/trackers.";
-                else if (key == "ads")
-                    BlocklistCatStatus.Text = on
-                        ? "Ads & trackers is on \u2014 blocking at the DNS layer with AdGuard. (Changing the Filtering DNS provider below overrides this.)"
-                        : "Ads & trackers is off \u2014 DNS set back to automatic.";
                 else if (on && _firewall.IsBlocklistViaWfp(key))
                     BlocklistCatStatus.Text =
                         $"\u201c{cat.Name}\u201d is on \u2014 enforced via firewall rules (Windows Defender blocked the hosts-file method, so GunWall blocked the addresses directly).";
                 else
                     BlocklistCatStatus.Text = $"\u201c{cat.Name}\u201d is {(on ? "on" : "off")}.";
             }
-            if (key == "ads") RefreshDnsCombo(); // keep the Filtering DNS card in sync
         }
         catch (Exception ex)
         {

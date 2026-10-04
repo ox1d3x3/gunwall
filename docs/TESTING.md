@@ -227,6 +227,16 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.159 — Ads & trackers removed
+
+1. **Security → Blocklists**: only Telemetry and Windows Update remain; no Ads &
+   trackers toggle.
+2. Internet works normally; DNS is unchanged (Settings → Network shows automatic
+   unless you set it yourself).
+3. Optional — only on a network where you can afford a moment offline: change the
+   **Filtering DNS** card, then set it back to Automatic. **PASS:** the log shows a
+   `DNS provider set to …` line for each change.
+
 ### 0.99.158 — GeoIP after the restore
 
 1. **Restart the PC** with a system rule on. **PASS:** `Startup: N of N absent` →
