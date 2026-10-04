@@ -171,16 +171,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         DnsLog.ItemsSource = _dnsLog;
         // Carry across anything an older build wrote beside the executable, before
         // anything reads or overwrites it. Copies, and never over a newer file.
-        // Loaded here rather than on first scan: a 4 MB parse should not happen
-        // while someone is waiting for a scan to finish.
-        try
-        {
-            Services.PerfMonitor.MarkStartup("vendor database start");
-            _oui.LoadFromFile(OuiCachePath);
-            Services.NetworkScanner.Oui = _oui;
-            Services.PerfMonitor.MarkStartup("vendor database loaded");
-        }
-        catch (Exception ex) { Services.DiagnosticLog.LogException("OuiLoad", ex); }
+        // The vendor database is no longer loaded here: see LoadVendorDatabase. The
+        // scanner gets the instance now; its tables arrive when the load finishes.
+        Services.NetworkScanner.Oui = _oui;
         Services.NetworkScanner.NoteLookup = m => _firewall.GetDeviceNote(m);
         // Shown from the start. Without this the label stays empty until someone
         // downloads, which reads as a broken control rather than an empty table.
@@ -318,7 +311,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     // filters absent for eighteen hours while the window read
                     // Protected. Restoring your own filtering is not tamper
                     // detection and is not optional.
-                    _firewall.RestoreFilteringIfLost();
+                    int restored = _firewall.RestoreFilteringIfLost();
+                    // The repair rebuilds the self-permit and service blocks with
+                    // everything else. Refreshing them on the UI thread at the same
+                    // time installed the self-permit twice - the constant "4
+                    // superseded" in every restart log - and raced the repair over
+                    // BlockedServices. Now only when nothing needed restoring.
+                    if (restored == 0)
+                    {
+                        _firewall.EnsureSelfConnectivity(); // GunWall must not block its own update/list/VT traffic
+                        _firewall.ReapplyServiceBlocks();   // service rules survive an engine rebuild
+                    }
 
                     // Dead rules go in the same pass: both are "things the store
                     // says that the machine no longer agrees with".
@@ -326,9 +329,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                         Dispatcher.Invoke(() => { try { RebuildAppsList(); } catch { } });
                 }
                 catch (Exception ex) { Services.DiagnosticLog.LogException("StartupReconcile", ex); }
+                LoadVendorDatabase();   // after the restore: at boot the disk goes to protection first
             });
-            _firewall.EnsureSelfConnectivity(); // GunWall must not block its own update/list/VT traffic
-            _firewall.ReapplyServiceBlocks();   // service rules survive an engine rebuild
             _firewall.LoadCategoryColors();      // apply any customised category dot colors
             _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
             _firewall.AutoBackupIfEnabled(); // snapshot the profile on launch (if enabled)
@@ -436,7 +438,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.155 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.156 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4066,6 +4068,26 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
              .ToList();
 
     private int _uiProbeOutstanding;
+
+    /// <summary>True when one of GunWall's windows - the main window or a prompt - is
+    /// the foreground window. Open but behind other windows is background time.</summary>
+    private static bool AnyGunWallWindowActive()
+    {
+        foreach (Window w in Application.Current.Windows)
+            if (w.IsActive) return true;
+        return false;
+    }
+
+    /// <summary>The top-level panel on screen, for freeze lines: the code name of a
+    /// direct child of PanelHost, never anything it shows. IsVisible, not Visibility,
+    /// so a panel inside a collapsed parent is not mistaken for the one on screen.</summary>
+    private string VisiblePanelName()
+    {
+        foreach (var child in PanelHost.Children)
+            if (child is FrameworkElement fe && fe.IsVisible && fe.Name.StartsWith("Panel", StringComparison.Ordinal))
+                return fe.Name.Substring(5);
+        return "none";
+    }
     private volatile bool _probeWanted = true;   // written on the UI thread, read by the probe
 
     /// <summary>
@@ -4101,7 +4123,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                         // OnScreen is read here, on the UI thread, where WPF allows it.
                         Services.PerfMonitor.RecordUiLag(
                             (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency,
-                            OnScreen);
+                            OnScreen && AnyGunWallWindowActive(), VisiblePanelName());
                         System.Threading.Interlocked.Exchange(ref _uiProbeOutstanding, 0);
                     }));
                 }
@@ -6416,6 +6438,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     // ================================================================ network scanner
     private readonly Services.OuiService _oui = new();
+
+    /// <summary>
+    /// Loads the vendor database, off the UI thread and after the startup restore.
+    ///
+    /// It loaded in the window's constructor: 57 ms warm, but 5.9 s and 6.4 s at cold
+    /// boot in the two restart bundles - in front of the window, the engine and the
+    /// restore, so after every reboot protection came back that much later. Safe off
+    /// the UI thread because OuiService builds its tables privately and swaps them in
+    /// by reference at the end: a lookup sees the old tables or the new, never half
+    /// of one. A scan started in the first seconds after boot shows no vendors until
+    /// the load finishes; a rescan fills them in.
+    /// </summary>
+    private void LoadVendorDatabase()
+    {
+        using var _perf = PerfMonitor.Measure("LoadVendorDatabase");
+        try
+        {
+            _oui.LoadFromFile(OuiCachePath);
+            Services.NetworkScanner.Oui = _oui;
+            Dispatcher.BeginInvoke(new Action(() => { try { RefreshOuiStatus(); } catch { } }));
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("OuiLoad", ex); }
+    }
     private string OuiCachePath => Services.ProfilePaths.FileIn("oui.csv");
 
     // ================= Additional data: GeoIP and vendor databases =========

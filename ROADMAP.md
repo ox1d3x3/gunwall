@@ -145,15 +145,10 @@ Ranked by evidence. Items below the line are measured from 0.99.152 onwards by
   use: 354 MB to 221 MB for the whole application.
 - ✅ **Layout-free animation** *(0.99.151)* — nothing animates a size or margin
 - ✅ **Performance evidence in diagnostics** *(0.99.152)*
-- ☐ **Vendor database load — re-ranked by cold-boot evidence** *(0.99.154 restart
-  bundle)* — 57 ms warm, but **5.9 s at cold boot**, on the UI thread in the window
-  constructor. It delays the window, the engine and the startup restore: after a
-  restart, filtering came back ~16 s after GunWall launched. Load it off the UI
-  thread, after the restore has started.
-- ☐ **Self-permit installed twice at startup** — `EnsureSelfConnectivity` runs on the
-  UI thread while the reconcile and restore run in the background, so the restore
-  finds those 4 filters present and the repair reinstalls and supersedes them: the
-  constant "4 present / 4 superseded" in every restart log. Benign; order the two.
+- ✅ **Vendor database off the startup path** *(0.99.156)* — 5.9–6.4 s at cold boot
+  no longer stands ahead of the restore
+- ✅ **Self-permit installed once at startup** *(0.99.156)* — and service blocks no
+  longer race the repair
 - ✅ **Embedded fonts** *(0.99.153)* — plain JetBrains Mono 2.304 replaces the Nerd
   Font build of the same version: 9.6 MB to 1.1 MB. Measured identical in every
   width, the line metrics and all but 13 outlines, which the patcher had redrawn as

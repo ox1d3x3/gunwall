@@ -15,6 +15,48 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.156] — 2026-10-04
+
+### Verified — 0.99.155 on hardware
+Restart with three system rules on: `448 of 452 absent` → `452 installed` →
+`452/452 present`, no `left alone` lines, 0 errors. Protection OFF→ON reinstalled
+the system rules (`4 filter(s) reinstalled`). Both restore paths are now proven.
+
+### Changed — after a reboot, protection comes back first
+The vendor database loaded in the window's constructor: 57 ms warm, but **5.9 s and
+6.4 s at cold boot** in the two restart bundles, on the UI thread ahead of the
+window, the engine and the restore. It now loads in the startup task, after the
+restore, off the UI thread (`LoadVendorDatabase`, timed). Safe because `OuiService`
+builds its tables privately and swaps them in by reference at the end. A network
+scan in the first seconds after boot shows no vendors until the load finishes.
+
+### Fixed — the self-permit was installed twice at every startup
+`EnsureSelfConnectivity` and `ReapplyServiceBlocks` ran on the UI thread while the
+repair rebuilt both in the background: the self-permit was installed twice (the
+constant "4 present / 4 superseded" in every restart log), and `BlockedServices`
+was written by two threads at once. Both now run in the startup task, after the
+restore, and only when the restore did not run. Expect `N of N absent` and `0
+superseded` after a restart.
+
+### Changed — the responsiveness probe knows foreground from background
+The 0.99.155 bundle logged an hour as 112 "freezes", median 50–100 ms — at 0.1% CPU
+throughout. A thread doing that much work would show several percent; it was
+waiting, not working: Windows throttles an app that is open but behind other
+windows, and the probe counted any window not minimised as visible. Responsiveness
+is now reported for time **in front** — on screen with a GunWall window active —
+and everything else as background. Every freeze line names the panel on screen.
+
+### Checks
+- `startup-order` (new): no vendor load in the constructor; `LoadVendorDatabase`
+  timed and run after the restore; self-permit and service blocks refreshed only
+  when the restore did not run, and never on the UI thread at startup
+- `perf-evidence`: the probe passes in-front and the panel; all three freeze lines
+  name the panel; background time kept out of the in-front histogram
+
+9 mutations, each shown failing.
+
+---
+
 ## [0.99.155] — 2026-10-04
 
 ### Verified — restart restore (0.99.154), on hardware

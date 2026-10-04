@@ -964,3 +964,12 @@ Also from this trace: a constant in a log ("4 present", every boot) is not noise
 It was GunWall's own self-permit, installed before the background restore checked —
 but it took the code, not the log, to say so, and the first reading was wrong.
 
+### 2.45 Visible is not in front
+
+Trap 2.40 split hidden from visible. It was not enough: a window that is not
+minimised but sits behind other windows is, to Windows, a background app, and is
+throttled like one. An hour of that read as 112 freezes at 0.1% CPU. A latency
+figure means something only for time a person could feel it — on screen and in
+front. **Rule:** before trusting a responsiveness figure, check CPU over the same
+window. High latency at idle CPU is waiting, and waiting the OS imposes is not a bug.
+

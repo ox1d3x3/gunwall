@@ -227,6 +227,18 @@ Each release adds a short, specific checklist here covering what changed in it �
 the standing checks above cover everything else. When a build introduces no
 user-visible change, this section says so rather than inventing steps.
 
+### 0.99.156 — protection first after a reboot
+
+1. Restart the PC with a system rule on. **PASS:** `Startup: N of N filter(s) are
+   absent` (all of them now, not N−4) → `Filtering re-applied: N filter(s) installed,
+   0 superseded` → `N/N present`. The `Perf: startup` line no longer lists the vendor
+   database; a `LoadVendorDatabase` line may appear later, "in the background".
+2. **Network** tab: run a scan a minute after boot. **PASS:** vendors shown.
+3. Leave GunWall open behind other windows for a while, then use it normally for a
+   few minutes, and export. **PASS:** `ui responsiveness while in front` stays
+   fast; the time behind other windows lands under `background[...]`; any `UI froze`
+   line names a panel (`on Dashboard`, `on Security`, ...).
+
 ### 0.99.155 — GunWall touches only its own filters
 
 1. Switch on a system rule, then **restart the PC**. **PASS:** as in 0.99.154 —

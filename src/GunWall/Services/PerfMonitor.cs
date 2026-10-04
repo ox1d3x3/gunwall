@@ -119,7 +119,13 @@ public static class PerfMonitor
     /// caused it, since that is real work rather than the system idling a
     /// background process.
     /// </summary>
-    public static void RecordUiLag(double ms, bool onScreen)
+    /// <param name="inFront">On screen AND one of GunWall's windows is the active
+    /// one. Behind other windows Windows throttles an idle app: in the 0.99.155
+    /// bundle an hour open in the background read as 112 "freezes", median 50-100
+    /// ms, at 0.1% CPU - waiting, not working. Only time in front is what a person
+    /// feels, so only it is reported as responsiveness.</param>
+    /// <param name="panel">The panel on screen - a code name, never content.</param>
+    public static void RecordUiLag(double ms, bool inFront, string panel)
     {
         string? line = null;
         lock (Gate)
@@ -129,7 +135,7 @@ public static class PerfMonitor
                 && Ms(now - _lastLongEnd) <= ms + 100
                 && Ms(_lastLongTicks) >= ms * 0.5;
 
-            if (!onScreen)
+            if (!inFront)
             {
                 _hidProbes++; _sHidProbes++;
                 if (ms > _hidMax) _hidMax = ms;
@@ -138,7 +144,7 @@ public static class PerfMonitor
                 _hidStalls++; _sHidStalls++;
                 if (!attributed || Ms(now - _lastStallLog) < 5000) return;
                 _lastStallLog = now;
-                line = $"Perf: UI froze for {ms:F0} ms while hidden - {_lastLongName} took "
+                line = $"Perf: UI froze for {ms:F0} ms on {panel}, in the background - {_lastLongName} took "
                      + $"{Ms(_lastLongTicks):F0} ms.";
             }
             else
@@ -156,8 +162,8 @@ public static class PerfMonitor
                 string extra = _stallsUnlogged > 0 ? $" ({_stallsUnlogged} more since the last report)" : "";
                 _stallsUnlogged = 0;
                 line = attributed
-                    ? $"Perf: UI froze for {ms:F0} ms - {_lastLongName} took {Ms(_lastLongTicks):F0} ms.{extra}"
-                    : $"Perf: UI froze for {ms:F0} ms - unattributed: no measured operation explains it, "
+                    ? $"Perf: UI froze for {ms:F0} ms on {panel} - {_lastLongName} took {Ms(_lastLongTicks):F0} ms.{extra}"
+                    : $"Perf: UI froze for {ms:F0} ms on {panel} - unattributed: no measured operation explains it, "
                       + $"so the cause is in code not yet measured.{extra}";
             }
         }
@@ -259,7 +265,7 @@ public static class PerfMonitor
             lag = FormatLag(LagHist, _lagMax);
             long stalls = _stalls;
             lag += stalls > 0 ? $", freezes {stalls}" : "";
-            lag += $"] hidden[{_hidProbes} probes, max {_hidMax:F0} ms, freezes {_hidStalls}";
+            lag += $"] background[{_hidProbes} probes, max {_hidMax:F0} ms, freezes {_hidStalls}";
             Array.Clear(LagHist); _lagMax = 0; _stalls = 0;
             _hidProbes = 0; _hidMax = 0; _hidStalls = 0;
             foreach (var o in Ops.Values) { o.Count = 0; o.Total = 0; o.Max = 0; }
@@ -302,11 +308,11 @@ public static class PerfMonitor
         lock (Gate)
         {
             lag = FormatLag(SLagHist, _sLagMax) + $", freezes {_sStalls}"
-                + $"] hidden[{_sHidProbes} probes, max {_sHidMax:F0} ms, freezes {_sHidStalls}";
+                + $"] background[{_sHidProbes} probes, max {_sHidMax:F0} ms, freezes {_sHidStalls}";
             ops = FormatOps(window: false);
             startup = Startup.ToList();
         }
-        yield return $"Performance: ui responsiveness while visible [{lag}]";
+        yield return $"Performance: ui responsiveness while in front [{lag}]";
         yield return $"Performance: costliest operations | {ops}";
         if (startup.Count > 0)
             yield return "Performance: startup " + string.Join(", ", startup.Select(s => $"{s.Item1} {s.Item2:F0} ms"));

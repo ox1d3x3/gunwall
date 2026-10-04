@@ -1954,6 +1954,50 @@ def _method_body(src, name):
     return m.group(0) if m else ""
 
 
+def check_startup_order():
+    """After a reboot, protection comes back first, and once.
+
+    The two 0.99.154/155 restart bundles: the vendor database loaded in the window
+    constructor - 57 ms warm, 5.9 s and 6.4 s at cold boot - on the UI thread ahead
+    of the window, the engine and the restore, so protection returned that much
+    later after every reboot. And the self-permit and service blocks were refreshed
+    on the UI thread while the repair rebuilt them in the background: the self-permit
+    installed twice ("4 superseded" in every restart log) and BlockedServices written
+    by two threads at once.
+
+    Held here: the constructor does no vendor load; LoadVendorDatabase is timed and
+    runs in the startup task after the restore; the self-permit and service blocks
+    are refreshed only there, only when the restore did not run, and nowhere on the
+    UI thread at startup.
+    """
+    before = len(failures)
+    mw = strip_cs((APP / "MainWindow.xaml.cs").read_text(encoding="utf-8"))
+    ctor = re.search(r"public MainWindow\(\).*?\n    \}", mw, re.S)
+    if not ctor or "_oui.LoadFromFile(" in ctor.group(0):
+        fail("startup-order", "the vendor database loads in the window constructor, on the UI "
+                              "thread, ahead of the restore")
+    lvd = _method_body(mw, "LoadVendorDatabase")
+    if 'PerfMonitor.Measure(' not in lvd or "_oui.LoadFromFile(" not in lvd:
+        fail("startup-order", "LoadVendorDatabase is missing or untimed")
+    loaded = _method_body(mw, "OnLoaded")
+    task = re.search(r"Task\.Run\(\(\) =>\s*\{(.*?)\n            \}\);", loaded, re.S)
+    t = task.group(1) if task else ""
+    i_rest, i_vend = t.find("RestoreFilteringIfLost()"), t.find("LoadVendorDatabase()")
+    if i_rest < 0 or i_vend < 0 or i_vend < i_rest:
+        fail("startup-order", "the vendor database is not loaded in the startup task after the restore")
+    cond = re.search(r"int restored = _firewall\.RestoreFilteringIfLost\(\);.*?if \(restored == 0\)\s*\{([^}]*)\}", t, re.S)
+    if not cond or "EnsureSelfConnectivity()" not in cond.group(1) or "ReapplyServiceBlocks()" not in cond.group(1):
+        fail("startup-order", "the self-permit and service blocks are not refreshed only when the "
+                              "restore did not run - they are installed twice after a reboot")
+    outside = loaded.replace(task.group(0), "") if task else loaded
+    for call in ("EnsureSelfConnectivity()", "ReapplyServiceBlocks()"):
+        if call in outside:
+            fail("startup-order", f"{call} runs on the UI thread at startup, racing the repair")
+    if len(failures) == before:
+        notes.append("startup-order: restore first; vendor database after it, off the UI thread; "
+                     "self-permit and service blocks refreshed once")
+
+
 def check_own_filters_only():
     """GunWall trusts and deletes a saved filter id only if the filter is its own.
 
@@ -2302,7 +2346,7 @@ def check_perf_evidence():
         fail("perf-evidence", "PerfMonitor.cs is gone"); return
     pm = strip_cs(pm_path.read_text(encoding="utf-8"))
     for member in ("public static string SampleLine()", "public static IEnumerable<string> SessionSummaryLines()",
-                   "public static void RecordUiLag(double ms, bool onScreen)", "public static Scope Measure(string name)",
+                   "public static void RecordUiLag(double ms, bool inFront, string panel)", "public static Scope Measure(string name)",
                    "public static void RecordFrame()", "public static void MarkStartup(string phase)"):
         if member not in pm:
             fail("perf-evidence", f"PerfMonitor lacks {member}")
@@ -2327,18 +2371,27 @@ def check_perf_evidence():
     # Visible and hidden time recorded apart: mixed, the first 24-hour bundle showed
     # 132 "freezes" and a degraded median that were Windows idling a hidden
     # process, not anything a person felt.
-    if not re.search(r"RecordUiLag\([^;]*OnScreen\)", mw):
-        fail("perf-evidence", "the probe does not say whether the window was on screen, so "
-                              "background waits pollute the responsiveness figures")
+    pm_kept_early = strip_cs(pm_path.read_text(encoding="utf-8"), keep_strings=True)
+    # And open-but-behind-other-windows is background too: 0.99.155 logged an hour
+    # of it as 112 "freezes" at 0.1% CPU - Windows throttling, nothing anyone felt.
+    if not re.search(r"RecordUiLag\([^;]*OnScreen && AnyGunWallWindowActive\(\), VisiblePanelName\(\)\)", mw):
+        fail("perf-evidence", "the probe does not say whether GunWall was in front and on which "
+                              "panel, so background waits pollute the responsiveness figures")
+    # strip_cs marks interpolation holes as {;name; - matched in that form.
+    for want in ('UI froze for {;ms; ms on {;panel; - {;_lastLongName',
+                 'UI froze for {;ms; ms on {;panel; - unattributed',
+                 'UI froze for {;ms; ms on {;panel;, in the background'):
+        if want not in pm_kept_early:
+            fail("perf-evidence", f"a freeze line does not name the panel: {want!r}")
     # "while visible" is inside a string literal, and pm has literals blanked -
     # searched with strings kept (trap 2.30, once more).
     pm_kept = strip_cs(pm_path.read_text(encoding="utf-8"), keep_strings=True)
     # Behaviour, not names: a variable called _hidProbes proves nothing if hidden
     # waits still reach the visible histogram. The visible histogram must sit in
     # the else of an onScreen test whose other branch counts hidden waits.
-    rec = re.search(r"public static void RecordUiLag\(double ms, bool onScreen\).*?\n    \}", pm, re.S)
-    if (not rec or "while visible" not in pm_kept or not re.search(
-            r"if \(!onScreen\)\s*\{[^}]*?_hidProbes\+\+.*?\}\s*else\s*\{[^}]*?LagHist\[",
+    rec = re.search(r"public static void RecordUiLag\(double ms, bool inFront, string panel\).*?\n    \}", pm, re.S)
+    if (not rec or "while in front" not in pm_kept or not re.search(
+            r"if \(!inFront\)\s*\{[^}]*?_hidProbes\+\+.*?\}\s*else\s*\{[^}]*?LagHist\[",
             rec.group(0), re.S)):
         fail("perf-evidence", "hidden time is not kept apart from visible responsiveness")
     probe = re.search(r"private void StartUiLagProbe\(\).*?\n    \}", mw, re.S)
@@ -6106,6 +6159,7 @@ def main():
     check_list_sync()
     check_effect_layers()
     check_misleading_indentation()
+    check_startup_order()
     check_own_filters_only()
     check_restore_everything()
     check_bundled_font()
