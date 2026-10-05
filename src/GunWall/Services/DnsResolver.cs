@@ -599,23 +599,39 @@ public sealed class DnsResolver : IDisposable
             await Task.Delay(400, ct);
             if (ct.IsCancellationRequested || !Running) return;
 
-            var probes = await TestLoopbackPathAsync("gunwall-selfcheck.invalid");
-            var real = probes.FindAll(p => p.Endpoint.Contains(":53", StringComparison.Ordinal));
-            if (real.Count == 0) { SelfCheck = "inconclusive (no :53 probe ran)"; return; }
+            // One probe 0.4 s after start raised a false alarm: the path was still coming
+            // up, and answered seconds later (roadmap). Retry with backoff over ~15 s,
+            // fail only if the LAST attempt fails, and say how long recovery took - a
+            // FAILED line that cries wolf trains everyone to ignore the real one.
+            int[] waitsMs = { 0, 1000, 2000, 4000, 8000 };
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            bool answered = false;
+            string failText = "";
+            foreach (int wait in waitsMs)
+            {
+                if (wait > 0) await Task.Delay(wait, ct);
+                if (ct.IsCancellationRequested || !Running) return;
+                var probes = await TestLoopbackPathAsync("gunwall-selfcheck.invalid");
+                var real = probes.FindAll(p => p.Endpoint.Contains(":53", StringComparison.Ordinal));
+                if (real.Count == 0) { SelfCheck = "inconclusive (no :53 probe ran)"; return; }
+                var failed = real.FindAll(p => !p.Ok);
+                if (failed.Count == 0) { answered = true; break; }
+                failText = string.Join("; ", failed.ConvertAll(p => $"{p.Endpoint} {p.Detail}"));
+            }
 
             string posture = "";
             try { posture = PostureProbe?.Invoke() ?? ""; } catch { }
             if (posture.Length > 0) posture = $" [{posture}]";
 
-            var failed = real.FindAll(p => !p.Ok);
-            if (failed.Count == 0)
+            if (answered)
             {
-                SelfCheck = "answers on loopback" + posture;
-                DiagnosticLog.Log("DNS resolver self-check: answers on loopback." + posture);
+                string after = sw.ElapsedMilliseconds > 500 ? $" (after {sw.Elapsed.TotalSeconds:F1} s, while the path came up)" : "";
+                SelfCheck = "answers on loopback" + after + posture;
+                DiagnosticLog.Log("DNS resolver self-check: answers on loopback" + after + "." + posture);
                 return;
             }
 
-            SelfCheck = string.Join("; ", failed.ConvertAll(p => $"{p.Endpoint} {p.Detail}")) + posture;
+            SelfCheck = failText + " (still failing after 15 s of retries)" + posture;
             // Logged as a warning line, because a resolver that binds and cannot
             // answer is worse than one that failed to start: nothing looks wrong.
             DiagnosticLog.Log(

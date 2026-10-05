@@ -1954,6 +1954,29 @@ def _method_body(src, name):
     return m.group(0) if m else ""
 
 
+def check_dns_selfcheck_patience():
+    """The DNS self-check retries before it cries FAILED (0.99.165).
+
+    The first version of this check passed two broken variants: an unconditional
+    break (one probe only) and a FAILED line logged inside the loop. Checked by
+    structure now: the loop's only break is the success one, and no FAILED text is
+    inside the loop - it comes after it.
+    """
+    before = len(failures)
+    kept = strip_cs((APP / "Services" / "DnsResolver.cs").read_text(encoding="utf-8"), keep_strings=True)
+    body = _method_body(kept, "SelfCheckAsync")
+    loop = re.search(r"foreach \(int wait in waitsMs\)\s*\{(.*?)\n            \}", body, re.S)
+    lb = loop.group(1) if loop else ""
+    if not loop or "TestLoopbackPathAsync(" not in lb:
+        fail("dns-selfcheck", "the self-check does not retry - a path still coming up reads as FAILED")
+    if lb.count("break;") != 1 or "if (failed.Count == 0) { answered = true; break; }" not in lb:
+        fail("dns-selfcheck", "the retry loop can end before the path answers - one probe decides")
+    if "FAILED" in lb or (loop and body.find("self-check FAILED") < body.find(lb)):
+        fail("dns-selfcheck", "FAILED can be logged before the retries are spent")
+    if len(failures) == before:
+        notes.append("dns-selfcheck: retries over ~15 s; FAILED only when the last attempt fails")
+
+
 def check_upgrade_snapshot():
     """The profile is copied, as the old version left it, before a new version writes (0.99.164)."""
     before = len(failures)
@@ -6366,6 +6389,7 @@ def main():
     check_list_sync()
     check_effect_layers()
     check_misleading_indentation()
+    check_dns_selfcheck_patience()
     check_upgrade_snapshot()
     check_store_follow()
     check_fill_and_approvals()

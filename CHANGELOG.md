@@ -15,6 +15,21 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.165] — 2026-10-05
+
+### Fixed — the DNS self-check raised a false alarm
+It probed the loopback resolver once, 0.4 s after start, and logged `self-check
+FAILED … nothing pointed at this resolver will resolve names` while the path was
+still coming up; it answered seconds later. It now retries with backoff (0, 1, 2, 4,
+8 s — about 15 s), fails only if the last attempt fails, and when it recovers logs how
+long the path took to come up.
+
+### Verified — 0.99.164
+`Upgrade unknown -> 0.99.164: profile saved as rules.pre-unknown.json` once across two
+sessions; `LastRunVersion` recorded; 0 errors; 464/464 filters.
+
+---
+
 ## [0.99.164] — 2026-10-05
 
 ### Added — the profile is saved before every upgrade
