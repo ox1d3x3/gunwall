@@ -15,6 +15,21 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.166] — 2026-10-05
+
+### Fixed — the DNS self-check's false alarm, properly this time
+0.99.165 treated it as timing and added retries. The 0.99.165 bundle showed the real
+cause: after 16 s of retries it still logged FAILED with `rcode=3, answers=0, 0 ms` on
+both loopback addresses — while Secure DNS reported `ok=2, failures=0`. The self-check
+asks for `gunwall-selfcheck.invalid`, a name that by definition does not exist (RFC
+6761); its one correct answer is NXDOMAIN (rcode 3), and the resolver gave it
+instantly. But "ok" required a successful answer with records — so the check could
+never pass in DoH mode. A probe for a name that must not exist now passes on NXDOMAIN;
+probes for real names keep the old rule. The retries stay: harmless, and useful if the
+listener is ever slow to start.
+
+---
+
 ## [0.99.165] — 2026-10-05
 
 ### Fixed — the DNS self-check raised a false alarm

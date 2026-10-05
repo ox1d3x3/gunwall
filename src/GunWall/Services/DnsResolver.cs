@@ -611,7 +611,7 @@ public sealed class DnsResolver : IDisposable
             {
                 if (wait > 0) await Task.Delay(wait, ct);
                 if (ct.IsCancellationRequested || !Running) return;
-                var probes = await TestLoopbackPathAsync("gunwall-selfcheck.invalid");
+                var probes = await TestLoopbackPathAsync("gunwall-selfcheck.invalid", nameMustNotExist: true);
                 var real = probes.FindAll(p => p.Endpoint.Contains(":53", StringComparison.Ordinal));
                 if (real.Count == 0) { SelfCheck = "inconclusive (no :53 probe ran)"; return; }
                 var failed = real.FindAll(p => !p.Ok);
@@ -797,7 +797,7 @@ public sealed class DnsResolver : IDisposable
         }
     }
 
-    public async Task<List<PathProbe>> TestLoopbackPathAsync(string probeName = "example.com")
+    public async Task<List<PathProbe>> TestLoopbackPathAsync(string probeName = "example.com", bool nameMustNotExist = false)
     {
         var results = new List<PathProbe>();
 
@@ -874,7 +874,11 @@ public sealed class DnsResolver : IDisposable
                         $"reply id {gotId:X4} does not match query id 4747 - Windows would discard this"));
                     continue;
                 }
-                results.Add(new PathProbe(label, rcode == 0 && answers > 0,
+                // A name that must not exist (".invalid", RFC 6761) has one correct answer:
+                // NXDOMAIN. Requiring records for it made the self-check fail every time
+                // in DoH mode - rcode=3 in 0 ms was the resolver working (0.99.166).
+                bool ok = nameMustNotExist ? rcode == DnsMessage.RcodeNameError : rcode == 0 && answers > 0;
+                results.Add(new PathProbe(label, ok,
                     $"rcode={rcode}, answers={answers}, {sw.ElapsedMilliseconds} ms"));
             }
             catch (Exception ex)

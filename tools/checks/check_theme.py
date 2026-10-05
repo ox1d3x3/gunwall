@@ -1973,8 +1973,14 @@ def check_dns_selfcheck_patience():
         fail("dns-selfcheck", "the retry loop can end before the path answers - one probe decides")
     if "FAILED" in lb or (loop and body.find("self-check FAILED") < body.find(lb)):
         fail("dns-selfcheck", "FAILED can be logged before the retries are spent")
+    # The real defect (0.99.166): the probe asks for a ".invalid" name, whose only correct
+    # answer is NXDOMAIN, but "ok" required records - a guaranteed false alarm.
+    if 'TestLoopbackPathAsync("gunwall-selfcheck.invalid", nameMustNotExist: true)' not in body:
+        fail("dns-selfcheck", "the self-check asks for a name that must not exist but expects records")
+    if "bool ok = nameMustNotExist ? rcode == DnsMessage.RcodeNameError" not in kept:
+        fail("dns-selfcheck", "NXDOMAIN for a name that must not exist is not counted as a working resolver")
     if len(failures) == before:
-        notes.append("dns-selfcheck: retries over ~15 s; FAILED only when the last attempt fails")
+        notes.append("dns-selfcheck: NXDOMAIN for .invalid is a pass; retries over ~15 s; FAILED only when the last attempt fails")
 
 
 def check_upgrade_snapshot():
