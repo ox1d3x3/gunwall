@@ -15,6 +15,31 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.163] — 2026-10-05
+
+### Fixed — a Store app update deleted its rule
+Store apps live in versioned folders (`…\WindowsApps\Name_Version_Arch__Publisher\`);
+an update replaces the folder, so the rule's path vanished and the rule was pruned as
+dead — the decision lost at every Store update (Calculator, 0.99.161 bundle). Dead
+rules are now first checked against the installed packages: the same package name,
+architecture and publisher at a newer version, with the same file inside. If found,
+the rule moves there and its filters are reinstalled (when protection is on). The
+installed versions come from the registry, because WindowsApps cannot be listed even
+elevated. The version picker is unit-tested (5 cases, incl. other architecture,
+other publisher, older only). The repair now skips a rule whose file is missing
+instead of logging an error.
+
+### Changed — the Firewall tab's freeze is now measurable
+`RebuildAppsList+layout` times the rebuild together with WPF's layout pass after it.
+The 532 ms freeze fell outside every timed method; if layout is the cause, the next
+bundle will show it.
+
+### Closed — 85 threads at export
+Threads held at 21–25 throughout the session; 85 only at the moment of export, from
+the export's own parallel work. No leak.
+
+---
+
 ## [0.99.162] — 2026-10-04
 
 ### Fixed — a 32-second UI block after a cold boot (regression from 0.99.160)

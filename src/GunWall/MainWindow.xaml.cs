@@ -451,7 +451,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.162 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.163 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3186,6 +3186,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void RebuildAppsList()
     {
         using var _perf = PerfMonitor.Measure("RebuildAppsList");
+        // The rebuild and the layout pass after it, together: the 532 ms freeze on the
+        // Firewall tab (0.99.160 bundle) was outside every timed method. If this is slow
+        // while RebuildAppsList is not, the cost is WPF laying out the list.
+        long layoutStart = Stopwatch.GetTimestamp();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+            new Action(() => PerfMonitor.Record("RebuildAppsList+layout", layoutStart)));
         var source = _showAllApps
             ? _processes.GetAllApps(_lastConns, _lastProcs)
             : _processes.GetNetworkedApps(_lastConns, _lastProcs);

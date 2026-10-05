@@ -54,6 +54,11 @@ public static class PerfMonitor
     /// A struct, so the using statement allocates nothing.</summary>
     public static Scope Measure(string name) => new(name);
 
+    /// <summary>Records an operation that ends somewhere a scope cannot reach - e.g. after
+    /// WPF's layout pass - from a <see cref="Stopwatch.GetTimestamp"/> taken at its start.</summary>
+    public static void Record(string name, long started) =>
+        End(name, started, Environment.CurrentManagedThreadId);   // called on the thread that started it
+
     public readonly struct Scope : IDisposable
     {
         private readonly string? _name;

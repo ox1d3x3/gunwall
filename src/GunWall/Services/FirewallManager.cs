@@ -1708,6 +1708,10 @@ public sealed class FirewallManager : IDisposable
                 {
                     try
                     {
+                        // A missing file cannot be given a filter (Windows needs it to
+                        // exist), so skip quietly instead of logging an error: a Store
+                        // update leaves exactly this until PruneDeadRules follows it.
+                        if (!System.IO.File.Exists(rule.ExecutablePath)) { rule.FilterIds = new List<ulong>(); continue; }
                         rule.FilterIds = rule.Status == AppStatus.Allowed
                             ? _engine.PermitApplication(rule.ExecutablePath)
                             : InstallBlock(rule);
@@ -2843,6 +2847,43 @@ public sealed class FirewallManager : IDisposable
         catch { return false; }
     }
 
+    /// <summary>
+    /// Moves rules whose Store app updated to the new version's path, reinstalling their
+    /// filters if protection is on, and takes them out of <paramref name="dead"/>.
+    /// See StorePackagePaths. The hash is left alone: a Store update is a changed
+    /// binary, treated like any application that updates in place.
+    /// </summary>
+    private int FollowStoreUpdates(List<FirewallRule> dead)
+    {
+        int followed = 0;
+        foreach (var r in dead.ToList())
+        {
+            string? next = StorePackagePaths.FindUpdated(r.ExecutablePath);
+            if (next == null) continue;
+            if (r.FilterIds.Count > 0) { try { _engine.RemoveFilters(r.FilterIds); } catch { } }
+            lock (_dataLock)
+            {
+                r.ExecutablePath = next;
+                try
+                {
+                    r.FilterIds = !_data.StrictMode ? new List<ulong>()
+                        : r.Status == AppStatus.Allowed ? _engine.PermitApplication(next) : InstallBlock(r);
+                }
+                catch (Exception ex)
+                {
+                    r.FilterIds = new List<ulong>();
+                    DiagnosticLog.LogException($"FollowStoreUpdates/{r.DisplayName}", ex);
+                }
+                SaveStore();
+            }
+            DiagnosticLog.Log($"Store app updated: the rule for {r.DisplayName} followed it to "
+                            + $"{System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(next))} instead of being removed.");
+            dead.Remove(r);
+            followed++;
+        }
+        return followed;
+    }
+
     public int PruneDeadRules()
     {
         if (!ReconcileReady) return 0;
@@ -2869,7 +2910,8 @@ public sealed class FirewallManager : IDisposable
                     .Where(r => !IsApplicablePath(r.ExecutablePath)
                                 && VolumeSaysGone(r.ExecutablePath))
                     .ToList();
-            if (dead.Count == 0) return 0;
+            int followed = FollowStoreUpdates(dead);   // before pruning: a Store update is not a removal
+            if (dead.Count == 0) return followed;
 
             // The filters must go with the rule. Removing the rule alone would
             // leave them in the kernel with nothing naming them - which is the
@@ -2890,7 +2932,7 @@ public sealed class FirewallManager : IDisposable
             DiagnosticLog.Log($"Startup reconcile: removed {dead.Count} rule(s) whose program is "
                             + $"gone from a mounted local disk, and {filters} filter(s) they held - "
                             + string.Join(", ", dead.Select(r => r.DisplayName)));
-            return dead.Count;
+            return dead.Count + followed;
         }
         catch (Exception ex)
         {

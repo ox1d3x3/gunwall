@@ -1954,6 +1954,30 @@ def _method_body(src, name):
     return m.group(0) if m else ""
 
 
+def check_store_follow():
+    """A Store app update moves its rule instead of deleting it (0.99.163)."""
+    before = len(failures)
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    prune = _method_body(fm, "PruneDeadRules")
+    i_f, i_r = prune.find("FollowStoreUpdates(dead)"), prune.find("_data.Rules.Remove(r)")
+    if i_f < 0 or i_r < 0 or i_f > i_r:
+        fail("store-follow", "dead rules are pruned before Store updates are followed - the decision is lost")
+    fol = _method_body(fm, "FollowStoreUpdates")
+    if "!_data.StrictMode ? new List<ulong>()" not in fol:
+        fail("store-follow", "a followed rule installs filters with protection off")
+    sp = strip_cs((APP / "Services" / "StorePackagePaths.cs").read_text(encoding="utf-8"))
+    if re.search(r"Directory\.(Enumerate|Get)\w*\(", sp):
+        fail("store-follow", "WindowsApps is listed - that is refused even elevated, and the follow silently fails")
+    if "File.Exists(candidate)" not in sp:
+        fail("store-follow", "the new version's file is not confirmed to exist")
+    if not re.search(r"!Same\(p\[4\], o\[4\]\)", sp):
+        fail("store-follow", "a different publisher's package could take over the rule")
+    if "if (!System.IO.File.Exists(rule.ExecutablePath))" not in _method_body(fm, "RepairFiltering"):
+        fail("store-follow", "the repair logs an error for a rule whose file is gone")
+    if len(failures) == before:
+        notes.append("store-follow: Store rules follow updates before pruning; publisher matched; no listing of WindowsApps")
+
+
 def check_fill_and_approvals():
     """No signature check or list parse on the UI thread; approvals kept only by choice.
 
@@ -6324,6 +6348,7 @@ def main():
     check_list_sync()
     check_effect_layers()
     check_misleading_indentation()
+    check_store_follow()
     check_fill_and_approvals()
     check_ads_removed()
     check_single_instance()
