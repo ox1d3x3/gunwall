@@ -1954,6 +1954,24 @@ def _method_body(src, name):
     return m.group(0) if m else ""
 
 
+def check_upgrade_snapshot():
+    """The profile is copied, as the old version left it, before a new version writes (0.99.164)."""
+    before = len(failures)
+    fm = strip_cs((APP / "Services" / "FirewallManager.cs").read_text(encoding="utf-8"))
+    init = _method_body(fm, "EnsureSettingsLoaded")   # where the profile is read
+    i_load, i_snap = init.find("_data = _store.Load();"), init.find("SnapshotProfileOnUpgrade();")
+    i_save = init.find("SaveStore(", i_load)
+    if not (0 <= i_load < i_snap) or (0 <= i_save < i_snap):
+        fail("upgrade-snapshot", "the snapshot is not taken straight after the load, before any save")
+    snap = _method_body(fm, "SnapshotProfileOnUpgrade")
+    if "if (last == current) return;" not in snap:
+        fail("upgrade-snapshot", "a snapshot is taken on every start, not only on an upgrade")
+    if ".Skip(3)" not in snap:
+        fail("upgrade-snapshot", "snapshots are never pruned")
+    if len(failures) == before:
+        notes.append("upgrade-snapshot: profile copied after load, before any save, on a version change; newest three kept")
+
+
 def check_store_follow():
     """A Store app update moves its rule instead of deleting it (0.99.163)."""
     before = len(failures)
@@ -6348,6 +6366,7 @@ def main():
     check_list_sync()
     check_effect_layers()
     check_misleading_indentation()
+    check_upgrade_snapshot()
     check_store_follow()
     check_fill_and_approvals()
     check_ads_removed()

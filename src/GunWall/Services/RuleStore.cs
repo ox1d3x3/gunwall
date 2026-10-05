@@ -413,6 +413,8 @@ public sealed class StoreData
     /// <summary>Periodically confirm GunWall's filters are still in the kernel,
     /// and re-apply them if something removed them (default: on).</summary>
     public bool TamperWatchEnabled { get; set; } = true;
+    /// <summary>The version that last ran with this profile - an upgrade is a change of it.</summary>
+    public string LastRunVersion { get; set; } = "";
 
     /// <summary>Alerts-page categories the user has silenced
     /// (security / protection / network / rules).</summary>

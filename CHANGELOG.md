@@ -15,6 +15,24 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.164] — 2026-10-05
+
+### Added — the profile is saved before every upgrade
+When a new version starts for the first time, it copies `rules.json` — exactly as the
+previous version left it — to `rules.pre-<old version>.json` beside it, before it
+writes anything. If an upgrade ever mishandles a profile, copying that file back over
+`rules.json` restores every rule and setting. Taken straight after the load (trap
+2.34); only on a version change; the newest three are kept. The profile now records
+`LastRunVersion`; the first start of this version records the previous one as
+"unknown".
+
+### Verified — 0.99.163
+0 errors; 464/464 filters; no freezes. Rebuild plus layout of the Apps list: 4 times,
+average 23 ms, worst 55 ms — the 532 ms freeze did not recur. No Store app updated
+during the session, so the rule-following has not run yet.
+
+---
+
 ## [0.99.163] — 2026-10-05
 
 ### Fixed — a Store app update deleted its rule

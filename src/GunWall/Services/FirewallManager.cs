@@ -96,6 +96,7 @@ public sealed class FirewallManager : IDisposable
     {
         if (_settingsLoaded) return;
         _data = _store.Load();
+        SnapshotProfileOnUpgrade();   // before anything can write to it (trap 2.34)
         _settingsLoaded = true;
 
         // Recorded because three separate diagnoses of "the rules disappeared"
@@ -2882,6 +2883,38 @@ public sealed class FirewallManager : IDisposable
             followed++;
         }
         return followed;
+    }
+
+    /// <summary>
+    /// Keeps the profile exactly as the previous version left it, before this version
+    /// writes to it: rules.pre-&lt;old&gt;.json beside rules.json. If an upgrade ever
+    /// mishandles a profile, the rules come back by copying that file over rules.json.
+    /// Runs straight after the load, before any save. Keeps the newest three; takes
+    /// none on a fresh install or when the version has not changed.
+    /// </summary>
+    private void SnapshotProfileOnUpgrade()
+    {
+        string current = UpdateService.CurrentVersion;
+        string last = _data.LastRunVersion ?? "";
+        if (last == current) return;
+        try
+        {
+            string file = _store.FilePath;
+            if (System.IO.File.Exists(file))
+            {
+                string from = last.Length > 0 ? last : "unknown";
+                string dir = System.IO.Path.GetDirectoryName(file)!;
+                string snap = System.IO.Path.Combine(dir, $"rules.pre-{from}.json");
+                if (!System.IO.File.Exists(snap)) System.IO.File.Copy(file, snap);
+                foreach (var old in new System.IO.DirectoryInfo(dir).GetFiles("rules.pre-*.json")
+                             .OrderByDescending(f => f.CreationTimeUtc).Skip(3))
+                    try { old.Delete(); } catch { }
+                DiagnosticLog.Log($"Upgrade {from} -> {current}: profile saved as "
+                                + $"{System.IO.Path.GetFileName(snap)} before this version wrote to it.");
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("SnapshotProfileOnUpgrade", ex); }
+        _data.LastRunVersion = current;   // persisted by the next normal save
     }
 
     public int PruneDeadRules()
