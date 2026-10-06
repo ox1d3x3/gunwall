@@ -85,6 +85,7 @@ decision with the reason attached.
 - **Per-service rules** — stop one Windows service without disturbing others sharing its process
 - **Lockdown** to cut everything instantly, **snooze** to pause enforcement for a set period
 - **Rule profiles** for home, work and travel
+- **Decisions that stay made** — approvals and blocks are rules: kept across restarts and when protection is switched off and on, and a Microsoft Store app keeps its rule when it updates
 
 ### 👁️ Visibility
 
@@ -92,13 +93,13 @@ decision with the reason attached.
 - **Per-application bandwidth**, measured from the kernel when precise metering is on
 - **World map** of where your traffic goes
 - **Packet log** with the reason for every verdict — including when something *other* than GunWall did the blocking
-- **Network scanner** identifying devices by name, likely operating system and gateway role
+- **Network scanner** identifying devices by name, manufacturer, likely operating system and gateway role, with your own note per device
 - **Traffic breakdown** by application, host, protocol and country
 
 ### 🔒 Privacy
 
 - **Encrypted DNS** over HTTPS, failing closed rather than silently downgrading
-- **Domain blocklists** for ads, trackers and telemetry — with an allow level for entries you disagree with
+- **Domain blocklists** — Windows telemetry and update categories, an ads and malware preset for the built-in DNS resolver, or your own list — with an allow level for entries you disagree with
 - **CNAME-cloaking defence**, following alias chains so trackers cannot hide behind a first-party name
 - **Per-application domain blocking**, so blocking a tracker cannot disconnect something unrelated on the same server
 
@@ -106,7 +107,9 @@ decision with the reason attached.
 
 - **Signature verification** — valid, unsigned and *invalid* are three different things, and GunWall distinguishes them
 - **Tamper detection** on applications and on its own filters
-- **VirusTotal lookups** — only a file's hash is sent, never the file itself
+- **VirusTotal lookups** — only a file's hash is sent, never the file itself; your API key is stored encrypted, readable only on this PC
+- **Safe upgrades** — the profile is snapshotted before a new version first writes to it, with automatic backups on request
+- **Update checking** — off by default; a found update is verified again before it runs and never installs itself
 
 <div align="right"><sub><a href="docs/DOCUMENTATION.md">Every feature explained in the User Guide →</a></sub></div>
 
@@ -121,7 +124,7 @@ decision with the reason attached.
 </tr>
 <tr>
 <td><sub><b>Traffic</b> — where your connections actually go, by country and application.</sub></td>
-<td><sub><b>Security</b> — blocklists for telemetry, ads and trackers.</sub></td>
+<td><sub><b>Security</b> — blocklists for Windows telemetry and update servers.</sub></td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/activity-light.png" alt="Activity log of new connections"/></td>
@@ -213,7 +216,9 @@ start approving.
 - **No silent changes.** Every filter corresponds to a button you pressed. A fresh
   install changes nothing until you enable protection.
 - **Nothing you cannot undo.** Rules and settings are plain JSON in
-  `%ProgramData%\GunWall` — readable, backed up, deletable.
+  `%ProgramData%\GunWall` — readable, backed up, deletable. The one exception to
+  plain text is your VirusTotal key, which is encrypted so the profile is safe to
+  share.
 
 ---
 
@@ -236,8 +241,7 @@ Two things to know before relying on it:
 - **It runs as a single elevated process.** Service isolation is the last
   architectural item before 1.0.
 
-It has been soak-tested for eleven hours at a stretch without errors, but on a
-small number of machines. Your Windows build, VPN and security software are
+It has been soak-tested in 24-hour runs, but on a small number of machines. Your Windows build, VPN and security software are
 combinations nobody has tried — which is what a beta is for.
 
 **[Recovery, if anything goes wrong →](docs/DOCUMENTATION.md#16-recovery)**
@@ -246,11 +250,12 @@ combinations nobody has tried — which is what a beta is for.
 
 ## Roadmap
 
-**In progress** — per-category blocklist controls · IPv6 country coverage · MAC
-vendor identification · attributing a kernel drop to the specific filter responsible
+**In progress** — reading GunWall's own kernel filters directly instead of through
+`netsh` · verifying enforcement on networks with routable IPv6 · per-category
+blocklist controls · attributing a kernel drop to the specific filter responsible
 
 **Planned** — WSL and subsystem process identification · tamper *prevention* ·
-per-network trust profiles · one-click updates · multi-language interface
+mDNS names for Apple and IoT devices · multi-language interface
 
 **Not planned** — code signing. A certificate is a recurring cost this project will
 not pass on or ask for; the published checksum proves more, against source anyone
@@ -269,7 +274,6 @@ can read.
 | [Release notes](docs/RELEASE-NOTES.md) | What is in the current release |
 | [Changelog](CHANGELOG.md) | Every change, every version |
 | [Architecture](docs/ARCHITECTURE.md) | How the engine works, for developers |
-| [Engineering notes](docs/ENGINEERING.md) | Defect post-mortems and the controls that prevent recurrence |
 | [Contributing](CONTRIBUTING.md) | Building from source and conventions |
 | [Security policy](SECURITY.md) | Reporting a vulnerability |
 
@@ -278,7 +282,7 @@ can read.
 ## Contributing
 
 Issues and pull requests are welcome. When reporting a problem, attach a
-diagnostics export — **Settings → Export diagnostics (.zip)** — and describe what
+diagnostics export — **Settings → Diagnostics → Export diagnostics (.zip)** — and describe what
 you saw rather than what you think caused it.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.

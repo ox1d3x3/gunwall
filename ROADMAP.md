@@ -19,7 +19,7 @@ project has no reason to make. What shipped and when lives in
 [`CHANGELOG.md`](CHANGELOG.md); this file is only about what is true now and what
 is still open.
 
-GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet dependencies, MIT**. See the "Architecture & language" note at the bottom for why it stays single-language.
+GunWall remains **WPF / .NET 8, single elevated portable EXE, one NuGet dependency (WPF-UI), MIT**. See the "Architecture & language" note at the bottom for why it stays single-language.
 
 ---
 
@@ -46,18 +46,22 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, zero NuGet depende
   switched DNS to AdGuard, and the failure lies outside GunWall. The Filtering DNS
   card uses the same mechanism and now logs every change to diagnostics.
 - ✅ **Signature check off the UI thread for new applications** *(0.99.160)*
-- ☐ **Two unattributed freezes per hour of use, 270–410 ms** *(0.99.154 bundle)* —
-  no measured operation explains them, so the cause is UI work not yet timed;
-  likely the first render of a panel. Time tab switches to attribute them.
+- ☐ **Occasional first-draw freezes, ~270–500 ms** *(0.99.154 onwards)* — one-off,
+  on the first render of a panel (seen on the Rules and Firewall tabs). Watched,
+  not chased: the `RebuildAppsList+layout` timing and the per-panel freeze lines
+  attribute any that recur. Acted on only if they repeat or grow.
 
 - ✅ **Single instance** *(0.99.157)* — a second launch shows the running window
   and exits (trap 2.46); likely explains the 18 September protection-OFF case
 - ✅ **GeoIP after the restore** *(0.99.158)* — 6.2 s at cold boot no longer stands
   ahead of protection; tables now swapped in one write (trap 2.47)
+- ◐ **Store app rules follow updates** *(0.99.163)* — a rule moves to the new
+  versioned package folder instead of being pruned as dead. In the build; not yet
+  observed on hardware, because no Store app has updated during a logged session.
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
 - ✅ **Service & network-app categorization** — connections name the hosted service, and services can be blocked individually by their own identity.
 - ◐ **Complete country coverage** — ✅ IPv6 GeoIP, which was the largest gap. ✅ **destinations with no country are counted and reported** instead of silently dropped, and the map draws twice as many connection arcs. Remaining: naming unplaceable addresses in the Connections table rather than leaving the cell blank.
-- ◐ **Network scan** — ✅ likely OS from reply TTL, gateway identification from the routing table, NetBIOS names where reverse DNS has none, and randomised-MAC detection. Remaining: vendor identification from the MAC OUI, and mDNS names for Apple and IoT devices.
+- ◐ **Network scan** — ✅ likely OS from reply TTL, gateway identification from the routing table, NetBIOS names where reverse DNS has none, and randomised-MAC detection. ✅ vendor identification from the MAC address (IEEE registry), device notes, and copying. Remaining: mDNS names for Apple and IoT devices.
 
 - ☐ **Pico / subsystem process support** — identify WSL and other minimal-process traffic.
 - ✅ **App icons in the list** — each executable's icon is shown in the Application column.
@@ -99,18 +103,22 @@ fails to parse.*
   exception and returns a fresh `StoreData` with no log line. The next save then
   overwrites a possibly recoverable file with defaults. Log it, and keep a `.bak`
   before the first overwrite.
-- ☐ **Pre-upgrade profile snapshot** — copy `rules.json` to
-  `rules.pre-<version>.json` on the first run after a version change. Cheap, and
-  it makes the remaining cases recoverable rather than theoretical.
+- ✅ **Pre-upgrade profile snapshot** *(0.99.164)* — `rules.json` is copied to
+  `rules.pre-<version>.json` on the first run after a version change, before
+  anything writes to it; the newest three are kept.
 
-- ☐ **Credential at rest** — `rules.json` holds the VirusTotal API key in plain
+- ✅ **Credential at rest** *(0.99.167)* — the key is stored only as a DPAPI
+  machine-scope blob; a plain-text key from an earlier version is encrypted on
+  first start, and the copies beside the profile (snapshots, backups, named
+  profiles) are re-encrypted with it. *Was:* `rules.json` held the VirusTotal API key in plain
   text. The diagnostics bundle redacts it correctly, but the raw profile does not,
   and users are routinely asked to attach a profile to a bug report with nothing
-  warning them a credential is in it. A key was exposed this way on 2026-09-06.
+  warning them a credential is in it.
   Encrypt with DPAPI at machine scope, which also makes the profile safe to
-  attach. This is the credential half of *Encrypted profiles* and is worth doing
-  ahead of the whole-profile work.
-- ☐ **Show that a key is set** — `VtApiKeyBox` is a `PasswordBox` that is never
+  attach.
+- ✅ **Show that a key is set** *(0.99.167)* — the card states the key is saved and
+  encrypted, masked, and what an empty box plus Save does; a key this machine
+  cannot decrypt is reported as such. *Was:* `VtApiKeyBox` is a `PasswordBox` that is never
   populated, deliberately: a stored secret is not echoed back. The only indication
   is a `"A key is saved."` line beside an empty-looking box, which reads as data
   loss. Show masked dots or the last four characters. Never the key.
@@ -156,8 +164,10 @@ Ranked by evidence. Items below the line are measured from 0.99.152 onwards by
   mostly from splitting each line. Span-based parsing would cut it, at the cost of
   rewriting the parser; the benchmark exists to prove the answers do not move.
 - ✅ **Recovery commands no longer load GeoIP** *(0.99.158)*
-- ☐ **Filter enumeration** — `netsh` is slow, shells out, and returns a partial set
-  per call; `FwpmFilterEnum0` would be faster and complete.
+- ☐ **Filter enumeration** *(next)* — `netsh` is slow, shells out, and returns a partial set
+  per call; `FwpmFilterEnum0` would be faster and complete. Trap 2.36 records why it
+  was avoided: `FWPM_FILTER0` marshalling must be verified against the SDK, not
+  assumed.
 - ☐ *To be ranked from 0.99.152 diagnostics* — per-snapshot cost of each panel and
   enforcement step, UI freezes and their causes, GC pause share, idle CPU, and
   whether threads, handles or memory climb over a long session.
@@ -213,7 +223,7 @@ the first-run experience.*
 - ☐ **Compressed / encrypted profile formats** — alongside today's plain JSON.
 
 ### Localization
-- ◐ **Installation and updates** — ✅ an installer whose uninstaller removes all filtering before deleting anything, keeps the profile across upgrades, and asks before removing it. ✅ the update check resolves the release's installer asset. Remaining: downloading and launching that installer from inside the application.
+- ✅ **Installation and updates** — ✅ an installer whose uninstaller removes all filtering before deleting anything, keeps the profile across upgrades, and asks before removing it. ✅ the update check resolves the release's installer asset. ✅ downloading it, verifying it again at install time, and launching it from **Update now**.
 
 - ☐ **Multi-language UI** — externalize strings and ship language packs.
 

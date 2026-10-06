@@ -43,7 +43,7 @@
   ; Default local publish folder, so a plain compile in the Inno Setup
   ; IDE works with no arguments. Anyone else passes /DPublishDir - the guard
   ; below names the problem if they forget.
-  #define PublishDir "C:\Users\TAMGG\Downloads\1.Gunwall-Installer\x64"
+  #define PublishDir "C:\Users\X1\Downloads\1.Gunwall-Installer\x64"
 #endif
 
 ; Fail early and say why, rather than emitting an installer around a missing file.

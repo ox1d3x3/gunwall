@@ -83,7 +83,7 @@ it was written for, watch the check fail, remove the defect, watch it pass. This
 project has shipped three checks that could not fail — one whose exclusion rule
 matched everything, one that skipped misses silently, and one whose own string
 handling was wrong. A check never demonstrated against its own defect is a guess
-that counts as coverage. [`docs/ENGINEERING.md`](docs/ENGINEERING.md) lists them.
+that counts as coverage.
 
 **Every change to shipped code gets a new version; documentation alone does not.**
 
@@ -99,7 +99,7 @@ If in doubt, the test is simple: **did a file that gets compiled change?**
 Four files carry the version and must agree:
 `src/GunWall/GunWall.csproj`, `src/GunWall/app.manifest`, the About string in
 `MainWindow.xaml.cs`, and `CurrentVersion` in `Services/UpdateService.cs`.
-`tools/checks/check_theme.py` fails the build if they disagree.
+The release checks fail if they disagree.
 
 Nothing else should reference a version. The README badge states the stage, not
 the number, and the roadmaps describe what is open rather than which release it
@@ -108,7 +108,8 @@ and this project reorders freely. `CHANGELOG.md` is the one place versions and
 dates belong.
 
 **Everything must be removable.** Any filter GunWall installs must be removable
-again, including after a crash. Persist filter identifiers, and make removal
+again, including after a crash. Record filter identifiers, prove a filter is GunWall's
+(its sublayer) before deleting it, and make removal
 idempotent — deleting something that is already gone is not an error.
 
 **Fail safe, not silent.** A filter that cannot be installed must say so.

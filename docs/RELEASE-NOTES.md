@@ -7,100 +7,77 @@
 
 </div>
 
-# GunWall 0.99.109 — first public beta
+# GunWall 0.99.167 — public beta
 
-A zero-trust application firewall for Windows 11, built directly on the Windows
-Filtering Platform. Free, MIT-licensed, no account, no telemetry, no ads.
+A zero-trust application firewall for Windows 11, built on the Windows Filtering
+Platform. Free, MIT-licensed, no telemetry.
 
-**[Download](https://github.com/ox1d3x3/gunwall/releases/latest)** ·
-`GunWall-0.99.109.0-setup.exe` for the installer, or `GunWall.exe` to run portable.
+## Downloads
 
----
-
-## What it does
-
-Every application must be approved before it reaches the network. Anything without
-a rule is denied by the kernel and raises a prompt showing who is asking, where
-they are going, and what is known about them — publisher, signature status,
-destination country and network operator, and a VirusTotal verdict if you supply a
-key.
-
-Beyond that:
-
-- **Ordered custom rules** matching on address, port, protocol, direction, domain,
-  country or ASN
-- **A curated system-rule library** — stealth mode, block inbound, block SMB,
-  NetBIOS, Telnet and RDP, allow common services, with kernel coverage shown
-- **A local DNS resolver** with DNS-over-HTTPS, a fail-closed default,
-  CNAME-cloaking defence, and blocklists with an explicit allow level
-- **Per-application domain blocking**, so blocking a tracker cannot disconnect
-  anything else that shares its address
-- **Live visibility** — connections, packet log, per-application bandwidth, a
-  connection map, and a network scanner that identifies devices by name, likely
-  operating system and gateway role
-- **Lockdown** to cut all traffic instantly, and **snooze** to pause enforcement
-  for a set period
-- **Rule profiles** for switching whole rulesets
-
-## Getting the machine back
-
-A firewall you cannot turn off is a trap. GunWall's filters are persistent by
-design — they survive closing the app, a crash and a reboot — so every exit is
-verified against the kernel rather than against GunWall's own reporting:
-
-| Route | What it does |
+| File | Use |
 |---|---|
-| **Protection switch** | Removes every filter. Rules are kept for when you switch back on. |
-| **Remove all GunWall filtering** | Removes filters, clears the hosts file, restores adapter DNS, and clears saved rules. |
-| **Uninstaller** | Runs the above automatically, checks it succeeded, and stops and warns if it did not. |
-| **`GunWall.exe --unblock`** | Restores the machine from a command prompt when the interface will not open. |
+| `GunWall-0.99.167-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
-You can confirm any of these independently:
+Each release lists the SHA-256 of every file. Check yours with
+`certutil -hashfile <file> SHA256` before running it.
 
-```
-netsh wfp show filters file=%TEMP%\gw.xml
-```
+## Upgrading
 
-Search that file for `8f1d2b40-7c3e-4a51-9d6f-2a8c5e1b9f00`. Zero matches means the
-machine is at Windows defaults, reported by Windows rather than by GunWall.
+Install over the previous version. Your rules and settings are kept, and before
+this version first writes to them it saves the profile as
+`rules.pre-<previous version>.json` in `C:\ProgramData\GunWall`. A VirusTotal key
+saved by an earlier version is encrypted on first start; an older build started
+afterwards cannot read it and needs the key entered again.
 
-## Before you install
+## What has changed since the first public beta (0.99.109)
 
-- **Windows 10 (2004+) or Windows 11**, 64-bit, administrator rights.
-- **Expect prompts for the first ten minutes.** Default-deny means every program
-  asks once.
-- **SmartScreen will warn you.** GunWall is deliberately not code-signed — a
-  certificate is a recurring cost this free project will not pass on. Verify the
-  SHA-256 published with the release instead:
-  `certutil -hashfile GunWall.exe SHA256`
-- **If you run portable, use *Remove all GunWall filtering* before deleting the
-  folder.** Filters live in the kernel and outlive the folder. The installer's
-  uninstaller does this for you.
+**Protection you can rely on after a restart**
+- Kernel filters no longer survive a reboot, so a reboot always gets a machine back
+  online. GunWall reinstalls everything at startup — application rules, system
+  rules, scope and country blocks, custom rules and blocklists — with protection
+  back about seven seconds after launch on a typical boot.
+- GunWall acts only on filters proven to be its own, and only one copy runs at a
+  time; starting it again shows the running window.
+- Approvals and blocks are rules: kept across restarts and when protection is
+  switched off and on.
+- Microsoft Store apps keep their rule when they update.
+
+**Updates and upkeep**
+- Update checking — off by default, Daily, Weekly or Monthly — with optional
+  download. The installer is verified again when **Update now** is pressed, and
+  nothing installs itself. A yellow tray dot shows a waiting update.
+- GeoIP and MAC-vendor databases are downloaded on request, validated before use,
+  and can be refreshed automatically (off by default; skipped on metered
+  connections).
+- The profile is snapshotted before every upgrade; automatic backups are available.
+
+**Privacy and trust**
+- The VirusTotal API key is stored encrypted with Windows DPAPI, readable only on
+  the PC that saved it, including in backups and upgrade snapshots. Settings shows
+  that a key is saved and never shows the key.
+- The diagnostics export redacts the key and records performance and filter
+  integrity, so a bug report carries evidence rather than guesses.
+
+**Network scan**
+- Device manufacturer from the MAC address, your own note per device, and copying
+  of any field, row or the whole table.
+
+**Performance**
+- Idle memory about 150–190 MB (from about 350 MB) and idle CPU about 0.2%.
+- No redrawing while the window is hidden or behind other windows.
+
+**Removed**
+- The *Ads & trackers* switch, which only pointed Windows DNS at a public filtering
+  service and could take the connection down. The DNS resolver's ads and malware
+  preset and the Filtering DNS card remain.
 
 ## Known limitations
 
-- **Blocking a domain hosted on a large CDN is unreliable.** GunWall blocks the
-  addresses it has observed a name resolve to; large providers rotate faster than
-  that. Domain blocking works well against trackers on stable hosts.
-- **A closed GunWall cannot prompt.** Filters keep enforcing, so an unapproved
-  program is correctly denied and simply fails. Enable *Run at startup* if that
-  matters to you.
-- **Single elevated process.** Service isolation is the last architectural item
+- Filters are not enforced from boot until GunWall starts; enable **Run GunWall
+  when Windows starts** (Settings → Preferences).
+- GunWall runs as a single elevated process; a privileged service is planned
   before 1.0.
-- Tested on a small number of machines. Your Windows build, VPN and security
-  software are combinations nobody has tried.
+- Releases are not code-signed. The published checksums are the integrity check.
 
-## Reporting a problem
-
-**Settings → Export diagnostics (.zip)** and open an issue. The bundle contains the
-session log, your settings with secrets removed, active rules and network
-configuration — no browsing history and no personal data.
-
-Describe what you saw rather than what you think caused it. A full-window
-screenshot helps for anything visual.
-
-**[github.com/ox1d3x3/gunwall/issues](https://github.com/ox1d3x3/gunwall/issues)**
-
----
-
-The complete history of every change is in [`CHANGELOG.md`](../CHANGELOG.md).
+The full detail of every release is in [CHANGELOG.md](../CHANGELOG.md).

@@ -385,9 +385,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (PopupDefaultCombo != null)
                 PopupDefaultCombo.SelectedIndex = _firewall.PopupDefaultAllow ? 1 : 0;
             if (AutoBackupCheck != null) AutoBackupCheck.IsChecked = _firewall.AutoBackup;
-            if (VtKeyStatus != null)
-                VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
-                    ? "No key set." : "A key is saved.";
+            if (VtKeyStatus != null) VtKeyStatus.Text = VtKeyStatusText();
             RefreshAdditionalDataUi();
             // After an upgrade the profile still records the release that was just
             // installed. Cleared before painting, or the new version starts yellow
@@ -451,7 +449,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.166 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.167 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2567,9 +2565,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             ? $"DNS resolver: listening on 127.0.0.1:{_dnsResolver.Port} \u00B7 {_dnsResolver.Total} queries, {_dnsResolver.Blocked} blocked"
             : "DNS resolver: stopped";
 
-        HealthVt.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
-            ? "VirusTotal: no API key set"
-            : $"VirusTotal: {_firewall.VtCacheCount} verdicts cached \u00B7 {_vtQueue.Count} queued";
+        HealthVt.Text = _firewall.VirusTotalKeyState switch
+        {
+            FirewallManager.VtKeyState.Unreadable => "VirusTotal: key saved on another computer - enter it again in Settings",
+            FirewallManager.VtKeyState.Saved =>
+                $"VirusTotal: {_firewall.VtCacheCount} verdicts cached \u00B7 {_vtQueue.Count} queued",
+            _ => "VirusTotal: no API key set",
+        };
 
         HealthRules.Text =
             $"Rules: {_firewall.AppRuleCount} app \u00B7 {_firewall.CustomRuleCount} custom \u00B7 " +
@@ -5868,12 +5870,33 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             _firewall.SetVirusTotalApiKey(VtApiKeyBox.Password);
             if (VtKeyStatus != null)
-                VtKeyStatus.Text = string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey)
-                    ? "Key cleared."
-                    : "Key saved. Right-click an app in the Apps tab to scan it.";
+                VtKeyStatus.Text = _firewall.VirusTotalKeyState == FirewallManager.VtKeyState.Saved
+                    ? "Key saved and encrypted on this PC. Right-click an app in the Apps tab to scan it."
+                    : "Key removed.";
         }
         catch (Exception ex) { ShowError(ex); }
+        finally
+        {
+            // The box is never left holding the key, and never refilled with it.
+            VtApiKeyBox.Clear();
+        }
     }
+
+    /// <summary>
+    /// What the VirusTotal card says about the stored key. The box itself stays
+    /// empty by design - a stored secret is not echoed back - so this line carries
+    /// the state, masked, and says what an empty box plus Save would do.
+    /// </summary>
+    private string VtKeyStatusText() => _firewall.VirusTotalKeyState switch
+    {
+        FirewallManager.VtKeyState.Saved =>
+            "Key saved \u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022, encrypted on this PC. "
+            + "Enter a new key to replace it, or save an empty box to remove it.",
+        FirewallManager.VtKeyState.Unreadable =>
+            "A key is saved, but this PC cannot decrypt it - the profile came from another computer or "
+            + "Windows was reinstalled. Enter the key again to use VirusTotal.",
+        _ => "No key set.",
+    };
 
     /// <summary>Fill an app row's VirusTotal verdict from the cache, queueing an
     /// automatic background lookup the first time we see a file. Costs only
@@ -6006,7 +6029,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (AppsList.SelectedItem is not AppInfo app) return;
         if (string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey))
         {
-            MessageBox.Show("Add your VirusTotal API key in Settings first.", "GunWall",
+            MessageBox.Show(_firewall.VirusTotalKeyState == FirewallManager.VtKeyState.Unreadable
+                    ? "The saved VirusTotal key cannot be decrypted on this PC. Enter it again in Settings."
+                    : "Add your VirusTotal API key in Settings first.", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }

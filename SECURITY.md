@@ -77,14 +77,16 @@ These are the properties GunWall intends to hold. A demonstrated break in any of
 them is a valid security report:
 
 1. **No telemetry.** The only outbound requests are ones the user asked for:
-   reverse-DNS lookups, optional VirusTotal hash checks, blocklist downloads,
-   and DNS forwarding.
+   reverse-DNS lookups, optional VirusTotal hash checks, blocklist and database
+   downloads, update checks (off by default), and DNS forwarding.
 2. **Local-only storage.** Rules and settings stay in a folder on the machine,
-   in plain readable JSON.
+   in plain readable JSON. The VirusTotal API key is the exception: it is stored
+   encrypted with Windows DPAPI at machine scope, so a profile shared in a bug
+   report carries no usable credential.
 3. **Explicit actions only.** Every filter corresponds to something the user
    turned on. A fresh install changes nothing until protection is enabled.
-4. **Clean removal.** Every persistent filter can be removed, including after a
-   crash — the sublayer is deleted by key rather than relying on a stored list.
+4. **Clean removal.** Every filter can be removed, including after a
+   crash, and none survive a reboot — the sublayer is deleted by key rather than relying on a stored list.
 5. **No third-party code in the filtering path.** The WFP engine, rule
    evaluator, DNS resolver and rule store depend on nothing beyond the .NET base
    class library and Win32. The interface uses one MIT-licensed control library

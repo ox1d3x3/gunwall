@@ -15,6 +15,85 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.167] — 2026-10-06
+
+### Security — the VirusTotal key is encrypted at rest
+The profile held the key in plain text. The diagnostics bundle redacted it, but the
+profile itself did not, and the profile is the file people export to share a rule
+set and attach to bug reports. The key is
+now stored only as a DPAPI blob at machine scope (`dpapi1:` + base64), bound to
+GunWall by an entropy value, and decrypted into memory. A copied profile carries
+nothing usable off this computer.
+
+- **Machine scope, not user scope.** The profile is machine-wide and GunWall may be
+  started elevated from more than one account; a user-scope blob would read as lost
+  for every account but one.
+- **Encrypt before writing, or write nothing.** Each encrypted value is decrypted
+  back and compared before it is stored. If encryption fails, the key is not saved,
+  the previous one is unchanged, and the user is told. There is no plain-text
+  fallback.
+- **Migration.** A plain-text key from an earlier version is encrypted on the first
+  start of this version, and on import or backup restore. It runs straight after
+  the profile is read, so its save is not refused (trap 2.25) and the upgrade
+  snapshot still records the profile as the previous version left it.
+- **Copies beside the profile.** Upgrade snapshots, unreadable-profile keepsakes,
+  `backups\` and `profiles\` held the same plain text one file over. Each is
+  rewritten with the encrypted value by exact text replacement, through a
+  temporary file, leaving every other byte as it was. Restores from them keep
+  working on this machine. Exported profiles saved elsewhere are out of reach and
+  are not claimed to be covered.
+- **A key this machine cannot decrypt is kept, not deleted** (trap 2.20). That is
+  the case for a profile from another computer or after a Windows reinstall. It is
+  marked unreadable; Settings, the App health card and **Scan with VirusTotal** say
+  to enter it again.
+- **Never logged, never echoed.** Log lines record only that a key was saved,
+  removed, migrated or unreadable. The settings box is cleared after every Save and
+  never refilled.
+
+**Downgrade note:** an older build reads the encrypted value as the key itself, and
+VirusTotal lookups fail there until the key is entered again. Rules are unaffected.
+
+### Changed — the VirusTotal card says what is stored
+"A key is saved." beside an empty box read as data loss. It now reads `Key saved
+••••••••••••, encrypted on this PC`, and says that an empty box plus **Save key**
+removes it. No part of the key is shown.
+
+### Added — check `vt-key-at-rest`
+Asserts DPAPI at machine scope with the entropy for both directions, the round-trip
+proof, exactly two writers of the stored field (set and migration) each storing only
+`SecretProtector.Protect` output or an explicit removal, no fallback on failure, the
+getter returning the in-memory key, migration straight after the load and after
+import, copies re-encrypted, an unreadable key never cleared, no log statement
+naming the key, and the settings box neither filled nor left holding it. Seventeen
+defects were reintroduced individually and the check confirmed failing on each.
+Recorded as trap 2.48.
+
+### Changed — installer default publish folder
+Updated to the current build machine. Passing `/DPublishDir` still overrides it.
+
+### Documentation
+- Internal working documents are no longer part of the public repository: the
+  engineering trap notes (`docs/ENGINEERING.md`), the per-build test guide
+  (`docs/TESTING.md`), the design hand-off material (`docs/design/`), the banner
+  source files (`branding/source/`), the research roadmap (`ROADMAP_ADVANCED.md`),
+  the developer benchmarks (`tools/bench/`) and the release check suite
+  (`tools/checks/`). The checks still run before every release. Earlier entries that refer to
+  them describe the repository as it was then. Trap numbers in this changelog and
+  in code comments remain as labels.
+- `README.md`, `DOCUMENTATION.md`, `RELEASE-NOTES.md`, `ARCHITECTURE.md`,
+  `SECURITY.md`, `CONTRIBUTING.md` reviewed against the current release: update
+  checking, upgrade snapshots, the encrypted key, Store-app rules, network-scan
+  vendor names and copying, single instance, and non-persistent filters are now
+  described; claims that predated them are corrected.
+- `ROADMAP.md`: pre-upgrade snapshot, credential at rest and key display marked
+  done; Store-app rule following recorded as awaiting hardware evidence.
+- `README.md`, `DOCUMENTATION.md`: Ads & trackers references removed (the feature
+  was removed in 0.99.159); a FAQ entry on where the key is kept.
+- `ARCHITECTURE.md`, `ROADMAP.md`: the dependency statement corrected — WPF-UI is
+  one NuGet package; it said zero.
+
+---
+
 ## [0.99.166] — 2026-10-05
 
 ### Fixed — the DNS self-check's false alarm, properly this time

@@ -98,6 +98,7 @@ public sealed class FirewallManager : IDisposable
         _data = _store.Load();
         SnapshotProfileOnUpgrade();   // before anything can write to it (trap 2.34)
         _settingsLoaded = true;
+        LoadVirusTotalKey("load");    // may save: only once the profile is read
 
         // Recorded because three separate diagnoses of "the rules disappeared"
         // were made without knowing whether the profile had been read, which file
@@ -2305,8 +2306,167 @@ public sealed class FirewallManager : IDisposable
         SaveStore();
     }
 
-    public string VirusTotalApiKey => _data.VirusTotalApiKey;
-    public void SetVirusTotalApiKey(string v) { _data.VirusTotalApiKey = v?.Trim() ?? ""; SaveStore(); }
+    // ------------------------------------------------ VirusTotal credential
+    // The profile stores the key only in its encrypted form (SecretProtector,
+    // DPAPI at machine scope). The decrypted key lives in memory alone: never
+    // serialised, never logged, never echoed back into the settings box.
+
+    public enum VtKeyState { None, Saved, Unreadable }
+
+    private readonly object _vtKeyLock = new();
+    private string _vtKeyPlain = "";
+    private VtKeyState _vtKeyState = VtKeyState.None;
+
+    /// <summary>The decrypted key, or "" when none is set or it cannot be read on
+    /// this machine. Read on every Apps-list rebuild and from background lookups:
+    /// a cached field, never a decryption per call.</summary>
+    public string VirusTotalApiKey { get { lock (_vtKeyLock) return _vtKeyPlain; } }
+
+    public VtKeyState VirusTotalKeyState { get { lock (_vtKeyLock) return _vtKeyState; } }
+
+    /// <summary>
+    /// Stores a new key, or removes it when empty. Encrypts before anything is
+    /// written; if encryption fails nothing is saved and the caller is told, rather
+    /// than falling back to writing the plain text.
+    /// </summary>
+    public void SetVirusTotalApiKey(string v)
+    {
+        string key = v?.Trim() ?? "";
+        if (key.Length == 0)
+        {
+            lock (_vtKeyLock) { _vtKeyPlain = ""; _vtKeyState = VtKeyState.None; }
+            _data.VirusTotalApiKey = "";
+            SaveStore();
+            DiagnosticLog.Log("VirusTotal key: removed.");
+            return;
+        }
+
+        string stored;
+        try { stored = SecretProtector.Protect(key); }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Log($"VirusTotal key: NOT saved - encryption failed ({ex.GetType().Name}, "
+                            + $"0x{ex.HResult:X8}). The previous value is unchanged.");
+            throw new InvalidOperationException(
+                "The key could not be encrypted, so it was not saved. The previous key, if any, is unchanged.");
+        }
+
+        lock (_vtKeyLock) { _vtKeyPlain = key; _vtKeyState = VtKeyState.Saved; }
+        _data.VirusTotalApiKey = stored;
+        SaveStore();
+        DiagnosticLog.Log("VirusTotal key: saved, encrypted at rest (DPAPI, machine scope).");
+    }
+
+    /// <summary>
+    /// Reads the stored key into memory after the profile is loaded or replaced.
+    ///
+    /// Three cases. Empty: no key. Encrypted: decrypted, or - when the profile came
+    /// from another computer or Windows was reinstalled - marked unreadable and LEFT
+    /// AS STORED: a value this machine cannot read is not proof that nothing is
+    /// there (trap 2.20), and deleting it would turn a copied profile into a lost
+    /// credential. Plain text from an earlier version: encrypted, saved, and the
+    /// copies of the plain text beside the profile re-encrypted the same way.
+    /// </summary>
+    private void LoadVirusTotalKey(string context)
+    {
+        string stored = _data.VirusTotalApiKey ?? "";
+        if (stored.Length == 0)
+        {
+            lock (_vtKeyLock) { _vtKeyPlain = ""; _vtKeyState = VtKeyState.None; }
+            return;
+        }
+
+        if (SecretProtector.IsProtected(stored))
+        {
+            if (SecretProtector.TryUnprotect(stored, out string plain))
+            {
+                lock (_vtKeyLock) { _vtKeyPlain = plain; _vtKeyState = VtKeyState.Saved; }
+            }
+            else
+            {
+                lock (_vtKeyLock) { _vtKeyPlain = ""; _vtKeyState = VtKeyState.Unreadable; }
+                DiagnosticLog.Log($"VirusTotal key ({context}): saved, but this machine cannot decrypt it "
+                                + "(profile from another computer, or Windows reinstalled). Kept as stored; "
+                                + "VirusTotal lookups are off until the key is entered again.");
+            }
+            return;
+        }
+
+        string legacy = stored.Trim();
+        lock (_vtKeyLock) { _vtKeyPlain = legacy; _vtKeyState = VtKeyState.Saved; }
+        string protectedValue;
+        try { protectedValue = SecretProtector.Protect(legacy); }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Log($"VirusTotal key ({context}): stored in plain text by an earlier version and "
+                            + $"could not be encrypted ({ex.GetType().Name}, 0x{ex.HResult:X8}). Left as "
+                            + "stored; it is tried again on the next start.");
+            return;
+        }
+        _data.VirusTotalApiKey = protectedValue;
+        SaveStore();
+        int copies = ReencryptPlainTextCopies(legacy, protectedValue);
+        DiagnosticLog.Log($"VirusTotal key ({context}): plain-text value from an earlier version encrypted "
+                        + $"at rest (DPAPI, machine scope); {copies} other cop{(copies == 1 ? "y" : "ies")} "
+                        + "beside the profile re-encrypted.");
+    }
+
+    /// <summary>
+    /// Replaces the plain-text key with its encrypted form in every copy of the
+    /// profile GunWall keeps beside it: upgrade snapshots, unreadable-profile
+    /// keepsakes, backups and named profiles. Without this, encrypting rules.json
+    /// leaves the same credential readable one file over.
+    ///
+    /// A text replacement of the exact JSON string, not a re-serialisation: every
+    /// other byte stays as written, and a keepsake that does not parse is still
+    /// covered. Each file is written to a temporary name and moved over the
+    /// original, so a failure leaves the old copy whole. Returns the files changed.
+    /// Exported profiles saved elsewhere by the user are outside reach and are not
+    /// claimed to be covered.
+    /// </summary>
+    private int ReencryptPlainTextCopies(string plain, string protectedValue)
+    {
+        string find = System.Text.Json.JsonSerializer.Serialize(plain);
+        string replace = System.Text.Json.JsonSerializer.Serialize(protectedValue);
+        int changed = 0;
+        var files = new List<string>();
+        try
+        {
+            string dir = _store.ProfileFolder;
+            if (System.IO.Directory.Exists(dir))
+            {
+                files.AddRange(System.IO.Directory.GetFiles(dir, "rules.pre-*.json"));
+                files.AddRange(System.IO.Directory.GetFiles(dir, "rules.json.unreadable-*"));
+            }
+            foreach (string sub in new[] { "backups", "profiles" })
+            {
+                string d = System.IO.Path.Combine(dir, sub);
+                if (System.IO.Directory.Exists(d))
+                    files.AddRange(System.IO.Directory.GetFiles(d, "*.json"));
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("ReencryptPlainTextCopies (list)", ex); }
+
+        foreach (string f in files)
+        {
+            try
+            {
+                string text = System.IO.File.ReadAllText(f);
+                if (!text.Contains(find, StringComparison.Ordinal)) continue;
+                string tmp = f + ".tmp";
+                System.IO.File.WriteAllText(tmp, text.Replace(find, replace, StringComparison.Ordinal));
+                System.IO.File.Move(tmp, f, overwrite: true);
+                changed++;
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log($"VirusTotal key: could not re-encrypt the copy in "
+                                + $"{System.IO.Path.GetFileName(f)} ({ex.GetType().Name}); it still holds "
+                                + "the key in plain text.");
+            }
+        }
+        return changed;
+    }
 
     // ------------------------------------------------ system rules
     public bool IsSystemRuleOn(string key) =>
@@ -4076,6 +4236,7 @@ public sealed class FirewallManager : IDisposable
         _data = imported;
         _knownSet = null;
         SaveStore();
+        LoadVirusTotalKey("import");  // the imported key replaces the one in memory
         return _data.Rules.Count;
     }
 

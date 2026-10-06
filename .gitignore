@@ -69,3 +69,9 @@ GunWallData/
 publish/
 *.zip
 GunWall-diagnostics-*.zip
+
+# Private working documents: kept outside the repository
+HANDOVER.md
+START-HERE.md
+private/
+internel/

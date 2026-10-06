@@ -113,6 +113,18 @@ If it matches, the file is byte-for-byte what was built from the published sourc
 ### Where your data lives
 
 `C:\ProgramData\GunWall` — rules, settings, logs and cached lookup data.
+**Settings → Diagnostics → Open data folder** opens it.
+
+| File or folder | What it is |
+|---|---|
+| `rules.json` | Your rules and settings |
+| `rules.pre-<version>.json` | The profile exactly as the previous version left it, saved when a new version first starts. The newest three are kept |
+| `backups\` | Backups from **Settings → Backups** |
+| `profiles\` | Named rule profiles |
+| `updates\` | A downloaded update waiting for **Update now** |
+
+Your VirusTotal key is the only encrypted value in the profile; everything else is
+plain JSON.
 
 It is deliberately **outside** the application folder so that updating GunWall
 never disturbs it. To keep everything together on a USB stick instead, create an
@@ -122,7 +134,7 @@ empty file called `portable.txt` beside `GunWall.exe`.
 
 ## 3. Your first ten minutes
 
-1. **Start GunWall.** It opens on the Dashboard with protection off. Nothing is
+1. **Start GunWall.** It opens on the **Overview** page with protection off. Nothing is
    being blocked yet.
 
 2. **Watch for a minute or two.** Open **Connections** and **Applications** and
@@ -222,8 +234,10 @@ Windows system, or invalid signature. Colours are configurable under
 *Settings → Appearance*.
 
 > **When a program updates**, it often moves to a new versioned folder and its old
-> rule stops matching. GunWall removes those stale entries automatically at
-> startup and tells you in the log.
+> rule stops matching. For a **Microsoft Store** app (marked with a **Store**
+> badge), GunWall finds the updated package and moves the rule to it, so your
+> decision is kept. For other programs, the stale entry is removed at startup and
+> the log says so; the program asks again the next time it connects.
 
 ---
 
@@ -271,7 +285,6 @@ Toggle categories on or off:
 
 - **Windows telemetry and tracking** — diagnostic and telemetry domains
 - **Windows Update servers** — leave off unless you deliberately want updates stopped
-- **Ads and trackers** — a large curated list, applied at the DNS layer
 
 Telemetry and update categories use the Windows hosts file, falling back to
 firewall rules automatically if security software locks that file.
@@ -384,8 +397,13 @@ finds.
 | IP address | ARP table after a sweep |
 | MAC address | ARP table |
 | Host | Reverse DNS, falling back to NetBIOS |
+| Vendor | The manufacturer registered for the MAC address — needs the IEEE database from **Settings → Additional data** |
 | Likely OS | Inferred from the ping reply's TTL |
-| Note | Gateway role, or a randomised MAC |
+| Flags | Gateway role, or a randomised MAC |
+| Your note | A label of your own, kept against the device's MAC address |
+
+**Right-click a device** to copy its IP, MAC, vendor or host name, the whole row,
+or every device as tab-separated text. **Ctrl+C** copies the selected rows.
 
 **Likely OS is a guess and is labelled as one.** It distinguishes families —
 Windows, Linux/macOS/Android, router/embedded — and shows nothing rather than
@@ -400,6 +418,9 @@ modern phone does by default. It is privacy working, not a fault.
 # Reference
 
 ## 13. Settings
+
+**Settings** is the last item in the left-hand sidebar. It is one long page of
+cards, each headed with a name in capitals — scroll to find the card named below.
 
 ### Preferences
 
@@ -443,11 +464,45 @@ network, and rules/profiles.
 
 ### Appearance
 
-Theme, interface font, and the colours used for signature categories.
+Interface font, and the colours used for signature categories. The theme is
+switched with the sun/moon button at the top right of the window.
+
+### Updates
+
+- **Check now** — looks for a newer release
+- **Check for updates automatically** — Daily, Weekly or Monthly. **Off by default**
+- **Download updates when one is found** — skipped on metered connections
+- **Update now** — appears only when a release is waiting. The download is
+  verified again before it runs, and nothing installs without this press
+
+While protection is on, a waiting update shows as a yellow dot on the tray icon.
+
+### Additional data
+
+Two optional databases, each downloaded only when you press **Download now**: the
+GeoIP table (country and network owner per connection) and the IEEE registry
+(device manufacturers in Network scan). **Keep these up to date automatically** is
+off by default.
+
+### VirusTotal
+
+Paste your API key and press **Save key**. It is stored encrypted with Windows DPAPI
+and can be read only on this PC; the box stays empty afterwards, and the line below
+it says whether a key is saved. To remove the key, save with the box empty. A
+profile copied from another PC shows its key as saved but unreadable — enter it
+again.
+
+### Profile, profiles and backups
+
+- **Profile (rules backup)** — **Export profile** and **Import profile** write or
+  read every rule and setting as one file
+- **Profiles** — named rule sets you can load, save and delete
+- **Backups** — **Back up now**, **Restore**, and an option to back up on each launch
 
 ### Reset
 
-- **Remove all GunWall filtering** — removes everything and clears saved rules
+- **Remove all GunWall filtering** — removes everything and clears saved rules;
+  your VirusTotal key and custom blocklist path are kept
 - **Reset settings to defaults** — preferences only; **your rules and blocklists
   are kept**
 
@@ -457,6 +512,10 @@ Theme, interface font, and the colours used for signature categories.
 
 **Rule profiles** save a whole ruleset under a name and switch between them — for
 example a permissive profile at home and a strict one on public networks.
+
+**Turning protection off and on** (the switch in the bottom-left panel) keeps every
+approval and block — they are rules. What is reset is the list of applications
+GunWall noticed but you never decided on; they ask again the next time they connect.
 
 **Engage lockdown** (bottom-left) cuts all traffic immediately. Use it if you
 suspect something is wrong. Press it again to release.
@@ -583,7 +642,7 @@ ask for it to be deleted, so reinstalling restores your configuration.
 
 ## 18. Reporting a problem
 
-1. **Settings → Export diagnostics (.zip)**. It contains the session log, your
+1. **Settings → Diagnostics → Export diagnostics (.zip)**. It contains the session log, your
    settings with secrets removed, active rules and network configuration. **No
    browsing history and no personal data.**
 2. **Describe what you saw, not what you think caused it.** A description of the
@@ -632,6 +691,20 @@ No. GunWall is 64-bit only. Windows 11 has no 32-bit edition.
 No telemetry, no accounts, no ads. It contacts the network only when you ask it to:
 checking for updates, downloading GeoIP data or a blocklist, resolving DNS, or
 querying VirusTotal if you supply a key.
+
+**What happens if I start GunWall a second time?**
+Only one copy runs. Starting it again brings the running window forward.
+
+**Does upgrading keep my rules?**
+Yes. Before a new version first writes to your profile, it saves a copy as
+`rules.pre-<old version>.json` in the data folder. To go back, close GunWall from the
+tray, copy that file over `rules.json`, and start GunWall again.
+
+**Where is my VirusTotal key kept?**
+In the profile, encrypted with Windows DPAPI so that only this computer can read
+it. A profile exported or attached to a bug report carries nothing usable. Copied
+to another computer, the key reads as saved but unreadable, and must be entered
+again there. Settings shows that a key is saved; it never shows the key.
 
 ---
 

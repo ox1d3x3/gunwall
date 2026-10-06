@@ -28,11 +28,12 @@ long-term plan differs from what ships today, that is called out explicitly.
 3. **Fail loudly, not silently.** A filter that cannot be installed must say so.
    Hiding a failure so the interface looks correct is worse than showing it: the
    user believes they are protected when they are not.
-4. **Survive restarts.** Rules are persistent at the OS level and on disk, and
-   every filter is removable — including after a crash.
+4. **Recover from anything with a restart.** Rules persist on disk; kernel
+   filters do not survive a reboot, and GunWall reinstalls them at startup. Every
+   filter is removable — including after a crash.
 5. **No telemetry, no accounts, no cloud.** Everything stays on the machine.
-6. **Zero third-party packages.** The dependency surface is the .NET base class
-   library and Win32, so the supply chain is trivial to audit.
+6. **Minimal dependencies.** One control library (WPF UI) for the interface;
+   everything else is the .NET base class library and Win32 (see §11).
 
 GunWall uses **WPF on .NET 8** (`net8.0-windows`) rather than WinUI 3, because
 WPF compiles to a clean native-host EXE without MSIX packaging or the Windows
@@ -67,7 +68,7 @@ The whole thing runs as **one elevated process**. There is no Windows Service:
 the app requires administrator rights (declared in `app.manifest` with
 `requireAdministrator`) because opening the WFP engine and adding filters needs
 them. Enforcement does not depend on the app staying open — the filters
-themselves are persistent at the OS level (see §6). Splitting into a privileged
+stay in the kernel until removed or until the next reboot (see §6). Splitting into a privileged
 service is tracked for 1.0.
 
 ---
@@ -171,7 +172,7 @@ previously they went only to the debugger and were invisible in release builds.
 Entity rules (country, ASN, scope, P2P) cannot be expressed as a single static
 filter, because the facts are not known until a connection appears. These are
 enforced **reactively**: the sampling loop evaluates each new connection, and a
-block verdict installs a persistent per-address filter and tears down the
+block verdict installs a per-address filter and tears down the
 session. Filter identifiers are stored under the owning rule so that changing
 the rule removes everything it accumulated.
 
@@ -192,20 +193,26 @@ diagnostics export.
 
 ## 6. Persistence
 
-Rules and settings live in `GunWallData` beside the executable, falling back to
-`%ProgramData%\GunWall` when that location is read-only. The format is plain
-JSON that can be read, backed up, or deleted by hand. Versioned backups are
-taken automatically and on demand.
+Rules and settings live in `%ProgramData%\GunWall`, or beside the executable
+when a `portable.txt` file sits next to it (`ProfilePaths`). The format is plain
+JSON that can be read, backed up, or deleted by hand; the VirusTotal API key is
+the one encrypted value (DPAPI, machine scope, `SecretProtector`). Backups are
+taken on demand or on each launch, and the profile is copied to
+`rules.pre-<version>.json` before a new version first writes to it.
 
 Persistence is two-layered, and both layers matter:
 
 - **On disk** — so the interface can show what is configured.
-- **In the kernel** — filters are created persistent, so enforcement continues
-  when the app is closed and across reboots.
+- **In the kernel** — filters stay installed when the app is closed. They are
+  not persistent across a reboot, by design: a reboot is a guaranteed way back
+  from any filter GunWall lost track of. GunWall reinstalls them from the profile
+  at startup, before anything else.
 
 Because the two can drift (a crash between adding a filter and saving its
 identifier), removal never relies solely on the stored list: deleting the
-sublayer by key clears everything GunWall ever installed.
+sublayer by key clears everything GunWall ever installed, and a stored identifier
+is acted on only after the filter is proven to be in GunWall's sublayer — the
+kernel reissues identifiers after a reboot.
 
 ---
 
@@ -358,8 +365,7 @@ to change. Both live in `BorderThickness` so selection does not alter row height
 ### Theming, and the one rule that keeps being broken
 
 Colour has exactly one home: `Themes/Theme.Dark.xaml` and `Themes/Theme.Light.xaml`.
-A colour defined anywhere else is a defect, and `tools/checks/check_theme.py`
-enforces it. `Themes/Controls.xaml` holds styles, metrics and type sizes — no
+A colour defined anywhere else is a defect, and the release checks enforce it. `Themes/Controls.xaml` holds styles, metrics and type sizes — no
 brushes, no `Color` resources.
 
 The two palettes are written out separately on the design's explicit
@@ -436,9 +442,13 @@ deliberately small and honest so they can be layered on without rework.
 
 ## 11. Dependency policy
 
-**Zero third-party NuGet packages.** Everything uses the .NET base class library
-and direct Win32 P/Invoke. This keeps the supply chain trivial to audit — a
-firewall that pulls in a dozen opaque dependencies undermines its own promise.
+**One third-party NuGet package: WPF-UI**, for the Fluent window, title bar,
+toggle switches and its base control dictionaries (MIT; licence in
+`third-party-licenses/`). Everything else uses the .NET base class library, the
+Windows Desktop framework and direct Win32 P/Invoke - credential encryption
+included, through the framework's DPAPI wrapper. This keeps the supply chain
+trivial to audit — a firewall that pulls in a dozen opaque dependencies undermines
+its own promise.
 
 This applies to functionality that would normally justify a library: the DNS
 resolver, the ETW metering, the GeoIP lookups, the domain heuristics, and the
