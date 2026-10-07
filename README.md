@@ -211,7 +211,8 @@ start approving.
 
 - **No telemetry, analytics, accounts or phoning home.** The only outbound
   requests are ones you ask for: reverse DNS for host names, blocklist downloads,
-  and VirusTotal checks if you supply a key.
+  and VirusTotal checks if you supply a key. A network scan also asks devices on
+  your own network for their names (NetBIOS, mDNS); nothing leaves your network.
 - **No ads.** Not now, not in a later version.
 - **No silent changes.** Every filter corresponds to a button you pressed. A fresh
   install changes nothing until you enable protection.
@@ -250,8 +251,7 @@ combinations nobody has tried — which is what a beta is for.
 
 ## Roadmap
 
-**In progress** — mDNS names for Apple and IoT devices in Network scan ·
-attributing a kernel drop to the specific filter responsible
+**In progress** — attributing a kernel drop to the specific filter responsible
 
 **Planned** — a privileged Windows service, for protection from boot and tamper
 *prevention* · WSL and subsystem process identification · verifying enforcement on

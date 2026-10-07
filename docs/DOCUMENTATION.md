@@ -416,14 +416,22 @@ finds.
 | Column | Where it comes from |
 |---|---|
 | IP address | ARP table after a sweep |
+| Name | The name the device announces about itself over mDNS (Bonjour) — e.g. *Living Room TV*. Hover it for the model and what the device announces |
 | MAC address | ARP table |
-| Host | Reverse DNS, falling back to NetBIOS |
+| Host | Reverse DNS, falling back to NetBIOS, then the device's own `.local` name (mDNS) |
 | Vendor | The manufacturer registered for the MAC address — needs the IEEE database from **Settings → Additional data** |
 | Likely OS | Inferred from the ping reply's TTL |
 | Flags | Gateway role, or a randomised MAC |
 | Your note | A label of your own, kept against the device's MAC address |
 
-**Right-click a device** to copy its IP, MAC, vendor or host name, the whole row,
+**Names need the device to announce one.** Chromecasts, Google and Apple TVs,
+AirPlay speakers, HomeKit devices, printers, NAS boxes, Macs and
+iPhones usually do. Many Windows PCs, cheap IoT plugs and devices on a guest
+network do not, and some routers block mDNS between Wi-Fi and Ethernet — those
+rows stay blank, which means nothing was announced rather than that something
+failed. GunWall only asks; it never announces anything itself.
+
+**Right-click a device** to copy its name, IP, MAC, vendor or host name, the whole row,
 or every device as tab-separated text. **Ctrl+C** copies the selected rows.
 
 **Likely OS is a guess and is labelled as one.** It distinguishes families —

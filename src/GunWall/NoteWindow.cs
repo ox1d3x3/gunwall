@@ -22,6 +22,7 @@ public sealed class NoteWindow : Window
     public NoteWindow(string prompt, string existing)
     {
         Title = "Name this device";
+        WindowTheme.Attach(this);
         SizeToContent = SizeToContent.WidthAndHeight;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;

@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.180 — public beta
+# GunWall 0.99.182 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.180-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.182-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -64,6 +64,9 @@ afterwards cannot read it and needs the key entered again.
 **Network scan**
 - Device manufacturer from the MAC address, your own note per device, and copying
   of any field, row or the whole table.
+- Device names announced over mDNS / Bonjour ("Living Room TV", "Kitchen
+  Speaker"), with the model on hover, and `.local` host names for phones, Macs and
+  smart-home devices that reverse DNS and NetBIOS cannot name.
 
 **Interface**
 - Explanations sit behind an **ⓘ** icon beside each heading and option, shown on
@@ -76,7 +79,8 @@ afterwards cannot read it and needs the key entered again.
   tooltip says when lockdown is on.
 - Block and Allow change the Applications row the moment they are pressed.
 - Every confirmation and error uses GunWall's own themed dialog, with buttons that
-  say what they do where it matters (e.g. **Turn off and exit**).
+  say what they do where it matters (e.g. **Turn off and exit**), and every
+  window's title bar follows the light or dark theme.
 - The Location column says why an address has no country.
 
 **Performance**

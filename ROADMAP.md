@@ -61,7 +61,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, one NuGet dependen
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
 - ✅ **Service & network-app categorization** — connections name the hosted service, and services can be blocked individually by their own identity.
 - ✅ **Complete country coverage** — ✅ IPv6 GeoIP, which was the largest gap. ✅ **destinations with no country are counted and reported** instead of silently dropped, and the map draws twice as many connection arcs. ✅ *(0.99.172)* the Connections table names why an address has no country — this PC, local network, multicast, not routed, not in the GeoIP data, or no GeoIP data — instead of leaving the cell blank.
-- ◐ **Network scan** — ✅ likely OS from reply TTL, gateway identification from the routing table, NetBIOS names where reverse DNS has none, and randomised-MAC detection. ✅ vendor identification from the MAC address (IEEE registry), device notes, and copying. Remaining: mDNS names for Apple and IoT devices.
+- ✅ **Network scan** — ✅ likely OS from reply TTL, gateway identification from the routing table, NetBIOS names where reverse DNS has none, and randomised-MAC detection. ✅ vendor identification from the MAC address (IEEE registry), device notes, and copying. ✅ mDNS / Bonjour device names, models and `.local` host names (0.99.181).
 
 - ☐ **Pico / subsystem process support** — identify WSL and other minimal-process traffic.
 - ✅ **App icons in the list** — each executable's icon is shown in the Application column.
@@ -137,6 +137,8 @@ fails to parse.*
 ### Network scan
 - ✅ **Copy device details** *(0.99.147)* — IP, MAC, vendor, host, a row, or the whole
   table as tab-separated text; `Ctrl+C` on selected rows.
+- ✅ **Device names over mDNS** *(0.99.181)* — the name a device announces
+  (Bonjour / DNS-SD), its model on hover, and its `.local` host name.
 
 ### Optimisation
 Ranked by evidence. Items below the line are measured from 0.99.152 onwards by

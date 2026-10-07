@@ -2406,7 +2406,7 @@
                     <StackPanel>
                         <TextBlock Text="Network Scanner" Style="{StaticResource H1}" />
                         <TextBlock x:Name="NetworkSubtitle"
-                                   Text="Discover devices on your local network (IP, MAC, host name)."
+                                   Text="Discover devices on your local network (name, IP, MAC, host name)."
                                    Style="{StaticResource Muted}" Margin="0,4,0,0" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
@@ -2423,6 +2423,7 @@
                     <ListView x:Name="DevicesList" gw:Table.EmptyTitle="No devices found" gw:Table.EmptyText="Run a scan to look for other hosts on your network." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" MouseDoubleClick="DeviceNote_Edit" PreviewKeyDown="DevicesList_KeyDown">
                         <ListView.ContextMenu>
                             <ContextMenu>
+                                <MenuItem Header="Copy name" Click="CopyDeviceName_Click" />
                                 <MenuItem Header="Copy IP address" Click="CopyDeviceIp_Click" />
                                 <MenuItem Header="Copy MAC address" Click="CopyDeviceMac_Click" />
                                 <MenuItem Header="Copy vendor" Click="CopyDeviceVendor_Click" />
@@ -2463,6 +2464,18 @@
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Ip}" Style="{StaticResource DataCell}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <!-- The name the device announced about itself over mDNS
+                                     (0.99.181). Second, beside the address, because it is
+                                     the column that answers "what is this?". The tooltip
+                                     carries the model and what it announced. -->
+                                <GridViewColumn Header="NAME" Width="200">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding NameTip}" />
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>

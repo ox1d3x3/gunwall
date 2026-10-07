@@ -15,6 +15,47 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.182] — 2026-10-08
+
+### Changed — every window and prompt matches the app
+An audit of every window and prompt GunWall can show:
+- **Title bars.** App properties, device note, blocklist domains, access rules,
+  kernel layer check and error log kept the standard Windows title bar, which
+  stayed white under the dark theme. Their title bars are now drawn in the window's
+  own colours - dark or light with the theme, rounded on Windows 11 - and follow a
+  theme switch while open.
+- **Enable protection** used a different dialog style from every other prompt; it
+  now uses GunWall's own, with an **Enable protection** button.
+- **The first-run offer** of the optional databases (GunWall's own dialog since
+  0.99.180) now has **Download now** and **Not now** buttons.
+
+Unchanged by design: tray notifications and the open/save file pickers are
+Windows' own and follow Windows' style; the emergency error box shown if
+GunWall's interface itself fails stays the plain Windows one, so it can still
+appear when nothing else can.
+
+## [0.99.181] — 2026-10-07
+
+### Added — device names in Network scan
+Network scan has a new **Name** column showing the name a device announces about
+itself on your network over mDNS (Bonjour): "Living Room TV" for a Chromecast,
+"Kitchen Speaker" for an AirPlay speaker, a printer's model name, a NAS share
+name. Hovering the name shows the model when the device gives one (e.g. *Google
+Nest Hub*) and what it announced (Google Cast, AirPlay, Printer...).
+
+The **Host** column also fills for many more devices: where reverse DNS and
+NetBIOS have nothing, the device's own `.local` name is used - the name phones,
+Macs, Linux machines and most smart-home devices answer to.
+
+How it asks: one query to the whole network while the ping sweep runs, a short
+follow-up for anything new it learned, and a direct question to each device still
+without a name. It adds little or nothing to the scan time. It only asks - nothing
+is announced, registered or changed on your network - and replies from devices
+are checked strictly before anything is shown.
+
+**Copy name** is in the right-click menu, and copied rows now include the name and
+model.
+
 ## [0.99.180] — 2026-10-07
 
 ### Changed — every prompt matches the app

@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.180 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.182 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2071,6 +2071,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = content }
         };
         win.SetResourceReference(BackgroundProperty, "BgPrimary");
+        WindowTheme.Attach(win);
         cancel.Click += (_, _) => win.Close();
         save.Click += (_, _) =>
         {
@@ -4835,6 +4836,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = panel }
             };
             win.SetResourceReference(BackgroundProperty, "BgPrimary");
+            WindowTheme.Attach(win);
             copyBtn.Click += (_, _) =>
             {
                 try
@@ -4921,6 +4923,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 Content = root
             };
             win.SetResourceReference(BackgroundProperty, "BgPrimary");
+            WindowTheme.Attach(win);
             win.ShowDialog();
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("ErrorLog", ex); ShowError(ex); }
@@ -7444,7 +7447,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             + "still needs your approval.\n\n"
             + "Download them now? You can also do this later from "
             + "Settings \u2192 Additional data.",
-            "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            "Optional data", MessageBoxButton.YesNo, MessageBoxImage.Question,
+            "Download now", "Not now");
         if (answer != MessageBoxResult.Yes) return;
 
         // Said in the dialog, so done here - and done BEFORE the first request
@@ -7480,10 +7484,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// <summary>Column order for copied rows. Tab-separated so a paste into a
     /// spreadsheet lands one field per cell.</summary>
     private const string DeviceHeader =
-        "IP address\tMAC address\tHost\tVendor\tLikely OS\tFlags\tNote";
+        "IP address\tName\tMAC address\tHost\tVendor\tModel\tLikely OS\tFlags\tNote";
 
     private static string DeviceLine(NetworkScanner.Device d) =>
-        string.Join("\t", d.Ip, d.Mac, d.Host, d.Vendor, d.Os, d.Kind, d.Note);
+        string.Join("\t", d.Ip, d.Name, d.Mac, d.Host, d.Vendor, d.Model, d.Os, d.Kind, d.Note);
 
     /// <summary>The selection, in the order the list shows it. ListView returns
     /// SelectedItems in the order they were CLICKED, so a shift-selected range
@@ -7515,6 +7519,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void CopyDeviceMac_Click(object sender, RoutedEventArgs e) => CopyDeviceField(d => d.Mac);
     private void CopyDeviceVendor_Click(object sender, RoutedEventArgs e) => CopyDeviceField(d => d.Vendor);
     private void CopyDeviceHost_Click(object sender, RoutedEventArgs e) => CopyDeviceField(d => d.Host);
+    private void CopyDeviceName_Click(object sender, RoutedEventArgs e) => CopyDeviceField(d => d.Name);
 
     private void CopyDeviceRow_Click(object sender, RoutedEventArgs e)
     {
@@ -7552,7 +7557,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (string.IsNullOrWhiteSpace(d.Mac)) return;
 
         string current = _firewall.GetDeviceNote(d.Mac);
-        string who = d.Vendor.Length > 0 ? d.Vendor
+        string who = d.Name.Length > 0 ? d.Name
+                   : d.Vendor.Length > 0 ? d.Vendor
                    : d.Host.Length > 0 ? d.Host
                    : d.Ip;
 
@@ -8075,34 +8081,26 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// you allow. This is the same protective engine the Settings mode selects,
     /// surfaced as a one-click button.
     /// </summary>
-    private async void EnableFirewall_Click(object sender, RoutedEventArgs e)
+    private void EnableFirewall_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireEngine()) return;
         bool turningOn = !_firewall.StrictMode;
 
         if (turningOn)
         {
-            // The library's dialog rather than the system one: a Win32 message
-            // box in the middle of a Fluent window is the most jarring thing
-            // left in this application, and this is the dialog people see at the
-            // single most important moment.
-            var confirm = new Wpf.Ui.Controls.MessageBox
-            {
-                Title = "Enable protection",
-                Content =
-                    "GunWall will take full control of this PC's network.\n\n" +
-                    "Every application is blocked until you allow it. Core Windows " +
-                    "networking - DNS, DHCP and loopback - stays on automatically, but " +
-                    "everything else, including your browser, will need an Allow. You " +
-                    "will be prompted as each one asks, or you can decide in advance " +
-                    "on the Apps page.",
-                PrimaryButtonText = "Enable protection",
-                CloseButtonText = "Cancel",
-                PrimaryButtonAppearance = Wpf.Ui.Controls.ControlAppearance.Primary,
-                Owner = this
-            };
-            var answer = await confirm.ShowDialogAsync();
-            if (answer != Wpf.Ui.Controls.MessageBoxResult.Primary)
+            // GunWall's own dialog, like every other prompt (0.99.182). This used
+            // WPF UI's message box, which was themed but looked different from
+            // the rest - at the single most important moment.
+            var answer = ThemedMessageBox.Show(
+                "GunWall will take full control of this PC's network.\n\n" +
+                "Every application is blocked until you allow it. Core Windows " +
+                "networking - DNS, DHCP and loopback - stays on automatically, but " +
+                "everything else, including your browser, will need an Allow. You " +
+                "will be prompted as each one asks, or you can decide in advance " +
+                "on the Apps page.",
+                "Enable protection", MessageBoxButton.OKCancel, MessageBoxImage.Warning,
+                "Enable protection", "Cancel");
+            if (answer != MessageBoxResult.OK)
             {
                 // A ToggleSwitch has already moved by the time Click is raised,
                 // so returning here leaves it showing "on" while protection is
@@ -9038,6 +9036,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
             // Match the OS title bar to the theme.
             TrySetTitleBarTheme(dark);
+            WindowTheme.ApplyAll();   // open secondary windows follow the switch
         }
         catch (Exception ex)
         {

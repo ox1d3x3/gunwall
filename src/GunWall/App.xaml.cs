@@ -11,6 +11,7 @@ public partial class App : Application
         base.OnStartup(e);
         Services.PerfMonitor.MarkStartup("app");
         Services.PerfMonitor.RegisterUiThread();   // before anything is timed
+        WindowTheme.Register();   // every standard title bar in the app's theme (0.99.182)
 
         DiagnosticLog.Log("App starting (OnStartup).");
 

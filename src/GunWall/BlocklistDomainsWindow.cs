@@ -47,6 +47,7 @@ public sealed class BlocklistDomainsWindow : Window
 
     public BlocklistDomainsWindow(string categoryName, IReadOnlyList<string> domains, ISet<string> excluded)
     {
+        WindowTheme.Attach(this);
         Title = "Domains - " + categoryName;
         Width = 520;
         Height = 600;

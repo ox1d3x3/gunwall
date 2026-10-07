@@ -9,14 +9,32 @@ namespace GunWall.Services;
 /// Discovers devices on the local network(s). It pings every host across each
 /// active private IPv4 /24 the machine is attached to (handling multiple
 /// adapters — Wi-Fi, Ethernet, VPN, virtual switches), then reads the system
-/// ARP table to map IP to MAC and attempts a reverse-DNS hostname. Pure managed
-/// / IP Helper — no driver, no external services. Best-effort throughout.
+/// ARP table to map IP to MAC. Names come from reverse DNS, NetBIOS and mDNS
+/// (<see cref="MdnsResolver"/>, which also supplies the friendly name and model a
+/// device announces). Pure managed / IP Helper — no driver, no external
+/// services. Best-effort throughout.
 /// </summary>
 public sealed class NetworkScanner
 {
     public sealed record Device(string Ip, string Mac, string Host, string Os = "",
-                               string Kind = "", string Vendor = "", string Note = "")
+                               string Kind = "", string Vendor = "", string Note = "",
+                               string Name = "", string Model = "", string Services = "")
     {
+        /// <summary>Tooltip for the NAME column: where the name came from, the
+        /// model and what the device announced. Null when there is nothing to
+        /// add, so no empty tooltip box appears.</summary>
+        public string? NameTip
+        {
+            get
+            {
+                var lines = new List<string>();
+                if (Name.Length > 0) lines.Add("Announced by the device on your network (mDNS / Bonjour).");
+                if (Model.Length > 0) lines.Add("Model: " + Model);
+                if (Services.Length > 0) lines.Add("Announces: " + Services);
+                return lines.Count == 0 ? null : string.Join("\n", lines);
+            }
+        }
+
         /// <summary>True when this device chose its own MAC, so a note attached to
         /// it will be lost the next time it randomises. Derived rather than stored
         /// separately, so it cannot disagree with the NOTE column beside it.</summary>
@@ -74,6 +92,10 @@ public sealed class NetworkScanner
             // the same address, must not inherit the previous run's reading.
             _ttl.Clear();
 
+            // mDNS discovery runs alongside the ping sweep rather than after it,
+            // so it adds little or nothing to the scan time (0.99.181).
+            var mdnsTask = MdnsResolver.DiscoverAsync(TimeSpan.FromMilliseconds(1200));
+
             var pingTasks = new List<Task>();
 
             foreach (var prefix in prefixes)
@@ -106,6 +128,8 @@ public sealed class NetworkScanner
                 }
             }
             await Task.WhenAll(pingTasks);
+            var mdns = await mdnsTask;
+            int named = 0, hostDnsNb = 0, hostMdns = 0;
 
             // Read the ARP table. Include every valid private unicast neighbour
             // across ALL adapters — do NOT restrict to a single guessed subnet
@@ -123,7 +147,21 @@ public sealed class NetworkScanner
                 string macLocal = mac;
                 resolveTasks.Add(Task.Run(async () =>
                 {
+                    mdns.TryGetValue(ipLocal, out var m);
+                    // Asked directly only when discovery did not already give a
+                    // host name, and in parallel with reverse DNS / NetBIOS, so a
+                    // silent device costs no extra time.
+                    var direct = m is { Host.Length: > 0 }
+                        ? Task.FromResult("")
+                        : MdnsResolver.ReverseNameAsync(ipLocal, TimeSpan.FromMilliseconds(900));
                     string host = await ResolveHostAsync(ipLocal);
+                    string mdnsHost = m is { Host.Length: > 0 } ? m.Host : await direct;
+                    // Reverse DNS / NetBIOS keep priority for the HOST column - they
+                    // are what the router or the machine itself registered. mDNS fills
+                    // the blanks, which on a home network is most rows.
+                    if (host.Length > 0) System.Threading.Interlocked.Increment(ref hostDnsNb);
+                    else if (mdnsHost.Length > 0) { host = mdnsHost; System.Threading.Interlocked.Increment(ref hostMdns); }
+                    if (m is { Name.Length: > 0 }) System.Threading.Interlocked.Increment(ref named);
                     bool isGateway = gateways.Contains(ipLocal);
 
                     // A known gateway overrides the TTL guess. "Linux / macOS /
@@ -139,11 +177,17 @@ public sealed class NetworkScanner
 
                     string vendor = Oui?.Lookup(macLocal) ?? "";
                     string note = NoteLookup?.Invoke(macLocal) ?? "";
-                    lock (devices) devices.Add(new Device(ipLocal, macLocal, host, os, kind, vendor, note));
+                    lock (devices) devices.Add(new Device(ipLocal, macLocal, host, os, kind, vendor, note,
+                        m?.Name ?? "", m?.Model ?? "", m?.Services ?? ""));
                 }));
             }
             await Task.WhenAll(resolveTasks);
             devices.Sort((a, b) => CompareIp(a.Ip, b.Ip));
+            // One line per scan, so a report of "no names" shows which source was
+            // silent rather than leaving it to guesswork.
+            DiagnosticLog.Log($"Network scan: {devices.Count} device(s). Names announced over mDNS: {named}. "
+                + $"Host names: reverse DNS or NetBIOS {hostDnsNb}, mDNS {hostMdns}. "
+                + $"mDNS answered for {mdns.Count} address(es).");
             progress?.Invoke(100);
         }
         catch { /* best effort */ }

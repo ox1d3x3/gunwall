@@ -18,6 +18,7 @@ public partial class AppPropertiesWindow : Window
     public AppPropertiesWindow(AppInfo app, FirewallManager firewall)
     {
         InitializeComponent();
+        WindowTheme.Attach(this);
         _app = app;
         _firewall = firewall;
 
