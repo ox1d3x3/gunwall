@@ -15,6 +15,40 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.176] — 2026-10-07
+
+### Added — diagnostics for a Block/Allow button that does nothing
+Reported from use: with the Applications list filtered, **Block** on an allowed
+application did nothing, while the same action worked unfiltered. The code path is
+the same in both cases, so this release records what happens instead of guessing:
+
+- Every **Block** / **Allow** click is logged with the row it came from, the
+  status shown, the filter text and whether the row was still current - then the
+  status the application ended with. A click that never arrives leaves no line.
+- A row that is rebuilt on three refreshes running is logged once, naming the
+  value that keeps changing. Rebuilding a row re-creates its button, and a button
+  re-created every second can lose the click between mouse down and mouse up.
+
+No behaviour changes.
+
+---
+
+## [0.99.175] — 2026-10-07
+
+### Fixed — "Vendor database: not downloaded" beside a downloaded database
+Settings → **ADDITIONAL DATA** said *Vendor database: not downloaded* while the
+line below it read *Last vendor attempt: Downloaded MA-L, MA-M, MA-S*. The card is
+refreshed when the GeoIP tables finish loading at start-up, and the vendor
+database loads just after that, so its line was never updated. It is now refreshed
+when the vendor database finishes loading and whenever Settings is opened, and the
+log records how many prefixes were loaded.
+
+### Changed — check `blocklist-levels`
+Also fails if the vendor database load or opening Settings stops refreshing the
+card. Both defects were reintroduced and the check confirmed failing on each.
+
+---
+
 ## [0.99.174] — 2026-10-07
 
 ### Fixed — the domain list showed five domains at a time

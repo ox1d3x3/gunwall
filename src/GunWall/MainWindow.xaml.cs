@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.174 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.176 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3314,7 +3314,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                      cur.ActiveConnections = next.ActiveConnections;
                      if (!SamePoints(cur.Spark, next.Spark)) cur.Spark = next.Spark;
                      cur.SparkTip = next.SparkTip;
-                 });
+                 },
+                 NoteAppRowReplaced);
+        EndAppRowChurnPass();
 
         if (!string.IsNullOrEmpty(keepPath))
         {
@@ -3322,6 +3324,42 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 string.Equals(a.ExecutablePath, keepPath, StringComparison.OrdinalIgnoreCase));
             if (reselect != null) AppsList.SelectedItem = reselect;
         }
+    }
+
+    // ---- Row churn diagnostics (0.99.176) --------------------------------------
+    // Replacing a row object re-creates its controls, including its Block/Allow
+    // button. A row replaced on every one-second rebuild has a button that is
+    // destroyed between the mouse going down and coming up, so clicks on it do
+    // nothing - with no error anywhere. Reported from use (Block did nothing on a
+    // filtered list) and not reproducible from the code, so this records it:
+    // a row replaced on three rebuilds running is logged once, naming the value
+    // that keeps changing.
+    private readonly Dictionary<string, int> _appChurn = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _appChurnSeen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _appChurnThisPass = new(StringComparer.OrdinalIgnoreCase);
+
+    private void NoteAppRowReplaced(AppInfo cur, AppInfo next)
+    {
+        string k = next.ExecutablePath;
+        _appChurnThisPass.Add(k);
+        _appChurn.TryGetValue(k, out int n);
+        _appChurn[k] = ++n;
+        if (n < 3) return;
+        string prop = RowProps<AppInfo>.All
+            .Where(pi => !AppLiveProps.Contains(pi.Name))
+            .FirstOrDefault(pi => !Equals(pi.GetValue(cur), pi.GetValue(next)))?.Name ?? "?";
+        if (_appChurnSeen.Add(k + "|" + prop))
+            Services.DiagnosticLog.Log($"Apps list: the row for {next.Name} is rebuilt every second "
+                + $"(its '{prop}' value differs each time) - its buttons are re-created and can miss clicks. "
+                + $"Filter: '{_appFilter}'.");
+    }
+
+    /// <summary>A row not replaced in this rebuild starts its count again.</summary>
+    private void EndAppRowChurnPass()
+    {
+        foreach (var k in _appChurn.Keys.Where(k => !_appChurnThisPass.Contains(k)).ToList())
+            _appChurn.Remove(k);
+        _appChurnThisPass.Clear();
     }
 
     /// <summary>Cheap visual category: missing file, system path, signed, or unsigned.</summary>
@@ -3376,7 +3414,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// </summary>
     private static void SyncList<T>(ObservableCollection<T> target, IReadOnlyList<T> desired,
                                     Func<T, string> key, Func<T, T, bool> same,
-                                    Action<T, T>? refresh = null) where T : class
+                                    Action<T, T>? refresh = null,
+                                    Action<T, T>? replaced = null) where T : class
     {
         static List<string> Keys(IEnumerable<T> items, Func<T, string> key)
         {
@@ -3424,7 +3463,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             T cur = target[i];
             if (object.ReferenceEquals(cur, next)) continue;
             if (same(cur, next)) refresh?.Invoke(cur, next);
-            else target[i] = next;
+            else { replaced?.Invoke(cur, next); target[i] = next; }
         }
 
         // 3. Defensive: with occurrence-numbered keys this never fires.
@@ -5112,6 +5151,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // background, so it said "not downloaded yet" beside a loaded database
         // for the whole session. Re-read whenever the page is opened.
         if (tag == "Security" && GeoSourceStatus != null) GeoSourceStatus.Text = GeoSourceSummary();
+        // Same reason for Settings: its database lines describe loads that finish in
+        // the background after the window is built.
+        if (tag == "Settings") { try { RefreshAdditionalDataUi(); } catch { } }
         if (tag == "Settings") UpdateHealthCard();
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
@@ -5159,8 +5201,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // ================================================================ actions
     private void ToggleApp_Click(object sender, RoutedEventArgs e)
     {
+        // Logged before anything can return: whether the click arrived at all is
+        // the first question for "the button did nothing" (0.99.176).
+        var clicked = ((Button)sender).DataContext as AppInfo;
+        Services.DiagnosticLog.Log($"Apps list: action clicked for {clicked?.Name ?? "(no row)"} "
+            + $"(shown as {clicked?.Status.ToString() ?? "?"}, filter '{_appFilter}', "
+            + $"row current: {(clicked != null && _apps.Contains(clicked))}).");
         if (!RequireEngine()) return;
-        if (((Button)sender).DataContext is not AppInfo app) return;
+        if (clicked is not AppInfo app) return;
 
         try
         {
@@ -5180,6 +5228,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
 
             RebuildAppsList();
+            Services.DiagnosticLog.Log($"Apps list: {app.Name} is now {_firewall.EffectiveStatus(app.ExecutablePath)}.");
         }
         catch (Exception ex)
         {
@@ -6664,7 +6713,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             _oui.LoadFromFile(OuiCachePath);
             Services.NetworkScanner.Oui = _oui;
-            Dispatcher.BeginInvoke(new Action(() => { try { RefreshOuiStatus(); } catch { } }));
+            // The Additional data card too: it was refreshed when GeoIP finished
+            // loading, which is just BEFORE this load, so it said "Vendor database:
+            // not downloaded" all session beside "Last vendor attempt: Downloaded"
+            // (seen on hardware, 0.99.174 - trap 2.51 again).
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try { RefreshOuiStatus(); } catch { }
+                try { RefreshAdditionalDataUi(); } catch { }
+            }));
+            if (_oui.Loaded) Services.DiagnosticLog.Log($"Vendor database: {_oui.Count:N0} prefixes loaded.");
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("OuiLoad", ex); }
     }
