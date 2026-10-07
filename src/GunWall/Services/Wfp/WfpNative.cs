@@ -223,6 +223,15 @@ internal static class WfpNative
     // reproduces the native layout. The two C unions are collapsed:
     //   weight/effectiveWeight -> FWP_VALUE0
     //   rawContext/providerContextKey -> Guid (the larger member)
+    //
+    // x64 offsets, compiled from the Windows headers (fwpmtypes.h) and matching
+    // the win32metadata declaration: subLayerKey 80, action 128, the
+    // rawContext/providerContextKey union 152, reserved 168, filterId 176,
+    // effectiveWeight 184, size 200. The union holds a UINT64, so it is 8-byte
+    // aligned: it starts at 152, not at 148 where FWPM_ACTION0 (20 bytes) ends.
+    // A Guid alone is 4-byte aligned and would land at 148, which is what the
+    // explicit padding field prevents. Before it existed the union sat 4 bytes
+    // early; nothing read it, and reserved realigned to 168 by chance.
     [StructLayout(LayoutKind.Sequential)]
     internal struct FWPM_FILTER0
     {
@@ -237,6 +246,7 @@ internal static class WfpNative
         public uint numFilterConditions;
         public IntPtr filterCondition;         // FWPM_FILTER_CONDITION0*
         public FWPM_ACTION0 action;
+        private uint _unionAlignment;          // 148..152: the union below is 8-aligned
         public Guid providerContextKey;        // union { UINT64 rawContext; GUID ...; }
         public IntPtr reserved;                // GUID*
         public ulong filterId;
@@ -306,8 +316,33 @@ internal static class WfpNative
         string fileName,
         out IntPtr appId); // FWP_BYTE_BLOB**
 
+    // Returns void (win32metadata, fwpmu.h). It was declared as returning a
+    // value, which on x64 read whatever was left in RAX; no caller used it.
     [DllImport(FwpuclntDll)]
-    internal static extern uint FwpmFreeMemory0(ref IntPtr p);
+    internal static extern void FwpmFreeMemory0(ref IntPtr p);
+
+    // Filter enumeration (fwpmu.h; signatures as in win32metadata). The template
+    // is optional and passed as null, which lists every filter in the engine; the
+    // caller keeps the ones in GunWall's sublayer. Entries come back as an array
+    // of FWPM_FILTER0 pointers, one page per call, freed with FwpmFreeMemory0.
+    [DllImport(FwpuclntDll)]
+    internal static extern uint FwpmFilterCreateEnumHandle0(
+        IntPtr engineHandle,
+        IntPtr enumTemplate,       // const FWPM_FILTER_ENUM_TEMPLATE0* (null)
+        out IntPtr enumHandle);
+
+    [DllImport(FwpuclntDll)]
+    internal static extern uint FwpmFilterEnum0(
+        IntPtr engineHandle,
+        IntPtr enumHandle,
+        uint numEntriesRequested,
+        out IntPtr entries,        // FWPM_FILTER0*** -> receives FWPM_FILTER0**
+        out uint numEntriesReturned);
+
+    [DllImport(FwpuclntDll)]
+    internal static extern uint FwpmFilterDestroyEnumHandle0(
+        IntPtr engineHandle,
+        IntPtr enumHandle);
 
     [DllImport(FwpuclntDll)]
     internal static extern uint FwpmTransactionBegin0(IntPtr engineHandle, uint flags);

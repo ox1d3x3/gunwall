@@ -156,6 +156,10 @@ empty file called `portable.txt` beside `GunWall.exe`.
 > — is permitted automatically. You will not be asked whether your machine may
 > resolve names.
 
+> **Explanations.** A small **ⓘ** icon beside a page title, a section heading or an
+> option means there is more to read. Rest the pointer on it and the explanation
+> appears; it stays open while the pointer is there.
+
 ---
 
 ## 4. How GunWall decides
@@ -364,7 +368,9 @@ explicitly rather than claiming GunWall allowed it.
 
 **Connections** — live sockets with process, protocol, local and remote addresses,
 country and network operator. Select a row for a detail panel showing the rule that
-applied.
+applied. Where an address has no country, the Location column says why — *This PC
+(loopback)*, *Local network*, *Multicast*, *Not routed*, *Not in GeoIP data*, or *No
+GeoIP data* when the database has not been downloaded.
 
 **Traffic** — a world map of destinations, top countries, most active applications,
 per-application data usage over a chosen window, and a breakdown by host, traffic
@@ -421,6 +427,7 @@ modern phone does by default. It is privacy working, not a fault.
 
 **Settings** is the last item in the left-hand sidebar. It is one long page of
 cards, each headed with a name in capitals — scroll to find the card named below.
+Hover the **ⓘ** beside a card's heading or an option for what it does.
 
 ### Preferences
 

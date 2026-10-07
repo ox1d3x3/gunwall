@@ -47,11 +47,17 @@ public sealed class ConnectionInfo
     public string Country { get; set; } = "";
     public int Asn { get; set; }
     public string AsnOwner { get; set; } = "";
+    /// <summary>Why a remote has no country, in plain words ("Local network",
+    /// "Not in GeoIP data", ...). Set by the UI layer when the lookup finds nothing,
+    /// and shown in place of the blank Location cell that used to make a LAN
+    /// printer and an unplaced public server look the same.</summary>
+    public string LocationNote { get; set; } = "";
+
     public string Location
     {
         get
         {
-            if (Country.Length == 0 && Asn == 0) return "";
+            if (Country.Length == 0 && Asn == 0) return LocationNote;
             var parts = new System.Collections.Generic.List<string>();
             if (Country.Length > 0) parts.Add(GunWall.Services.GeoData.CountryName(Country));
             if (Asn != 0) parts.Add("AS" + Asn + (AsnOwner.Length > 0 ? " " + AsnOwner : ""));

@@ -483,6 +483,43 @@
         <Setter Property="FontSize" Value="12" />
     </Style>
 
+    <!-- ========================= Information icon ========================= -->
+    <!-- InfoTip (Controls/InfoTip.cs): the explanation behind a heading or an
+         option, shown on hover. Sized for an 11px section label; a page title
+         sets 16. The tooltip opens quickly and stays while the pointer rests,
+         because these are paragraphs, not one-word hints - the default five
+         seconds closes them mid-sentence. Resting ink is TextSecondary rather
+         than TextTertiary: the icon is the only sign the explanation exists. -->
+    <Style TargetType="gw:InfoTip">
+        <Setter Property="Width" Value="13" />
+        <Setter Property="Height" Value="13" />
+        <Setter Property="Margin" Value="7,0,0,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Cursor" Value="Help" />
+        <Setter Property="ToolTipService.InitialShowDelay" Value="150" />
+        <Setter Property="ToolTipService.ShowDuration" Value="60000" />
+        <Setter Property="AutomationProperties.Name" Value="More information" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="gw:InfoTip">
+                    <Grid Background="Transparent">
+                        <Path x:Name="Glyph" Stretch="Uniform" Fill="{x:Null}"
+                              StrokeThickness="1.4" StrokeLineJoin="Round"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Stroke="{DynamicResource TextSecondary}"
+                              Data="{DynamicResource IconInfo}" SnapsToDevicePixels="True" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Glyph" Property="Stroke" Value="{DynamicResource TextPrimary}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ========================= Card border ========================= -->
         <!-- Cards take the library's own tokens rather than restating a surface
          colour, so a card and the controls sitting on it are drawn from one

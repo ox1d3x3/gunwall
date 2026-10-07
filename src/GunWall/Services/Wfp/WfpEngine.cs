@@ -51,7 +51,7 @@ public sealed class WfpEngine : IDisposable
     /// it.
     ///
     /// Removal alone could not fix that, because removal depends on knowing the
-    /// ids: FindAllSublayerFilterIds parses `netsh wfp show filters`, and that
+    /// ids: FindAllSublayerFilterIds then parsed `netsh wfp show filters`, and that
     /// output was shown to list 4 filters at a moment the kernel confirmed 144
     /// live. An enumeration that sees 3% of its own filters cannot be the only
     /// thing standing between a user and a dead network.
@@ -877,77 +877,141 @@ public sealed class WfpEngine : IDisposable
         }
     }
 
-    /// <summary>
     /// <summary>Every filter in GunWall's sublayer, including ones it has lost the
-    /// id for, obtained by asking Windows to list them.
+    /// id for, read from the filter engine itself.
     ///
-    /// Orphans are the reason a reset could not return the machine to default:
-    /// a crash between installing a filter and saving its id, or a store cleared
-    /// before its filters were deleted, leaves a PERSISTENT filter in the kernel
-    /// that GunWall can no longer name. It keeps filtering forever, survives
-    /// reboots, and is why deleting the sublayer returns FWP_E_IN_USE.
+    /// Orphans are why this exists: a crash between installing a filter and saving
+    /// its id, or a store cleared before its filters were deleted, leaves a filter
+    /// GunWall can no longer name, and deleting the sublayer then returns
+    /// FWP_E_IN_USE.
     ///
-    /// The obvious route is FwpmFilterEnum0, which means marshalling FWPM_FILTER0
-    /// by hand - a struct with a union and nested blobs whose layout would have to
-    /// be right first time on a machine this code cannot run on. Trap 2.5 was
-    /// exactly that mistake with a callback offset, and it killed a process
-    /// silently.
+    /// Until 0.99.169 this ran `netsh wfp show filters` and parsed its XML: a second
+    /// process, hundreds of milliseconds to seconds, and once 4 of 144 live filters.
+    /// The native listing reads a FWPM_FILTER0 layout checked field by field against
+    /// the Windows headers (WfpNative.cs). 0.99.169 and 0.99.170 ran both and
+    /// compared them on hardware: the same ids every time (trap 2.50 explains the
+    /// one apparent difference). netsh was removed in 0.99.171.
     ///
-    /// So this asks netsh instead. `netsh wfp show filters` is shipped with
-    /// Windows, writes documented XML, and every filter in it carries its
-    /// subLayerKey and its filterId. Parsing XML is something this project can
-    /// verify; guessing a struct offset is not. FwpmFilterDeleteById0 is already
-    /// bound, so nothing new touches the kernel boundary at all.</summary>
+    /// Throws when the listing fails. Every caller already treats an exception as
+    /// "could not enumerate"; returning an empty list instead would read as "the
+    /// sublayer is empty" (trap 2.20).</summary>
     public List<ulong> FindAllSublayerFilterIds()
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        List<ulong>? native;
+        string? why;
+        try { native = EnumerateSublayerNative(out why); }
+        catch (Exception ex) { native = null; why = $"{ex.GetType().Name}: {ex.Message}"; }
+
+        if (native != null)
+        {
+            RecordEnumeration(native.Count, sw.ElapsedMilliseconds);
+            return native;
+        }
+
+        bool first;
+        lock (_enumLock) { _enumFailureCount++; first = _enumFailures.Add(why ?? "unknown"); }
+        if (first)
+            DiagnosticLog.Log($"Filter enumeration failed ({why}). Repeats of this reason are counted, not logged.");
+        throw new InvalidOperationException($"Listing GunWall's filters failed: {why}");
+    }
+
+    /// <summary>Entries per FwpmFilterEnum0 call. Any value works; this keeps each
+    /// returned block small while listing a few thousand filters in a few calls.</summary>
+    private const uint EnumPageSize = 256;
+
+    /// <summary>A bound on pages, so an engine that never reports the end cannot
+    /// hold this loop forever. 4,096 pages is a million filters.</summary>
+    private const int EnumMaxPages = 4096;
+
+    /// <summary>Where filterId sits in a returned FWPM_FILTER0 - 176 on x64 - taken
+    /// from the struct, like <see cref="FilterSubLayerOffset"/>, never written as a
+    /// number.</summary>
+    private static readonly int FilterIdOffset =
+        (int)Marshal.OffsetOf<FWPM_FILTER0>(nameof(FWPM_FILTER0.filterId));
+
+    /// <summary>
+    /// Lists every filter in the engine and returns the ids of those in GunWall's
+    /// sublayer. Null, with the reason, when the engine is not open or any call
+    /// fails - a failed listing is not an empty sublayer (trap 2.20).
+    ///
+    /// Only two fields are read from each entry: subLayerKey, compared first, and
+    /// filterId, read only from GunWall's own. Each page is freed before the next
+    /// is requested, and the enum handle is destroyed on every path.
+    /// </summary>
+    private List<ulong>? EnumerateSublayerNative(out string? failure)
+    {
+        failure = null;
+        EnsureReady();
+        if (_engine == IntPtr.Zero) { failure = "engine not open"; return null; }
+
+        uint r = FwpmFilterCreateEnumHandle0(_engine, IntPtr.Zero, out IntPtr handle);
+        if (r != ERROR_SUCCESS || handle == IntPtr.Zero)
+        {
+            failure = $"FwpmFilterCreateEnumHandle0 returned 0x{r:X8}";
+            return null;
+        }
+
         var found = new List<ulong>();
-        string tmp = Path.Combine(Path.GetTempPath(), $"gunwall-wfp-{Guid.NewGuid():N}.xml");
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo("netsh",
-                $"wfp show filters file=\"{tmp}\"")
+            for (int page = 0; ; page++)
             {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            using (var proc = System.Diagnostics.Process.Start(psi))
-            {
-                if (proc == null) return found;
-                if (!proc.WaitForExit(30000)) { try { proc.Kill(); } catch { } return found; }
+                if (page >= EnumMaxPages) { failure = "no end of listing after 4,096 pages"; return null; }
+
+                IntPtr entries = IntPtr.Zero;
+                uint n = 0;
+                try
+                {
+                    r = FwpmFilterEnum0(_engine, handle, EnumPageSize, out entries, out n);
+                    if (r != ERROR_SUCCESS) { failure = $"FwpmFilterEnum0 returned 0x{r:X8}"; return null; }
+                    if (n > EnumPageSize) { failure = $"FwpmFilterEnum0 returned {n} entries for {EnumPageSize} requested"; return null; }
+                    if (n > 0 && entries == IntPtr.Zero) { failure = "FwpmFilterEnum0 returned entries without an array"; return null; }
+
+                    for (int i = 0; i < (int)n; i++)
+                    {
+                        IntPtr filter = Marshal.ReadIntPtr(entries, i * IntPtr.Size);
+                        if (filter == IntPtr.Zero) continue;
+                        if (Marshal.PtrToStructure<Guid>(filter + FilterSubLayerOffset) != SublayerKey) continue;
+                        ulong id = (ulong)Marshal.ReadInt64(filter + FilterIdOffset);
+                        if (id != 0) found.Add(id);
+                    }
+                }
+                finally
+                {
+                    if (entries != IntPtr.Zero) FwpmFreeMemory0(ref entries);
+                }
+                if (n < EnumPageSize) break;
             }
-            if (!File.Exists(tmp)) return found;
-
-            string sub = SublayerKey.ToString("D");
-            var doc = System.Xml.Linq.XDocument.Load(tmp);
-
-            // Each <item> is one filter. Match on subLayerKey, then read filterId.
-            // Names are compared case-insensitively and without a namespace, so a
-            // schema change in casing does not silently match nothing.
-            foreach (var item in doc.Descendants()
-                         .Where(e => string.Equals(e.Name.LocalName, "item", StringComparison.OrdinalIgnoreCase)))
-            {
-                var key = item.Descendants().FirstOrDefault(e =>
-                    string.Equals(e.Name.LocalName, "subLayerKey", StringComparison.OrdinalIgnoreCase));
-                if (key == null) continue;
-                if (!key.Value.Trim().Trim('{', '}').Equals(sub, StringComparison.OrdinalIgnoreCase)) continue;
-
-                var id = item.Descendants().FirstOrDefault(e =>
-                    string.Equals(e.Name.LocalName, "filterId", StringComparison.OrdinalIgnoreCase));
-                if (id != null && ulong.TryParse(id.Value.Trim(), out ulong v) && v != 0)
-                    found.Add(v);
-            }
-        }
-        catch (Exception ex)
-        {
-            Services.DiagnosticLog.LogException("FindAllSublayerFilterIds", ex);
         }
         finally
         {
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            FwpmFilterDestroyEnumHandle0(_engine, handle);
         }
         return found;
+    }
+
+    // ---- enumeration diagnostics (diagnostics export)
+    private static readonly object _enumLock = new();
+    private static readonly HashSet<string> _enumFailures = new();
+    private static int _enumFailureCount;
+    private static int _enumLastCount = -1;
+    private static long _enumLastMs;
+
+    private static void RecordEnumeration(int count, long ms)
+    {
+        lock (_enumLock) { _enumLastCount = count; _enumLastMs = ms; }
+    }
+
+    /// <summary>One line for the diagnostics export.</summary>
+    public static string EnumerationSummary()
+    {
+        lock (_enumLock)
+            return (_enumLastCount < 0
+                       ? "Filter enumeration: not run yet"
+                       : $"Filter enumeration: native, filters={_enumLastCount}, {_enumLastMs} ms")
+                 + $", failures={_enumFailureCount}"
+                 + (_enumFailures.Count > 0 ? $", reasons=[{string.Join(" | ", _enumFailures)}]" : "");
     }
 
     /// Tears down GunWall's sublayer. **Filters must already be gone.**
@@ -1365,7 +1429,7 @@ public sealed class WfpEngine : IDisposable
             // asking for "41" would not have failed; it would have quietly become
             // a permit for everything. Widening a rule is a worse outcome than
             // refusing it, so unrecognised values are now rejected by the
-            // preset-protocol check in tools/checks rather than being dropped
+            // preset-protocol release check rather than being dropped
             // here on the way to the kernel.
             byte? proto = protocol?.ToUpperInvariant() switch
             {

@@ -1201,7 +1201,7 @@ public sealed class FirewallManager : IDisposable
     /// Safe because every ulong in the persisted model is a filter id - there is
     /// no other use of the type in StoreData or the rule classes. If that ever
     /// stops being true this becomes wrong silently, so the store-shape check in
-    /// tools/checks asserts it rather than leaving it to be remembered.</summary>
+    /// release checks assert it rather than leaving it to be remembered.</summary>
     private static void CollectFilterIds(object? node, HashSet<ulong> into, HashSet<object> seen)
     {
         if (node is null) return;
@@ -1297,8 +1297,9 @@ public sealed class FirewallManager : IDisposable
     /// that were untracked at the moment they were enumerated, so a filter created
     /// by a later engage can never be among them.
     ///
-    /// Looped for the same reason the purge is: netsh returns a different partial
-    /// set on each call.
+    /// Looped for the same reason the purge is: the netsh listing used before
+    /// 0.99.169 returned a different partial set on each call. With the native
+    /// listing a second pass simply finds nothing, and the loop costs one call.
     /// </summary>
     public int SweepUntrackedFilters()
     {
@@ -1339,8 +1340,9 @@ public sealed class FirewallManager : IDisposable
     /// <summary>
     /// Removes EVERY filter in GunWall's sublayer, re-enumerating between passes.
     ///
-    /// One pass is not enough, and that is measured rather than assumed.
-    /// FindAllSublayerFilterIds parses `netsh wfp show filters`, and on
+    /// One pass was not enough, and that was measured rather than assumed.
+    /// FindAllSublayerFilterIds parsed `netsh wfp show filters` until 0.99.169,
+    /// and on
     /// 2026-09-12 that output listed 4 filters at a moment the kernel confirmed
     /// 144 of 144 present. Two consecutive single-pass purges saw ~190 filters
     /// and then 4 completely different ones, every delete returning success both
@@ -1407,8 +1409,10 @@ public sealed class FirewallManager : IDisposable
             }
         }
 
-        int left = 0;
-        try { left = _engine.FindAllSublayerFilterIds().Count; } catch { }
+        // -1 when the final listing fails: unknown is not zero (trap 2.20).
+        int left = -1;
+        try { left = _engine.FindAllSublayerFilterIds().Count; }
+        catch (Exception ex) { DiagnosticLog.LogException("PurgeSublayer/count", ex); }
 
         bool sublayerGone;
         try { sublayerGone = _engine.TryDeleteSublayer() is 0 or 0x80320007; }
@@ -1942,8 +1946,8 @@ public sealed class FirewallManager : IDisposable
 
             // Then anything the store never named. OFF promises "nothing is being
             // blocked", and an orphaned block-all breaks that promise without being
-            // on any list above. Background, because the enumeration shells out to
-            // netsh; it stops the moment protection is re-engaged, and it can only
+            // on any list above. Background, so a slow listing never holds up the
+            // switch; it stops the moment protection is re-engaged, and it can only
             // ever delete filters the store does not name.
             _ = System.Threading.Tasks.Task.Run(() =>
             {

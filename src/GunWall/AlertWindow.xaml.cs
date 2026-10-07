@@ -329,7 +329,7 @@ public partial class AlertWindow : Window
     // word "automatically" carried none of the meaning - the sentence says the
     // same thing without it.
     //
-    // This limit is checked by hint-width in tools/checks/check_theme.py rather
+    // This limit is checked by the hint-width release check rather
     // than trusted to this comment, because trap 2.11 is exactly a documented
     // limit that nothing enforced: the tracking helper's "proportional fonts
     // only" sat at the top of its file for three releases and then the default
@@ -345,7 +345,7 @@ public partial class AlertWindow : Window
         $"{(_defaultAllow ? "Allow" : "Block")}s in {_secondsLeft}s";
 
     /// <summary>The only place the hint is written, so the budget is enforced
-    /// rather than merely declared. The check in tools/checks catches this
+    /// rather than merely declared. The release checks catch this
     /// before a build; the assert catches anything the check's regexes cannot
     /// see, such as a string built at runtime. Release builds drop it.</summary>
     private void SetHint(string text)

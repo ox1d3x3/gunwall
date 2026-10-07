@@ -250,8 +250,7 @@ combinations nobody has tried — which is what a beta is for.
 
 ## Roadmap
 
-**In progress** — reading GunWall's own kernel filters directly instead of through
-`netsh` · verifying enforcement on networks with routable IPv6 · per-category
+**In progress** — verifying enforcement on networks with routable IPv6 · per-category
 blocklist controls · attributing a kernel drop to the specific filter responsible
 
 **Planned** — WSL and subsystem process identification · tamper *prevention* ·

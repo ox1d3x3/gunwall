@@ -172,6 +172,11 @@
     <PathGeometry x:Key="IconArrowUp" Figures="M6,10 L12,4 L18,10 M12,4 L12,20" />
     <PathGeometry x:Key="IconArrowDown" Figures="M6,14 L12,20 L18,14 M12,20 L12,4" />
 
+    <!-- Information: Lucide "info" - a circle of radius 10 with a stem and a dot.
+         The circle is two semicircles for the reason given above; the dot is a
+         near-zero segment that the round caps turn into a point. Used by InfoTip. -->
+    <PathGeometry x:Key="IconInfo" Figures="M2,12 A10,10 0 1 0 22,12 A10,10 0 1 0 2,12 Z M12,16.5 L12,11.5 M12,7.75 L12,8" />
+
     <!-- Chevron, for the prompt's detail toggle. -->
     <PathGeometry x:Key="IconChevronDown" Figures="M6,9 L12,15 L18,9" />
     <PathGeometry x:Key="IconChevronUp" Figures="M6,15 L12,9 L18,15" />

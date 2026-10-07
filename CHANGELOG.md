@@ -15,6 +15,171 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.172] — 2026-10-07
+
+### Changed — loading GeoIP creates 70% less throwaway memory
+Loading the GeoIP tables allocated about 518 MB of short-lived data to keep about
+34 MB, nearly all of it a string for every line and an array plus five strings for
+every field split, across more than 700,000 lines. Lines are now read into one
+reusable buffer and their fields parsed in place; a value already seen (a country,
+an owner) is found by its characters without making a new string. On the
+benchmark the load allocates 154 MB, peaks lower and is slightly faster, and its
+250,000 lookups give the same answers as before. The new line reader was checked
+against `ReadLine` on more than 18,000 inputs - every line-break style, breaks
+split across reads, and lines longer than the buffer - and the new parser against
+the old one on 1.2 million lookups over malformed files.
+
+### Fixed — an unrouted IPv6 range reported the country "None"
+The IPv4 loader has always dropped the placeholder countries in the iptoasn data
+("None", "Unknown", "-"); the IPv6 loader did not, so addresses in unrouted v6
+ranges showed "None" as their country and were counted as if it were one. Both
+loaders now treat them the same way.
+
+### Changed — the Location column says why it is empty
+A connection with no country used to show a blank Location cell, so a loopback
+connection, a printer on the local network and a public server missing from the
+GeoIP data all looked the same. The cell now names the reason: **This PC
+(loopback)**, **Local network**, **Local link**, **Carrier network (CGNAT)**,
+**Multicast**, **Reserved address**, the range's owner when it has no country
+(such as **Not routed**), **Not in GeoIP data**, or **No GeoIP data** when none is
+loaded.
+
+### Added — check `geo-parse`
+Fails if a GeoIP loader splits lines or reads them into strings again, if the v6
+placeholders return as countries, if a Connections fill site writes geo data
+without its reason, or if the Location cell ignores the reason. Six defects were
+reintroduced individually and the checks confirmed failing on each.
+
+---
+
+## [0.99.171] — 2026-10-07
+
+### Removed — `netsh` from GunWall's filter listing
+0.99.169 and 0.99.170 listed GunWall's filters natively and checked the result
+against `netsh` once per session. On hardware both gave the same ids every time
+(`native 188, netsh 188 - identical`, in separate sessions), with no fallbacks
+used. The `netsh` path and the comparison are removed; GunWall no longer starts a
+second process or writes a temporary file to find its own filters.
+
+### Changed — a failed listing is reported, never read as "none"
+If listing GunWall's filters fails, the operation now stops and logs why, rather
+than continuing as though the sublayer were empty. Every caller already handled
+that. The reset's summary previously said "0 remaining" when its final count could
+not be taken; it now says the remaining count is unknown.
+
+### Changed — check `wfp-enum`
+Now asserts that a failed listing throws rather than returning an empty list, that
+`netsh` does not return to the listing, and that the reset never reports an
+unknown count as zero. Four more defects were reintroduced individually and the
+check confirmed failing on each.
+
+---
+
+## [0.99.170] — 2026-10-07
+
+### Fixed — the filter listing comparison reported a difference that was not there
+0.99.169 compares GunWall's new native filter listing with `netsh` once per
+session. On two machines it reported `DIFFERENT (only native 4, only netsh 4)`
+with both totals equal. The listings were both right: the native one was taken at
+start-up, and before `netsh` ran GunWall re-asserted its self-permit, replacing
+those 4 filters with new ids. The startup reconcile on the same machines found
+every native id in the profile (`184 filter(s) in the sublayer, all accounted
+for`), which a misread id could not produce.
+
+The comparison now lists natively immediately before and after `netsh`, and
+judges only when those two listings agree - nothing changed while `netsh` ran -
+retrying up to four times, two seconds apart. If GunWall's filters keep changing
+it says so rather than reporting a difference.
+
+### Changed — check `wfp-enum`
+Also asserts that the comparison brackets `netsh` with two native listings and
+does not judge when they differ. Three more defects were reintroduced
+individually and the check confirmed failing on each (nineteen in all).
+
+---
+
+## [0.99.169] — 2026-10-07
+
+### Changed — GunWall lists its own kernel filters directly
+Finding every filter in GunWall's sublayer - for the startup reconcile, the reset,
+and the clean-up after protection is switched off - ran `netsh wfp show filters`,
+waited for it to write an XML file, and parsed it. That started a second process,
+took seconds, and was once seen listing 4 of 144 live filters. It now asks the
+filter engine directly (`FwpmFilterCreateEnumHandle0` / `FwpmFilterEnum0`).
+
+- **Layout verified, not assumed.** Reading filters back means reading
+  `FWPM_FILTER0` structs the engine returns, where a wrong offset ends the process
+  without a message. The x64 layout was compiled from the Windows headers and
+  matched against the win32metadata declaration; both agree, and every field of the
+  managed struct now matches them.
+- **Two fields read.** Each entry's sublayer is compared first; only GunWall's own
+  have their id read. Every page is freed and the listing handle closed on all
+  paths, and the loop is bounded.
+- **Fallback.** If the native listing fails, that call uses `netsh` as before, and
+  the reason is logged once. A failed listing is never treated as an empty one.
+- **Proof on hardware.** The first listing of each session is compared with
+  `netsh` in the background, and the log records both counts and whether the ids
+  match. The diagnostics export records which listing was last used.
+
+### Fixed — a field of `FWPM_FILTER0` declared 4 bytes early
+The `rawContext` / `providerContextKey` union holds a 64-bit value, so it is
+8-aligned and starts at offset 152. Declared as a bare `Guid` it started at 148.
+Nothing read it and the following field realigned by chance, so filters were added
+correctly; an explicit alignment field now places it where Windows does.
+`FwpmFreeMemory0` is also declared as returning nothing, as Windows declares it.
+
+### Added — check `wfp-enum`
+Recomputes the `FWPM_FILTER0` layout from its declaration and compares every
+offset and field type with the header-derived values, and asserts the listing
+reads offsets from the struct, checks the sublayer before the id, frees every
+page, closes its handle, is bounded, falls back to `netsh`, compares once, and is
+reported in the diagnostics export. Sixteen defects were reintroduced individually
+and the check confirmed failing on each. It replaces a guard that refused any
+filter enumeration until the layout was verified.
+
+---
+
+## [0.99.168] — 2026-10-07
+
+### Changed — explanations moved behind an information icon
+Section and page descriptions were muted paragraphs under every heading, and the
+longer ones (DNS resolver, Blocklist, Diagnostics) pushed the controls they
+introduced half a screen down. Each now sits behind a small information icon
+beside its heading or option; resting the pointer on it shows the explanation.
+36 places: 5 page titles, 27 section headings and 4 options.
+
+- **`InfoTip` control** (`Controls/InfoTip.cs`). The tooltip is a wrapped TextBlock
+  limited to 340 px; a plain string tooltip does not wrap and runs off the screen.
+  It opens after 150 ms and stays for up to a minute, since the default five
+  seconds closes a paragraph mid-sentence. The text is also exposed as the
+  element's help text, because screen readers do not announce tooltips.
+- **Glyph:** `IconInfo` in `Icons.xaml`, stroked in `TextSecondary` and
+  `TextPrimary` on hover, so it follows the theme.
+- **Kept visible:** status lines that change (key state, database state, update
+  state, counts), the rule-editor tip, the metering warning, and labels.
+- **"Keep these up to date automatically"** had both a tooltip and a paragraph
+  saying slightly different things; it now has one explanation.
+
+### Fixed — explanation text that described removed or changed behaviour
+- **Threat & telemetry blocklists** still described the Ads & trackers switch
+  removed in 0.99.159 and the list source it used.
+- **GeoIP data source** sent people to a download button for an IPv4-only table;
+  the table covers IPv6 and is downloaded in **Settings → Additional data**.
+- **Reset firewall** referred to persistent filters, which GunWall has not
+  created since 0.99.143, and did not say what is kept.
+
+### Added — check `info-tips`
+Fails if an explanation paragraph returns under a heading or an option, an icon
+has no text, the tooltip does not wrap, the display time drops under 30 seconds,
+help text is missing, the style or glyph is missing, a colour is hard-coded, or a
+check box keeps its own tooltip beside an icon. Fifteen defects were reintroduced
+individually and the check confirmed failing on each.
+
+### Changed
+Code comments no longer name internal documents.
+
+---
+
 ## [0.99.167] — 2026-10-06
 
 ### Security — the VirusTotal key is encrypted at rest

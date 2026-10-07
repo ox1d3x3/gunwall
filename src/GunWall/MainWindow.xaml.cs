@@ -449,7 +449,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.167 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.172 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -769,18 +769,36 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// panel is open. No-op when no GeoIP source is active.</summary>
     private void EnrichGeo(List<ConnectionInfo> conns)
     {
-        if (!_firewall.GeoIpActive) return;
+        bool active = _firewall.GeoIpActive;
         Dictionary<string, GunWall.Services.GeoIpService.GeoInfo> memo = new(StringComparer.OrdinalIgnoreCase);
         foreach (var c in conns)
         {
             if (c.Country.Length > 0 || string.IsNullOrEmpty(c.RemoteAddress)) continue;
-            if (!memo.TryGetValue(c.RemoteAddress, out var g))
+            var g = new GunWall.Services.GeoIpService.GeoInfo("", 0, "");
+            if (active && !memo.TryGetValue(c.RemoteAddress, out g))
             {
                 g = _firewall.GeoIp.Lookup(c.RemoteAddress);
                 memo[c.RemoteAddress] = g;
             }
-            if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; }
+            ApplyGeo(c, g, active);
         }
+    }
+
+    /// <summary>
+    /// Puts a lookup's answer on a connection, or - when there is none - the reason
+    /// in words: the kind of address (loopback, local network, multicast ...), an
+    /// owner with no country ("Not routed"), no GeoIP data loaded, or a public
+    /// address the data does not cover. Both places that fill the Connections table
+    /// come through here, so a blank Location cell means the remote is empty.
+    /// </summary>
+    private static void ApplyGeo(ConnectionInfo c, GunWall.Services.GeoIpService.GeoInfo g, bool geoActive)
+    {
+        if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; c.LocationNote = ""; return; }
+        string kind = GunWall.Services.GeoIpService.DescribeUnplaced(c.RemoteAddress);
+        c.LocationNote = kind.Length > 0 ? kind
+                       : g.Owner.Length > 0 ? g.Owner
+                       : geoActive ? "Not in GeoIP data"
+                       : "No GeoIP data";
     }
 
     /// <summary>Repopulate the Traffic panel's top-countries / top-apps tables.</summary>
@@ -3488,14 +3506,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 geo ? new(StringComparer.OrdinalIgnoreCase) : null;
             foreach (var c in view.OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
             {
-                if (geo && c.Country.Length == 0 && !string.IsNullOrEmpty(c.RemoteAddress))
+                if (c.Country.Length == 0 && !string.IsNullOrEmpty(c.RemoteAddress))
                 {
-                    if (!geoMemo!.TryGetValue(c.RemoteAddress, out var g))
+                    var g = new GunWall.Services.GeoIpService.GeoInfo("", 0, "");
+                    if (geo && !geoMemo!.TryGetValue(c.RemoteAddress, out g))
                     {
                         g = _firewall.GeoIp.Lookup(c.RemoteAddress);
                         geoMemo[c.RemoteAddress] = g;
                     }
-                    if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; }
+                    ApplyGeo(c, g, geo);
                 }
                 desired.Add(c);
             }
@@ -5735,6 +5754,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Services.DiagnosticLog.Log(skips.Length == 0
             ? "WFP optional filters: none skipped (all requested layers accepted)"
             : $"WFP optional filters skipped ({skips.Length} distinct): {string.Join(" | ", skips)}");
+        Services.DiagnosticLog.Log(Services.Wfp.WfpEngine.EnumerationSummary());
         Services.DiagnosticLog.Log(
             $"CNAME cloaking: enabled={_dnsResolver.BlockCloakedCnames}, " +
             $"caught={_dnsResolver.CloakedBlocked}, last=[{_dnsResolver.LastCloak}]");
@@ -7816,7 +7836,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                   + $"{purge.Value.Removed} filter(s) removed"
                   + (purge.Value.Failed > 0
                         ? $", {purge.Value.Failed} would not delete" : "")
-                  + $", {purge.Value.Remaining} remaining.";
+                  + (purge.Value.Remaining < 0
+                        ? ", remaining count unknown (the final listing failed)."
+                        : $", {purge.Value.Remaining} remaining.");
 
             MessageBox.Show(
                 complete

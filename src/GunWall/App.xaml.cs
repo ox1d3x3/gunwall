@@ -550,7 +550,7 @@ public partial class App : Application
         // Same reasoning, different framework defect. This one raises an
         // unowned, non-topmost MessageBox that renders BEHIND the always-on-top
         // connection prompt, so it is never seen - only felt, as a second loss
-        // of focus from whatever holds the display. See ENGINEERING.md 2.24.
+        // of focus from whatever holds the display (trap 2.24).
         if (IsDwmCompositionFault(e.Exception))
         {
             DiagnosticLog.NoteBenignFault("DWM composition handoff (exclusive-fullscreen app)");

@@ -69,13 +69,17 @@ public sealed class GeoIpService
 
     /// <summary>Packs an IPv6 address into a comparable 128-bit integer, most
     /// significant byte first, matching the ordering the table is sorted in.</summary>
-    private static bool TryToUInt128(string ip, out UInt128 value)
+    private static bool TryToUInt128(string ip, out UInt128 value) => TryToUInt128(ip.AsSpan(), out value);
+
+    /// <summary>Same parse as before, without the per-call byte array: the address
+    /// bytes are written into a stack buffer.</summary>
+    private static bool TryToUInt128(ReadOnlySpan<char> ip, out UInt128 value)
     {
         value = default;
         if (!System.Net.IPAddress.TryParse(ip, out var a)) return false;
         if (a.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6) return false;
-        byte[] b = a.GetAddressBytes();
-        if (b.Length != 16) return false;
+        Span<byte> b = stackalloc byte[16];
+        if (!a.TryWriteBytes(b, out int written) || written != 16) return false;
         UInt128 v = 0;
         foreach (byte x in b) v = (v << 8) | x;
         value = v;
@@ -165,38 +169,48 @@ public sealed class GeoIpService
 
     private void LoadV6FromReader(TextReader reader)
     {
-        var pool = new Dictionary<string, string>(StringComparer.Ordinal);
+        var pool = new SpanPool();
         var starts = new List<UInt128>();
         var ends = new List<UInt128>();
         var asns = new List<int>();
         var countries = new List<string>();
         var owners = new List<string>();
 
-        string? line;
-        while ((line = reader.ReadLine()) != null)
+        ReadLines(reader, line =>
         {
-            if (line.Length == 0) continue;
-            string[] f = line.Split('\t');
-            if (f.Length < 4) continue;
-            if (!TryToUInt128(f[0], out UInt128 s6)) continue;
-            if (!TryToUInt128(f[1], out UInt128 e6)) continue;
-            if (e6 < s6) continue;
-            int.TryParse(f[2], out int asn);
+            if (line.Length == 0) return;
+            // Fields: start \t end \t asn \t country [\t owner] - read in place from
+            // the line, with no array and no string per field (see SplitTsv).
+            if (!SplitTsv(line, out var f0, out var f1, out var f2, out var f3, out var f4)) return;
+            if (!TryToUInt128(f0, out UInt128 s6)) return;
+            if (!TryToUInt128(f1, out UInt128 e6)) return;
+            if (e6 < s6) return;
+            int.TryParse(f2, out int asn);
+            // The same placeholders the v4 loader has always dropped. Missing here
+            // until 0.99.172, so an unrouted v6 range answered with the country
+            // "None" - and was counted and shown as if that were a country.
+            if (f3.SequenceEqual("None") || f3.SequenceEqual("Unknown") || f3.SequenceEqual("-")) f3 = default;
             starts.Add(s6); ends.Add(e6); asns.Add(asn);
-            countries.Add(Share(pool, f[3]));
-            owners.Add(Share(pool, f.Length > 4 ? f[4] : ""));
-        }
+            countries.Add(pool.Get(f3));
+            owners.Add(pool.Get(f4));
+        });
 
         // Sorted by start, because the lookup is a binary search and the file's
         // ordering is not something to take on trust.
-        int[] order = Enumerable.Range(0, starts.Count).ToArray();
-        Array.Sort(order, (x, y) => starts[x].CompareTo(starts[y]));
+        int n = starts.Count;
+        var idx = new int[n];
+        for (int i = 0; i < n; i++) idx[i] = i;
+        Array.Sort(idx, (x, y) => starts[x].CompareTo(starts[y]));
 
-        _t6 = new Table6(order.Select(i => starts[i]).ToArray(),     // one write: see Table6
-                         order.Select(i => ends[i]).ToArray(),
-                         order.Select(i => asns[i]).ToArray(),
-                         order.Select(i => countries[i]).ToArray(),
-                         order.Select(i => owners[i]).ToArray());
+        var ns = new UInt128[n]; var ne = new UInt128[n]; var na = new int[n];
+        var nc = new string[n]; var no = new string[n];
+        for (int i = 0; i < n; i++)
+        {
+            int k = idx[i];
+            ns[i] = starts[k]; ne[i] = ends[k]; na[i] = asns[k];
+            nc[i] = countries[k]; no[i] = owners[k];
+        }
+        _t6 = new Table6(ns, ne, na, nc, no);   // one write: see Table6
     }
 
     /// <summary>Parse the iptoasn TSV text into the sorted lookup arrays.</summary>
@@ -208,30 +222,26 @@ public sealed class GeoIpService
 
     private void LoadFromReader(TextReader reader)
     {
-        var pool = new Dictionary<string, string>(StringComparer.Ordinal);
+        var pool = new SpanPool();
         var starts = new List<uint>();
         var ends = new List<uint>();
         var asns = new List<int>();
         var countries = new List<string>();
         var owners = new List<string>();
 
-        string? line;
-        while ((line = reader.ReadLine()) != null)
+        ReadLines(reader, line =>
         {
-            if (line.Length == 0) continue;
-            // Fields: start \t end \t asn \t country \t owner
-            string[] f = line.Split('\t');
-            if (f.Length < 4) continue;
-            if (!uint.TryParse(f[0], out uint s)) continue;
-            if (!uint.TryParse(f[1], out uint e)) continue;
-            if (e < s) continue;
-            int.TryParse(f[2], out int a);
-            string cc = f[3];
-            if (cc is "None" or "Unknown" or "-") cc = "";
-            string ow = f.Length > 4 ? f[4] : "";
+            if (line.Length == 0) return;
+            // Fields: start \t end \t asn \t country [\t owner] - see SplitTsv.
+            if (!SplitTsv(line, out var f0, out var f1, out var f2, out var cc, out var ow)) return;
+            if (!uint.TryParse(f0, out uint s)) return;
+            if (!uint.TryParse(f1, out uint e)) return;
+            if (e < s) return;
+            int.TryParse(f2, out int a);
+            if (cc.SequenceEqual("None") || cc.SequenceEqual("Unknown") || cc.SequenceEqual("-")) cc = default;
 
-            starts.Add(s); ends.Add(e); asns.Add(a); countries.Add(Share(pool, cc)); owners.Add(Share(pool, ow));
-        }
+            starts.Add(s); ends.Add(e); asns.Add(a); countries.Add(pool.Get(cc)); owners.Add(pool.Get(ow));
+        });
 
         int n = starts.Count;
         // The published dataset is sorted by start, but sort defensively anyway.
@@ -350,21 +360,129 @@ public sealed class GeoIpService
             detectEncodingFromByteOrderMarks: true);
 
     /// <summary>
-    /// Returns one shared instance per distinct value.
+    /// The fields of one iptoasn line, as views into the line - no array, no
+    /// string per field. Matches what <c>line.Split('\t')</c> gave: false when there
+    /// are fewer than four fields; the fifth field (owner) is empty when absent and
+    /// stops at the next tab when there are more than five.
     ///
-    /// Every range used to keep its own copy of its country and owner, because
-    /// Split creates fresh strings for each line - so the same "US" and the same
-    /// owner name were held hundreds of thousands of times. There are a few
-    /// hundred countries and tens of thousands of owners against more than
-    /// 700,000 ranges. Values are compared ordinally and returned unchanged, so
-    /// every lookup answers exactly as before.
+    /// Splitting was most of the load's garbage: about 518 MB allocated for a few
+    /// tens of megabytes kept, nearly all of it a string array and five strings per
+    /// line for more than 700,000 lines.
     /// </summary>
-    private static string Share(Dictionary<string, string> pool, string value)
+    private static bool SplitTsv(ReadOnlySpan<char> line,
+        out ReadOnlySpan<char> f0, out ReadOnlySpan<char> f1, out ReadOnlySpan<char> f2,
+        out ReadOnlySpan<char> f3, out ReadOnlySpan<char> f4)
     {
-        if (value.Length == 0) return "";
-        if (pool.TryGetValue(value, out string? existing)) return existing;
-        pool[value] = value;
-        return value;
+        f0 = f1 = f2 = f3 = f4 = default;
+        int t0 = line.IndexOf('\t');
+        if (t0 < 0) return false;
+        int t1 = Next(line, t0);
+        if (t1 < 0) return false;
+        int t2 = Next(line, t1);
+        if (t2 < 0) return false;                       // fewer than four fields
+        int t3 = Next(line, t2);                        // -1: no owner field
+        f0 = line[..t0];
+        f1 = line[(t0 + 1)..t1];
+        f2 = line[(t1 + 1)..t2];
+        if (t3 < 0) { f3 = line[(t2 + 1)..]; return true; }
+        f3 = line[(t2 + 1)..t3];
+        int t4 = Next(line, t3);                        // a sixth field ends the owner
+        f4 = t4 < 0 ? line[(t3 + 1)..] : line[(t3 + 1)..t4];
+        return true;
+
+        static int Next(ReadOnlySpan<char> l, int after)
+        {
+            int k = l[(after + 1)..].IndexOf('\t');
+            return k < 0 ? -1 : after + 1 + k;
+        }
+    }
+
+    private delegate void LineHandler(ReadOnlySpan<char> line);
+
+    /// <summary>
+    /// Calls <paramref name="handle"/> with each line, as a view into a reusable
+    /// buffer. Same line breaks as TextReader.ReadLine - "\n", "\r" and "\r\n",
+    /// a last line without a break included, nothing after a final break - but no
+    /// string per line: on these files that was the largest allocation left once
+    /// the splitting stopped allocating. The span is valid only during the call.
+    /// </summary>
+    private static void ReadLines(TextReader reader, LineHandler handle)
+    {
+        char[] buf = new char[1 << 16];
+        int start = 0, end = 0;
+        bool skipLf = false;   // the last line ended in '\r': a following '\n' belongs to it
+        while (true)
+        {
+            if (skipLf && start < end)
+            {
+                if (buf[start] == '\n') start++;
+                skipLf = false;
+            }
+            int nl = start < end ? buf.AsSpan(start, end - start).IndexOfAny('\r', '\n') : -1;
+            if (nl >= 0)
+            {
+                int at = start + nl;
+                handle(new ReadOnlySpan<char>(buf, start, at - start));
+                skipLf = buf[at] == '\r';
+                start = at + 1;
+                continue;
+            }
+            // No break in what is buffered: keep the partial line, make room, read on.
+            if (start > 0)
+            {
+                Array.Copy(buf, start, buf, 0, end - start);
+                end -= start;
+                start = 0;
+            }
+            if (end == buf.Length) Array.Resize(ref buf, buf.Length * 2);
+            int n = reader.Read(buf, end, buf.Length - end);
+            if (n == 0)
+            {
+                if (end > start) handle(new ReadOnlySpan<char>(buf, start, end - start));
+                return;
+            }
+            end += n;
+        }
+    }
+
+    /// <summary>
+    /// One shared string per distinct value, looked up by the characters
+    /// themselves, so a value already seen allocates nothing.
+    ///
+    /// Every range used to keep its own copy of its country and owner - the same
+    /// "US" and the same owner name held hundreds of thousands of times - against a
+    /// few hundred countries and tens of thousands of owners. Values are compared
+    /// ordinally and returned unchanged, so every lookup answers exactly as before.
+    /// </summary>
+    private sealed class SpanPool
+    {
+        // Hash -> a string, or a List<string> when distinct values share a hash.
+        private readonly Dictionary<int, object> _byHash = new();
+
+        public string Get(ReadOnlySpan<char> value)
+        {
+            if (value.IsEmpty) return "";
+            int h = string.GetHashCode(value, StringComparison.Ordinal);
+            if (_byHash.TryGetValue(h, out object? found))
+            {
+                if (found is string one)
+                {
+                    if (value.SequenceEqual(one)) return one;
+                    string added = new(value);
+                    _byHash[h] = new List<string> { one, added };
+                    return added;
+                }
+                var list = (List<string>)found;
+                foreach (string candidate in list)
+                    if (value.SequenceEqual(candidate)) return candidate;
+                string extra = new(value);
+                list.Add(extra);
+                return extra;
+            }
+            string first = new(value);
+            _byHash[h] = first;
+            return first;
+        }
     }
 
     /// <summary>
@@ -457,6 +575,41 @@ public sealed class GeoIpService
     /// <summary>True for addresses that are never announced (private, loopback, link-local,
     /// CGNAT, multicast, reserved) - querying the API for these is a guaranteed-empty round
     /// trip, so we skip it. Unparseable input is treated as non-routable too.</summary>
+    /// <summary>
+    /// What to show in a Location cell for an address no database can place: the
+    /// kind of address it is, in plain words. Empty for an ordinary public address,
+    /// whose blank cell has a different explanation (no GeoIP data, or an address
+    /// the data does not cover) that only the caller knows.
+    ///
+    /// The cell used to stay blank for all of these, so a loopback connection, a
+    /// printer on the LAN and a public server missing from the table looked the
+    /// same - and the last one is the only one that says anything about coverage.
+    /// </summary>
+    public static string DescribeUnplaced(string ip)
+    {
+        if (string.IsNullOrEmpty(ip) || !System.Net.IPAddress.TryParse(ip, out var a)) return "";
+        if (System.Net.IPAddress.IsLoopback(a)) return "This PC (loopback)";
+        if (a.IsIPv4MappedToIPv6) a = a.MapToIPv4();
+        byte[] b = a.GetAddressBytes();
+        if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            if (b[0] == 127) return "This PC (loopback)";
+            if (b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168))
+                return "Local network";
+            if (b[0] == 169 && b[1] == 254) return "Local link";
+            if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) return "Carrier network (CGNAT)";
+            if (b[0] >= 224 && b[0] <= 239) return "Multicast";
+            if (b[0] == 0 || b[0] >= 240) return "Reserved address";
+            return "";
+        }
+        bool allZero = true; foreach (var x in b) if (x != 0) { allZero = false; break; }
+        if (allZero) return "Reserved address";
+        if ((b[0] & 0xfe) == 0xfc) return "Local network";
+        if (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) return "Local link";
+        if (b[0] == 0xff) return "Multicast";
+        return "";
+    }
+
     internal static bool IsPrivateOrReserved(string ip)
     {
         if (!System.Net.IPAddress.TryParse(ip, out var a)) return true;

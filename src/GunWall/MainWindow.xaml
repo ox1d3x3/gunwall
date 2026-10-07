@@ -1752,10 +1752,10 @@
                 <!-- header -->
                 <Grid Grid.Row="0" Margin="0,0,0,12">
                     <StackPanel>
-                        <TextBlock Text="DNS resolver" Style="{StaticResource H1}" />
-                        <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
-                                   MaxWidth="960" HorizontalAlignment="Left"
-                                   Text="GunWall's own local resolver. It logs every domain looked up through it, blocks the ones you list, encrypts lookups over HTTPS, and caches answers so repeats are instant. It binds to 127.0.0.1 and ::1 only, and never changes this PC's DNS settings by itself - point something at it deliberately to use it. It also supplies the name-to-address history behind domain rules and the 'block direct connections' scope. This is separate from Security -&gt; Filtering DNS, which only picks an upstream provider." />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="DNS resolver" Style="{StaticResource H1}" VerticalAlignment="Center" />
+                            <gw:InfoTip Text="GunWall's own local resolver. It logs every domain looked up through it, blocks the ones you list, encrypts lookups over HTTPS, and caches answers so repeats are instant. It binds to 127.0.0.1 and ::1 only, and never changes this PC's DNS settings by itself - point something at it deliberately to use it. It also supplies the name-to-address history behind domain rules and the 'block direct connections' scope. This is separate from Security -&gt; Filtering DNS, which only picks an upstream provider." Width="16" Height="16" />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
 
@@ -1918,9 +1918,10 @@
 
                     <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0,0,0">
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Top" Text="BLOCKLIST" Style="{StaticResource SectionLabel}" Margin="0,0,0,2" />
-                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
-                                       Text="One domain per line; subdomains are included, so example.com also covers ads.example.com. Hosts-style '0.0.0.0 domain' lines and pasted URLs are understood. Prefix a line with @@ to ALLOW it instead - @@example.com keeps that name working even when a category or preset blocks it, so one bad entry in a hundred-thousand-domain list does not mean turning the whole category off. Blocking works two ways: lookups sent to GunWall's resolver return NXDOMAIN, and - with 'Watch system DNS lookups' on - connections to addresses a blocked domain resolved to are blocked in the kernel. The second covers the whole PC, but only for lookups Windows performs: a browser with its own encrypted DNS turned on (Edge and Chrome call it 'Secure DNS') never asks Windows, so GunWall cannot tell which name its connections belong to. Turn that setting off in the browser for blocking to apply to it." />
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <TextBlock Text="BLOCKLIST" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="One domain per line; subdomains are included, so example.com also covers ads.example.com. Hosts-style '0.0.0.0 domain' lines and pasted URLs are understood. Prefix a line with @@ to ALLOW it instead - @@example.com keeps that name working even when a category or preset blocks it, so one bad entry in a hundred-thousand-domain list does not mean turning the whole category off. Blocking works two ways: lookups sent to GunWall's resolver return NXDOMAIN, and - with 'Watch system DNS lookups' on - connections to addresses a blocked domain resolved to are blocked in the kernel. The second covers the whole PC, but only for lookups Windows performs: a browser with its own encrypted DNS turned on (Edge and Chrome call it 'Secure DNS') never asks Windows, so GunWall cannot tell which name its connections belong to. Turn that setting off in the browser for blocking to apply to it." />
+                            </StackPanel>
                             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                                 <Button x:Name="DnsPresetBtn" Content="Download ads + malware preset"
                                         Style="{StaticResource ActionButton}" Click="DnsPreset_Click"
@@ -1948,9 +1949,10 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                    <TextBlock Text="Alerts" Style="{StaticResource H1}" />
-                    <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
-                               Text="Notable events in one place: protection turned on or off, lockdown engaged or lifted, and VirusTotal detections. Opening this page marks everything as read. Kept for this session (up to 200 entries)." />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Alerts" Style="{StaticResource H1}" VerticalAlignment="Center" />
+                        <gw:InfoTip Text="Notable events in one place: protection turned on or off, lockdown engaged or lifted, and VirusTotal detections. Opening this page marks everything as read. Kept for this session (up to 200 entries)." Width="16" Height="16" />
+                    </StackPanel>
                 </StackPanel>
                 <Border Grid.Row="1" Padding="0">
                     <Grid>
@@ -2140,9 +2142,10 @@
                 <!-- Editor form -->
                 <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,12">
                     <StackPanel>
-                        <TextBlock Text="ADD A RULE" Style="{StaticResource SectionLabel}" />
-                        <TextBlock Text="Block or allow traffic by remote address, port, protocol and direction."
-                                   Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="ADD A RULE" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                            <gw:InfoTip Text="Block or allow traffic by remote address, port, protocol and direction." />
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Action" Style="{StaticResource Muted}" Margin="2,0,0,3" />
@@ -2279,9 +2282,10 @@
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0" Margin="0,0,0,12">
                     <StackPanel>
-                        <TextBlock Text="System Rules" Style="{StaticResource H1}" />
-                        <TextBlock Text="A curated library of named firewall rules. Allow common services, or harden against risky traffic. Each applies immediately."
-                                   Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="System Rules" Style="{StaticResource H1}" VerticalAlignment="Center" />
+                            <gw:InfoTip Text="A curated library of named firewall rules. Allow common services, or harden against risky traffic. Each applies immediately." Width="16" Height="16" />
+                        </StackPanel>
                         <TextBlock x:Name="WfpCoverageText" Style="{StaticResource Muted}" Margin="0,6,0,0"
                                    HorizontalAlignment="Left" Text="" />
                     </StackPanel>
@@ -2296,9 +2300,10 @@
                 <StackPanel Grid.Row="1">
                     <TextBlock Text="HARDEN AGAINST RISKY TRAFFIC" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
                     <StackPanel x:Name="SystemBlockList" Margin="0,0,0,8" />
-                    <TextBlock Text="ALLOW COMMON SERVICES" Style="{StaticResource SectionLabel}" Margin="0,8,0,8" />
-                    <TextBlock Text="These permit a service outbound. They matter most when you've blocked traffic by default (strict mode or block-all-inbound)."
-                               Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,8">
+                        <TextBlock Text="ALLOW COMMON SERVICES" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                        <gw:InfoTip Text="These permit a service outbound. They matter most when you've blocked traffic by default (strict mode or block-all-inbound)." />
+                    </StackPanel>
                     <StackPanel x:Name="SystemAllowList" />
                 </StackPanel>
             </Grid>
@@ -2313,9 +2318,10 @@
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0" Margin="0,0,0,16">
                     <StackPanel>
-                        <TextBlock Text="Windows Services" Style="{StaticResource H1}" />
-                        <TextBlock Text="Services and the program that hosts each one. Block a service's host image directly."
-                                   Style="{StaticResource Muted}" Margin="0,4,0,0" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Windows Services" Style="{StaticResource H1}" VerticalAlignment="Center" />
+                            <gw:InfoTip Text="Services and the program that hosts each one. Block a service's host image directly." Width="16" Height="16" />
+                        </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                         <TextBox x:Name="ServicesSearch" Style="{StaticResource SearchBox}"
@@ -2494,9 +2500,10 @@
                     <StackPanel>
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="THREAT &amp; TELEMETRY BLOCKLISTS" Style="{StaticResource SectionLabel}" />
-                                <TextBlock Text="Blocks known bad domains by category. Telemetry &amp; Windows Update use the Windows hosts file, falling back automatically to firewall rules if security software (e.g. Windows Defender) blocks the hosts file. Ads &amp; trackers is blocked at the DNS layer via AdGuard - fast and no hosts file needed. Click &quot;Update lists from online&quot; for the latest community lists (telemetry from WindowsSpyBlocker, ads/trackers from StevenBlack - both MIT)."
-                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Text="THREAT &amp; TELEMETRY BLOCKLISTS" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                    <gw:InfoTip Text="Blocks known domains by category through the Windows hosts file, falling back automatically to firewall rules if security software (e.g. Windows Defender) locks the hosts file. Click &quot;Update lists from online&quot; for the latest community list (telemetry from WindowsSpyBlocker, MIT). For ads and malware, use the DNS resolver's preset or the Filtering DNS card below." />
+                                </StackPanel>
                                 <StackPanel x:Name="BlocklistCatList" />
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                     <Button x:Name="UpdateListsBtn" Content="Update lists from online"
@@ -2511,9 +2518,10 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="CUSTOM BLOCKLIST FILE" Style="{StaticResource SectionLabel}" />
-                                <TextBlock Text="Point GunWall at your own list of domains to block. One domain per line; hosts-style lines (&quot;0.0.0.0 domain&quot;) and # comments are accepted. Your list is folded into the same hosts-file block as the categories above, and re-read whenever you choose a file."
-                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Text="CUSTOM BLOCKLIST FILE" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                    <gw:InfoTip Text="Point GunWall at your own list of domains to block. One domain per line; hosts-style lines (&quot;0.0.0.0 domain&quot;) and # comments are accepted. Your list is folded into the same hosts-file block as the categories above, and re-read whenever you choose a file." />
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <Button x:Name="CustomListBtn" Content="Choose file&#x2026;"
                                             Style="{StaticResource PrimaryButton}" Click="ChooseCustomList_Click"
@@ -2527,9 +2535,10 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="GEOIP DATA SOURCE" Style="{StaticResource SectionLabel}" />
-                                <TextBlock Text="Where country/ASN data comes from. &quot;Local database&quot; downloads the full IPv4 table into GunWall (use the Download button on the Connections tab). &quot;Self-hosted API server&quot; queries your own iptoasn-webservice instead - nothing to download, always fresh, and it resolves IPv6 too. Lookups are cached, so each address is fetched only once."
-                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Text="GEOIP DATA SOURCE" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                    <gw:InfoTip Text="Where country and network-owner (ASN) data comes from. &quot;Local database&quot; uses the IPv4 and IPv6 table downloaded in Settings - Additional data, and works offline. &quot;Self-hosted API server&quot; queries your own iptoasn-webservice instead - nothing to download, always fresh. Lookups are cached, so each address is fetched only once." />
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                     <ComboBox x:Name="GeoSourceCombo" Width="255" SelectedIndex="0">
                                         <ComboBoxItem Content="Local database (download)" Tag="local" />
@@ -2551,9 +2560,10 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="COUNTRY &amp; ASN BLOCKING" Style="{StaticResource SectionLabel}" />
-                                <TextBlock Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. Set up a GeoIP data source above first."
-                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Text="COUNTRY &amp; ASN BLOCKING" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                    <gw:InfoTip Text="Block an app (or every app) from connecting to a whole country, continent, or network operator (ASN), using the GeoIP data. Matching is reactive - GunWall blocks a remote the moment it sees a connection to it, so it is most effective against repeated or sustained traffic. Set up a GeoIP data source above first." />
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                     <ComboBox x:Name="EntityTypeCombo" Width="130" Margin="0,0,8,0" SelectedIndex="0">
                                         <ComboBoxItem Content="Country" Tag="country" />
@@ -2605,9 +2615,10 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="FILTERING DNS" Style="{StaticResource SectionLabel}" />
-                                <TextBlock Text="Point Windows at a filtering resolver for a second blocking layer that needs no list upkeep. AdGuard blocks ads &amp; trackers; Quad9 blocks malware &amp; phishing. Applies to all active adapters."
-                                           Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Text="FILTERING DNS" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                    <gw:InfoTip Text="Point Windows at a filtering resolver for a second blocking layer that needs no list upkeep. AdGuard blocks ads &amp; trackers; Quad9 blocks malware &amp; phishing. Applies to all active adapters." />
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <ComboBox x:Name="DnsCombo" Width="320" Margin="0,0,8,0" />
                                     <Button Content="Apply DNS" Style="{StaticResource ActionButton}" Click="DnsApply_Click" />
@@ -2628,9 +2639,10 @@
 
                 <Grid Grid.Row="0" Margin="0,0,0,16">
                     <StackPanel>
-                        <TextBlock Text="Activity" Style="{StaticResource H1}" />
-                        <TextBlock Text="New connections as they appear. Local only - nothing leaves this PC."
-                                   Style="{StaticResource Muted}" Margin="0,4,0,0" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Activity" Style="{StaticResource H1}" VerticalAlignment="Center" />
+                            <gw:InfoTip Text="New connections as they appear. Local only - nothing leaves this PC." Width="16" Height="16" />
+                        </StackPanel>
                     </StackPanel>
                     <Button Content="Clear" Style="{StaticResource ActionButton}"
                             HorizontalAlignment="Right" VerticalAlignment="Top"
@@ -2698,9 +2710,10 @@
                 <StackPanel>
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="FIREWALL MODE" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap"
-                                       Text="Alert mode allows new apps and notifies you. Strict mode takes full control: everything is blocked except apps you explicitly allow. Core Windows networking (svchost, DNS) and loopback are auto-allowed so your connection keeps working." />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="FIREWALL MODE" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Alert mode allows new apps and notifies you. Strict mode takes full control: everything is blocked except apps you explicitly allow. Core Windows networking (svchost, DNS) and loopback are auto-allowed so your connection keeps working." />
+                            </StackPanel>
                             <RadioButton x:Name="AlertModeRadio" Content="Alert mode (recommended)"
                                          GroupName="FwMode"
                                          Foreground="{DynamicResource TextPrimary}"
@@ -2714,9 +2727,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="CONNECTION ALERTS" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Show a popup the first time a new app connects to the network, with one-click Allow / Block."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="CONNECTION ALERTS" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Show a popup the first time a new app connects to the network, with one-click Allow / Block." />
+                            </StackPanel>
                             <CheckBox x:Name="AlertsCheck" Content="Alert on new apps"
                                       Foreground="{DynamicResource TextPrimary}"
                                       Checked="AlertsCheck_Changed" Unchecked="AlertsCheck_Changed" />
@@ -2725,9 +2739,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="APPEARANCE - INTERFACE FONT" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="JetBrains Mono is bundled and is the default; Instrument Sans is bundled too. Any other font is read from the ones installed on this PC. Addresses, ports and byte counts always use the bundled mono face."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="APPEARANCE - INTERFACE FONT" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="JetBrains Mono is bundled and is the default; Instrument Sans is bundled too. Any other font is read from the ones installed on this PC. Addresses, ports and byte counts always use the bundled mono face." />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <ComboBox x:Name="FontChoice" MinWidth="280" MinHeight="33"
                                           SelectionChanged="FontChoice_Changed"
@@ -2743,9 +2758,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="APPEARANCE - CATEGORY COLORS" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Customise the colored dot next to each app. Enter a hex color like #30D158, then Apply."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="APPEARANCE - CATEGORY COLORS" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Customise the colored dot next to each app. Enter a hex color like #30D158, then Apply." />
+                            </StackPanel>
 
                             <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
@@ -2808,9 +2824,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="PREFERENCES" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="General behaviour. Staged - press Apply to save."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="PREFERENCES" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="General behaviour. Staged - press Apply to save." />
+                            </StackPanel>
                             <CheckBox x:Name="StartMinimizedCheck" Content="Start minimized to tray"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
@@ -2933,20 +2950,19 @@
                                       Content="Experimental: precise per-app data metering (ETW kernel session; falls back to the estimate on any failure)"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
-                            <CheckBox x:Name="ExperimentalEventsCheck"
-                                      Content="Experimental: kernel event detection (catches more apps, may be unstable)"
-                                      Foreground="{DynamicResource TextPrimary}"
-                                      Checked="Pref_Changed" Unchecked="Pref_Changed" />
-                            <TextBlock Text="If GunWall becomes unstable after enabling this, turn it off and restart. Restart required to take effect."
-                                       Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox x:Name="ExperimentalEventsCheck" Content="Experimental: kernel event detection (catches more apps, may be unstable)" Foreground="{DynamicResource TextPrimary}" Checked="Pref_Changed" Unchecked="Pref_Changed" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="If GunWall becomes unstable after enabling this, turn it off and restart. Restart required to take effect." />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="PROFILE (RULES BACKUP)" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Export all your rules and settings to a file, or import them on another machine."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="PROFILE (RULES BACKUP)" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Export all your rules and settings to a file, or import them on another machine." />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="Export profile" Style="{StaticResource ActionButton}"
                                         Click="ExportProfile_Click" Margin="0,0,8,0" />
@@ -2958,9 +2974,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="WINDOWS FIREWALL" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="GunWall and Windows Defender Firewall both use the Windows Filtering Platform. Running both can cause confusing conflicts - you can turn Windows Firewall off here, or import its existing block rules into GunWall."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="WINDOWS FIREWALL" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="GunWall and Windows Defender Firewall both use the Windows Filtering Platform. Running both can cause confusing conflicts - you can turn Windows Firewall off here, or import its existing block rules into GunWall." />
+                            </StackPanel>
                             <TextBlock x:Name="WinFwStatus" Text="Checking Windows Firewall status..."
                                        Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,10" />
                             <StackPanel Orientation="Horizontal">
@@ -2979,9 +2996,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="DIAGNOSTICS" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Hit a problem? Export a diagnostics bundle and send it over. It packages GunWall's real-time log (including any errors as they happened), your settings with secrets removed, the active rules and blocklist/DNS state, the hosts block, and your network/firewall configuration - everything needed to pinpoint the issue. No browsing history or personal data is included."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="DIAGNOSTICS" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Hit a problem? Export a diagnostics bundle and send it over. It packages GunWall's real-time log (including any errors as they happened), your settings with secrets removed, the active rules and blocklist/DNS state, the hosts block, and your network/firewall configuration - everything needed to pinpoint the issue. No browsing history or personal data is included." />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <Button x:Name="ExportDiagBtn" Content="Export diagnostics (.zip)"
                                         Style="{StaticResource PrimaryButton}" Click="ExportDiag_Click"
@@ -2995,9 +3013,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="APP HEALTH" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Live view of GunWall's own internals - the same counters the diagnostics export records. Updates every second while this page is open."
-                                       Style="{StaticResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="APP HEALTH" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Live view of GunWall's own internals - the same counters the diagnostics export records. Updates every second while this page is open." />
+                            </StackPanel>
                             <TextBlock x:Name="HealthPipeline" Text="Monitoring: -" Margin="0,2,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthGeo" Text="GeoIP: -" Margin="0,6,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="HealthDns" Text="DNS resolver: -" Margin="0,6,0,0" TextWrapping="Wrap" />
@@ -3010,9 +3029,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="CONNECTIVITY CHECK" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="On hotel / airport Wi-Fi, a captive portal intercepts traffic until you log in - which can look like GunWall blocking everything. Check here, and if a portal is found, Portal mode pauses filtering for 5 minutes so you can reach the login page. Protection resumes automatically."
-                                       Style="{StaticResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="CONNECTIVITY CHECK" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="On hotel / airport Wi-Fi, a captive portal intercepts traffic until you log in - which can look like GunWall blocking everything. Check here, and if a portal is found, Portal mode pauses filtering for 5 minutes so you can reach the login page. Protection resumes automatically." />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <Button x:Name="CheckPortalBtn" Content="Check now" Style="{StaticResource ActionButton}"
                                         Click="CheckPortal_Click" Padding="14,8" Margin="0,0,8,0" />
@@ -3025,9 +3045,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="RULE PROFILES" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Save your current per-app allow/block rules as a named profile (e.g. Gaming, Work) and switch between them in one click. Apps not captured in a profile are left untouched; muted apps keep their setting."
-                                       Style="{StaticResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="RULE PROFILES" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Save your current per-app allow/block rules as a named profile (e.g. Gaming, Work) and switch between them in one click. Apps not captured in a profile are left untouched; muted apps keep their setting." />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <ComboBox x:Name="ProfileCombo" Width="200" Margin="0,0,8,0" />
                                 <Button x:Name="ProfileApplyBtn" Content="Apply profile" Style="{StaticResource PrimaryButton}"
@@ -3043,9 +3064,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="PROFILES" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Save the current rules and settings as a named profile, then switch between profiles (e.g. Home, Work, Travel)."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="PROFILES" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Save the current rules and settings as a named profile, then switch between profiles (e.g. Home, Work, Travel)." />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                 <ComboBox x:Name="ProfilesCombo" Width="200" Margin="0,0,8,0" />
                                 <Button Content="Load" Style="{StaticResource ActionButton}"
@@ -3066,9 +3088,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="BACKUPS" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Versioned snapshots of your rules and settings. Restore points let you roll back if a change goes wrong. The newest 15 are kept."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="BACKUPS" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Versioned snapshots of your rules and settings. Restore points let you roll back if a change goes wrong. The newest 15 are kept." />
+                            </StackPanel>
                             <CheckBox x:Name="AutoBackupCheck" Content="Automatically back up on each launch"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,10"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
@@ -3085,9 +3108,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="VIRUSTOTAL" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Add your VirusTotal API key and GunWall automatically checks each app's file hash in the background, showing the verdict in the Apps list (right-click an app for an on-demand scan). Only the file hash is sent, never the file. Results are cached; the free tier is checked at a rate-limit-safe pace."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="VIRUSTOTAL" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Add your VirusTotal API key and GunWall automatically checks each app's file hash in the background, showing the verdict in the Apps list (right-click an app for an on-demand scan). Only the file hash is sent, never the file. Results are cached; the free tier is checked at a rate-limit-safe pace." />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <PasswordBox x:Name="VtApiKeyBox" Width="280" Padding="8,6"
                                              Background="{DynamicResource BgElevated}"
@@ -3102,9 +3126,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="ADDITIONAL DATA" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Two optional databases. The GeoIP table names the country and network owner behind each connection; the IEEE registry names the manufacturer of each device on a network scan. Both are downloaded only when you ask, stored locally, and used offline. Neither sends anything about you."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="ADDITIONAL DATA" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Two optional databases. The GeoIP table names the country and network owner behind each connection; the IEEE registry names the manufacturer of each device on a network scan. Both are downloaded only when you ask, stored locally, and used offline. Neither sends anything about you." />
+                            </StackPanel>
 
                             <Grid Margin="0,0,0,8">
                                 <TextBlock x:Name="DbGeoStatus" Style="{StaticResource Muted}"
@@ -3124,13 +3149,10 @@
                                         HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
 
-                            <CheckBox x:Name="DbAutoRefreshCheck"
-                                      Content="Keep these up to date automatically"
-                                      Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
-                                      Checked="DbAutoRefresh_Changed" Unchecked="DbAutoRefresh_Changed"
-                                      ToolTip="Off by default. When on, GunWall refreshes each database in the background and skips metered connections." />
-                            <TextBlock Text="Off by default. Refreshes run in the background, are skipped on metered connections, and never replace a working database with a failed download."
-                                       Style="{StaticResource Muted}" Margin="22,0,0,8" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <CheckBox x:Name="DbAutoRefreshCheck" Content="Keep these up to date automatically" Foreground="{DynamicResource TextPrimary}" Checked="DbAutoRefresh_Changed" Unchecked="DbAutoRefresh_Changed" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Off by default. Refreshes run in the background, are skipped on metered connections, and never replace a working database with a failed download." />
+                            </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Margin="22,0,0,10">
                                 <TextBlock Text="Check every" Style="{StaticResource Muted}"
@@ -3153,9 +3175,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="GunWall can look for new releases on its GitHub project. Checking sends nothing about you - it reads the release list. Nothing is ever installed on its own: an update waits until you press Update now."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="GunWall can look for new releases on its GitHub project. Checking sends nothing about you - it reads the release list. Nothing is ever installed on its own: an update waits until you press Update now." />
+                            </StackPanel>
 
                             <Grid Margin="0,0,0,8">
                                 <TextBlock x:Name="UpdCheckStatus" Style="{StaticResource Muted}"
@@ -3166,11 +3189,10 @@
                                         HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
 
-                            <CheckBox x:Name="UpdAutoCheck" Margin="0,4,0,0"
-                                      Content="Check for updates automatically"
-                                      Checked="UpdAutoCheck_Changed" Unchecked="UpdAutoCheck_Changed" />
-                            <TextBlock Text="Off by default. GunWall does not reach the network on a schedule you did not choose."
-                                       Style="{StaticResource Muted}" Margin="24,2,0,6" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,6">
+                                <CheckBox x:Name="UpdAutoCheck" Content="Check for updates automatically" Checked="UpdAutoCheck_Changed" Unchecked="UpdAutoCheck_Changed" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Off by default. GunWall does not reach the network on a schedule you did not choose." />
+                            </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Margin="24,0,0,8">
                                 <TextBlock Text="Check every" Style="{StaticResource Muted}"
@@ -3183,11 +3205,10 @@
                                 </ComboBox>
                             </StackPanel>
 
-                            <CheckBox x:Name="UpdAutoDownload" Margin="24,0,0,0"
-                                      Content="Download updates when one is found"
-                                      Checked="UpdAutoDownload_Changed" Unchecked="UpdAutoDownload_Changed" />
-                            <TextBlock Text="Downloads and verifies the installer so Update now does not have to wait. It is still never run for you. Skipped on metered connections."
-                                       Style="{StaticResource Muted}" Margin="48,2,0,8" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="24,0,0,8">
+                                <CheckBox x:Name="UpdAutoDownload" Content="Download updates when one is found" Checked="UpdAutoDownload_Changed" Unchecked="UpdAutoDownload_Changed" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Downloads and verifies the installer so Update now does not have to wait. It is still never run for you. Skipped on metered connections." />
+                            </StackPanel>
 
                             <Grid Margin="0,4,0,0">
                                 <TextBlock x:Name="UpdPendingStatus" Style="{StaticResource Muted}"
@@ -3203,9 +3224,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="REFRESH INTERVAL" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="How often connections and the graph update. Slower = lower CPU."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="REFRESH INTERVAL" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="How often connections and the graph update. Slower = lower CPU." />
+                            </StackPanel>
                             <ComboBox x:Name="IntervalCombo" Width="160" HorizontalAlignment="Left"
                                       SelectionChanged="IntervalCombo_Changed">
                                 <ComboBoxItem Content="1 second" IsSelected="True" Tag="1000" />
@@ -3217,9 +3239,10 @@
 
                     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="RESET FIREWALL" Style="{StaticResource SectionLabel}" />
-                            <TextBlock Text="Removes every filter GunWall has created (including persistent ones) and clears saved rules. Run this before uninstalling."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="RESET FIREWALL" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Removes every filter GunWall has created and clears saved rules. Your VirusTotal key and custom blocklist file are kept. Run this before uninstalling if you are not using the installer - its uninstaller does this for you." />
+                            </StackPanel>
                             <Button Content="Remove all GunWall filtering"
                                     Style="{StaticResource ActionButton}" HorizontalAlignment="Left"
                                     Click="RemoveAll_Click" />
@@ -3229,10 +3252,10 @@
                                  confuse and only one of them is destructive to the
                                  ruleset, so the wording has to carry that difference
                                  rather than the button label alone. -->
-                            <TextBlock Text="RESET SETTINGS" Style="{StaticResource SectionLabel}"
-                                       Margin="0,22,0,0" />
-                            <TextBlock Text="Puts every preference back to its default - theme, colours, font, interface scale, alert categories, popup timeout, logging and DNS options. Your application rules, custom rules and blocklists are kept, and filtering is not touched."
-                                       Style="{StaticResource Muted}" Margin="0,2,0,10" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,22,0,10">
+                                <TextBlock Text="RESET SETTINGS" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="Puts every preference back to its default - theme, colours, font, interface scale, alert categories, popup timeout, logging and DNS options. Your application rules, custom rules and blocklists are kept, and filtering is not touched." />
+                            </StackPanel>
                             <Button Content="Reset settings to defaults"
                                     Style="{StaticResource ActionButton}" HorizontalAlignment="Left"
                                     Click="ResetSettings_Click" />

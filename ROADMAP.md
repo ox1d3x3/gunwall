@@ -60,7 +60,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, one NuGet dependen
   observed on hardware, because no Store app has updated during a logged session.
 - ☑ **UWP / Microsoft Store app support** — Store/UWP apps are detected from their package path, shown with their real display name and a "Store" badge, with package-family identity surfaced in the Properties dialog. They are ruled by executable path (the proven enforcement path), which covers the common case without package-SID interop.
 - ✅ **Service & network-app categorization** — connections name the hosted service, and services can be blocked individually by their own identity.
-- ◐ **Complete country coverage** — ✅ IPv6 GeoIP, which was the largest gap. ✅ **destinations with no country are counted and reported** instead of silently dropped, and the map draws twice as many connection arcs. Remaining: naming unplaceable addresses in the Connections table rather than leaving the cell blank.
+- ✅ **Complete country coverage** — ✅ IPv6 GeoIP, which was the largest gap. ✅ **destinations with no country are counted and reported** instead of silently dropped, and the map draws twice as many connection arcs. ✅ *(0.99.172)* the Connections table names why an address has no country — this PC, local network, multicast, not routed, not in the GeoIP data, or no GeoIP data — instead of leaving the cell blank.
 - ◐ **Network scan** — ✅ likely OS from reply TTL, gateway identification from the routing table, NetBIOS names where reverse DNS has none, and randomised-MAC detection. ✅ vendor identification from the MAC address (IEEE registry), device notes, and copying. Remaining: mDNS names for Apple and IoT devices.
 
 - ☐ **Pico / subsystem process support** — identify WSL and other minimal-process traffic.
@@ -160,14 +160,14 @@ Ranked by evidence. Items below the line are measured from 0.99.152 onwards by
   icon caches warmed in the background; the first build froze the UI for up to 3.3 s
 - ✅ **Graph timer stops while hidden** *(0.99.153)* — ~980 idle ticks per five
   minutes with nothing on screen
-- ☐ **GeoIP parse garbage** — a load still allocates 518 MB of short-lived data,
-  mostly from splitting each line. Span-based parsing would cut it, at the cost of
-  rewriting the parser; the benchmark exists to prove the answers do not move.
+- ✅ **GeoIP parse garbage** *(0.99.172)* — a load allocated 518 MB of short-lived
+  data; lines are now read into a reusable buffer and split as spans, and it
+  allocates 154 MB. The benchmark's 250,000 lookups were unchanged.
 - ✅ **Recovery commands no longer load GeoIP** *(0.99.158)*
-- ☐ **Filter enumeration** *(next)* — `netsh` is slow, shells out, and returns a partial set
-  per call; `FwpmFilterEnum0` would be faster and complete. Trap 2.36 records why it
-  was avoided: `FWPM_FILTER0` marshalling must be verified against the SDK, not
-  assumed.
+- ✅ **Filter enumeration** *(0.99.169–0.99.171)* — GunWall lists its own filters
+  with `FwpmFilterEnum0` instead of `netsh`, reading a `FWPM_FILTER0` layout checked
+  field by field against the Windows headers. Both listings were compared on two
+  machines and gave the same ids; `netsh` was then removed.
 - ☐ *To be ranked from 0.99.152 diagnostics* — per-snapshot cost of each panel and
   enforcement step, UI freezes and their causes, GC pause share, idle CPU, and
   whether threads, handles or memory climb over a long session.
