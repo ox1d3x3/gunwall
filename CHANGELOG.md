@@ -15,6 +15,30 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.177] — 2026-10-07
+
+### Fixed — Block and Allow did not show on a filtered Applications list
+With the list filtered, **Block** or **Allow** took effect but the row kept its old
+status and button until the filter was typed again. 0.99.176's log showed every
+click arriving and the status changing, so the fault was in the display.
+
+Each refresh replaced a changed row with a newly built one. An application row
+counts as equal to another with the same path, and WPF treats a value equal to the
+old one as no change - so the replacement was ignored and the old row stayed on
+screen. Unfiltered it was hidden, because blocking also moves a row to the top,
+which redraws it; filtered to a few rows, it often did not move.
+
+Rows are now updated in place: every value a row shows announces its own change,
+and only the cells whose value moved are redrawn. No row object is replaced, so a
+row's button is never re-created under the pointer either.
+
+### Added — check `app-rows`
+Fails if a displayed application value stops announcing its changes, if the
+in-place update misses one, or if the list goes back to replacing rows. Five
+defects were reintroduced individually and the checks confirmed failing on each.
+
+---
+
 ## [0.99.176] — 2026-10-07
 
 ### Added — diagnostics for a Block/Allow button that does nothing

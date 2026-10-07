@@ -100,40 +100,96 @@ public enum AppCategory { Unknown, Signed, Unsigned, System, Invalid }
 /// </summary>
 public sealed class AppInfo : System.ComponentModel.INotifyPropertyChanged
 {
+    // Every displayed value announces its own changes (0.99.177). Rows are
+    // updated in place rather than replaced, because Equals below compares by
+    // path: a replacement row is "equal" to the one it replaces, and WPF treats
+    // an equal value as no change - so a row replaced after Block or Allow kept
+    // showing its old status until the list was rebuilt another way (reported
+    // from use: the filtered Applications list never updated after a click).
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
     private void Changed(string name) =>
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 
-    public string Name { get; set; } = "";
+    public string Name
+    {
+        get => _name;
+        set { if (!Equals(_name, value)) { _name = value; Changed(nameof(Name)); } }
+    }
+    private string _name = "";
     public string ExecutablePath { get; set; } = "";
-    public AppStatus Status { get; set; } = AppStatus.Allowed;
+    public AppStatus Status
+    {
+        get => _status;
+        set { if (!Equals(_status, value)) { _status = value; Changed(nameof(Status)); } }
+    }
+    private AppStatus _status = AppStatus.Allowed;
 
     /// <summary>Signed / unsigned / system / invalid — drives the colored dot.</summary>
-    public AppCategory Category { get; set; } = AppCategory.Unknown;
+    public AppCategory Category
+    {
+        get => _category;
+        set { if (!Equals(_category, value)) { _category = value; Changed(nameof(Category)); } }
+    }
+    private AppCategory _category = AppCategory.Unknown;
 
     /// <summary>Verified signing publisher (or "Unsigned" / "Invalid signature").</summary>
-    public string Publisher { get; set; } = "";
+    public string Publisher
+    {
+        get => _publisher;
+        set { if (!Equals(_publisher, value)) { _publisher = value; Changed(nameof(Publisher)); } }
+    }
+    private string _publisher = "";
 
     /// <summary>Cached executable icon for the list (null if unavailable).</summary>
-    public System.Windows.Media.ImageSource? Icon { get; set; }
+    public System.Windows.Media.ImageSource? Icon
+    {
+        get => _icon;
+        set { if (!Equals(_icon, value)) { _icon = value; Changed(nameof(Icon)); } }
+    }
+    private System.Windows.Media.ImageSource? _icon;
 
     /// <summary>User's free-text note for this app.</summary>
-    public string Note { get; set; } = "";
+    public string Note
+    {
+        get => _note;
+        set { if (!Equals(_note, value)) { _note = value; Changed(nameof(Note)); } }
+    }
+    private string _note = "";
 
     /// <summary>Exempt from kernel domain blocking. Surfaced in the list because
     /// an exemption nobody can see is one they set once and forget - and this one
     /// quietly weakens a protection they asked for.</summary>
-    public bool BypassBlocklists { get; set; }
+    public bool BypassBlocklists
+    {
+        get => _bypassBlocklists;
+        set { if (!Equals(_bypassBlocklists, value)) { _bypassBlocklists = value; Changed(nameof(BypassBlocklists)); } }
+    }
+    private bool _bypassBlocklists;
 
     /// <summary>True when this is a Microsoft Store / UWP (AppContainer) app.</summary>
-    public bool IsStoreApp { get; set; }
+    public bool IsStoreApp
+    {
+        get => _isStoreApp;
+        set { if (!Equals(_isStoreApp, value)) { _isStoreApp = value; Changed(nameof(IsStoreApp)); } }
+    }
+    private bool _isStoreApp;
 
     /// <summary>Friendly Store display name (e.g. "Spotify"); empty for non-Store apps.</summary>
-    public string StoreName { get; set; } = "";
+    public string StoreName
+    {
+        get => _storeName;
+        set { if (!Equals(_storeName, value)) { _storeName = value; Changed(nameof(StoreName)); } }
+    }
+    private string _storeName = "";
 
     /// <summary>Package family name (Name_PublisherId); empty for non-Store apps.</summary>
-    public string PackageFamily { get; set; } = "";
+    public string PackageFamily
+    {
+        get => _packageFamily;
+        set { if (!Equals(_packageFamily, value)) { _packageFamily = value; Changed(nameof(PackageFamily)); } }
+    }
+    private string _packageFamily = "";
 
     /// <summary>Number of live connections currently attributed to this app.</summary>
     public int ActiveConnections
@@ -144,18 +200,38 @@ public sealed class AppInfo : System.ComponentModel.INotifyPropertyChanged
     private int _activeConnections;
 
     /// <summary>SHA-256 of the executable (for display / tamper awareness).</summary>
-    public string Hash { get; set; } = "";
+    public string Hash
+    {
+        get => _hash;
+        set { if (!Equals(_hash, value)) { _hash = value; Changed(nameof(Hash)); } }
+    }
+    private string _hash = "";
 
     /// <summary>VirusTotal verdict text for the list ("Clean · 0/72", "3/72 flagged",
     /// "Checking…", "Not on VirusTotal"); empty when no API key / no hash.</summary>
-    public string VtText { get; set; } = "";
+    public string VtText
+    {
+        get => _vtText;
+        set { if (!Equals(_vtText, value)) { _vtText = value; Changed(nameof(VtText)); } }
+    }
+    private string _vtText = "";
 
     /// <summary>How many services this executable currently hosts across all of
     /// its processes, e.g. "hosts 14 services". Empty for ordinary programs.</summary>
-    public string ServicesSummary { get; set; } = "";
+    public string ServicesSummary
+    {
+        get => _servicesSummary;
+        set { if (!Equals(_servicesSummary, value)) { _servicesSummary = value; Changed(nameof(ServicesSummary)); } }
+    }
+    private string _servicesSummary = "";
 
     /// <summary>Full hosted-service list for the tooltip.</summary>
-    public string ServicesDetail { get; set; } = "";
+    public string ServicesDetail
+    {
+        get => _servicesDetail;
+        set { if (!Equals(_servicesDetail, value)) { _servicesDetail = value; Changed(nameof(ServicesDetail)); } }
+    }
+    private string _servicesDetail = "";
 
     /// <summary>Pre-scaled sparkline of this app's last-30-minutes traffic
     /// (points in a 90x20 box); recomputed on every list rebuild.</summary>
@@ -175,10 +251,20 @@ public sealed class AppInfo : System.ComponentModel.INotifyPropertyChanged
     private string _sparkTip = "";
 
     /// <summary>Coloring level for the verdict: "clean", "flagged", "pending", "none".</summary>
-    public string VtLevel { get; set; } = "";
+    public string VtLevel
+    {
+        get => _vtLevel;
+        set { if (!Equals(_vtLevel, value)) { _vtLevel = value; Changed(nameof(VtLevel)); } }
+    }
+    private string _vtLevel = "";
 
     /// <summary>Allowed but not notified about.</summary>
-    public bool Silent { get; set; }
+    public bool Silent
+    {
+        get => _silent;
+        set { if (!Equals(_silent, value)) { _silent = value; Changed(nameof(Silent)); } }
+    }
+    private bool _silent;
 
     public override bool Equals(object? obj) =>
         obj is AppInfo other &&

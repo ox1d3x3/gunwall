@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.176 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.177 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3303,18 +3303,21 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             desired.Add(a);
         }
 
-        // Connection count and sparkline change every second for an active app;
-        // they update in place on the existing row. Anything else that differs
-        // replaces the row.
+        // Every value of an existing row is updated IN PLACE (0.99.177). AppInfo
+        // announces each change, so only the cells whose value moved redraw.
+        //
+        // It used to replace the row whenever anything other than the connection
+        // count or sparkline differed. AppInfo.Equals compares by path, so the
+        // replacement was "equal" to the row it replaced, and WPF skips a change
+        // to an equal value: after Block or Allow the row kept its old status
+        // and button until the list was rebuilt some other way. Unfiltered, the
+        // row also moved (blocked apps sort to the top), which redrew it and hid
+        // the fault; filtered to a few rows it often did not move. Reported from
+        // use; 0.99.176's click log showed every click arriving and acting.
         SyncList(_apps, desired,
                  a => a.ExecutablePath.ToLowerInvariant(),
-                 (cur, next) => SameValues(cur, next, AppLiveProps),
-                 (cur, next) =>
-                 {
-                     cur.ActiveConnections = next.ActiveConnections;
-                     if (!SamePoints(cur.Spark, next.Spark)) cur.Spark = next.Spark;
-                     cur.SparkTip = next.SparkTip;
-                 },
+                 (_, _) => true,
+                 CopyAppRow,
                  NoteAppRowReplaced);
         EndAppRowChurnPass();
 
@@ -3324,6 +3327,36 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 string.Equals(a.ExecutablePath, keepPath, StringComparison.OrdinalIgnoreCase));
             if (reselect != null) AppsList.SelectedItem = reselect;
         }
+    }
+
+    /// <summary>
+    /// Brings an existing Applications row up to date from a freshly computed
+    /// one. Every displayed property, through its notifying setter, so a value
+    /// that did not change raises nothing and one that did redraws its cell.
+    /// The sparkline is compared by its points: it is rebuilt as a new object
+    /// every second.
+    /// </summary>
+    private static void CopyAppRow(AppInfo cur, AppInfo next)
+    {
+        cur.Name = next.Name;
+        cur.Status = next.Status;
+        cur.Category = next.Category;
+        cur.Publisher = next.Publisher;
+        cur.Icon = next.Icon;
+        cur.Note = next.Note;
+        cur.BypassBlocklists = next.BypassBlocklists;
+        cur.IsStoreApp = next.IsStoreApp;
+        cur.StoreName = next.StoreName;
+        cur.PackageFamily = next.PackageFamily;
+        cur.ActiveConnections = next.ActiveConnections;
+        cur.Hash = next.Hash;
+        cur.VtText = next.VtText;
+        cur.VtLevel = next.VtLevel;
+        cur.ServicesSummary = next.ServicesSummary;
+        cur.ServicesDetail = next.ServicesDetail;
+        cur.Silent = next.Silent;
+        if (!SamePoints(cur.Spark, next.Spark)) cur.Spark = next.Spark;
+        cur.SparkTip = next.SparkTip;
     }
 
     // ---- Row churn diagnostics (0.99.176) --------------------------------------
