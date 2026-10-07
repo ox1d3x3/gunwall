@@ -39,7 +39,7 @@ public sealed class BlocklistDomainsWindow : Window
     private readonly ObservableCollection<Row> _rows;
     private readonly ICollectionView _view;
     private readonly TextBlock _summary;
-    private readonly TextBox _search;
+    private readonly Wpf.Ui.Controls.TextBox _search;
 
     /// <summary>The names left unticked when Save was pressed.</summary>
     public HashSet<string> Excluded =>
@@ -76,12 +76,14 @@ public sealed class BlocklistDomainsWindow : Window
         DockPanel.SetDock(intro, Dock.Top);
         root.Children.Add(intro);
 
-        _search = new TextBox
+        // The library's box, for its placeholder and clear button: a bare box under
+        // the explanation gave no hint that it filters (seen on hardware, 0.99.173).
+        // Padding is left to its style - see NoteWindow on fixed metrics.
+        _search = new Wpf.Ui.Controls.TextBox
         {
-            Padding = new Thickness(10, 6, 10, 6),
-            VerticalContentAlignment = VerticalAlignment.Center,
+            PlaceholderText = "Filter domains\u2026",
+            ClearButtonEnabled = true,
             Margin = new Thickness(0, 0, 0, 6),
-            ToolTip = "Type part of a domain to filter the list",
         };
         _search.TextChanged += (_, _) =>
         {
@@ -124,14 +126,24 @@ public sealed class BlocklistDomainsWindow : Window
         DockPanel.SetDock(buttons, Dock.Bottom);
         root.Children.Add(buttons);
 
+        // Row metrics, from the WPF UI 4.3.0 templates (read, not assumed): its
+        // ListBoxItem pads 12 on every side and its CheckBox has MinHeight 32 and
+        // padding 11,5,11,6 applied OUTSIDE the box. Together each row was about
+        // 70 px tall, five rows to a screen (seen on hardware). Item padding 4,0
+        // and a check box with no minimum and 4 px padding give ~30 px rows.
         var check = new FrameworkElementFactory(typeof(CheckBox));
         check.SetBinding(ToggleButton_IsChecked, new Binding(nameof(Row.Blocked)) { Mode = BindingMode.TwoWay });
         check.SetBinding(ContentControl.ContentProperty, new Binding(nameof(Row.Name)));
-        check.SetValue(MarginProperty, new Thickness(2, 3, 2, 3));
+        check.SetValue(MinHeightProperty, 0.0);
+        check.SetValue(PaddingProperty, new Thickness(4));
+        var itemStyle = new Style(typeof(ListBoxItem), TryFindResource(typeof(ListBoxItem)) as Style);
+        itemStyle.Setters.Add(new Setter(PaddingProperty, new Thickness(4, 0, 4, 0)));
+        itemStyle.Setters.Add(new Setter(MinHeightProperty, 0.0));
         var list = new ListBox
         {
             ItemsSource = _view,
             ItemTemplate = new DataTemplate { VisualTree = check },
+            ItemContainerStyle = itemStyle,
             BorderThickness = new Thickness(1),
             BorderBrush = Res("BorderBrush", Brushes.LightGray),
             Background = Res("BgElevated", Brushes.White),

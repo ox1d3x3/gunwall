@@ -15,6 +15,33 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.174] — 2026-10-07
+
+### Fixed — the domain list showed five domains at a time
+In **Show domains** each row was about 70 pixels tall: the control library pads a
+list item by 12 on every side, and its check box has a 32-pixel minimum plus
+padding outside the box. Rows are now about 30 pixels, so a few hundred domains
+can be scanned. The filter box also says what it is for (*Filter domains…*) and
+has a clear button; it was a bare box under the explanation.
+
+### Fixed — the GeoIP source card said "not downloaded yet" with the data loaded
+Security → **GEOIP DATA SOURCE** wrote its status once at start-up, a moment
+before the tables finished loading in the background, and never again - so it
+reported no database for the whole session while Connections showed 538,904
+ranges. It is now re-read each time the Security page is opened.
+
+### Changed — sockets with no remote read "Listening"
+UDP sockets, which are bound but have no remote at all, still left the Location
+cell blank. They now read *Listening*, like TCP listeners, so no cell is blank.
+
+### Changed — check `blocklist-levels`
+Also fails if the domain list goes back to the library's row metrics, if the GeoIP
+source line is never refreshed, or if a socket with no remote has a blank
+Location. Three more defects were reintroduced individually and the check
+confirmed failing on each.
+
+---
+
 ## [0.99.173] — 2026-10-07
 
 ### Added — untick single domains in a blocklist category

@@ -385,7 +385,7 @@ country and network operator. Select a row for a detail panel showing the rule t
 applied. Where an address has no country, the Location column says why — *This PC
 (loopback)*, *Local network*, *Multicast*, *Not routed*, *Not in GeoIP data*, or *No
 GeoIP data* when the database has not been downloaded. A socket waiting for
-connections, with no remote yet, reads *Listening*.
+connections, with no remote yet (TCP or UDP), reads *Listening*.
 
 **Traffic** — a world map of destinations, top countries, most active applications,
 per-application data usage over a chosen window, and a breakdown by host, traffic

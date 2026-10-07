@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.173 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.174 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -777,9 +777,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Dictionary<string, GunWall.Services.GeoIpService.GeoInfo> memo = new(StringComparer.OrdinalIgnoreCase);
         foreach (var c in conns)
         {
-            if (c.Country.Length > 0 || string.IsNullOrEmpty(c.RemoteAddress)) continue;
+            if (c.Country.Length > 0) continue;
             var g = new GunWall.Services.GeoIpService.GeoInfo("", 0, "");
-            if (active && !memo.TryGetValue(c.RemoteAddress, out g))
+            if (active && !string.IsNullOrEmpty(c.RemoteAddress) && !memo.TryGetValue(c.RemoteAddress, out g))
             {
                 g = _firewall.GeoIp.Lookup(c.RemoteAddress);
                 memo[c.RemoteAddress] = g;
@@ -793,11 +793,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// in words: the kind of address (loopback, local network, multicast ...), an
     /// owner with no country ("Not routed"), no GeoIP data loaded, or a public
     /// address the data does not cover. Both places that fill the Connections table
-    /// come through here, so a blank Location cell means the remote is empty.
+    /// come through here; a socket with no remote at all (UDP, bound and waiting)
+    /// reads "Listening", like a TCP listener, so no Location cell is left blank.
     /// </summary>
     private static void ApplyGeo(ConnectionInfo c, GunWall.Services.GeoIpService.GeoInfo g, bool geoActive)
     {
         if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; c.LocationNote = ""; return; }
+        if (string.IsNullOrEmpty(c.RemoteAddress)) { c.LocationNote = "Listening"; return; }   // UDP: bound, no remote
         // An all-zero remote is a socket waiting for connections, not an address
         // anywhere: "Reserved address" was true and told the reader nothing.
         string kind = c.RemoteAddress is "0.0.0.0" or "::" ? "Listening"
@@ -3513,10 +3515,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 geo ? new(StringComparer.OrdinalIgnoreCase) : null;
             foreach (var c in view.OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
             {
-                if (c.Country.Length == 0 && !string.IsNullOrEmpty(c.RemoteAddress))
+                if (c.Country.Length == 0)
                 {
                     var g = new GunWall.Services.GeoIpService.GeoInfo("", 0, "");
-                    if (geo && !geoMemo!.TryGetValue(c.RemoteAddress, out g))
+                    if (geo && !string.IsNullOrEmpty(c.RemoteAddress) && !geoMemo!.TryGetValue(c.RemoteAddress, out g))
                     {
                         g = _firewall.GeoIp.Lookup(c.RemoteAddress);
                         geoMemo[c.RemoteAddress] = g;
@@ -5106,6 +5108,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (tag == "Connections") RebuildConnList();
         if (tag == "Traffic") RefreshTraffic();
         if (tag == "Dns") UpdateDnsUi();
+        // Written once at startup, before the GeoIP tables finish loading in the
+        // background, so it said "not downloaded yet" beside a loaded database
+        // for the whole session. Re-read whenever the page is opened.
+        if (tag == "Security" && GeoSourceStatus != null) GeoSourceStatus.Text = GeoSourceSummary();
         if (tag == "Settings") UpdateHealthCard();
         if (tag == "Rules") RefreshRulesList();
         if (tag == "Services" && _services.Count == 0) LoadServices();
