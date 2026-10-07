@@ -234,12 +234,30 @@ public sealed class DnsResolver : IDisposable
     /// <param name="Original">The line as the user wrote it.</param>
     /// <param name="Domain">The domain that will actually be blocked, or "".</param>
     /// <param name="Problem">Why the line was unusable, or "" if it was fine.</param>
-    public readonly record struct BlocklistEntry(string Original, string Domain, string Problem)
+    public readonly record struct BlocklistEntry(string Original, string Domain, string Problem, string Prefix = "")
     {
         public bool Ignored => Domain.Length == 0 && Problem.Length == 0;   // blank or comment
         public bool Rejected => Domain.Length == 0 && Problem.Length > 0;
+        // Compared without its "@@" / "!!" prefix: the prefix is a level, not part
+        // of the name, and counting it made every allow look like a rewrite.
         public bool Rewritten => Domain.Length > 0 &&
-            !string.Equals(Domain, Original.Trim(), StringComparison.OrdinalIgnoreCase);
+            !string.Equals(Domain, Original.Trim()[Prefix.Length..], StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Splits the level prefix off a blocklist line: "@@" allows the name, "!!"
+    /// blocks it everywhere - its addresses too, even when they also serve names
+    /// that are not blocked. Returns the prefix ("" for a plain block); the line
+    /// comes back without it. Both the parser and the line report use this, so
+    /// they cannot disagree about what a line means.
+    /// </summary>
+    public static string SplitLevel(string line, out string rest)
+    {
+        string t = (line ?? "").Trim();
+        if (t.StartsWith("@@", StringComparison.Ordinal)) { rest = t[2..]; return "@@"; }
+        if (t.StartsWith("!!", StringComparison.Ordinal)) { rest = t[2..]; return "!!"; }
+        rest = t;
+        return "";
     }
 
     /// <summary>
@@ -327,8 +345,12 @@ public sealed class DnsResolver : IDisposable
         if (lines == null) return result;
         foreach (var raw in lines)
         {
-            string d = NormalizeBlocklistEntry(raw, out string problem);
-            result.Add(new BlocklistEntry(raw ?? "", d, problem));
+            // The prefix is removed first. Before 0.99.173 the whole line was
+            // normalised, so every "@@name" was reported back as "'@' isn't valid in
+            // a hostname" - while the resolver, which strips it, applied it fine.
+            string prefix = SplitLevel(raw ?? "", out string rest);
+            string d = NormalizeBlocklistEntry(rest, out string problem);
+            result.Add(new BlocklistEntry(raw ?? "", d, problem, prefix));
         }
         return result;
     }
@@ -338,6 +360,13 @@ public sealed class DnsResolver : IDisposable
     /// <summary>Explicit allows, which beat any block. Same subdomain matching.</summary>
     private volatile HashSet<string> _allow = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>"!!" names: blocked like any other, and also blocked by address
+    /// when the address is shared. A subset of the block set.</summary>
+    private volatile HashSet<string> _force = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>How many names are marked to be blocked everywhere.</summary>
+    public int ForcedDomainCount => _force.Count;
+
     /// <summary>How many names are explicitly allowed.</summary>
     public int AllowedDomainCount => _allow.Count;
 
@@ -345,6 +374,7 @@ public sealed class DnsResolver : IDisposable
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var allow = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var force = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (domains != null)
             foreach (var raw in domains)
             {
@@ -357,16 +387,24 @@ public sealed class DnsResolver : IDisposable
                 // on or off, and a curated list of 99,557 domains is all-or-nothing.
                 // One entry breaking one site should not mean turning the category
                 // off, and until now it did.
-                string line = (raw ?? "").Trim();
-                bool isAllow = line.StartsWith("@@", StringComparison.Ordinal);
-                if (isAllow) line = line[2..];
+                //
+                // "!!name" is the opposite end: block the name, and block its
+                // addresses even when they are shared with names that are not
+                // blocked (see FirewallManager.AddDomainReactiveBlock).
+                string level = SplitLevel(raw ?? "", out string line);
 
                 string d = NormalizeBlocklistEntry(line, out _);
                 if (d.Length == 0) continue;
-                if (isAllow) allow.Add(d); else set.Add(d);
+                if (level == "@@") allow.Add(d);
+                else
+                {
+                    set.Add(d);
+                    if (level == "!!") force.Add(d);
+                }
             }
         _block = set;
         _allow = allow;
+        _force = force;
         // A name resolved before the rule existed would keep being served from
         // cache, so the block would appear not to work at all.
         _cache.Clear();
@@ -393,6 +431,17 @@ public sealed class DnsResolver : IDisposable
         // list overrule them.
         if (MatchesWithParents(_allow, n)) return false;
         return MatchesWithParents(set, n);
+    }
+
+    /// <summary>True if the name, or a parent of it, is marked "!!" - and not
+    /// allowed, since an allow beats every block.</summary>
+    public bool IsForced(string name)
+    {
+        var force = _force;
+        if (force.Count == 0 || string.IsNullOrEmpty(name)) return false;
+        string n = name.TrimEnd('.').ToLowerInvariant();
+        if (MatchesWithParents(_allow, n)) return false;
+        return MatchesWithParents(force, n);
     }
 
     /// <summary>Exact match, or any parent domain - so example.com covers

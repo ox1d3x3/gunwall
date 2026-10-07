@@ -356,6 +356,11 @@ public sealed class StoreData
     /// key -> filter IDs.</summary>
     public Dictionary<string, List<ulong>> BlocklistWfpFilters { get; set; } = new();
 
+    /// <summary>Domains the user unticked in a category's list (Security - Show
+    /// domains): category key -> names kept working while the category is on.
+    /// Kept across list updates and a settings reset, like the categories.</summary>
+    public Dictionary<string, List<string>> BlocklistExclusions { get; set; } = new();
+
     /// <summary>Selected filtering-DNS provider key ("auto" = network default).</summary>
     public string DnsProvider { get; set; } = "auto";
 
@@ -429,6 +434,10 @@ public sealed class StoreData
     /// for a denser grid than WPF's defaults produce, and at 100 the whole thing
     /// reads a size too large. Existing installs keep whatever they saved.</summary>
     public int UiZoomPercent { get; set; } = 90;
+
+    /// <summary>Application icon size in the Applications list, in pixels:
+    /// 16 small, 22 medium (the size it has always been), 32 large.</summary>
+    public int AppIconSize { get; set; } = 22;
     public List<string> DnsResolverBlocklist { get; set; } = new();
 
     // §3 Phase 2: system-DNS routing state. DnsRedirectActive is the user's saved

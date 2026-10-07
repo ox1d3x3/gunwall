@@ -293,6 +293,12 @@ Toggle categories on or off:
 Telemetry and update categories use the Windows hosts file, falling back to
 firewall rules automatically if security software locks that file.
 
+**Show domains** beside each category lists every domain in it, with a tick. Ticked
+domains are blocked while the category is on; untick one to keep it working —
+for example, a domain a program you use needs. Type in the box at the top to
+filter the list, then press **Save**. Your choices are kept when the lists are
+updated from online, and the category's description shows how many are unticked.
+
 ### Custom blocklist file
 
 Point GunWall at your own list of domains. Hosts-style lines (`0.0.0.0 domain`),
@@ -350,6 +356,14 @@ covers `ads.example.com`.
 working even when a downloaded preset blocks it, so one bad entry in a
 hundred-thousand-domain list does not mean abandoning the whole category.
 
+**Prefix a line with `!!` to block it everywhere.** Normally, when GunWall cannot tell
+which program asked for a blocked domain, it blocks the server's address only if
+everything else seen on that address is blocked too — a shared server (a CDN) also
+serves sites you have not blocked, and blocking its address would cut those off.
+`!!example.com` overrides that: the address is blocked anyway, those other sites stop
+working on this PC, and the **Alerts** page names them. Use it only for a domain you
+want gone at any cost. An `@@` allow still wins over `!!`.
+
 Press **Apply blocklist** after editing. Note that this clears and rebuilds the
 kernel-level domain blocks, so give it a moment to re-establish.
 
@@ -370,7 +384,8 @@ explicitly rather than claiming GunWall allowed it.
 country and network operator. Select a row for a detail panel showing the rule that
 applied. Where an address has no country, the Location column says why — *This PC
 (loopback)*, *Local network*, *Multicast*, *Not routed*, *Not in GeoIP data*, or *No
-GeoIP data* when the database has not been downloaded.
+GeoIP data* when the database has not been downloaded. A socket waiting for
+connections, with no remote yet, reads *Listening*.
 
 **Traffic** — a world map of destinations, top countries, most active applications,
 per-application data usage over a chosen window, and a breakdown by host, traffic
@@ -437,6 +452,7 @@ Hover the **ⓘ** beside a card's heading or an option for what it does.
 | Watch for tampering with the firewall's filters | Detects and restores filters removed by other software |
 | Open GunWall with a single tray click | Double-click always works regardless |
 | UI size | 90% by default; 100% and 125% available |
+| App icon size | Small, Medium (default) or Large icons in the Applications list |
 | **Run GunWall when Windows starts** | **Recommended** — without it, nothing can prompt after a reboot |
 | Send firewall events to the Windows Event Log | For central log collection |
 | Play a sound on notification popups | |

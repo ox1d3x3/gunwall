@@ -99,7 +99,7 @@ decision with the reason attached.
 ### 🔒 Privacy
 
 - **Encrypted DNS** over HTTPS, failing closed rather than silently downgrading
-- **Domain blocklists** — Windows telemetry and update categories, an ads and malware preset for the built-in DNS resolver, or your own list — with an allow level for entries you disagree with
+- **Domain blocklists** — Windows telemetry and update categories (with any single domain unticked if you need it), an ads and malware preset for the built-in DNS resolver, or your own list — with `@@` to allow an entry and `!!` to block one everywhere
 - **CNAME-cloaking defence**, following alias chains so trackers cannot hide behind a first-party name
 - **Per-application domain blocking**, so blocking a tracker cannot disconnect something unrelated on the same server
 
@@ -250,11 +250,12 @@ combinations nobody has tried — which is what a beta is for.
 
 ## Roadmap
 
-**In progress** — verifying enforcement on networks with routable IPv6 · per-category
-blocklist controls · attributing a kernel drop to the specific filter responsible
+**In progress** — mDNS names for Apple and IoT devices in Network scan ·
+attributing a kernel drop to the specific filter responsible
 
-**Planned** — WSL and subsystem process identification · tamper *prevention* ·
-mDNS names for Apple and IoT devices · multi-language interface
+**Planned** — a privileged Windows service, for protection from boot and tamper
+*prevention* · WSL and subsystem process identification · verifying enforcement on
+networks with routable IPv6 · multi-language interface
 
 **Not planned** — code signing. A certificate is a recurring cost this project will
 not pass on or ask for; the published checksum proves more, against source anyone

@@ -76,10 +76,10 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, one NuGet dependen
 - ✅ **Fullscreen-silent mode** — approval popups are held back while a fullscreen app/game/presentation is foreground (detected via the OS notification-state signal), and appear once it ends.
 - ✅ **Confirmation prompts** — confirm-before-clearing the Activity / Packets logs, and an always-confirm-on-exit option (on top of the existing active-firewall exit warning).
 - ✅ **Notification exclusions** — alerts are categorised (security, protection changes, network, rules) and each category can be silenced independently. *(GunWall currently raises a single new-app approval prompt, so this waits on having multiple notification categories to exclude.)*
-- ◐ **Domain blocking beyond the application layer** — a blocked domain is enforced against the application that requested it, which carries no collateral. Where the process cannot be identified, GunWall falls back to a global address block and withholds it if the address serves anything the user has not blocked. Remaining: a **per-domain override** for forcing the global block deliberately, with the consequences stated.
-- ◐ **Blocklist controls** — ✅ an allow level: `@@name` permits a name even when a category or preset blocks it, using the syntax adblock lists already use. ✅ **excluding an application**: an app can be exempted from kernel domain blocking, so a browser used for development is not cut off by a list. Remaining: per-category allow/block/disable in the interface, and an additional curated list.
+- ◐ **Domain blocking beyond the application layer** — a blocked domain is enforced against the application that requested it, which carries no collateral. Where the process cannot be identified, GunWall falls back to a global address block and withholds it if the address serves anything the user has not blocked. ✅ *(0.99.173)* **per-domain override**: `!!name` in the DNS resolver's blocklist forces the address block even when the address is shared, and the Alerts page names what else it cut off.
+- ◐ **Blocklist controls** — ✅ an allow level: `@@name` permits a name even when a category or preset blocks it, using the syntax adblock lists already use. ✅ **excluding an application**: an app can be exempted from kernel domain blocking, so a browser used for development is not cut off by a list. ✅ *(0.99.173)* **per-domain choices inside a category**: Security - a category - **Show domains** lists every name with a tick; unticked names keep working while the category is on, and the choice survives list updates. Remaining: an additional curated list.
 - ✅ **Logging upgrades** *(complete)* — blocked/allowed events to the **Windows Event Log** (toggle), a configurable **log-size limit** (live-row cap + CSV rotation size), and a separate **error log viewer** with deduplicated entries.
-- ◐ **View & tray niceties** — ✅ autosize columns, **tray single-click**, and **UI size / zoom**. Remaining: list view modes (details / icon / tile) and icon sizes.
+- ✅ **View & tray niceties** — ✅ autosize columns, **tray single-click**, and **UI size / zoom**. ✅ *(0.99.173)* **app icon size** (small / medium / large). Full icon/tile view modes were considered and not taken: the Applications list is a table people sort and scan, which those modes do not serve.
 
 ### Upgrade and data preservation
 *Managed C# and the installer script. No kernel risk. Nothing a user configured may
@@ -208,6 +208,11 @@ the first-run experience.*
   than inferred from the presence of a file.
 
 ### Kernel hardening
+
+- ☐ **Privileged service** — enforcement in a Windows service, with the window as a
+  client. It is what makes protection from boot (before anyone signs in) and tamper
+  *prevention* possible, and lets the window close with no question about what
+  keeps running. The main architectural item before 1.0; designed before built.
 *Touches the WFP filter set. Every item here needs hardware verification and a removal path before it ships.*
 - ◐ **Kernel verdict visibility** — ✅ the packet log records what the kernel did, not only what GunWall would have decided, and names a drop caused by other software on the machine. Remaining: attributing that drop to the specific filter responsible.
 - ◐ **Expanded WFP layers** — **16 layers wired and verified on hardware**: outbound connect, inbound accept, listen, **resource assignment** (bind, TCP *and* UDP), inbound/outbound transport, outbound ICMP error, and **IP forwarding** — each v4 and v6. Shipped as opt-in, removable rules through the fault-tolerant filter path.

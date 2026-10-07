@@ -196,6 +196,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // resolver knows what is on the blocklist. Handing the test across keeps
         // the two from reaching into each other.
         _firewall.DomainBlockTest = n => { try { return _dnsResolver.IsBlocked(n); } catch { return false; } };
+        _firewall.DomainForceTest = n => { try { return _dnsResolver.IsForced(n); } catch { return false; } };
         _dnsResolver.PostureProbe = () =>
             _firewall.StrictMode ? "protection ON" : "protection OFF";
         AlertsList.ItemsSource = _notifications;
@@ -376,6 +377,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 UiZoomCombo.SelectedIndex = _firewall.UiZoomPercent switch
                 { 90 => 0, 100 => 1, 110 => 2, 125 => 3, _ => 1 };
             ApplyUiZoom();
+            if (AppIconSizeCombo != null)
+                AppIconSizeCombo.SelectedIndex = _firewall.AppIconSize switch { 16 => 0, 32 => 2, _ => 1 };
+            ApplyAppIconSize();
             if (PacketLogFileCheck != null) PacketLogFileCheck.IsChecked = _firewall.PacketFileLogging;
             if (PopupTimeoutCombo != null)
                 PopupTimeoutCombo.SelectedIndex = _firewall.PopupTimeoutSeconds switch
@@ -449,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.172 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.173 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -794,7 +798,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private static void ApplyGeo(ConnectionInfo c, GunWall.Services.GeoIpService.GeoInfo g, bool geoActive)
     {
         if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; c.LocationNote = ""; return; }
-        string kind = GunWall.Services.GeoIpService.DescribeUnplaced(c.RemoteAddress);
+        // An all-zero remote is a socket waiting for connections, not an address
+        // anywhere: "Reserved address" was true and told the reader nothing.
+        string kind = c.RemoteAddress is "0.0.0.0" or "::" ? "Listening"
+                    : GunWall.Services.GeoIpService.DescribeUnplaced(c.RemoteAddress);
         c.LocationNote = kind.Length > 0 ? kind
                        : g.Owner.Length > 0 ? g.Owner
                        : geoActive ? "Not in GeoIP data"
@@ -4471,6 +4478,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // ------------------------------------------ view & diagnostics niceties
     /// <summary>Applies the saved UI zoom. 100% clears the transform entirely
     /// so the default rendering path is untouched.</summary>
+    /// <summary>Sets the Applications-list icon size. Replaced in the application's
+    /// resources - not this window's - so the DynamicResource in the row template
+    /// and every row already drawn pick it up without rebuilding the list.</summary>
+    private void ApplyAppIconSize()
+    {
+        try
+        {
+            if (Application.Current != null)
+                Application.Current.Resources["AppIconSize"] = (double)_firewall.AppIconSize;
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("ApplyAppIconSize", ex); }
+    }
+
     private void ApplyUiZoom()
     {
         try
@@ -5530,6 +5550,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // Said plainly rather than papered over.
             ApplyTheme(_firewall.ThemeDark);
             ApplyUiZoom();
+            ApplyAppIconSize();
             ApplyUiFont(_firewall.UiFontFamily);
 
             MessageBox.Show(
@@ -6102,11 +6123,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         using var _perf = PerfMonitor.Measure("BuildBlocklistCard");
         bool on = _firewall.IsBlocklistOn(cat.Key);
         int count = _firewall.BlocklistDomainCount(cat.Key);
+        int unticked = _firewall.BlocklistExcludedCount(cat.Key);
 
         var name = new TextBlock { Text = cat.Name, FontWeight = FontWeights.SemiBold };
         var desc = new TextBlock
         {
-            Text = $"{cat.Description}  ({count:n0} domains)",
+            Text = $"{cat.Description}  ({count:n0} domains"
+                 + (unticked > 0 ? $", {unticked:n0} unticked and kept working)" : ")"),
             Style = (Style)FindResource("Muted"),
             Margin = new Thickness(0, 2, 0, 0),
             TextWrapping = TextWrapping.Wrap
@@ -6129,8 +6152,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _blocklistToggles.Add(toggle);
         DockPanel.SetDock(toggle, Dock.Right);
 
+        // Per-domain choices inside the category (0.99.173): the list with a tick
+        // per name, where unticking keeps that one name working.
+        var show = new Button
+        {
+            Content = "Show domains",
+            Style = (Style)FindResource("ActionButton"),
+            Tag = cat.Key,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 14, 0),
+            ToolTip = "See every domain in this category, and untick any you want to keep working",
+        };
+        show.Click += BlocklistShowDomains_Click;
+        DockPanel.SetDock(show, Dock.Right);
+
         var dock = new DockPanel { LastChildFill = false };
         dock.Children.Add(toggle);
+        dock.Children.Add(show);
         dock.Children.Add(left);
         return new Border
         {
@@ -6138,6 +6176,57 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Margin = new Thickness(0, 0, 0, 8),
             Child = dock
         };
+    }
+
+    private async void BlocklistShowDomains_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.Tag is not string key) return;
+        var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+        if (cat == null) return;
+        if (_blocklistBusy) return;   // a category is being applied; its list is about to change
+
+        var domains = _firewall.BlocklistDomains(key);
+        if (domains.Count == 0)
+        {
+            MessageBox.Show($"\u201c{cat.Name}\u201d has no domains to show yet. Press Update lists from online to fetch them.",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var before = _firewall.BlocklistExclusions(key);
+        var dlg = new BlocklistDomainsWindow(cat.Name, domains, before) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        var after = dlg.Excluded;
+        // Names unticked earlier that are not in today's list are kept, so a
+        // choice survives a list update that briefly drops and restores a name.
+        var listed = new HashSet<string>(domains, StringComparer.OrdinalIgnoreCase);
+        after.UnionWith(before.Where(d => !listed.Contains(d)));
+        if (after.SetEquals(before)) return;
+
+        _blocklistBusy = true;
+        foreach (var t in _blocklistToggles) t.IsEnabled = false;
+        if (BlocklistProgress != null) BlocklistProgress.Visibility = Visibility.Visible;
+        if (BlocklistCatStatus != null) BlocklistCatStatus.Text = $"Applying your choices to \u201c{cat.Name}\u201d\u2026";
+        try
+        {
+            bool ok = await System.Threading.Tasks.Task.Run(() => _firewall.SetBlocklistExclusions(key, after));
+            int unticked = after.Count(listed.Contains);
+            if (BlocklistCatStatus != null)
+                BlocklistCatStatus.Text = !ok
+                    ? $"Your choices for \u201c{cat.Name}\u201d were saved, but re-applying the category failed - it may need switching off and on."
+                    : unticked == 0
+                        ? $"Every domain in \u201c{cat.Name}\u201d is blocked while it is on."
+                        : $"\u201c{cat.Name}\u201d: {unticked:n0} domain(s) unticked and kept working"
+                          + (_firewall.IsBlocklistOn(key) ? "." : " when you switch it on.");
+            try { Services.HostsFileService.FlushDns(); } catch { }
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally
+        {
+            _blocklistBusy = false;
+            foreach (var t in _blocklistToggles) t.IsEnabled = true;
+            if (BlocklistProgress != null) BlocklistProgress.Visibility = Visibility.Collapsed;
+            BuildBlocklistCatUi();
+        }
     }
 
     private async void Blocklist_Click(object sender, RoutedEventArgs e)
@@ -8219,6 +8308,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             _firewall.SetUiZoomPercent(uzv);
             ApplyUiZoom();
+        }
+        if (AppIconSizeCombo?.SelectedItem is ComboBoxItem ais &&
+            int.TryParse(ais.Tag?.ToString(), out int aisv))
+        {
+            _firewall.SetAppIconSize(aisv);
+            ApplyAppIconSize();
         }
         _firewall.SetPacketFileLogging(PacketLogFileCheck?.IsChecked == true);
         _firewall.SetFullscreenSilent(FullscreenSilentCheck?.IsChecked == true);

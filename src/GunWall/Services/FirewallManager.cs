@@ -2718,7 +2718,7 @@ public sealed class FirewallManager : IDisposable
             foreach (var key in keys)
             {
                 var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
-                var domains = cat == null ? new List<string>() : DomainsFor(cat);
+                var domains = cat == null ? new List<string>() : ActiveDomainsFor(cat);
                 if (domains.Count == 0) { DiagnosticLog.Log($"Blocklist {key}: no domains to restore."); continue; }
                 for (int attempt = 1; attempt <= 5; attempt++)
                 {
@@ -3164,6 +3164,12 @@ public sealed class FirewallManager : IDisposable
     public Func<string, bool>? DomainBlockTest { set => _isDomainBlocked = value; }
     private Func<string, bool>? _isDomainBlocked;
 
+    /// <summary>True for a name the user marked "!!" in the DNS resolver's blocklist:
+    /// block its addresses even when they also serve names the user has not
+    /// blocked. Set by the window, like DomainBlockTest.</summary>
+    public Func<string, bool>? DomainForceTest { set => _isDomainForced = value; }
+    private Func<string, bool>? _isDomainForced;
+
     /// <summary>Blocks the application that asked for a blocked name from reaching
     /// the address it resolved to.
     ///
@@ -3271,7 +3277,18 @@ public sealed class FirewallManager : IDisposable
         // are ALL blocked. One name the user has not asked to block is enough to
         // veto it, because that name is the collateral.
         var seen = DnsObservations.NameListForIp(remoteIp);
-        if (seen.Count > 1)
+
+        // "!!name" in the blocklist: the user has asked for the address to go even
+        // when it is shared, knowing what that costs. Every check below exists to
+        // protect names the user has NOT blocked - this is the user saying they
+        // accept losing them - so it skips them, and says so where it is visible.
+        bool forced = _isDomainForced?.Invoke(domain) ?? false;
+        if (forced && seen.Count > 1)
+            EventLog($"Blocked domain {domain} is marked !! (block everywhere): blocking {remoteIp} although "
+                   + $"it has also served {Math.Max(0, seen.Count - 1)} other name(s) - "
+                   + string.Join(", ", seen.Where(n => !string.Equals(n, domain, StringComparison.OrdinalIgnoreCase)).Take(5))
+                   + (seen.Count > 6 ? ", ..." : "") + ". Those stop working on this PC too.");
+        if (!forced && seen.Count > 1)
         {
             // Saturation first. The per-address name set is capped, so a busy CDN
             // edge stops recording once it fills - and at that point "every name
@@ -3419,6 +3436,11 @@ public sealed class FirewallManager : IDisposable
 
     public int UiZoomPercent => _data.UiZoomPercent;
     public void SetUiZoomPercent(int v) { _data.UiZoomPercent = Math.Clamp(v, 75, 150); SaveStore(); }
+
+    /// <summary>Applications-list icon size. Only the three offered sizes are
+    /// stored; anything else (a hand-edited profile) reads as medium.</summary>
+    public int AppIconSize => _data.AppIconSize is 16 or 22 or 32 ? _data.AppIconSize : 22;
+    public void SetAppIconSize(int px) { _data.AppIconSize = px is 16 or 22 or 32 ? px : 22; SaveStore(); }
 
     public bool TrayNotifications => _data.TrayNotifications;
     public void SetTrayNotifications(bool v) { _data.TrayNotifications = v; SaveStore(); }
@@ -3883,6 +3905,77 @@ public sealed class FirewallManager : IDisposable
         return _data.EnabledBlocklists.Contains(key);
     }
 
+    // ------------------------------------------------ per-domain exclusions
+    // A category is on or off; inside it, the user can untick single domains
+    // (Security - Show domains) so one entry that breaks something does not mean
+    // turning the whole category off. Every path that enforces a category - the
+    // hosts block, the WFP fallback, and its restore after a restart - reads
+    // ActiveDomainsFor, never DomainsFor, so an unticked name is never blocked.
+
+    /// <summary>Every domain in the category, sorted, unticked ones included -
+    /// for the list the user ticks and unticks.</summary>
+    public List<string> BlocklistDomains(string key)
+    {
+        var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+        var list = cat == null ? new List<string>() : DomainsFor(cat);
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list;
+    }
+
+    /// <summary>The names the user has unticked in this category.</summary>
+    public HashSet<string> BlocklistExclusions(string key)
+    {
+        lock (_dataLock)
+            return _data.BlocklistExclusions.TryGetValue(key, out var l)
+                ? new HashSet<string>(l, StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public int BlocklistExcludedCount(string key)
+    {
+        var excluded = BlocklistExclusions(key);
+        if (excluded.Count == 0) return 0;
+        return BlocklistDomains(key).Count(excluded.Contains);
+    }
+
+    /// <summary>The category's domains minus the ones the user unticked. The only
+    /// list any enforcement path may use.</summary>
+    private List<string> ActiveDomainsFor(Models.BlocklistCategory cat)
+    {
+        var all = DomainsFor(cat);
+        var excluded = BlocklistExclusions(cat.Key);
+        return excluded.Count == 0 ? all : all.Where(d => !excluded.Contains(d)).ToList();
+    }
+
+    /// <summary>
+    /// Replaces the category's unticked names and re-applies it if it is on.
+    /// Hosts-enforced: the hosts block is rewritten. WFP-enforced (the fallback
+    /// when security software locks the hosts file): the category is switched off
+    /// and on again, since its filters are per resolved address and cannot be
+    /// edited by name. Slow in that case - call it off the UI thread.
+    /// Returns false only when re-applying a category that was on failed.
+    /// </summary>
+    public bool SetBlocklistExclusions(string key, IEnumerable<string> excluded)
+    {
+        var list = excluded.Select(d => d.Trim().ToLowerInvariant()).Where(d => d.Length > 0)
+                           .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(d => d, StringComparer.Ordinal).ToList();
+        lock (_dataLock)
+        {
+            if (list.Count == 0) _data.BlocklistExclusions.Remove(key);
+            else _data.BlocklistExclusions[key] = list;
+        }
+        SaveStore();
+        EventLog($"Blocklist {key}: {list.Count} domain(s) unticked - kept working while the category is on.");
+
+        if (!IsBlocklistOn(key)) return true;
+        if (IsBlocklistViaWfp(key))
+        {
+            SetBlocklistEnabled(key, false);
+            return SetBlocklistEnabled(key, true);
+        }
+        return RebuildHostsBlock();
+    }
+
     /// <summary>True when a category is being enforced via WFP IP filters rather
     /// than the hosts file (because security software blocked the hosts write).</summary>
     public bool IsBlocklistViaWfp(string key) => _data.BlocklistWfpFilters.ContainsKey(key);
@@ -3904,7 +3997,7 @@ public sealed class FirewallManager : IDisposable
         var all = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var cat in Models.BlocklistCatalog.All)
             if (_data.EnabledBlocklists.Contains(cat.Key) && !_data.BlocklistWfpFilters.ContainsKey(cat.Key))
-                foreach (var d in DomainsFor(cat)) all.Add(d);
+                foreach (var d in ActiveDomainsFor(cat)) all.Add(d);
         foreach (var d in _customDomains) all.Add(d); // §5 user custom list
         return HostsFileService.SetBlockedDomains(all, _store.ProfileFolder);
     }
@@ -3986,7 +4079,7 @@ public sealed class FirewallManager : IDisposable
         // 2) Hosts blocked (e.g. Defender). Fall back to WFP IP blocking for lists
         //    small enough that one-filter-per-IP is practical.
         var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
-        var domains = cat == null ? new List<string>() : DomainsFor(cat);
+        var domains = cat == null ? new List<string>() : ActiveDomainsFor(cat);
         if (cat == null || domains.Count == 0 || domains.Count > MaxWfpBlocklistDomains)
         {
             _data.EnabledBlocklists.Remove(key);

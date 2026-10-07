@@ -1020,14 +1020,16 @@
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
-                                                <Grid Width="22" Height="22" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <Grid Width="{DynamicResource AppIconSize}" Height="{DynamicResource AppIconSize}"
+                                                      VerticalAlignment="Center" Margin="0,0,8,0">
                                                     <Ellipse Fill="{Binding Name, Converter={StaticResource NameToBrush}}"
                                                              Visibility="{Binding Icon, Converter={StaticResource NullToVisible}}" />
                                                     <TextBlock Text="{Binding Name, Converter={StaticResource NameInitial}}"
                                                                Foreground="{DynamicResource TextPrimary}" FontSize="11" FontWeight="SemiBold"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                                                Visibility="{Binding Icon, Converter={StaticResource NullToVisible}}" />
-                                                    <Image Source="{Binding Icon}" Width="22" Height="22"
+                                                    <Image Source="{Binding Icon}"
+                                                           Width="{DynamicResource AppIconSize}" Height="{DynamicResource AppIconSize}"
                                                            SnapsToDevicePixels="True" />
                                                 </Grid>
                                                 <Ellipse Width="9" Height="9" VerticalAlignment="Center"
@@ -1920,7 +1922,7 @@
                         <DockPanel>
                             <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="0,0,0,8">
                                 <TextBlock Text="BLOCKLIST" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
-                                <gw:InfoTip Text="One domain per line; subdomains are included, so example.com also covers ads.example.com. Hosts-style '0.0.0.0 domain' lines and pasted URLs are understood. Prefix a line with @@ to ALLOW it instead - @@example.com keeps that name working even when a category or preset blocks it, so one bad entry in a hundred-thousand-domain list does not mean turning the whole category off. Blocking works two ways: lookups sent to GunWall's resolver return NXDOMAIN, and - with 'Watch system DNS lookups' on - connections to addresses a blocked domain resolved to are blocked in the kernel. The second covers the whole PC, but only for lookups Windows performs: a browser with its own encrypted DNS turned on (Edge and Chrome call it 'Secure DNS') never asks Windows, so GunWall cannot tell which name its connections belong to. Turn that setting off in the browser for blocking to apply to it." />
+                                <gw:InfoTip Text="One domain per line; subdomains are included, so example.com also covers ads.example.com. Hosts-style '0.0.0.0 domain' lines and pasted URLs are understood. Prefix a line with @@ to ALLOW it instead - @@example.com keeps that name working even when a category or preset blocks it, so one bad entry in a hundred-thousand-domain list does not mean turning the whole category off. Prefix a line with !! to block it EVERYWHERE - !!example.com also blocks the addresses it resolves to when GunWall cannot tell which app asked, even if those addresses serve other sites; those sites stop working on this PC too, and the Alerts page names them. Use it only for a domain you want gone at any cost. Blocking works two ways: lookups sent to GunWall's resolver return NXDOMAIN, and - with 'Watch system DNS lookups' on - connections to addresses a blocked domain resolved to are blocked in the kernel. The second covers the whole PC, but only for lookups Windows performs: a browser with its own encrypted DNS turned on (Edge and Chrome call it 'Secure DNS') never asks Windows, so GunWall cannot tell which name its connections belong to. Turn that setting off in the browser for blocking to apply to it." />
                             </StackPanel>
                             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                                 <Button x:Name="DnsPresetBtn" Content="Download ads + malware preset"
@@ -2848,6 +2850,17 @@
                                     <ComboBoxItem Content="Large (110%)" Tag="110" />
                                     <ComboBoxItem Content="Extra large (125%)" Tag="125" />
                                 </ComboBox>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
+                                <TextBlock Text="App icon size" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
+                                <ComboBox x:Name="AppIconSizeCombo" Width="200"
+                                          SelectionChanged="Pref_Changed">
+                                    <ComboBoxItem Content="Small" Tag="16" />
+                                    <ComboBoxItem Content="Medium" Tag="22" />
+                                    <ComboBoxItem Content="Large" Tag="32" />
+                                </ComboBox>
+                                <gw:InfoTip Text="Size of the program icons in the Applications list. Medium is the size it has always been; Large makes icons easier to tell apart, Small fits more rows on screen." />
                             </StackPanel>
                             <CheckBox x:Name="RunAtStartupCheck" Content="Run GunWall when Windows starts"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"

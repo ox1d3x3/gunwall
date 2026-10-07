@@ -15,6 +15,51 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.173] — 2026-10-07
+
+### Added — untick single domains in a blocklist category
+A category (Windows telemetry, Windows Update) was all or nothing: one entry that
+broke something meant turning off the other few hundred. **Show domains**, beside
+each category on the Security page, lists every domain with a tick and a filter
+box. Unticked domains are kept working while the category is on; the choice is
+stored by name, so it survives **Update lists from online**, and the category's
+description says how many are unticked. Every path that enforces a category - the
+hosts file, the firewall-rule fallback when security software locks the hosts
+file, and its restore after a restart - reads the list without the unticked names.
+Changing the choices re-applies a category that is on.
+
+### Added — `!!` blocks a domain everywhere
+When GunWall cannot tell which program asked for a blocked domain, it blocks the
+server's address only if every name seen on that address is blocked too, because a
+shared server also serves sites the user has not blocked. `!!example.com` in the DNS
+resolver's **BLOCKLIST** box overrides that for that domain: the address is blocked
+anyway, and the Alerts page names the other sites it also cut off. It is a block as
+well; an `@@` allow still beats it.
+
+### Fixed — every `@@` line was reported as invalid
+Applying the DNS resolver blocklist listed each `@@name` line as "'@' isn't valid in
+a hostname", although the resolver applied it correctly. The report now reads the
+prefix (`@@` or `!!`) separately from the name.
+
+### Added — application icon size
+**Settings → PREFERENCES → App icon size**: Small, Medium (the size it has always
+been) or Large, for the Applications list. Applied at once, without a restart.
+
+### Changed — listening sockets read "Listening"
+A socket waiting for connections has an all-zero remote; its Location cell said
+*Reserved address*. It now says *Listening*.
+
+### Added — check `blocklist-levels`
+Fails if any category enforcement path uses the full list instead of the list
+without unticked names, if changing the choices does not re-apply the category, if
+the shared-address protections are skipped for anything but a `!!` name or the skip
+is not logged, if a prefixed line is reported as invalid, if `!!` stops also
+blocking or beats an allow, or if the icon size is hard-coded, preset in markup, or
+not re-applied at load, on Apply and after a reset. Thirteen defects were
+reintroduced individually and the check confirmed failing on each.
+
+---
+
 ## [0.99.172] — 2026-10-07
 
 ### Changed — loading GeoIP creates 70% less throwaway memory

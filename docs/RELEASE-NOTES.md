@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.172 — public beta
+# GunWall 0.99.173 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.172-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.173-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -68,6 +68,10 @@ afterwards cannot read it and needs the key entered again.
 **Interface**
 - Explanations sit behind an **ⓘ** icon beside each heading and option, shown on
   hover, instead of paragraphs under every heading.
+- Blocklist categories can be trimmed domain by domain (**Show domains**), and a
+  domain can be blocked everywhere with `!!`.
+- Application icon size: small, medium or large.
+- The Location column says why an address has no country.
 
 **Performance**
 - Idle memory about 150–190 MB (from about 350 MB) and idle CPU about 0.2%.

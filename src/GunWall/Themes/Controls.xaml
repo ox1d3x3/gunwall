@@ -332,6 +332,10 @@
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="SubtitleFontSize">19</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="TitleFontSize">34</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="StatFontSize">30</sys:Double>
+    <!-- Applications-list icon, Settings - Preferences - App icon size. Replaced at
+         runtime (16 / 22 / 32) through Application.Resources; 22 is the size the
+         column always had, so nothing moves until someone picks another. -->
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="AppIconSize">22</sys:Double>
 
 
     <!-- Handed over to WPF UI: ComboBox, ComboBoxItem, PasswordBox, TextBox,
