@@ -15,6 +15,31 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.179] — 2026-10-07
+
+### Changed — the tray menu matches the app
+The tray icon's right-click menu used the stock grey Windows menu, with a checkbox
+tick for lockdown. It is now drawn in GunWall's own colours, light or dark as the
+app is set: rounded corners and border on Windows 11, a rounded highlight, an icon
+beside each item, and a status line at the top showing the same coloured dot and
+word as the sidebar (*Protected*, *Monitoring only*, *Paused*, *Locked down*).
+While lockdown is on, **Release lockdown** is shown in red with an open padlock
+instead of a tick.
+
+### Changed — Block and Allow show at once
+On the Applications screen, the row now changes the moment **Block** or **Allow**
+is pressed, and the rule is applied straight after. The first Block of a program
+used to pause for about a sixth of a second before the row changed, while the
+program file was fingerprinted for the rule. A second click on the same row while
+it is being applied is ignored; if the change fails, the row goes back to what is
+actually in force.
+
+### Fixed — the sidebar said "Paused" during lockdown
+With lockdown on and a pause running, the sidebar said *Paused* while the dashboard
+said *Lockdown*. A pause does not lift lockdown - all traffic is still blocked - so
+the sidebar and the tray menu now say *Locked down* (the sidebar adds *pause
+running*).
+
 ## [0.99.178] — 2026-10-07
 
 ### Fixed — the tray menu's lockdown item did not show lockdown was on

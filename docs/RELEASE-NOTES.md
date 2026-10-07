@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.178 — public beta
+# GunWall 0.99.179 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.178-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.179-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -71,8 +71,10 @@ afterwards cannot read it and needs the key entered again.
 - Blocklist categories can be trimmed domain by domain (**Show domains**), and a
   domain can be blocked everywhere with `!!`.
 - Application icon size: small, medium or large.
-- The tray menu offers **Engage lockdown** or **Release lockdown** as it applies,
-  and the tray tooltip says when lockdown is on.
+- The tray menu is drawn in GunWall's own colours, with a status line at the top,
+  and offers **Engage lockdown** or **Release lockdown** as it applies; the tray
+  tooltip says when lockdown is on.
+- Block and Allow change the Applications row the moment they are pressed.
 - The Location column says why an address has no country.
 
 **Performance**

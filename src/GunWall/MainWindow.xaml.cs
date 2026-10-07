@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.178 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.179 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3336,10 +3336,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// The sparkline is compared by its points: it is rebuilt as a new object
     /// every second.
     /// </summary>
-    private static void CopyAppRow(AppInfo cur, AppInfo next)
+    private void CopyAppRow(AppInfo cur, AppInfo next)
     {
         cur.Name = next.Name;
-        cur.Status = next.Status;
+        // A row whose Block or Allow is still being applied keeps the status the
+        // click already showed; a refresh landing in between would otherwise flick
+        // it back for a moment (0.99.179).
+        if (!_appActionsPending.Contains(cur.ExecutablePath)) cur.Status = next.Status;
         cur.Category = next.Category;
         cur.Publisher = next.Publisher;
         cur.Icon = next.Icon;
@@ -5243,31 +5246,49 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (!RequireEngine()) return;
         if (clicked is not AppInfo app) return;
 
-        try
+        string path = app.ExecutablePath;
+        if (_appActionsPending.Contains(path)) return;     // a second click while the first applies
+        bool block = _firewall.EffectiveStatus(path) != AppStatus.Blocked;
+        if (block && FirewallManager.IsCriticalProcess(path))
         {
-            if (_firewall.EffectiveStatus(app.ExecutablePath) == AppStatus.Blocked)
-                _firewall.AllowApp(app.ExecutablePath, app.Name);
-            else
-            {
-                if (FirewallManager.IsCriticalProcess(app.ExecutablePath))
-                {
-                    var ask = MessageBox.Show(
-                        $"{app.Name} is a core Windows process. Blocking it can break networking, " +
-                        "updates, or sign-in.\n\nBlock it anyway?",
-                        "Caution: system process", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                    if (ask != MessageBoxResult.Yes) return;
-                }
-                _firewall.BlockApp(app.ExecutablePath, app.Name);
-            }
+            var ask = MessageBox.Show(
+                $"{app.Name} is a core Windows process. Blocking it can break networking, " +
+                "updates, or sign-in.\n\nBlock it anyway?",
+                "Caution: system process", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (ask != MessageBoxResult.Yes) return;
+        }
 
-            RebuildAppsList();
-            Services.DiagnosticLog.Log($"Apps list: {app.Name} is now {_firewall.EffectiveStatus(app.ExecutablePath)}.");
-        }
-        catch (Exception ex)
+        // The row shows the result at once and the work follows (0.99.179). The
+        // first Block or Allow of a program hashes its file for the rule, which
+        // took 140-170 ms on the UI thread in the 0.99.178 bundle - long enough
+        // that the click visibly hung before the row changed. Queued below render
+        // priority, the new status is drawn first. If the work fails, the rebuild
+        // in finally puts back whatever is actually true.
+        _appActionsPending.Add(path);
+        app.Status = block ? AppStatus.Blocked : AppStatus.Allowed;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
         {
-            ShowError(ex);
-        }
+            try
+            {
+                if (block) _firewall.BlockApp(path, app.Name);
+                else       _firewall.AllowApp(path, app.Name);
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex);
+            }
+            finally
+            {
+                _appActionsPending.Remove(path);
+                RebuildAppsList();
+                Services.DiagnosticLog.Log($"Apps list: {app.Name} is now {_firewall.EffectiveStatus(path)}.");
+            }
+        }));
     }
+
+    /// <summary>Paths whose Block or Allow has been shown but not yet applied.
+    /// Compared without case, as Windows paths are.</summary>
+    private readonly HashSet<string> _appActionsPending = new(StringComparer.OrdinalIgnoreCase);
 
     private void BrowseBlock_Click(object sender, RoutedEventArgs e)
     {
@@ -8473,6 +8494,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (ApplyStatus != null) ApplyStatus.Text = "Settings applied.";
     }
 
+    /// <summary>The one-line posture and its colour role ("Allow", "Warn",
+    /// "Block"), shared by the sidebar and the tray menu so they cannot disagree.
+    ///
+    /// Lockdown is checked before the pause, matching the dashboard hero. They are
+    /// different states and can both be on: a pause turns Zero-Trust off for a
+    /// while, but the lockdown filters stay, so everything is still blocked.
+    /// Until 0.99.179 the sidebar said "Paused" in that case while the hero said
+    /// "Lockdown".</summary>
+    private (string Title, string Role) PostureTitle()
+    {
+        if (!_engineReady)                  return ("Not protected",   "Block");
+        if (_firewall.LockdownEngaged)      return ("Locked down",     "Block");
+        if (_firewall.IsSnoozed)            return ("Paused",          "Warn");
+        if (_firewall.StrictMode)           return ("Protected",       "Allow");
+        return ("Monitoring only", "Warn");
+    }
+
     private void UpdateStatusBanner()
     {
         // The hero replaced the shield-and-banner block; this method now only
@@ -8488,26 +8526,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // UpdateHero has carried the correct five-condition mapping since
         // 0.99.35; this now agrees with it instead of contradicting it two
         // inches away on the same screen.
-        string title, role;
-        if (!_engineReady)                    { title = "Not protected";   role = "Block"; }
-        else if (_firewall.IsSnoozed)         { title = "Paused";          role = "Warn";  }
-        else if (_firewall.LockdownEngaged)   { title = "Locked down";     role = "Block"; }
-        else if (_firewall.StrictMode)        { title = "Protected";       role = "Allow"; }
-        else                                  { title = "Monitoring only"; role = "Warn";  }
+        var (title, role) = PostureTitle();
 
         var fill = (Brush)System.Windows.Application.Current.FindResource(role + "Text");
 
         // Always-visible status in the sidebar (mirrors the dashboard shield).
         string sideSub = !_engineReady ? "Run as administrator"
+            : _firewall.LockdownEngaged ? (_firewall.IsSnoozed ? "All traffic blocked, pause running"
+                                                               : "All traffic blocked")
             : _firewall.IsSnoozed ? "Filtering paused"
-            : _firewall.LockdownEngaged ? "All traffic blocked"
             : _firewall.StrictMode ? "Zero-Trust active"
             : "Watching, not blocking";
         // One word for the rail, because 92 pixels is one word wide. The full
         // title and sentence still exist - they are the tooltip.
         string sideWord = !_engineReady ? "No admin"
-            : _firewall.IsSnoozed ? "Paused"
             : _firewall.LockdownEngaged ? "Lockdown"
+            : _firewall.IsSnoozed ? "Paused"
             : _firewall.StrictMode ? "Protected"
             : "Watching";
         // Track when the current protected stretch began, so Uptime answers
@@ -8714,9 +8748,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     RestoreFromTray();
             };
 
-            var menu = new System.Windows.Forms.ContextMenuStrip();
-            menu.Items.Add("Open GunWall", null, (_, _) => RestoreFromTray());
-            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            // Drawn in the app's palette with Fluent icons (Controls/TrayMenu.cs);
+            // it was the stock grey Windows menu, reported from use as not
+            // matching the app (0.99.179).
+            var tray = new Controls.TrayMenu();
+            var menu = tray.Strip;
+
+            // A reading of the posture, the same words and dot colour as the
+            // sidebar, so the menu answers "is it on?" before anything is clicked.
+            var statusItem = tray.AddStatus();
+            tray.AddSeparator();
+            tray.Add("Open GunWall", Controls.TrayMenu.Glyphs.Open, RestoreFromTray);
+            tray.AddSeparator();
 
             // Straight to a screen, without opening the window and then hunting for
             // it in the sidebar. Flat rather than nested under a "Go to" submenu:
@@ -8725,40 +8768,48 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // Five of thirteen screens, chosen as the ones reached in a hurry -
             // something was blocked, or something looks wrong. Listing all thirteen
             // would make the menu long enough to have to read rather than aim at.
-            foreach (var (label, tag) in new[]
+            foreach (var (label, tag, glyph) in new[]
             {
-                ("Applications", "Firewall"),
-                ("Connections",  "Connections"),
-                ("Activity",     "Activity"),
-                ("Security",     "Security"),
-                ("Settings",     "Settings"),
+                ("Applications", "Firewall",    Controls.TrayMenu.Glyphs.Applications),
+                ("Connections",  "Connections", Controls.TrayMenu.Glyphs.Connections),
+                ("Activity",     "Activity",    Controls.TrayMenu.Glyphs.Activity),
+                ("Security",     "Security",    Controls.TrayMenu.Glyphs.Security),
+                ("Settings",     "Settings",    Controls.TrayMenu.Glyphs.Settings),
             })
             {
                 string t = tag;                       // captured per iteration
-                menu.Items.Add(label, null, (_, _) => OpenAt(t));
+                tray.Add(label, glyph, () => OpenAt(t));
             }
 
-            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            tray.AddSeparator();
             // Named for what pressing it will do, read fresh each time the menu
             // opens. It said "Toggle lockdown" in both states, so after engaging it
             // from the tray nothing there said lockdown was on or offered to release
             // it (reported from use, 0.99.177). The click toggles, as before.
-            var lockItem = new System.Windows.Forms.ToolStripMenuItem("Engage lockdown");
-            lockItem.Click += (_, _) =>
-                Dispatcher.Invoke(() => LockdownButton_Click(this, new RoutedEventArgs()));
-            menu.Items.Add(lockItem);
+            // While engaged it is drawn in the brand red with an open padlock,
+            // instead of the checkbox tick 0.99.178 used.
+            var lockItem = tray.Add("Engage lockdown", Controls.TrayMenu.Glyphs.Lock,
+                () => Dispatcher.Invoke(() => LockdownButton_Click(this, new RoutedEventArgs())));
             menu.Opening += (_, _) =>
             {
                 try
                 {
                     bool engaged = _firewall.LockdownEngaged;
-                    lockItem.Text = engaged ? "Release lockdown" : "Engage lockdown";
-                    lockItem.Checked = engaged;
+                    Controls.TrayMenu.Set(lockItem,
+                        engaged ? "Release lockdown" : "Engage lockdown",
+                        engaged ? Controls.TrayMenu.Glyphs.Unlock : Controls.TrayMenu.Glyphs.Lock,
+                        engaged ? Controls.TrayTone.Block : Controls.TrayTone.Normal);
+
+                    var (title, role) = PostureTitle();
+                    Controls.TrayMenu.SetStatus(statusItem, title,
+                        role == "Allow" ? Controls.TrayTone.Allow
+                        : role == "Warn" ? Controls.TrayTone.Warn
+                        : Controls.TrayTone.Block);
                 }
                 catch { }
             };
-            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-            menu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(ExitFromTray));
+            tray.AddSeparator();
+            tray.Add("Exit", Controls.TrayMenu.Glyphs.Exit, () => Dispatcher.Invoke(ExitFromTray));
             _tray.ContextMenuStrip = menu;
         }
         catch (Exception ex)

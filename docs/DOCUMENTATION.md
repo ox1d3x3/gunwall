@@ -543,8 +543,13 @@ GunWall noticed but you never decided on; they ask again the next time they conn
 **Engage lockdown** (bottom-left) cuts all traffic immediately. Use it if you
 suspect something is wrong. Press it again to release. The same action is in the
 tray icon's right-click menu: it reads **Engage lockdown**, or **Release lockdown**
-(ticked) while lockdown is on, and the tray tooltip says *lockdown, all traffic
-blocked*.
+(in red, with an open padlock) while lockdown is on, and the tray tooltip says
+*lockdown, all traffic blocked*. The top line of the tray menu shows the current
+state, the same as the sidebar.
+
+Lockdown and a snooze are separate: a snooze pauses your rules, but it does not
+lift lockdown. With both on, everything is still blocked, and GunWall shows
+*Locked down*.
 
 **Snooze 15 min** (Dashboard) pauses enforcement for a set period, then restores it
 automatically. Useful for installing something that needs broad access, without
