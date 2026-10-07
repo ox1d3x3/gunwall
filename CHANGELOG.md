@@ -15,6 +15,22 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.180] — 2026-10-07
+
+### Changed — every prompt matches the app
+Confirmations, warnings and errors used the grey Windows message box. They now
+use GunWall's own: a rounded card in the app's colours and font, an icon in the
+state colour (amber warning, red error), the title over the message, and the
+buttons in a footer band with the default one in the brand colour. Enter presses
+the default button and Esc cancels, as before.
+
+The exit prompt now says what its buttons do - **Turn off and exit**, **Keep on
+and exit**, **Cancel** - instead of Yes / No / Cancel with a legend in the text.
+
+### Changed — a compact tray menu
+The tray menu introduced in 0.99.179 was too tall for a tray menu. Rows, icons and
+separators are smaller, close to the size of a standard Windows menu.
+
 ## [0.99.179] — 2026-10-07
 
 ### Changed — the tray menu matches the app

@@ -76,7 +76,9 @@ internal sealed class TrayMenu
         // Every item carries this empty image so the menu reserves an icon column
         // of the right width. The glyph is drawn into that column by the renderer;
         // the bitmap itself is never shown.
-        int slot = Px(20);
+        // 16 is the menu's own default icon size, so the column stays at its
+        // stock width rather than widening the menu (0.99.180: compact).
+        int slot = Px(16);
         _iconSlot = new Bitmap(slot, slot);
 
         Strip.HandleCreated += (_, _) => ApplyWindowFrame();
@@ -105,7 +107,7 @@ internal sealed class TrayMenu
     }
 
     public void AddSeparator() =>
-        Strip.Items.Add(new WinForms.ToolStripSeparator { AutoSize = false, Height = Px(9) });
+        Strip.Items.Add(new WinForms.ToolStripSeparator { AutoSize = false, Height = Px(7) });
 
     /// <summary>Changes an item's label, icon and colour role, e.g. for the
     /// lockdown item when the menu opens.</summary>
@@ -129,9 +131,10 @@ internal sealed class TrayMenu
         Tag = look,
         Image = _iconSlot,
         ImageScaling = WinForms.ToolStripItemImageScaling.None,
-        // Item padding adds to the height the menu computes for every row: about
-        // 22 px stock, 32 px with this - the spacing of the Windows 11 menus.
-        Padding = new WinForms.Padding(0, Px(5), 0, Px(5)),
+        // Item padding adds to the height the menu computes for every row. 0.99.179
+        // used 5 (rows about 32 px, as Windows 11's own menus) and it was reported
+        // as huge for a tray menu; 2 gives about 24 px, one notch above stock.
+        Padding = new WinForms.Padding(0, Px(2), 0, Px(2)),
     };
 
     // ---- Palette -------------------------------------------------------------
@@ -254,7 +257,7 @@ internal sealed class TrayMenu
         public Renderer(float scale)
         {
             _scale = scale;
-            _iconFont = new Font(IconFontFamily(), 10f);
+            _iconFont = new Font(IconFontFamily(), 8.5f);
         }
 
         private int Scaled(float logical) => (int)Math.Round(logical * _scale);
@@ -292,7 +295,7 @@ internal sealed class TrayMenu
         {
             if (!e.Item.Enabled || !e.Item.Selected) return;
             // Inset and rounded, as Windows 11 draws its own menu highlight.
-            var r = new Rectangle(Scaled(4), 0, e.Item.Width - Scaled(8), e.Item.Height);
+            var r = new Rectangle(Scaled(3), 0, e.Item.Width - Scaled(6), e.Item.Height);
             if (r.Width <= 0 || r.Height <= 0) return;
             using var path = Rounded(r, Scaled(4));
             using var hover = new SolidBrush(Palette.Hover);
@@ -310,7 +313,7 @@ internal sealed class TrayMenu
             var slot = e.ImageRectangle;
             if (look.IsStatus)
             {
-                int d = Scaled(8);
+                int d = Scaled(7);
                 var dot = new Rectangle(slot.X + (slot.Width - d) / 2, slot.Y + (slot.Height - d) / 2, d, d);
                 using var fill = new SolidBrush(Palette.ToneColor(look.Tone));
                 var old = g.SmoothingMode;
@@ -340,7 +343,7 @@ internal sealed class TrayMenu
         {
             int y = e.Item.Height / 2;
             using var pen = new Pen(Palette.Border);
-            e.Graphics.DrawLine(pen, Scaled(10), y, e.Item.Width - Scaled(10), y);
+            e.Graphics.DrawLine(pen, Scaled(8), y, e.Item.Width - Scaled(8), y);
         }
 
         // Nothing in this menu is a checkbox or has a submenu.

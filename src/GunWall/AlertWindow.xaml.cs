@@ -186,7 +186,7 @@ public partial class AlertWindow : Window
         {
             GunWall.Services.DiagnosticLog.Log(
                 $"Allow declined: {_info.ProcessName} no longer exists at {_info.ExePath}");
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"{_info.ProcessName} has already closed and its file is gone, so there is "
                 + "nothing left to write a rule for.\n\nThis is normal for updaters, which "
                 + "copy themselves to a temporary folder and delete it when they finish. "
@@ -205,7 +205,7 @@ public partial class AlertWindow : Window
             // total" - a failure the user watched happen and the log denied. An
             // error worth interrupting someone for is worth recording.
             Services.DiagnosticLog.LogException("AlertWindow/Allow", ex);
-            MessageBox.Show(ExplainRuleFailure("allow", ex), "GunWall",
+            ThemedMessageBox.Show(ExplainRuleFailure("allow", ex), "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
         Close();
@@ -239,7 +239,7 @@ public partial class AlertWindow : Window
         try { _onBlock(); }
         catch (Exception ex)
         {
-            MessageBox.Show($"Could not block: {ex.Message}", "GunWall",
+            ThemedMessageBox.Show($"Could not block: {ex.Message}", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
         Close();

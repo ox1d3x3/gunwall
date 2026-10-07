@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.179 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.180 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -483,7 +483,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             _engineReady = false;
             SetEngineStatus("Engine: unavailable");
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 "GunWall could not initialise the Windows Filtering Platform.\n\n" +
                 "Make sure you are running as administrator.\n\nDetails: " + ex.Message,
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1140,7 +1140,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         if (!int.TryParse(DnsPortBox.Text.Trim(), out int port) || port < 1 || port > 65535)
         {
-            MessageBox.Show("Enter a valid port (1-65535). The standard DNS port is 53.",
+            ThemedMessageBox.Show("Enter a valid port (1-65535). The standard DNS port is 53.",
                             "DNS resolver", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -1171,7 +1171,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"Couldn't start the resolver on 127.0.0.1:{port}.\n\n{ex.Message}\n\n" +
                 "Port 53 may already be in use by another DNS service. Try a different " +
                 "port (e.g. 5335) and point your test there with:\n" +
@@ -1235,7 +1235,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             sb.AppendLine("Blocking a domain also covers its subdomains, but not the other "
                         + "way round: an entry for www.example.com will not block example.com. "
                         + "Add the shorter name to cover both.");
-            MessageBox.Show(sb.ToString(), "Blocklist applied",
+            ThemedMessageBox.Show(sb.ToString(), "Blocklist applied",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
@@ -1357,7 +1357,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         string? url = Services.DnsResolver.ValidateDohUrl(DnsDohUrlBox?.Text, out string err);
         if (url == null)
         {
-            MessageBox.Show(err, "Secure DNS", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ThemedMessageBox.Show(err, "Secure DNS", MessageBoxButton.OK, MessageBoxImage.Warning);
             return null;
         }
         return url;
@@ -1961,7 +1961,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 string cleaned = Services.DnsResolver.NormalizeBlocklistEntry(val, out string problem);
                 if (cleaned.Length == 0)
                 {
-                    MessageBox.Show(
+                    ThemedMessageBox.Show(
                         problem.Length > 0
                             ? $"That is not a domain: {problem}."
                             : "That is not a domain GunWall can match.",
@@ -1977,7 +1977,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (work.Rules.Any(r => r.EntityType == type
                                     && string.Equals(r.Value, val, StringComparison.OrdinalIgnoreCase)))
             {
-                MessageBox.Show($"There is already a rule for {val}.",
+                ThemedMessageBox.Show($"There is already a rule for {val}.",
                     "Access rules", MessageBoxButton.OK, MessageBoxImage.Information);
                 valueBox.Clear();
                 return;
@@ -2738,7 +2738,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void ClearActivity_Click(object sender, RoutedEventArgs e)
     {
-        if (_firewall.ConfirmClearLogs && MessageBox.Show(
+        if (_firewall.ConfirmClearLogs && ThemedMessageBox.Show(
                 "Clear the activity log?", "GunWall",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         _activity.Clear();
@@ -2746,7 +2746,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void ClearPackets_Click(object sender, RoutedEventArgs e)
     {
-        if (_firewall.ConfirmClearLogs && MessageBox.Show(
+        if (_firewall.ConfirmClearLogs && ThemedMessageBox.Show(
                 "Clear the packets log?", "GunWall",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         _packets.Clear();
@@ -2775,20 +2775,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             int port = 0;
             if (!string.IsNullOrWhiteSpace(RulePort.Text) && !int.TryParse(RulePort.Text.Trim(), out port))
             {
-                MessageBox.Show("Port must be a number (or blank for any).", "GunWall",
+                ThemedMessageBox.Show("Port must be a number (or blank for any).", "GunWall",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             int localPort = 0;
             if (!string.IsNullOrWhiteSpace(RuleLocalPort.Text) && !int.TryParse(RuleLocalPort.Text.Trim(), out localPort))
             {
-                MessageBox.Show("Local port must be a number (or blank for any).", "GunWall",
+                ThemedMessageBox.Show("Local port must be a number (or blank for any).", "GunWall",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (!string.IsNullOrEmpty(addr) && !IsValidIpOrCidr(addr))
             {
-                MessageBox.Show("Address must be a valid IPv4 (e.g. 1.2.3.4) or subnet " +
+                ThemedMessageBox.Show("Address must be a valid IPv4 (e.g. 1.2.3.4) or subnet " +
                     "(e.g. 192.168.1.0/24), or blank for any.", "GunWall",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
@@ -2808,7 +2808,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             RefreshRulesList();
 
             if (!rule.Applied)
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     "The rule was saved but the firewall filter could not be applied on this " +
                     "system (the condition may be unsupported). It shows as 'Not applied'.",
                     "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -2827,7 +2827,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             try
             {
                 if (!_firewall.RemoveCustomRule(id))
-                    MessageBox.Show("This rule is protected. Unprotect it first to delete it.",
+                    ThemedMessageBox.Show("This rule is protected. Unprotect it first to delete it.",
                         "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
                 RefreshRulesList();
             }
@@ -2872,7 +2872,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             int n = _firewall.AddToBlocklist(lines);
             BlocklistInput.Clear();
             RefreshRulesList();
-            MessageBox.Show($"Added {n} address(es) to the blocklist.", "GunWall",
+            ThemedMessageBox.Show($"Added {n} address(es) to the blocklist.", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -3858,7 +3858,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex)
         {
             GeoStatus.Text = "GeoIP: download failed";
-            MessageBox.Show("Could not download the GeoIP database:\n\n" + ex.Message +
+            ThemedMessageBox.Show("Could not download the GeoIP database:\n\n" + ex.Message +
                 "\n\nData source: iptoasn.com (free, public domain).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -3923,18 +3923,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (ConnList.SelectedItem is not ConnectionInfo c) return;
         if (c.ProcessId <= 0)
         {
-            MessageBox.Show("No process is associated with this row.",
+            ThemedMessageBox.Show("No process is associated with this row.",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         if (FirewallManager.IsCriticalProcessName(c.ProcessName))
         {
-            var crit = MessageBox.Show(
+            var crit = ThemedMessageBox.Show(
                 $"{c.ProcessName} is a core Windows process. Ending it can crash Windows or force a restart.\n\nEnd it anyway?",
                 "Caution: system process", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (crit != MessageBoxResult.Yes) return;
         }
-        var ask = MessageBox.Show(
+        var ask = ThemedMessageBox.Show(
             $"End process {c.ProcessName} (PID {c.ProcessId})?\n\nUnsaved work in that program will be lost.",
             "End process", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (ask != MessageBoxResult.OK) return;
@@ -3946,7 +3946,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         else
         {
-            MessageBox.Show("Couldn't end that process (it may have already exited, or it needs higher privileges).",
+            ThemedMessageBox.Show("Couldn't end that process (it may have already exited, or it needs higher privileges).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
@@ -3956,7 +3956,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (ConnList.SelectedItem is not ConnectionInfo c) return;
         if (!c.Protocol.StartsWith("TCP", StringComparison.OrdinalIgnoreCase))
         {
-            MessageBox.Show("Only TCP connections can be closed (UDP is connectionless).",
+            ThemedMessageBox.Show("Only TCP connections can be closed (UDP is connectionless).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -3968,7 +3968,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         else
         {
-            MessageBox.Show("Couldn't close that connection. It may have already closed, or it's " +
+            ThemedMessageBox.Show("Couldn't close that connection. It may have already closed, or it's " +
                 "owned by a protected system process.", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -3992,14 +3992,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         string path = ResolveConnPath(c);
         if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
         {
-            MessageBox.Show("Couldn't resolve this connection's program (it may be a protected " +
+            ThemedMessageBox.Show("Couldn't resolve this connection's program (it may be a protected " +
                 "system process).", "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         try
         {
             _firewall.BlockApp(path, c.ProcessName);
-            MessageBox.Show($"Blocked {c.ProcessName}.", "GunWall",
+            ThemedMessageBox.Show($"Blocked {c.ProcessName}.", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -4025,7 +4025,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
             _firewall.EventLog($"Blocked {c.ProcessName} and closed {closed} connection(s)");
             RebuildConnList();
-            MessageBox.Show($"Blocked {c.ProcessName} and closed {closed} active connection(s).",
+            ThemedMessageBox.Show($"Blocked {c.ProcessName} and closed {closed} active connection(s).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -4611,7 +4611,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             if (!_dnsResolver.Running)
             {
-                MessageBox.Show("Start the resolver first, then run this test.",
+                ThemedMessageBox.Show("Start the resolver first, then run this test.",
                     "Test DNS path", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -4683,7 +4683,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Services.DiagnosticLog.Log("DNS path test: " + string.Join(" | ",
                 probes.Select(p => $"{p.Endpoint} {(p.Ok ? "OK" : "FAIL")} {p.Detail}")));
 
-            MessageBox.Show(sb.ToString(), "Test DNS path",
+            ThemedMessageBox.Show(sb.ToString(), "Test DNS path",
                 MessageBoxButton.OK, anyOk ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("DnsPathTest", ex); ShowError(ex); }
@@ -4727,17 +4727,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
             if (!report.Intact)
             {
-                var fix = MessageBox.Show(sb + Environment.NewLine + "Re-apply the missing filters now?",
+                var fix = ThemedMessageBox.Show(sb + Environment.NewLine + "Re-apply the missing filters now?",
                     "Filter integrity", MessageBoxButton.YesNo, MessageBoxImage.Warning);
                 if (fix == MessageBoxResult.Yes)
                 {
                     var repaired = _firewall.CheckIntegrity(repair: true);
-                    MessageBox.Show(repaired.Detail, "Filter integrity",
+                    ThemedMessageBox.Show(repaired.Detail, "Filter integrity",
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 return;
             }
-            MessageBox.Show(sb.ToString(), "Filter integrity", MessageBoxButton.OK,
+            ThemedMessageBox.Show(sb.ToString(), "Filter integrity", MessageBoxButton.OK,
                 recovery ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("CheckIntegrity", ex); ShowError(ex); }
@@ -5251,7 +5251,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         bool block = _firewall.EffectiveStatus(path) != AppStatus.Blocked;
         if (block && FirewallManager.IsCriticalProcess(path))
         {
-            var ask = MessageBox.Show(
+            var ask = ThemedMessageBox.Show(
                 $"{app.Name} is a core Windows process. Blocking it can break networking, " +
                 "updates, or sign-in.\n\nBlock it anyway?",
                 "Caution: system process", MessageBoxButton.YesNo, MessageBoxImage.Warning);
@@ -5336,7 +5336,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             Clipboard.SetDataObject(app.ExecutablePath, true); // more robust than SetText
-            MessageBox.Show($"Copied to clipboard:\n{app.ExecutablePath}",
+            ThemedMessageBox.Show($"Copied to clipboard:\n{app.ExecutablePath}",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("CopyPath", ex); ShowError(ex); }
@@ -5349,12 +5349,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (app == null || string.IsNullOrEmpty(app.ExecutablePath)) return;
         if (!System.IO.File.Exists(app.ExecutablePath))
         {
-            MessageBox.Show($"The file no longer exists at:\n{app.ExecutablePath}",
+            ThemedMessageBox.Show($"The file no longer exists at:\n{app.ExecutablePath}",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         if (!Services.ShellHelper.RevealInExplorer(app.ExecutablePath))
-            MessageBox.Show($"Could not open the location in Explorer.\nThe file is at:\n{app.ExecutablePath}",
+            ThemedMessageBox.Show($"Could not open the location in Explorer.\nThe file is at:\n{app.ExecutablePath}",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -5414,7 +5414,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             int removed = _firewall.PurgeUnusedApps();
             RebuildAppsList();
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 removed == 0 ? "No unused apps to remove." : $"Removed {removed} unused app(s).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -5427,7 +5427,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             int purged = _firewall.PurgeExpiredTimers();
             RebuildAppsList();
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 purged == 0 ? "No expired timed blocks to clear." : $"Cleared {purged} expired timed block(s).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -5638,7 +5638,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void ResetSettings_Click(object sender, RoutedEventArgs e)
     {
-        var answer = MessageBox.Show(
+        var answer = ThemedMessageBox.Show(
             "Put every preference back to its default?\n\n"
             + "Theme, colours, font, interface scale, alert categories, popup timeout, "
             + "logging and DNS options will be reset.\n\n"
@@ -5662,7 +5662,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             ApplyAppIconSize();
             ApplyUiFont(_firewall.UiFontFamily);
 
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 n == 0
                     ? "Everything was already at its defaults."
                     : $"{n} setting(s) reset. Your rules, blocklists and filtering are unchanged.\n\n"
@@ -5746,7 +5746,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             var until = _firewall.SnoozeProtection(TimeSpan.FromMinutes(minutes));
             UpdateSnoozeUi();
             SyncLockdownButton();
-            MessageBox.Show($"Protection paused until {until:t}. It resumes automatically " +
+            ThemedMessageBox.Show($"Protection paused until {until:t}. It resumes automatically " +
                 "(and always comes back if you restart GunWall).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -5929,7 +5929,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // No installer attached to the release - offer the page, as before.
             if (r.AssetUrl.Length == 0)
             {
-                var open = MessageBox.Show($"{r.Message}\n\nOpen the downloads page?",
+                var open = ThemedMessageBox.Show($"{r.Message}\n\nOpen the downloads page?",
                     "Update available", MessageBoxButton.YesNo, MessageBoxImage.Information);
                 if (open == MessageBoxResult.Yes)
                     try { Process.Start(new ProcessStartInfo(r.Url) { UseShellExecute = true }); } catch { }
@@ -5937,7 +5937,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
 
             string size = r.AssetSize > 0 ? $" ({r.AssetSize / 1024 / 1024} MB)" : "";
-            var ask = MessageBox.Show(
+            var ask = ThemedMessageBox.Show(
                 $"{r.Message}\n\nDownload and install it now{size}?\n\n"
                 + "GunWall will close while the installer runs. Your rules and "
                 + "settings are kept.",
@@ -5971,7 +5971,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         if (!d.Ok)
         {
-            MessageBox.Show(d.Message, "Update", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ThemedMessageBox.Show(d.Message, "Update", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -5982,7 +5982,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
               + "The release did not publish a checksum for this file, so GunWall "
               + "could not confirm it arrived intact.\n\nInstall it anyway?";
 
-        var go = MessageBox.Show(prompt, "Update",
+        var go = ThemedMessageBox.Show(prompt, "Update",
             MessageBoxButton.YesNo,
             d.Verified ? MessageBoxImage.Question : MessageBoxImage.Warning,
             d.Verified ? MessageBoxResult.Yes : MessageBoxResult.No);
@@ -6006,7 +6006,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex)
         {
             Services.DiagnosticLog.LogException("UpdateInstall", ex);
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 $"The installer could not be started: {ex.Message}\n\n"
                 + $"It was saved to:\n{d.Path}\n\nYou can run it yourself.",
                 "Update", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -6179,7 +6179,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (AppsList.SelectedItem is not AppInfo app) return;
         if (string.IsNullOrWhiteSpace(_firewall.VirusTotalApiKey))
         {
-            MessageBox.Show(_firewall.VirusTotalKeyState == FirewallManager.VtKeyState.Unreadable
+            ThemedMessageBox.Show(_firewall.VirusTotalKeyState == FirewallManager.VtKeyState.Unreadable
                     ? "The saved VirusTotal key cannot be decrypted on this PC. Enter it again in Settings."
                     : "Add your VirusTotal API key in Settings first.", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Information);
@@ -6191,7 +6191,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             hash = HashService.Compute(app.ExecutablePath);
         if (string.IsNullOrEmpty(hash))
         {
-            MessageBox.Show("Could not read this file to hash it (it may be protected).",
+            ThemedMessageBox.Show("Could not read this file to hash it (it may be protected).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -6204,7 +6204,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var icon = result.Ok && result.Malicious == 0 ? MessageBoxImage.Information
                  : result.Ok ? MessageBoxImage.Warning
                  : MessageBoxImage.Error;
-        MessageBox.Show($"{app.Name}\n\n{result.Message}", "VirusTotal scan",
+        ThemedMessageBox.Show($"{app.Name}\n\n{result.Message}", "VirusTotal scan",
             MessageBoxButton.OK, icon);
     }
 
@@ -6297,7 +6297,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var domains = _firewall.BlocklistDomains(key);
         if (domains.Count == 0)
         {
-            MessageBox.Show($"\u201c{cat.Name}\u201d has no domains to show yet. Press Update lists from online to fetch them.",
+            ThemedMessageBox.Show($"\u201c{cat.Name}\u201d has no domains to show yet. Press Update lists from online to fetch them.",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -6495,7 +6495,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void SecureBaseline_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireEngine()) return;
-        var ask = MessageBox.Show(
+        var ask = ThemedMessageBox.Show(
             "Turn on a recommended hardening baseline?\n\n" +
             "This enables: block inbound RDP, block SMB, block NetBIOS, and block Telnet. " +
             "It won't touch your other rules, and you can turn any of them back off.",
@@ -6506,7 +6506,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             foreach (var key in new[] { "block_rdp_in", "block_smb", "block_netbios", "block_telnet" })
                 if (!_firewall.IsSystemRuleOn(key)) _firewall.SetSystemRule(key, true);
             BuildSystemRulesUi();
-            MessageBox.Show("Secure baseline applied.", "GunWall",
+            ThemedMessageBox.Show("Secure baseline applied.", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -6530,7 +6530,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 cb.IsChecked = actual;
                 if (on)
-                    MessageBox.Show("This rule couldn't be applied on this system (the filter " +
+                    ThemedMessageBox.Show("This rule couldn't be applied on this system (the filter " +
                         "condition may be unsupported).", "GunWall",
                         MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -6549,7 +6549,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             bool outbound = dir == "out";
             _firewall.BlockAppDirection(app.ExecutablePath, app.Name, outbound);
             RebuildAppsList();
-            MessageBox.Show($"{app.Name} is now blocked for {(outbound ? "outbound" : "inbound")} " +
+            ThemedMessageBox.Show($"{app.Name} is now blocked for {(outbound ? "outbound" : "inbound")} " +
                 "connections only.", "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -6589,7 +6589,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (scope == "p2p")
             {
                 if (mi.IsChecked && !(_dnsResolver?.Running ?? false))
-                    MessageBox.Show(
+                    ThemedMessageBox.Show(
                         "P2P/direct blocking watches which IPs were resolved through GunWall's DNS resolver. " +
                         "The resolver isn't running, so enforcement begins once you enable it (DNS panel).",
                         "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -6619,7 +6619,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             var until = _firewall.BlockAppTemporarily(
                 app.ExecutablePath, app.Name, TimeSpan.FromMinutes(minutes));
             RebuildAppsList();
-            MessageBox.Show($"{app.Name} is blocked until {until:t}. It will be unblocked " +
+            ThemedMessageBox.Show($"{app.Name} is blocked until {until:t}. It will be unblocked " +
                 "automatically (or stays blocked if you close GunWall before then).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -6660,7 +6660,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             bool nowBlocked = !_firewall.IsServiceBlocked(name);
             if (nowBlocked)
             {
-                var confirm = MessageBox.Show(
+                var confirm = ThemedMessageBox.Show(
                     $"Block network access for the service \"{name}\"?\n\n" +
                     "Only this service is affected - others sharing the same process keep working. " +
                     "Blocking a service Windows relies on (networking, updates, time) can have " +
@@ -6671,7 +6671,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
             if (!_firewall.SetServiceBlocked(name, nowBlocked))
             {
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     $"The rule for \"{name}\" could not be applied - this build of Windows did not accept " +
                     "the filter. Nothing was changed; the diagnostics log has the detail.",
                     "Block service", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -6711,14 +6711,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             string exe = ServicesService.GetBinaryPath(svcName);
             if (string.IsNullOrEmpty(exe) || !System.IO.File.Exists(exe))
             {
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     "Could not resolve this service's host program (it may be a shared svchost " +
                     "service, which can't be blocked individually by image).",
                     "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             _firewall.BlockApp(exe, System.IO.Path.GetFileName(exe));
-            MessageBox.Show($"Blocked the host program for '{svcName}':\n{exe}",
+            ThemedMessageBox.Show($"Blocked the host program for '{svcName}':\n{exe}",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -6730,7 +6730,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (sender is not FrameworkElement fe || fe.Tag is not string exe) return;
         if (string.IsNullOrEmpty(exe) || !System.IO.File.Exists(exe))
         {
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 "This service's host program couldn't be resolved (often a shared svchost " +
                 "service, which can't be blocked individually by image).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -6739,7 +6739,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             _firewall.BlockApp(exe, System.IO.Path.GetFileName(exe));
-            MessageBox.Show($"Blocked host program:\n{exe}\n\n(Note: shared host programs like " +
+            ThemedMessageBox.Show($"Blocked host program:\n{exe}\n\n(Note: shared host programs like " +
                 "svchost.exe carry many services — blocking affects all of them.)",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -7288,7 +7288,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // that validated - so the failure costs nothing but the attempt.
             _firewall.NoteDbRefresh(geo: true, success: false,
                 $"failed, previous data kept: {ex.Message}");
-            if (manual) MessageBox.Show($"The GeoIP download failed.\n\n{ex.Message}\n\n"
+            if (manual) ThemedMessageBox.Show($"The GeoIP download failed.\n\n{ex.Message}\n\n"
                 + "Your existing database has not been changed.",
                 "GeoIP", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -7316,14 +7316,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
             _firewall.NoteDbRefresh(geo: false, success: written > 0, message);
             if (manual)
-                MessageBox.Show(message, "Vendor database", MessageBoxButton.OK,
+                ThemedMessageBox.Show(message, "Vendor database", MessageBoxButton.OK,
                     written > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
         catch (Exception ex)
         {
             _firewall.NoteDbRefresh(geo: false, success: false,
                 $"failed, previous data kept: {ex.Message}");
-            if (manual) MessageBox.Show($"The vendor download failed.\n\n{ex.Message}\n\n"
+            if (manual) ThemedMessageBox.Show($"The vendor download failed.\n\n{ex.Message}\n\n"
                 + "Your existing database has not been changed.",
                 "Vendor database", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -7433,7 +7433,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         bool haveOui = _oui.Loaded || System.IO.File.Exists(OuiCachePath);
         if (haveGeo && haveOui) return;
 
-        var answer = MessageBox.Show(
+        var answer = ThemedMessageBox.Show(
             "GunWall can download two optional databases:\n\n"
             + "  \u2022  Country and network owner for each connection (about 25 MB)\n"
             + "  \u2022  Device manufacturers for network scans (about 4 MB)\n\n"
@@ -7606,14 +7606,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 // Re-scan so the column fills without the user having to ask twice.
                 if (_devices.Count > 0) ScanNetwork_Click(this, new RoutedEventArgs());
             }
-            MessageBox.Show(message, "Vendor database",
+            ThemedMessageBox.Show(message, "Vendor database",
                 MessageBoxButton.OK,
                 written > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
         catch (Exception ex)
         {
             Services.DiagnosticLog.LogException("DownloadOui", ex);
-            MessageBox.Show($"Could not download the vendor database: {ex.Message}",
+            ThemedMessageBox.Show($"Could not download the vendor database: {ex.Message}",
                 "Vendor database", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
@@ -7809,7 +7809,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         string value = (EntityValueBox?.Text ?? "").Trim();
         if (value.Length == 0)
         {
-            MessageBox.Show("Enter a value to block (e.g. RU, EU, or AS13335).",
+            ThemedMessageBox.Show("Enter a value to block (e.g. RU, EU, or AS13335).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -7847,7 +7847,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var preset = Services.DnsService.ByKey(key);
         if (key != "auto")
         {
-            var ask = MessageBox.Show(
+            var ask = ThemedMessageBox.Show(
                 $"Set DNS to {preset.Name} on all active adapters?\n\n" +
                 "You can return to your network's automatic DNS here at any time.",
                 "Apply filtering DNS", MessageBoxButton.OKCancel, MessageBoxImage.Question);
@@ -7867,7 +7867,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void WinFwOff_Click(object sender, RoutedEventArgs e)
     {
-        var ask = MessageBox.Show(
+        var ask = ThemedMessageBox.Show(
             "Turn off Windows Defender Firewall for all network profiles?\n\n" +
             "GunWall will keep protecting you, but turning the Windows firewall back on " +
             "later is recommended if you stop using GunWall.",
@@ -7877,7 +7877,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _firewall.EventLog("Windows Firewall turned off");
         RefreshWinFwStatus();
         if (!ok)
-            MessageBox.Show("Couldn't change Windows Firewall (the command was blocked or failed).",
+            ThemedMessageBox.Show("Couldn't change Windows Firewall (the command was blocked or failed).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -7887,14 +7887,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _firewall.EventLog("Windows Firewall turned on");
         RefreshWinFwStatus();
         if (!ok)
-            MessageBox.Show("Couldn't change Windows Firewall (the command was blocked or failed).",
+            ThemedMessageBox.Show("Couldn't change Windows Firewall (the command was blocked or failed).",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void WinFwImport_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireEngine()) return;
-        var ask = MessageBox.Show(
+        var ask = ThemedMessageBox.Show(
             "Import the BLOCK rules from Windows Firewall as GunWall blocks?\n\n" +
             "(Allow rules are skipped, since GunWall allows by default.)",
             "Import Windows Firewall rules", MessageBoxButton.OKCancel, MessageBoxImage.Question);
@@ -7943,7 +7943,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (BackupStatus != null) BackupStatus.Text = "Select a backup to restore.";
             return;
         }
-        var ask = MessageBox.Show(
+        var ask = ThemedMessageBox.Show(
             "Restore this backup? It replaces your current rules and settings.\n\n" +
             "Filters are re-applied when you next toggle strict mode.",
             "Restore backup", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
@@ -8017,7 +8017,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void RemoveAll_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireEngine()) return;
-        var answer = MessageBox.Show(
+        var answer = ThemedMessageBox.Show(
             "Remove every GunWall filter and clear all saved rules?\n\nThis cannot be undone.",
             "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes) return;
@@ -8047,7 +8047,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                         ? ", remaining count unknown (the final listing failed)."
                         : $", {purge.Value.Remaining} remaining.");
 
-            MessageBox.Show(
+            ThemedMessageBox.Show(
                 complete
                     ? "All GunWall filtering removed. This machine is back to Windows "
                       + "defaults." + detail
@@ -8355,7 +8355,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             _firewall.ExportProfile(dlg.FileName);
-            MessageBox.Show("Profile exported.", "GunWall",
+            ThemedMessageBox.Show("Profile exported.", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -8363,7 +8363,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void ImportProfile_Click(object sender, RoutedEventArgs e)
     {
-        var answer = MessageBox.Show(
+        var answer = ThemedMessageBox.Show(
             "Importing replaces your current rules and settings with the file's. Continue?",
             "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (answer != MessageBoxResult.Yes) return;
@@ -8379,7 +8379,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             int count = _firewall.ImportProfile(dlg.FileName);
             SyncFirewallToggle();
             RebuildAppsList();
-            MessageBox.Show($"Imported {count} rule(s).", "GunWall",
+            ThemedMessageBox.Show($"Imported {count} rule(s).", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -8465,7 +8465,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             if (wantStrict)
             {
-                var answer = MessageBox.Show(
+                var answer = ThemedMessageBox.Show(
                     "Strict mode blocks every app except the ones you allow. " +
                     "Continue?",
                     "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Warning);
@@ -9056,21 +9056,24 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         // Optional: confirm exit even when the firewall is not active.
         if (!_firewall.StrictMode && !_firewall.LockdownEngaged && _firewall.AlwaysConfirmExit &&
-            MessageBox.Show("Exit GunWall?", "Exit GunWall",
-                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            ThemedMessageBox.Show("GunWall will close and leave the tray.",
+                "Exit GunWall", MessageBoxButton.YesNo, MessageBoxImage.Question,
+                "Exit", "Cancel") != MessageBoxResult.Yes)
             return;
 
         if (_firewall.StrictMode || _firewall.LockdownEngaged)
         {
-            var result = MessageBox.Show(
-                "The firewall is still active. If you exit now, it will keep " +
-                "blocking traffic in the background and you'll need to reopen " +
-                "GunWall to change anything.\n\n" +
-                "Yes  = Turn the firewall OFF and exit\n" +
-                "No   = Keep the firewall ON and exit\n" +
-                "Cancel = Stay open",
+            // The buttons say what they do. The system box could only offer
+            // Yes / No / Cancel, so the message carried a legend explaining them.
+            var result = ThemedMessageBox.Show(
+                (_firewall.LockdownEngaged
+                    ? "Lockdown is on. "
+                    : "The firewall is on. ") +
+                "If GunWall exits with it on, it keeps blocking in the background, " +
+                "and you'll need to open GunWall again to change anything.",
                 "Exit GunWall",
-                MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+                MessageBoxButton.YesNoCancel, MessageBoxImage.Warning,
+                "Turn off and exit", "Keep on and exit", "Cancel");
 
             if (result == MessageBoxResult.Cancel) return;
             if (result == MessageBoxResult.Yes)
@@ -9092,7 +9095,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private bool RequireEngine()
     {
         if (_engineReady) return true;
-        MessageBox.Show("The firewall engine is not available. Run GunWall as administrator.",
+        ThemedMessageBox.Show("The firewall engine is not available. Run GunWall as administrator.",
             "GunWall", MessageBoxButton.OK, MessageBoxImage.Warning);
         return false;
     }
@@ -9100,7 +9103,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private static void ShowError(Exception ex)
     {
         Services.DiagnosticLog.LogException("ShowError", ex);
-        MessageBox.Show(ex.Message, "GunWall", MessageBoxButton.OK, MessageBoxImage.Error);
+        ThemedMessageBox.Show(ex.Message, "GunWall", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     private static string FormatRate(double bytesPerSec)

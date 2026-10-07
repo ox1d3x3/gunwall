@@ -91,7 +91,7 @@ public partial class AppPropertiesWindow : Window
     private void OpenLocation_Click(object sender, RoutedEventArgs e)
     {
         if (!Services.ShellHelper.RevealInExplorer(_app.ExecutablePath))
-            MessageBox.Show($"Could not open the location in Explorer.\nThe file is at:\n{_app.ExecutablePath}",
+            ThemedMessageBox.Show($"Could not open the location in Explorer.\nThe file is at:\n{_app.ExecutablePath}",
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -108,7 +108,7 @@ public partial class AppPropertiesWindow : Window
             bool on = BypassBlocklistsCheck.IsChecked == true;
             int removed = _firewall.SetBypassBlocklists(_app.ExecutablePath, on);
             if (on && removed > 0)
-                MessageBox.Show(
+                ThemedMessageBox.Show(
                     $"Blocklists no longer apply to {_app.Name} at the kernel layer, and "
                     + $"{removed} filter(s) already blocking it were removed.\n\n"
                     + "Blocked domains are still refused by GunWall's DNS resolver, which "
@@ -121,7 +121,7 @@ public partial class AppPropertiesWindow : Window
             // Put the control back where the stored state actually is, rather than
             // leaving it showing a change that did not happen.
             BypassBlocklistsCheck.IsChecked = _firewall.BypassesBlocklists(_app.ExecutablePath);
-            MessageBox.Show($"Could not change that setting: {ex.Message}", "GunWall",
+            ThemedMessageBox.Show($"Could not change that setting: {ex.Message}", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
