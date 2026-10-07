@@ -541,7 +541,10 @@ approval and block — they are rules. What is reset is the list of applications
 GunWall noticed but you never decided on; they ask again the next time they connect.
 
 **Engage lockdown** (bottom-left) cuts all traffic immediately. Use it if you
-suspect something is wrong. Press it again to release.
+suspect something is wrong. Press it again to release. The same action is in the
+tray icon's right-click menu: it reads **Engage lockdown**, or **Release lockdown**
+(ticked) while lockdown is on, and the tray tooltip says *lockdown, all traffic
+blocked*.
 
 **Snooze 15 min** (Dashboard) pauses enforcement for a set period, then restores it
 automatically. Useful for installing something that needs broad access, without

@@ -15,6 +15,22 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.178] — 2026-10-07
+
+### Fixed — the tray menu's lockdown item did not show lockdown was on
+The tray menu item read **Toggle lockdown** whether lockdown was on or off, so after
+engaging it from the tray nothing there said it was on or offered to release it -
+the window had to be opened. The item now names what it will do: **Engage
+lockdown**, or **Release lockdown** with a tick while lockdown holds. It is read
+fresh every time the menu opens, so it is right whichever place lockdown was
+changed from.
+
+### Fixed — the tray tooltip said "protection active" during lockdown
+Hovering the tray icon during lockdown said *protection active*; with lockdown
+engaged from Monitoring or during a pause it said *firewall disabled*, while all
+traffic was blocked. It now says *GunWall - lockdown, all traffic blocked*, and the
+icon shows the protected state.
+
 ## [0.99.177] — 2026-10-07
 
 ### Fixed — Block and Allow did not show on a filtered Applications list

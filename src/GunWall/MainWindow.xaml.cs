@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.177 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.178 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -8653,7 +8653,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (_tray == null) return;
         try
         {
-            bool active = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
+            // Lockdown blocks more than Zero-Trust does, so it counts as active
+            // whatever the mode underneath - and a pause does not lift it (the
+            // snooze only turns Zero-Trust off; the lockdown filters stay). Before
+            // 0.99.178 the tooltip said "protection active" during lockdown, and
+            // "firewall disabled" if lockdown was engaged from Monitoring.
+            bool lockdown = _engineReady && _firewall.LockdownEngaged;
+            bool active = lockdown
+                          || (_engineReady && _firewall.StrictMode && !_firewall.IsSnoozed);
             bool pending = _firewall.PendingUpdateVersion.Length > 0;
 
             var state = !active ? TrayState.Off
@@ -8668,7 +8675,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             };
             if (icon != null) _tray.Icon = icon;
 
-            string tip = state switch
+            string tip = lockdown ? "GunWall - lockdown, all traffic blocked"
+                : state switch
             {
                 TrayState.Active          => "GunWall - protection active",
                 TrayState.UpdateAvailable =>
@@ -8731,8 +8739,24 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
 
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-            menu.Items.Add("Toggle lockdown", null, (_, _) =>
-                Dispatcher.Invoke(() => LockdownButton_Click(this, new RoutedEventArgs())));
+            // Named for what pressing it will do, read fresh each time the menu
+            // opens. It said "Toggle lockdown" in both states, so after engaging it
+            // from the tray nothing there said lockdown was on or offered to release
+            // it (reported from use, 0.99.177). The click toggles, as before.
+            var lockItem = new System.Windows.Forms.ToolStripMenuItem("Engage lockdown");
+            lockItem.Click += (_, _) =>
+                Dispatcher.Invoke(() => LockdownButton_Click(this, new RoutedEventArgs()));
+            menu.Items.Add(lockItem);
+            menu.Opening += (_, _) =>
+            {
+                try
+                {
+                    bool engaged = _firewall.LockdownEngaged;
+                    lockItem.Text = engaged ? "Release lockdown" : "Engage lockdown";
+                    lockItem.Checked = engaged;
+                }
+                catch { }
+            };
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
             menu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(ExitFromTray));
             _tray.ContextMenuStrip = menu;
