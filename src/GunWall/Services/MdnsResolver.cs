@@ -45,7 +45,7 @@ public static class MdnsResolver
     /// <param name="Model">Model, when announced (e.g. "Google Nest Mini").</param>
     /// <param name="Host">Its mDNS host name (e.g. "Mahabubs-iPhone.local").</param>
     /// <param name="Services">Readable names of what it announced, comma-separated.</param>
-    public sealed record Info(string Name, string Model, string Host, string Services);
+    public sealed record Info(string Name, string Model, string Host, string Services, string NameFrom = "");
 
     private static readonly IPEndPoint Group = new(IPAddress.Parse("224.0.0.251"), 5353);
 
@@ -434,7 +434,7 @@ public static class MdnsResolver
             lock (_gate)
             {
                 // address -> (best rank, name, model, services)
-                var best = new Dictionary<string, (int Rank, string Name, string Model, SortedSet<string> Services)>();
+                var best = new Dictionary<string, (int Rank, string Name, string Model, SortedSet<string> Services, string From)>();
                 foreach (var inst in _instances)
                 {
                     var (type, label, rank) = Classify(inst);
@@ -448,17 +448,17 @@ public static class MdnsResolver
 
                     _txt.TryGetValue(inst, out var txt);
                     string name = FriendlyName(inst, type, txt);
-                    // Generic and unrecognised services name the device only when
-                    // the name looks like one a person gave it. Android's Nearby
-                    // service announces "nearby-presence-nsd-<digits>", which is a
-                    // tag, not a name (seen on a home network, 0.99.185).
-                    if (rank >= 7 && LooksMachineGenerated(name)) name = "";
+                    // A service names the device only when the name looks like one a
+                    // person gave it. Android announces tags such as
+                    // "nearby-presence-nsd-<digits>" (0.99.185) and "I1g20E38n14AAA"
+                    // (0.99.186); since 0.99.187 this applies to every service type.
+                    if (LooksMachineGenerated(name)) name = "";
                     string model = Model(txt);
 
                     if (!best.TryGetValue(key, out var cur))
-                        cur = (int.MaxValue, "", "", new SortedSet<string>(StringComparer.OrdinalIgnoreCase));
+                        cur = (int.MaxValue, "", "", new SortedSet<string>(StringComparer.OrdinalIgnoreCase), "");
                     cur.Services.Add(label);
-                    if (name.Length > 0 && rank < cur.Rank) { cur.Rank = rank; cur.Name = name; }
+                    if (name.Length > 0 && rank < cur.Rank) { cur.Rank = rank; cur.Name = name; cur.From = type; }
                     if (cur.Model.Length == 0 && model.Length > 0) cur.Model = model;
                     best[key] = cur;
                 }
@@ -467,7 +467,7 @@ public static class MdnsResolver
                 foreach (var (ip, v) in best)
                 {
                     string host = IPAddress.TryParse(ip, out var a) && _addrHost.TryGetValue(a, out var h) ? Clean(h) : "";
-                    result[ip] = new Info(v.Name, v.Model, host, string.Join(", ", v.Services));
+                    result[ip] = new Info(v.Name, v.Model, host, string.Join(", ", v.Services), v.From);
                 }
                 // Devices that gave only an address record for their host name.
                 foreach (var (addr, h) in _addrHost)
@@ -518,13 +518,6 @@ public static class MdnsResolver
             return Clean(label);
         }
 
-        /// <summary>True for an identifier rather than a name: no spaces and a long
-        /// run of hex digits or numbers, or Android's "nearby-" tags.</summary>
-        internal static bool LooksMachineGenerated(string s) =>
-            s.Length > 0 && !s.Contains(' ')
-            && (System.Text.RegularExpressions.Regex.IsMatch(s, "[0-9A-Fa-f]{8,}|[0-9]{5,}")
-                || s.StartsWith("nearby-", StringComparison.OrdinalIgnoreCase));
-
         private static string Model(Dictionary<string, string>? txt)
         {
             if (txt == null) return "";
@@ -532,6 +525,24 @@ public static class MdnsResolver
                 if (txt.TryGetValue(k, out var v) && v.Trim().Length > 0) return Clean(v);
             return "";
         }
+    }
+
+    /// <summary>True for an identifier rather than a name a person gave:
+    ///  - no spaces and a long run of hex digits or numbers, or Android's
+    ///    "nearby-" tags ("nearby-presence-nsd-29517384", 0.99.185); or
+    ///  - one unbroken token of ten or more characters mixing upper case, lower
+    ///    case and at least three digits ("I1g20E38n14AAA", seen from an Android
+    ///    phone in 0.99.186). Real names either have a separator or are short
+    ///    ("Living Room TV", "Kitchen-Speaker", "MacBookPro16", "Pixel7a").</summary>
+    internal static bool LooksMachineGenerated(string s)
+    {
+        if (s.Length == 0 || s.Contains(' ')) return false;
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, "[0-9A-Fa-f]{8,}|[0-9]{5,}")
+            || s.StartsWith("nearby-", StringComparison.OrdinalIgnoreCase))
+            return true;
+        bool unbroken = s.IndexOfAny(new[] { '-', '_', '.', '\'', '\u2019' }) < 0;
+        return unbroken && s.Length >= 10
+               && s.Count(char.IsDigit) >= 3 && s.Any(char.IsUpper) && s.Any(char.IsLower);
     }
 
     // ------------------------------------------------------------------ adapters

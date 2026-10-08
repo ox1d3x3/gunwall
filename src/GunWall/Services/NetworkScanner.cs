@@ -188,6 +188,12 @@ public sealed class NetworkScanner
             DiagnosticLog.Log($"Network scan: {devices.Count} device(s). Names announced over mDNS: {named}. "
                 + $"Host names: reverse DNS or NetBIOS {hostDnsNb}, mDNS {hostMdns}. "
                 + $"mDNS answered for {mdns.Count} address(es).");
+            // One line per device that answered, naming the service its name came
+            // from - so an odd name in a report can be traced to its source (0.99.187).
+            foreach (var (mip, mi) in mdns.OrderBy(k => k.Key, StringComparer.Ordinal).Take(40))
+                DiagnosticLog.Log($"  mDNS {mip}: name '{mi.Name}'"
+                    + (mi.NameFrom.Length > 0 ? $" from {mi.NameFrom}" : "")
+                    + $", host '{mi.Host}', announces [{mi.Services}].");
             progress?.Invoke(100);
         }
         catch { /* best effort */ }

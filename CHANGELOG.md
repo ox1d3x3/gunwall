@@ -15,6 +15,16 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.187] — 2026-10-08
+
+### Fixed — more machine tags shown as device names
+After 0.99.186 an Android phone still showed a tag as its name - *I1g20E38n14AAA*.
+The filter now also recognises a single unbroken word of ten or more characters
+that mixes upper case, lower case and three or more digits, and it applies to every
+service a device announces, not only unrecognised ones. Names people choose -
+*Living Room TV*, *Kitchen-Speaker*, *MacBookPro16*, *Pixel7a* - are unaffected. The
+diagnostics log now records which service each announced name came from.
+
 ## [0.99.186] — 2026-10-08
 
 ### Added — an "Update complete" screen after upgrading
