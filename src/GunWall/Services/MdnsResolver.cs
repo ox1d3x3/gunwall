@@ -448,6 +448,11 @@ public static class MdnsResolver
 
                     _txt.TryGetValue(inst, out var txt);
                     string name = FriendlyName(inst, type, txt);
+                    // Generic and unrecognised services name the device only when
+                    // the name looks like one a person gave it. Android's Nearby
+                    // service announces "nearby-presence-nsd-<digits>", which is a
+                    // tag, not a name (seen on a home network, 0.99.185).
+                    if (rank >= 7 && LooksMachineGenerated(name)) name = "";
                     string model = Model(txt);
 
                     if (!best.TryGetValue(key, out var cur))
@@ -483,9 +488,10 @@ public static class MdnsResolver
             if (type.EndsWith(".local", StringComparison.OrdinalIgnoreCase)) type = type[..^6];
             foreach (var k in Known)
                 if (string.Equals(k.Type, type, StringComparison.OrdinalIgnoreCase)) return (k.Type, k.Label, k.Rank);
-            // "_name._tcp" -> "name"
+            // "_name._tcp" -> "name"; a random hex type name reads as "Other".
             string label = type.Split('.')[0].TrimStart('_');
-            return (type, label.Length > 0 ? label : type, 8);
+            if (label.Length == 0 || LooksMachineGenerated(label)) label = "Other";
+            return (type, label, 8);
         }
 
         private static string FriendlyName(string instance, string type, Dictionary<string, string>? txt)
@@ -511,6 +517,13 @@ public static class MdnsResolver
             }
             return Clean(label);
         }
+
+        /// <summary>True for an identifier rather than a name: no spaces and a long
+        /// run of hex digits or numbers, or Android's "nearby-" tags.</summary>
+        internal static bool LooksMachineGenerated(string s) =>
+            s.Length > 0 && !s.Contains(' ')
+            && (System.Text.RegularExpressions.Regex.IsMatch(s, "[0-9A-Fa-f]{8,}|[0-9]{5,}")
+                || s.StartsWith("nearby-", StringComparison.OrdinalIgnoreCase));
 
         private static string Model(Dictionary<string, string>? txt)
         {

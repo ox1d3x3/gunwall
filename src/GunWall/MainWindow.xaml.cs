@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.185 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.186 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -7433,7 +7433,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex)
         { Services.DiagnosticLog.LogException("UpgradeMarker", ex); }
 
-        if (!_firewall.IsFirstRun) return;
+        if (!_firewall.IsFirstRun)
+        {
+            ShowUpgradeScreenIfUpgraded();
+            return;
+        }
 
         // Recorded before the question, not after. If it is asked and GunWall is
         // killed before an answer, asking again on the next launch is worse than
@@ -7478,6 +7482,33 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Services.DiagnosticLog.LogException("FirstRunScreen", ex);
         }
         await System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    /// <summary>Where "See what's new" goes. HEAD resolves to the repository's
+    /// default branch, so the link survives a branch rename.</summary>
+    internal const string ChangelogUrl = "https://github.com/ox1d3x3/gunwall/blob/HEAD/CHANGELOG.md";
+
+    /// <summary>The "update complete" screen, on the first launch after updating to
+    /// a newer version (0.99.186). Once per upgrade: the version it compares with
+    /// is the one recorded at the previous launch, and this launch records its own.
+    /// Not after a downgrade, and not on a fresh install (the first-run screen is
+    /// shown instead).</summary>
+    private void ShowUpgradeScreenIfUpgraded()
+    {
+        string from = _firewall.UpgradedFrom;
+        if (from.Length == 0) return;
+        try
+        {
+            var screen = FirstRunScreen.ForUpgrade(from, UpdateService.CurrentVersion,
+                openChangelog: () => Process.Start(new ProcessStartInfo(ChangelogUrl) { UseShellExecute = true }),
+                done: () => { });
+            Grid.SetRow(screen, 1);
+            WindowRoot.Children.Add(screen);
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("UpgradeScreen", ex);
+        }
     }
 
     /// <summary>Shows how many prefixes are loaded, or invites the download.</summary>

@@ -3056,11 +3056,19 @@ public sealed class FirewallManager : IDisposable
     /// Runs straight after the load, before any save. Keeps the newest three; takes
     /// none on a fresh install or when the version has not changed.
     /// </summary>
+    /// <summary>The version this one replaced, when this launch is the first after
+    /// an upgrade to a NEWER version; otherwise empty. Drives the "update complete"
+    /// screen (0.99.186). Empty on a fresh install (no previous version recorded)
+    /// and after a downgrade, which is not something to welcome anyone to.</summary>
+    public string UpgradedFrom { get; private set; } = "";
+
     private void SnapshotProfileOnUpgrade()
     {
         string current = UpdateService.CurrentVersion;
         string last = _data.LastRunVersion ?? "";
         if (last == current) return;
+        if (Version.TryParse(last, out var lv) && Version.TryParse(current, out var cv) && cv > lv)
+            UpgradedFrom = last;
         try
         {
             string file = _store.FilePath;

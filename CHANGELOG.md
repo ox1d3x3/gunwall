@@ -15,6 +15,22 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.186] — 2026-10-08
+
+### Added — an "Update complete" screen after upgrading
+The first time GunWall opens after updating to a newer version, it shows the same
+animated screen as a fresh install, ending in **Update complete** - the new
+version, the version it replaced, and a reminder that your rules and settings were
+kept. **See what's new** opens this changelog on GitHub (the screen stays open);
+**Continue** goes into the app. It appears once per update, not after a downgrade
+and not on a fresh install, which has its own welcome.
+
+### Fixed — Network scan names from unrecognised services
+A device announcing only an unrecognised or generic service could be named by an
+internal tag - Android's Nearby service showed as *nearby-presence-nsd-...*. Names
+from those services are now used only when they look like a name someone gave
+the device; the device's `.local` host name still shows in **Host**.
+
 ## [0.99.185] — 2026-10-08
 
 ### Fixed — Network scan said "Scanning... 100%" after it had finished

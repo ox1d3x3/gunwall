@@ -95,6 +95,12 @@ started** then takes you into the app. It is shown once, and not after an upgrad
 GunWall starts in **Monitoring only**: nothing is blocked until you turn
 protection on.
 
+**After an update.** The first launch of a newer version shows **Update complete**
+with the old and new version numbers. **See what's new** opens the changelog on
+GitHub; **Continue** goes into the app. Your rules and settings are kept, and the
+previous profile is saved as `rules.pre-<version>.json` (see
+[Where your data lives](#where-your-data-lives)).
+
 The installer's real advantage is its **uninstaller**, which removes GunWall's
 kernel filters before deleting anything. See [Chapter 17](#17-uninstalling).
 

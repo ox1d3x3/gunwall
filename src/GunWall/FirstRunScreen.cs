@@ -8,7 +8,10 @@ namespace GunWall;
 
 /// <summary>
 /// The first-run screen (0.99.184): an animated loading screen, the offer of
-/// the two optional databases, their download, and a welcome.
+/// the two optional databases, their download, and a welcome. Since 0.99.186 it
+/// also has an upgrade mode (<see cref="ForUpgrade"/>): the first launch after
+/// updating to a newer version shows "Update complete", the versions, and a
+/// "See what's new" button that opens the changelog on GitHub.
 ///
 /// Asked for from use: on a fresh install the app opened, a popup offered the
 /// downloads, and the window sat there half-ready while they ran. Now one screen
@@ -40,6 +43,21 @@ public sealed class FirstRunScreen : UserControl
     private readonly IReadOnlyList<Item> _offer;
     private readonly Action _beforeDownload;
     private readonly Action _done;
+
+    // Upgrade mode: both set, or both empty.
+    private string _upgradeFrom = "", _upgradeTo = "";
+    private Action? _openChangelog;
+
+    /// <summary>The screen for the first launch after an upgrade: no offer, no
+    /// downloads - the mark, then "Update complete" with the versions, "See what's
+    /// new" (opens the changelog; the screen stays) and "Continue".</summary>
+    public static FirstRunScreen ForUpgrade(string from, string to, Action openChangelog, Action done) =>
+        new(Array.Empty<Item>(), () => { }, done)
+        {
+            _upgradeFrom = from,
+            _upgradeTo = to,
+            _openChangelog = openChangelog,
+        };
 
     private readonly Border _stage = new();
     private readonly List<Rectangle> _cells = new();
@@ -93,6 +111,14 @@ public sealed class FirstRunScreen : UserControl
         try
         {
             StartWave();
+            if (_upgradeTo.Length > 0)
+            {
+                Show(Centered(Text("Finishing the update…", 15, "TextSecondary")));
+                Services.DiagnosticLog.Log($"Upgrade screen shown ({_upgradeFrom} -> {_upgradeTo}).");
+                await Task.Delay(1100);
+                ShowUpgraded();
+                return;
+            }
             Show(Centered(Text("Setting up GunWall…", 15, "TextSecondary")));
             Services.DiagnosticLog.Log("First run: first-run screen shown.");
             // Long enough to read as a deliberate screen rather than a flicker; the
@@ -225,6 +251,42 @@ public sealed class FirstRunScreen : UserControl
         Show(panel);
         start.Focus();
         Services.DiagnosticLog.Log("First run: welcome shown.");
+    }
+
+    /// <summary>Upgrade mode's only stage.</summary>
+    private void ShowUpgraded()
+    {
+        SettleMark();
+        var panel = new StackPanel();
+        panel.Children.Add(Centered(Text("Update complete", 34, "TextPrimary", bold: true)));
+        panel.Children.Add(Centered(Text($"GunWall {_upgradeTo} is ready.", 16, "BlockText"), top: 8));
+        panel.Children.Add(Centered(Text(
+            $"Updated from {_upgradeFrom}. Your rules and settings were kept, and a copy of "
+            + "the previous profile was saved alongside them.", 13, "TextSecondary"), top: 18));
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 26, 0, 0),
+        };
+        var news = MakeButton("See what's new", primary: false);
+        var go = MakeButton("Continue", primary: true);
+        go.Margin = new Thickness(10, 0, 0, 0);
+        news.Click += (_, _) =>
+        {
+            // The screen stays: reading the changelog in a browser is a detour,
+            // not the end of the welcome.
+            Services.DiagnosticLog.Log("Upgrade screen: See what's new opened.");
+            try { _openChangelog?.Invoke(); }
+            catch (Exception ex) { Services.DiagnosticLog.LogException("Upgrade/changelog", ex); }
+        };
+        go.Click += (_, _) => Finish();
+        buttons.Children.Add(news);
+        buttons.Children.Add(go);
+        panel.Children.Add(buttons);
+        Show(panel);
+        go.Focus();
     }
 
     private void Finish()
