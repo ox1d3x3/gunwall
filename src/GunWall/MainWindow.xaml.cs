@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.184 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.185 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -7648,6 +7648,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private async void ScanNetwork_Click(object sender, RoutedEventArgs e)
     {
+        bool scanFinished = false;   // see the progress callback below
         try
         {
             ScanBtn.IsEnabled = false;
@@ -7660,11 +7661,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             GunWall.Controls.Table.SetPhase(DevicesList, GunWall.Controls.TablePhase.Loading);
             if (NetworkSubtitle != null) NetworkSubtitle.Text = "Scanning your local network...";
 
+            // Progress arrives through BeginInvoke, so the final "100%" can be
+            // queued just before the scan returns and drawn just AFTER the "Found"
+            // line below - leaving "Scanning... 100%" on screen for good (seen in
+            // 0.99.184). Updates that land after the scan has finished are dropped.
             var found = await NetworkScanner.ScanAsync(pct =>
                 Dispatcher.BeginInvoke(() =>
                 {
+                    if (scanFinished) return;
                     if (NetworkSubtitle != null) NetworkSubtitle.Text = $"Scanning... {pct}%";
                 }));
+            scanFinished = true;
 
             _devices.ReplaceAll(found);
             GunWall.Controls.Table.SetPhase(DevicesList, GunWall.Controls.TablePhase.Ready);
@@ -7677,6 +7684,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // reading a failure on a firewall needs to know whether they are
             // exposed before they need to know which call threw, and the mono
             // line is a code to paste rather than a raw exception.
+            scanFinished = true;     // a late "100%" must not cover the error line either
             GunWall.Controls.Table.SetPhase(DevicesList, GunWall.Controls.TablePhase.Error);
             GunWall.Controls.Table.SetErrorText(DevicesList,
                 "Your firewall rules are unaffected and still enforcing - this is the " +

@@ -15,6 +15,15 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.185] — 2026-10-08
+
+### Fixed — Network scan said "Scanning... 100%" after it had finished
+The line under **Network Scanner** kept reading *Scanning... 100%* when the scan was
+done, instead of *Found N device(s) on your local network*. The last progress
+update could arrive just after the result and cover it. Progress that arrives
+after the scan has finished is now ignored, and the same applies when a scan
+fails.
+
 ## [0.99.184] — 2026-10-08
 
 ### Added — a first-run welcome screen
