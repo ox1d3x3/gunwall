@@ -15,6 +15,18 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.188] — 2026-10-08
+
+### Changed — UI size from 50% to 125%, with shortcuts
+On a high-resolution display GunWall read too large, with a lot of empty space,
+and the smallest UI size was 90%. **Settings → Preferences → UI size** now offers
+50%, 60%, 70%, 75%, 80%, 90% (default), 100%, 110% and 125%. Anywhere in the app:
+- **Ctrl + mouse wheel** makes everything smaller or larger,
+- **Ctrl + plus / minus** does the same from the keyboard,
+- **Ctrl + 0** returns to the default 90%.
+Shortcut changes are saved at once. The window's minimum size now follows the UI
+size, so a smaller size can also live in a smaller window - useful on 1080p.
+
 ## [0.99.187] — 2026-10-08
 
 ### Fixed — more machine tags shown as device names

@@ -3443,7 +3443,7 @@ public sealed class FirewallManager : IDisposable
     public void SetTraySingleClick(bool v) { _data.TraySingleClick = v; SaveStore(); }
 
     public int UiZoomPercent => _data.UiZoomPercent;
-    public void SetUiZoomPercent(int v) { _data.UiZoomPercent = Math.Clamp(v, 75, 150); SaveStore(); }
+    public void SetUiZoomPercent(int v) { _data.UiZoomPercent = Math.Clamp(v, 50, 150); SaveStore(); }
 
     /// <summary>Applications-list icon size. Only the three offered sizes are
     /// stored; anything else (a hand-edited profile) reads as medium.</summary>

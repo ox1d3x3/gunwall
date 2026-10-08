@@ -15,6 +15,7 @@
     WindowCornerPreference="Round"
     Typography.NumeralAlignment="Tabular"
     PreviewKeyDown="Window_PreviewKeyDown_Search"
+    PreviewMouseWheel="Window_PreviewMouseWheel_Zoom"
     ui:Design.Background="{DynamicResource BgPrimary}">
     <!-- No runtime Background is set on purpose.
 
@@ -2857,13 +2858,23 @@
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
                                 <TextBlock Text="UI size" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0" />
+                                <!-- 50-80% added in 0.99.188: on a 4K display the default
+                                     reads too large and wastes the space (reported from
+                                     use). The tags are the steps Ctrl +/- and Ctrl+wheel
+                                     move through, so keep them in order. -->
                                 <ComboBox x:Name="UiZoomCombo" Width="200"
                                           SelectionChanged="Pref_Changed">
-                                    <ComboBoxItem Content="Compact (90%)" Tag="90" />
-                                    <ComboBoxItem Content="Normal (100%)" Tag="100" />
-                                    <ComboBoxItem Content="Large (110%)" Tag="110" />
-                                    <ComboBoxItem Content="Extra large (125%)" Tag="125" />
+                                    <ComboBoxItem Content="50%" Tag="50" />
+                                    <ComboBoxItem Content="60%" Tag="60" />
+                                    <ComboBoxItem Content="70%" Tag="70" />
+                                    <ComboBoxItem Content="75%" Tag="75" />
+                                    <ComboBoxItem Content="80%" Tag="80" />
+                                    <ComboBoxItem Content="90% (default)" Tag="90" />
+                                    <ComboBoxItem Content="100%" Tag="100" />
+                                    <ComboBoxItem Content="110%" Tag="110" />
+                                    <ComboBoxItem Content="125%" Tag="125" />
                                 </ComboBox>
+                                <gw:InfoTip Text="Makes everything in the window smaller or larger. Shortcuts anywhere in GunWall: Ctrl + mouse wheel, Ctrl + plus / minus, and Ctrl + 0 for the default. On a high-resolution display a smaller size shows more rows and columns at once." Margin="8,0,0,0" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
                                 <TextBlock Text="App icon size" VerticalAlignment="Center"

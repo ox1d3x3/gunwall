@@ -373,9 +373,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (AlertCatRulesCheck != null) AlertCatRulesCheck.IsChecked = !muted.Contains("rules");
             if (TraySingleClickCheck != null) TraySingleClickCheck.IsChecked = _firewall.TraySingleClick;
             if (TamperWatchCheck != null) TamperWatchCheck.IsChecked = _firewall.TamperWatchEnabled;
-            if (UiZoomCombo != null)
-                UiZoomCombo.SelectedIndex = _firewall.UiZoomPercent switch
-                { 90 => 0, 100 => 1, 110 => 2, 125 => 3, _ => 1 };
+            SelectZoomItem(_firewall.UiZoomPercent);
             ApplyUiZoom();
             if (AppIconSizeCombo != null)
                 AppIconSizeCombo.SelectedIndex = _firewall.AppIconSize switch { 16 => 0, 32 => 2, _ => 1 };
@@ -453,7 +451,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.187 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.188 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4578,8 +4576,66 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             RootGrid.LayoutTransform = z == 100
                 ? Transform.Identity
                 : new ScaleTransform(z / 100.0, z / 100.0);
+
+            // The minimum window size follows the scale (0.99.188). It was fixed
+            // at 1000 x 640, which at a small UI size forced a window far larger
+            // than its content and defeated the point of choosing one - on a
+            // 1080p display especially. Scaled from the 90% default, never below
+            // a size where the sidebar and one column still fit.
+            MinWidth = Math.Max(560, Math.Round(1000 * z / 90.0));
+            MinHeight = Math.Max(420, Math.Round(640 * z / 90.0));
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("ApplyUiZoom", ex); }
+    }
+
+    /// <summary>The UI sizes offered, smallest first - read from the Settings
+    /// list so the shortcuts and the list cannot disagree.</summary>
+    private List<int> ZoomSteps() =>
+        UiZoomCombo?.Items.OfType<ComboBoxItem>()
+            .Select(i => int.TryParse(i.Tag?.ToString(), out int v) ? v : 0)
+            .Where(v => v > 0).OrderBy(v => v).ToList()
+        ?? new List<int> { 90 };
+
+    /// <summary>Shows a size in the Settings list without it counting as an
+    /// unsaved change. A saved value that is not on the list (an older build
+    /// allowed others) selects the nearest step.</summary>
+    private void SelectZoomItem(int z)
+    {
+        if (UiZoomCombo == null) return;
+        bool was = _suppressModeEvent;
+        _suppressModeEvent = true;
+        try
+        {
+            var items = UiZoomCombo.Items.OfType<ComboBoxItem>().ToList();
+            var best = items.OrderBy(i => Math.Abs((int.TryParse(i.Tag?.ToString(), out int v) ? v : 999) - z))
+                            .FirstOrDefault();
+            UiZoomCombo.SelectedItem = best;
+        }
+        finally { _suppressModeEvent = was; }
+    }
+
+    /// <summary>Ctrl +/- and Ctrl+wheel step through the sizes; Ctrl+0 returns to
+    /// the default. Saved at once, as a browser does - waiting for Apply would
+    /// make a keyboard shortcut feel broken.</summary>
+    private void StepUiZoom(int direction)
+    {
+        var steps = ZoomSteps();
+        int cur = _firewall.UiZoomPercent;
+        int next = direction == 0 ? 90
+                 : direction > 0 ? steps.FirstOrDefault(v => v > cur, steps[^1])
+                 : steps.LastOrDefault(v => v < cur, steps[0]);
+        if (next == cur) return;
+        _firewall.SetUiZoomPercent(next);
+        ApplyUiZoom();
+        SelectZoomItem(next);
+        Services.DiagnosticLog.Log($"UI size {next}% (keyboard or wheel).");
+    }
+
+    private void Window_PreviewMouseWheel_Zoom(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0) return;
+        StepUiZoom(e.Delta > 0 ? +1 : -1);
+        e.Handled = true;      // otherwise the list under the pointer scrolls too
     }
 
     /// <summary>Auto-sizes every column of the list the context menu was opened
@@ -5065,6 +5121,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// printed on a control that does not respond to it is worse than none.</summary>
     private void Window_PreviewKeyDown_Search(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        // UI size shortcuts (0.99.188). Both the main-keyboard and keypad keys;
+        // Ctrl+= is accepted for "+" because on most layouts that is the same key.
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
+        {
+            var k = e.Key;
+            if (k is System.Windows.Input.Key.OemPlus or System.Windows.Input.Key.Add)
+            { StepUiZoom(+1); e.Handled = true; return; }
+            if (k is System.Windows.Input.Key.OemMinus or System.Windows.Input.Key.Subtract)
+            { StepUiZoom(-1); e.Handled = true; return; }
+            if (k is System.Windows.Input.Key.D0 or System.Windows.Input.Key.NumPad0)
+            { StepUiZoom(0); e.Handled = true; return; }
+        }
         if (e.Key == System.Windows.Input.Key.K &&
             (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
         {

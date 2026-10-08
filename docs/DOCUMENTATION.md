@@ -472,7 +472,7 @@ Hover the **ⓘ** beside a card's heading or an option for what it does.
 | Start minimized to tray | GunWall starts hidden |
 | Watch for tampering with the firewall's filters | Detects and restores filters removed by other software |
 | Open GunWall with a single tray click | Double-click always works regardless |
-| UI size | 90% by default; 100% and 125% available |
+| UI size | 50% to 125%; 90% by default. Also **Ctrl + mouse wheel**, **Ctrl + plus / minus**, and **Ctrl + 0** for the default, anywhere in the app |
 | App icon size | Small, Medium (default) or Large icons in the Applications list |
 | **Run GunWall when Windows starts** | **Recommended** — without it, nothing can prompt after a reboot |
 | Send firewall events to the Windows Event Log | For central log collection |
