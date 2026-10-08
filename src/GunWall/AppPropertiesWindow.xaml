@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Application properties - GunWall"
     Typography.NumeralAlignment="Tabular"
-    Width="520" Height="600"
+    Width="520" SizeToContent="Height" MaxHeight="760"
     WindowStyle="SingleBorderWindow" ResizeMode="CanResize"
     WindowStartupLocation="CenterScreen"
     Background="{DynamicResource BgPrimary}">
@@ -54,7 +54,19 @@
                 <TextBlock Grid.Row="2" Grid.Column="1" x:Name="ConnText" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,8" />
 
                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Path" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
-                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="PathText" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                <!-- The two path actions sit under the path they act on (0.99.183).
+                     They were in the bottom row with Allow, Block and Close: five
+                     buttons in a 520 px window, which pushed Allow out of sight and
+                     cut Block in half (reported from use). -->
+                <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,8">
+                    <TextBlock x:Name="PathText" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                    <WrapPanel Margin="0,6,0,0">
+                        <Button Content="Open file location" Click="OpenLocation_Click" Style="{StaticResource ActionButton}"
+                                MinHeight="30" Padding="10,0" FontSize="12" Margin="0,0,6,0" />
+                        <Button Content="Copy path" Click="CopyPath_Click" Style="{StaticResource ActionButton}"
+                                MinHeight="30" Padding="10,0" FontSize="12" />
+                    </WrapPanel>
+                </StackPanel>
 
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="SHA-256" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,8" />
                 <TextBlock Grid.Row="4" Grid.Column="1" x:Name="HashText" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap"
@@ -87,14 +99,18 @@
 
             <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,16" />
 
-            <!-- Actions -->
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Allow" Click="Allow_Click" Style="{StaticResource ActionButton}" Margin="0,0,8,0" />
-                <Button Content="Block" Click="Block_Click" Style="{StaticResource ActionButton}" Margin="0,0,8,0" />
-                <Button Content="Open file location" Click="OpenLocation_Click" Style="{StaticResource ActionButton}" Margin="0,0,8,0" />
-                <Button Content="Copy path" Click="CopyPath_Click" Style="{StaticResource ActionButton}" Margin="0,0,8,0" />
-                <Button Content="Close" Click="Close_Click" Style="{StaticResource PrimaryButton}" />
-            </StackPanel>
+            <!-- Actions: the decision on the left, Close on the right. -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Allow" Click="Allow_Click" Style="{StaticResource ActionButton}" Margin="0,0,8,0" />
+                    <Button Content="Block" Click="Block_Click" Style="{StaticResource ActionButton}" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="Close" Click="Close_Click" Style="{StaticResource PrimaryButton}" />
+            </Grid>
 
         </StackPanel>
     </Border>

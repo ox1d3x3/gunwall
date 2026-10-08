@@ -15,6 +15,37 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.184] — 2026-10-08
+
+### Added — a first-run welcome screen
+On a fresh install GunWall used to open with a popup offering the two optional
+databases, and the app sat half-ready behind it while they downloaded. It now opens
+with a full screen of its own, under the title bar:
+
+1. **Setting up GunWall** - the GunWall mark animates while the app settles.
+2. **Two optional databases** - what each is for and its size, with **Download
+   now** and **Not now**. Shown only if a database is missing.
+3. **Getting GunWall ready** - each download shows *Waiting*, *Downloading*, then
+   *Ready* with what was loaded. The screen moves on only when every download has
+   finished and its data is in use. If one fails, it says why and offers
+   **Continue** - GunWall works fully without either database.
+4. **Welcome to GunWall** - *Take back control of your internet.* **Get started**
+   fades the screen away.
+
+It appears once, on a genuine first run - never after an upgrade - and the window
+can be moved or closed throughout. With Windows' *reduce animations* setting on,
+the mark is drawn still.
+
+## [0.99.183] — 2026-10-08
+
+### Fixed — Application properties buttons cut off
+The Application properties window had five buttons in one row - Allow, Block, Open
+file location, Copy path, Close - more than its width holds, so **Allow** was out
+of sight and **Block** cut in half. **Open file location** and **Copy path** now sit
+under the path they act on; the bottom row has **Allow** and **Block** on the left
+and **Close** on the right. The window also sizes itself to its content instead of
+opening part-scrolled.
+
 ## [0.99.182] — 2026-10-08
 
 ### Changed — every window and prompt matches the app

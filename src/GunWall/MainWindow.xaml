@@ -120,7 +120,8 @@
         </Style>
     </ui:FluentWindow.Resources>
 
-    <Grid>
+    <!-- Named so the first-run screen can cover row 1 (0.99.184). -->
+    <Grid x:Name="WindowRoot">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />   <!-- the app-drawn title bar -->
             <RowDefinition Height="*" />      <!-- everything else          -->

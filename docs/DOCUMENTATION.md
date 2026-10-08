@@ -88,6 +88,13 @@ starts** enabled.
 3. Follow the installer. Leave **Start GunWall when Windows starts** ticked unless
    you have a reason not to.
 
+**First launch.** A fresh install opens with a welcome screen. It offers the two
+optional databases (see [Additional data](#additional-data)) - **Download now**
+fetches them and waits until both are loaded; **Not now** skips them. **Get
+started** then takes you into the app. It is shown once, and not after an upgrade.
+GunWall starts in **Monitoring only**: nothing is blocked until you turn
+protection on.
+
 The installer's real advantage is its **uninstaller**, which removes GunWall's
 kernel filters before deleting anything. See [Chapter 17](#17-uninstalling).
 

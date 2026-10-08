@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.182 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.184 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -7275,15 +7275,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _firewall.SetDbRefreshHours(hours);
     }
 
-    private async System.Threading.Tasks.Task RefreshGeoIpAsync(bool manual)
+    /// <summary>Downloads and loads the GeoIP database. Returns whether it is now
+    /// loaded and a one-line detail, for the first-run screen (0.99.184); with
+    /// <paramref name="manual"/> it also reports the failure in a dialog.</summary>
+    private async System.Threading.Tasks.Task<(bool Ok, string Detail)> RefreshGeoIpAsync(bool manual)
     {
-        if (_dbBusyGeo) return;
+        if (_dbBusyGeo) return (false, "a download is already running");
         _dbBusyGeo = true;
         if (DbGeoBtn != null) { DbGeoBtn.IsEnabled = false; DbGeoBtn.Content = "Downloading..."; }
         try
         {
             int n = await System.Threading.Tasks.Task.Run(() => _firewall.DownloadAndLoadGeoIp());
             _firewall.NoteDbRefresh(geo: true, success: true, $"{n:N0} ranges loaded.");
+            return (true, $"{n:N0} address ranges loaded");
         }
         catch (Exception ex)
         {
@@ -7294,6 +7298,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (manual) ThemedMessageBox.Show($"The GeoIP download failed.\n\n{ex.Message}\n\n"
                 + "Your existing database has not been changed.",
                 "GeoIP", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return (false, ex.Message);
         }
         finally
         {
@@ -7303,9 +7308,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
-    private async System.Threading.Tasks.Task RefreshOuiAsync(bool manual)
+    /// <summary>Downloads and loads the vendor database; result as for
+    /// <see cref="RefreshGeoIpAsync"/>.</summary>
+    private async System.Threading.Tasks.Task<(bool Ok, string Detail)> RefreshOuiAsync(bool manual)
     {
-        if (_dbBusyOui) return;
+        if (_dbBusyOui) return (false, "a download is already running");
         _dbBusyOui = true;
         if (DbOuiBtn != null) { DbOuiBtn.IsEnabled = false; DbOuiBtn.Content = "Downloading..."; }
         try
@@ -7321,6 +7328,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (manual)
                 ThemedMessageBox.Show(message, "Vendor database", MessageBoxButton.OK,
                     written > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            return written > 0 ? (true, $"{_oui.Count:N0} manufacturer prefixes loaded") : (false, message);
         }
         catch (Exception ex)
         {
@@ -7329,6 +7337,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (manual) ThemedMessageBox.Show($"The vendor download failed.\n\n{ex.Message}\n\n"
                 + "Your existing database has not been changed.",
                 "Vendor database", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return (false, ex.Message);
         }
         finally
         {
@@ -7434,33 +7443,41 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // On disk, not loaded: both now load after startup, and the offer can run first.
         bool haveGeo = _firewall.GeoIpRangeCount > 0 || _firewall.GeoIpDatabaseOnDisk;
         bool haveOui = _oui.Loaded || System.IO.File.Exists(OuiCachePath);
-        if (haveGeo && haveOui) return;
 
-        var answer = ThemedMessageBox.Show(
-            "GunWall can download two optional databases:\n\n"
-            + "  \u2022  Country and network owner for each connection (about 25 MB)\n"
-            + "  \u2022  Device manufacturers for network scans (about 4 MB)\n\n"
-            + "Both are stored on this machine and used offline. Nothing about you "
-            + "is sent.\n\n"
-            + "To fetch them, GunWall will permit its own executable to reach the "
-            + "network. Nothing else is permitted, and every other application "
-            + "still needs your approval.\n\n"
-            + "Download them now? You can also do this later from "
-            + "Settings \u2192 Additional data.",
-            "Optional data", MessageBoxButton.YesNo, MessageBoxImage.Question,
-            "Download now", "Not now");
-        if (answer != MessageBoxResult.Yes) return;
+        // The first-run screen (0.99.184) replaces the popup that offered these:
+        // it shows while GunWall settles, offers whatever is missing, stays until
+        // each download has finished and loaded, and ends with the welcome. With
+        // both databases already present it is just the welcome.
+        var offer = new List<FirstRunScreen.Item>();
+        if (!haveGeo)
+            offer.Add(new FirstRunScreen.Item(
+                "Country and network owner for each connection", "about 25 MB",
+                () => RefreshGeoIpAsync(manual: false)));
+        if (!haveOui)
+            offer.Add(new FirstRunScreen.Item(
+                "Device manufacturers for network scans", "about 4 MB",
+                () => RefreshOuiAsync(manual: false)));
 
-        // Said in the dialog, so done here - and done BEFORE the first request
-        // rather than relying on startup having got there first. On a clean
-        // install this offer is the first thing that tries to reach the network,
-        // and if the permit is missing the download fails against GunWall's own
-        // baseline with nothing explaining why.
-        try { _firewall.EnsureSelfConnectivity(); }
-        catch (Exception ex) { Services.DiagnosticLog.LogException("FirstRun/selfPermit", ex); }
-
-        if (!haveGeo) await RefreshGeoIpAsync(manual: true);
-        if (!haveOui) await RefreshOuiAsync(manual: true);
+        try
+        {
+            var screen = new FirstRunScreen(offer,
+                // Said on the screen, so done here - and done BEFORE the first
+                // request rather than relying on startup having got there first.
+                // On a clean install this is the first thing that tries to reach
+                // the network, and if the permit is missing the download fails
+                // against GunWall's own baseline with nothing explaining why.
+                beforeDownload: () => _firewall.EnsureSelfConnectivity(),
+                done: () => { });
+            Grid.SetRow(screen, 1);
+            WindowRoot.Children.Add(screen);
+        }
+        catch (Exception ex)
+        {
+            // Without the screen the app is still fully usable; the databases
+            // stay one click away in Settings -> Additional data.
+            Services.DiagnosticLog.LogException("FirstRunScreen", ex);
+        }
+        await System.Threading.Tasks.Task.CompletedTask;
     }
 
     /// <summary>Shows how many prefixes are loaded, or invites the download.</summary>

@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.182 — public beta
+# GunWall 0.99.184 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.182-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.184-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -69,6 +69,9 @@ afterwards cannot read it and needs the key entered again.
   smart-home devices that reverse DNS and NetBIOS cannot name.
 
 **Interface**
+- A first-run welcome screen offers the optional databases, shows each download
+  until it is loaded, and ends with the welcome - instead of a popup over a
+  half-ready window.
 - Explanations sit behind an **ⓘ** icon beside each heading and option, shown on
   hover, instead of paragraphs under every heading.
 - Blocklist categories can be trimmed domain by domain (**Show domains**), and a
