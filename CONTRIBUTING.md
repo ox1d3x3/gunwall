@@ -26,7 +26,7 @@ Prerequisites: **Visual Studio 2022** (17.8+) with the **.NET desktop developmen
 1. Open `GunWall.sln`.
 2. Set configuration **Release**, platform **x64**.
 3. **Build → Build Solution** (`Ctrl+Shift+B`).
-4. The executable appears in `src/GunWall/bin/Release/net8.0-windows/GunWall.exe`.
+4. The executable appears in `src/GunWall/bin/x64/Release/net8.0-windows/GunWall.exe`.
 
 **Command line**
 
@@ -58,7 +58,7 @@ dotnet publish src/GunWall/GunWall.csproj -c Release -r win-x64 ^
 dotnet build GunWall.sln -c Release
 ```
 
-The executable lands in `src/GunWall/bin/Release/net8.0-windows/GunWall.exe`.
+The executable lands in `src/GunWall/bin/x64/Release/net8.0-windows/GunWall.exe`.
 
 Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before changing anything in
 `Services/Wfp` — it explains the sublayer model, filter weights, and why removal
