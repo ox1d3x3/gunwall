@@ -50,12 +50,18 @@ decision with the reason attached.
 
 <div align="center">
 
+<img src="docs/screenshots/demo.gif" alt="GunWall in use: Firefox is blocked, GunWall asks, it is allowed and the page loads, then it is blocked again from the Applications list" width="100%">
+
+<sub>Firefox tries to connect and is held back. GunWall asks, you allow it, the page loads — and one click on <b>Applications</b> blocks it again.</sub>
+
+<br><br>
+
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
-  <img src="docs/screenshots/dashboard-light.png" alt="GunWall dashboard showing protection status, live throughput and top talkers" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png">
+  <img src="docs/screenshots/overview-light.png" alt="GunWall Overview showing protection status, live throughput, top talkers and recent decisions" width="100%">
 </picture>
 
-<sub>The dashboard — protection state, live throughput, and what is talking right now.</sub>
+<sub>The Overview — protection state, live throughput, and what is talking right now.</sub>
 
 </div>
 
@@ -83,7 +89,7 @@ decision with the reason attached.
 - **Custom rules** on address, port, protocol and direction — in your order, first match wins
 - **Block by country, continent or network operator**
 - **Per-service rules** — stop one Windows service without disturbing others sharing its process
-- **Lockdown** to cut everything instantly, **snooze** to pause enforcement for a set period
+- **Lockdown** to cut everything instantly — from the window or the tray menu — and **snooze** to pause enforcement for a set period
 - **Rule profiles** for home, work and travel
 - **Decisions that stay made** — approvals and blocks are rules: kept across restarts and when protection is switched off and on, and a Microsoft Store app keeps its rule when it updates
 
@@ -93,7 +99,7 @@ decision with the reason attached.
 - **Per-application bandwidth**, measured from the kernel when precise metering is on
 - **World map** of where your traffic goes
 - **Packet log** with the reason for every verdict — including when something *other* than GunWall did the blocking
-- **Network scanner** identifying devices by name, manufacturer, likely operating system and gateway role, with your own note per device
+- **Network scanner** identifying devices by the name they announce (mDNS / Bonjour, e.g. *Living Room TV*), host name, manufacturer, likely operating system and gateway role, with your own note per device
 - **Traffic breakdown** by application, host, protocol and country
 
 ### 🔒 Privacy
@@ -111,28 +117,45 @@ decision with the reason attached.
 - **Safe upgrades** — the profile is snapshotted before a new version first writes to it, with automatic backups on request
 - **Update checking** — off by default; a found update is verified again before it runs and never installs itself
 
+### ✨ Experience
+
+- **A welcome on first launch** that offers the optional country and manufacturer databases and waits until they are loaded — and an **Update complete** screen after each update, with **See what's new**
+- **Light and dark themes** carried through everything: prompts, title bars and the tray menu
+- **UI size from 50% to 125%** — or **Ctrl + mouse wheel** anywhere — so a 4K or a 1080p screen both fit
+- **Explanations a hover away** — an **ⓘ** beside each heading and option instead of paragraphs of text
+
 <div align="right"><sub><a href="docs/DOCUMENTATION.md">Every feature explained in the User Guide →</a></sub></div>
 
 ---
 
 ## Screenshots
 
+<sub>Each picture follows your GitHub theme — switch between light and dark to see both.</sub>
+
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/traffic-dark.png" alt="Traffic map showing destination countries"/></td>
-<td width="50%"><img src="docs/screenshots/security-dark.png" alt="Security and privacy blocklists"/></td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/applications-dark.png"><img src="docs/screenshots/applications-light.png" alt="Applications list with signature status, VirusTotal, path and allow or block status"/></picture></td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/traffic-dark.png"><img src="docs/screenshots/traffic-light.png" alt="Traffic map showing destination countries and the most active apps"/></picture></td>
 </tr>
 <tr>
+<td><sub><b>Applications</b> — every program, its signature and its verdict, one click to change.</sub></td>
 <td><sub><b>Traffic</b> — where your connections actually go, by country and application.</sub></td>
-<td><sub><b>Security</b> — blocklists for Windows telemetry and update servers.</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/activity-light.png" alt="Activity log of new connections"/></td>
-<td><img src="docs/screenshots/settings-dark.png" alt="Settings screen"/></td>
+<td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/security-dark.png"><img src="docs/screenshots/security-light.png" alt="Security and privacy: blocklists, GeoIP source and country blocking"/></picture></td>
+<td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/rules-dark.png"><img src="docs/screenshots/rules-light.png" alt="Custom rules, IP blocklist and system rules"/></picture></td>
 </tr>
 <tr>
-<td><sub><b>Activity</b> — every new connection as it happens.</sub></td>
-<td><sub><b>Settings</b> — and yes, there is a light theme.</sub></td>
+<td><sub><b>Security</b> — telemetry and update blocklists, and blocking by country or network owner.</sub></td>
+<td><sub><b>Rules</b> — your own rules, an IP blocklist, and one-click system policies.</sub></td>
+</tr>
+<tr>
+<td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dns-dark.png"><img src="docs/screenshots/dns-light.png" alt="Built-in DNS resolver with encrypted upstream and blocklist"/></picture></td>
+<td><img src="docs/screenshots/packet-log-light.png" alt="Packet log with the reason for every verdict"/></td>
+</tr>
+<tr>
+<td><sub><b>DNS resolver</b> — optional, encrypted upstream, with its own blocklist.</sub></td>
+<td><sub><b>Packet log</b> — every verdict from the kernel, with the rule that made it.</sub></td>
 </tr>
 </table>
 
@@ -192,10 +215,18 @@ Windows SmartScreen will warn you — GunWall is not code-signed, by choice. Cho
 certutil -hashfile GunWall.exe SHA256
 ```
 
-### 3. Watch before you enforce
+### 3. Say hello
 
-Leave protection off for a few minutes and open **Connections**. Most people are
-surprised by what is already there. When you are ready, turn protection on and
+The first launch opens a short welcome. It offers two optional databases —
+country and network owner for each connection, and device manufacturers for the
+network scanner — and waits until they are ready. **Not now** skips them; they are
+one click away in **Settings → Additional data**.
+
+### 4. Watch before you enforce
+
+GunWall starts in **Monitoring only**: nothing is blocked yet. Leave it a few
+minutes and open **Connections**. Most people are surprised by what is already
+there. When you are ready, turn protection on — the switch in the bottom-left — and
 start approving.
 
 > **Requires** Windows 10 (2004+) or Windows 11, 64-bit, with administrator rights.
@@ -296,8 +327,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 **Credits.** GeoIP data from the public-domain [iptoasn](https://iptoasn.com)
 dataset, served via
 [`jedisct1/iptoasn-webservice`](https://github.com/jedisct1/iptoasn-webservice)
-(BSD-2-Clause). Domain blocklist from
-[StevenBlack/hosts](https://github.com/StevenBlack/hosts) (MIT). Country flags
+(BSD-2-Clause). Windows telemetry and update lists from
+[WindowsSpyBlocker](https://github.com/crazy-max/WindowsSpyBlocker) (MIT); the DNS
+resolver's ads and malware preset from
+[StevenBlack/hosts](https://github.com/StevenBlack/hosts) (MIT). Device
+manufacturers from the public [IEEE registry](https://standards-oui.ieee.org/). Country flags
 from [FlagKit](https://github.com/madebybowtie/FlagKit) (MIT). Interface controls
 from [WPF-UI](https://github.com/lepoco/wpfui) (MIT).
 

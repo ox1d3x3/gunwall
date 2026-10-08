@@ -39,7 +39,7 @@ someone else's work is a bug here like any other.
 | **Cost** | Free | Free | Free | Free + Pro €80/yr | Freemium, ~$36–39/yr |
 | **Platform** | Windows | Windows 7–11, ARM64 | Windows | Windows, Linux | Windows, Android |
 | **Approach** | Own WFP layer | Own WFP layer | Wraps Windows Firewall | Own kernel layer | Wraps Windows Firewall |
-| **Default posture** | Deny, prompt once | Deny, prompt | Whitelist, no prompts | Deny, prompt | Monitor, block on request |
+| **Default posture** | Monitor until protection is on; then deny, prompt once | Deny, prompt | Whitelist, no prompts | Deny, prompt | Monitor, block on request |
 | **Size** | ~190 MB | < 1 MB | ~2 MB | Moderate | Moderate |
 | **Signed binaries** | No (checksum published) | GPG signature | Yes | Yes | Yes |
 | **Maturity** | Beta, 2026 | Since 2016 | Since 2011 | Since 2019 | Since 2014 |
@@ -66,7 +66,7 @@ country, or a specific network operator by ASN. Portmaster offers this; the free
 Windows-native tools generally do not.
 
 **Verified teardown.** Every route out — the protection switch, *Remove all
-filtering*, and the uninstaller — returns the machine to Windows defaults, and you
+GunWall filtering*, and the uninstaller — returns the machine to Windows defaults, and you
 can confirm it with `netsh wfp show filters` rather than taking anyone's word.
 This matters more than it sounds: simplewall's own documentation notes that *"when
 you uninstall simplewall, all previously configured filters stay alive in

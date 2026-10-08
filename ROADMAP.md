@@ -29,11 +29,11 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, one NuGet dependen
 
 **Rules** — custom rules by IP / CIDR / port / protocol / direction / local-port · manual IP blocklist · curated system-rule library (~21 presets + secure baseline).
 
-**Threat & privacy blocking** — telemetry & Windows-Update blocklists via hosts file **with automatic WFP firewall-rule fallback** when the hosts file is blocked · ads & trackers via AdGuard DNS · filtering-DNS selection (AdGuard / Quad9) · on-demand online list updates.
+**Threat & privacy blocking** — telemetry & Windows-Update blocklists via hosts file **with automatic WFP firewall-rule fallback** when the hosts file is blocked · filtering-DNS selection (AdGuard / Quad9) · on-demand online list updates.
 
 **App trust** — **Authenticode signature verification** (valid / unsigned / invalid via WinVerifyTrust) · SHA-256 tamper detection · VirusTotal hash lookup · verified-publisher column and colored signature in alerts.
 
-**Visibility** — connection inspector (TCP+UDP, IPv4+IPv6) with close / block / terminate · live Packets Log (+CSV) · throughput graph · activity feed · LAN network scanner · reverse-DNS host resolution.
+**Visibility** — connection inspector (TCP+UDP, IPv4+IPv6) with close / block / terminate · live Packet log (+CSV) · throughput graph · activity feed · LAN network scanner · reverse-DNS host resolution.
 
 **Management & UI** — profiles (import/export) · versioned backups (auto + manual) · Windows Firewall status/on-off/import · diagnostics export · run-at-startup (UAC-skipping scheduled task) · start-minimized · close-to-tray with active-firewall exit warning · configurable alerts (timeout, default action, sound, tray, snooze) · light/dark theme · search bar · always-on-top · update checker.
 
@@ -68,7 +68,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, one NuGet dependen
 - ✅ **App properties dialog** — a per-app detail window (path, publisher, hash, signature, type/package, counts) with **Open file location**, **Copy path** and a notes field.
 - ✅ **Purge unused apps** + **keep-unused toggle** + **purge expired timers** — manual purge buttons plus a setting to hide apps with no rule and no live connections.
 - ✅ **Protected ("undeletable") rules** — a custom rule can be marked protected; it then refuses deletion until unprotected. (Per-app *disable-notifications* is the existing Mute action.)
-- ◐ **Color-highlight customization** — ✅ user-editable colors for signed / unsigned / system / invalid / unknown (Settings → Appearance). Remaining: the **special**, **pico**, **undeletable** and **connection** categories (need the underlying detection).
+- ◐ **Color-highlight customization** — ✅ user-editable colors for signed / unsigned / system / invalid / unknown (Settings → Appearance - Category colors). Remaining: the **special**, **pico**, **undeletable** and **connection** categories (need the underlying detection).
 - ✅ **Per-app notes** — attach a free-text note to any app (in the Properties dialog).
 
 ### Notifications, blocklists & logging
@@ -193,7 +193,9 @@ the first-run experience.*
     failing for a month must be visible, not assumed working.
   - Replace only on a complete, validated download. A truncated file must not
     overwrite a working table.
-- ✅ **First-run offer to download the databases** *(0.99.134)* — on a genuinely fresh install
+- ✅ **First-run offer to download the databases** *(0.99.134; since 0.99.184 part of the
+  first-run welcome screen, which shows each download until it is loaded; 0.99.186 adds an
+  "Update complete" screen after upgrades)* — on a genuinely fresh install
   with neither database present, ask once whether to download them. Conditions:
   - **Never shown after an upgrade.** Users enable and disable these deliberately,
     and re-asking every release is how a prompt becomes something people dismiss
@@ -229,9 +231,10 @@ the first-run experience.*
 - ☐ **Windows Update repair (WUFix)** — registry repair for a stuck Update service. *Edits HKLM; gated behind explicit confirmation.*
 - ☐ **Compressed / encrypted profile formats** — alongside today's plain JSON.
 
-### Localization
+### Installation and updates
 - ✅ **Installation and updates** — ✅ an installer whose uninstaller removes all filtering before deleting anything, keeps the profile across upgrades, and asks before removing it. ✅ the update check resolves the release's installer asset. ✅ downloading it, verifying it again at install time, and launching it from **Update now**.
 
+### Localization
 - ☐ **Multi-language UI** — externalize strings and ship language packs.
 
 ---

@@ -46,7 +46,7 @@ App SDK — which is what makes "open the solution, build, run the EXE" reliable
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │                       WPF UI (MainWindow)                      │
-│  Dashboard · Apps · Traffic · Connections · Packets · DNS      │
+│  Overview · Apps · Traffic · Connections · Packets · DNS       │
 │  Rules · Security · Network · Alerts · Settings                │
 ├───────────────────────────────────────────────────────────────┤
 │  Event-driven detection  +  1-second sampling loop             │
@@ -112,7 +112,8 @@ of filter identifiers is lost to a crash.
 
 ### Policy model — Zero-Trust default-deny
 
-The engine adds **no filters at startup**. When Zero-Trust mode is enabled it
+At startup the engine installs only GunWall's own self-permit and whatever the saved
+profile calls for; a fresh install adds no blocking filters. When Zero-Trust mode is enabled it
 installs a low-weight block-all baseline plus per-app permits above it, so an
 application reaches the network only once it has been approved. Loopback and
 core Windows networking are permitted by infrastructure filters at the highest
@@ -128,11 +129,10 @@ terminating match ends evaluation. The ordering, from the top:
 
 | Weight | Purpose |
 |--------|---------|
-| `0x0F` | Infrastructure permits (loopback, core networking, GunWall itself) |
+| `0x0F` | Infrastructure permits (loopback, core networking) |
 | `0x0E` | Lockdown |
-| `0x0C` | Explicit user block |
-| `0x0B` | Explicit user allow |
-| `0x09` | Per-app rules |
+| `0x0C` | Block rules - per-app and custom |
+| `0x0B` | Allow rules - per-app, custom, and GunWall's own self-permit |
 | `0x08` | Zero-Trust block-all baseline |
 
 Lockdown deliberately sits *below* infrastructure permits so that "block
@@ -158,7 +158,7 @@ survive a crash. Conditions are probed separately, because a layer probe
 structurally cannot catch a bad condition identifier.
 
 This exists because three incorrect identifiers shipped undetected for months.
-Anyone touching this layer should run it (Settings → Diagnostics → *Verify
+Anyone touching this layer should run it (Settings → Preferences → *Verify
 kernel layers*) and check the result.
 
 ### Fault tolerance
@@ -305,8 +305,9 @@ wants done, which is the sidebar's question. Search sits at its left: Ctrl+K
 focuses it, typing filters the thirteen destinations, Enter navigates.
 
 **Each control appears once.** The firewall toggle lives in the posture module
-and nowhere else; lockdown likewise. The hero keeps only Resume, because a
-snooze is the one state the posture module cannot exit. This is not tidiness —
+and nowhere else; lockdown likewise. The hero keeps only Snooze / Resume
+(plus Check for updates), because a snooze is the one state the posture module
+cannot exit. This is not tidiness —
 a control offered twice is a state you have to verify twice, and when the two
 copies were labelled differently they read as disagreeing.
 
@@ -425,7 +426,7 @@ the interface, and the interface's own colours are never used for them.
   filters cannot be protected from other administrator processes: any access
   control strong enough to stop them would lock GunWall out too. Removal is
   detected and undone instead (see §4). Tracked for 1.0.
-- **No code signing or installer.** Builds are unsigned, which is also why
+- **No code signing.** Builds are unsigned, which is also why
   behavioural antivirus sometimes flags them.
 - **No kernel-mode callout driver.** Mature user-mode WFP firewalls do not use
   one either; it would require driver signing and carry BSOD risk that

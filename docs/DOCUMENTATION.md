@@ -177,23 +177,23 @@ empty file called `portable.txt` beside `GunWall.exe`.
 
 ## 4. How GunWall decides
 
-GunWall evaluates every outbound connection in this order. **The first match
-wins.**
+GunWall's filters are weighted, and for each connection the strongest matching
+filter decides:
 
-| Order | Layer | Example |
+| Strength | Layer | Example |
 |---|---|---|
-| 1 | Lockdown | Everything blocked |
-| 2 | Explicit block rules | "Block this app", blocked services |
-| 3 | Explicit allow rules | System-rule allows, approved applications |
-| 4 | Custom rules, in your order | "Block outbound to 10.0.0.5:22" |
-| 5 | Zero-trust baseline | Anything left over is denied |
+| 1 | Core networking | Loopback, DHCP, DNS and local network infrastructure - always permitted, so the machine stays reachable |
+| 2 | Lockdown | Everything else blocked |
+| 3 | Block rules | "Block this app", blocked services, custom block rules |
+| 4 | Allow rules | Approved applications, system-rule allows, custom allow rules |
+| 5 | Zero-trust baseline | With protection on, anything left over is denied |
 
 Two consequences worth knowing:
 
 - **A block beats an allow.** If an application is allowed but a custom rule blocks
   the address it wants, the connection is blocked.
-- **Order matters within custom rules.** Move them up and down on the **Rules**
-  screen to change precedence.
+- **Custom rules have no order of their own.** Among them, too, a block always
+  beats an allow - there is nothing to rearrange.
 
 GunWall runs as an independent filtering layer and **does not modify your Windows
 Firewall rules**. Both apply; either can block.
@@ -212,9 +212,8 @@ corner.
 | Field | Meaning |
 |---|---|
 | Program name and path | Who is asking. Check the path — a familiar name in an unfamiliar folder is worth a second look. |
-| Publisher | From the code signature. **Unsigned** is not automatically bad, but it is worth noticing. |
-| Destination | Address and port, with country and network operator where known. |
-| VirusTotal | Detection count, if you have supplied an API key in Settings. |
+| Signature | A **Signed**, **Unsigned** or **Invalid** chip from the code signature; hover it for the publisher. **Unsigned** is not automatically bad, but it is worth noticing. |
+| Destination | Address and port, with the country's flag where known (hover it for the name). |
 
 **Your options**
 
@@ -243,12 +242,17 @@ activity.
 - **Show all running apps** to include programs that have not yet used the network
 - **Block an app** to add one by browsing to its executable
 - **Purge unused** to clear entries with no rule and no connections
-- **Double-click a row** for full details: publisher, hash, signature status,
-  package type, and a notes field of your own
+- **Right-click a row → Properties…** for full details: publisher, hash,
+  signature status, package type and a notes field of your own. **Open file
+  location** and **Copy path** sit under the path; **Allow**, **Block** and
+  **Close** along the bottom
+- **Allow** and **Block** change the row at once; the rule is applied straight
+  after
 
 **The coloured dot** beside each name shows signature status — signed, unsigned,
 Windows system, or invalid signature. Colours are configurable under
-*Settings → Appearance*.
+*Settings → Appearance - Category colors*. Icon size is under *Settings →
+Preferences → App icon size*.
 
 > **When a program updates**, it often moves to a new versioned folder and its old
 > rule stops matching. For a **Microsoft Store** app (marked with a **Store**
@@ -260,20 +264,20 @@ Windows system, or invalid signature. Colours are configurable under
 
 ## 7. Rules
 
-Two sections.
+Three sections: **Custom Rules**, the **IP blocklist** and **System Rules**.
 
 ### Custom rules
 
-Your own rules, evaluated in order. Each matches on any combination of:
+Your own rules. Each matches on any combination of:
 
 - **Action** — allow or block
-- **Direction** — inbound, outbound, or both
+- **Direction** — outbound or inbound
 - **Protocol** — TCP, UDP, or any
-- **Remote address** — a single IPv4 address, or blank for all
+- **Remote address** — an IPv4 address or subnet (e.g. `192.168.1.0/24`), or blank for all
 - **Port** and **local port**
 
-Leave a field blank to match everything. Use the arrows to reorder — earlier rules
-win.
+Leave a field blank to match everything. A block always beats an allow (see
+[How GunWall decides](#4-how-gunwall-decides)).
 
 ### System rules
 
@@ -290,7 +294,8 @@ which is a useful sanity check.
 
 ### IP blocklist
 
-Paste IPv4 addresses, one per line, to block them outright for every application.
+Paste IPv4 addresses or subnets, one per line, to block them outright for every
+application.
 
 ---
 
@@ -335,6 +340,34 @@ content-delivery network.
 > unreliable. GunWall blocks addresses it has observed; large providers rotate
 > faster than that. Domain blocking works well against trackers on stable hosts. It
 > will not reliably stop a major website.
+
+### GeoIP data source
+
+Where country and network-owner (ASN) information comes from:
+
+- **Local database (download)** — the IPv4 and IPv6 tables from *Settings →
+  Additional data*. Works offline.
+- **Self-hosted API server** — your own
+  [iptoasn-webservice](https://github.com/jedisct1/iptoasn-webservice) instance;
+  nothing to download. Press **Test**, then **Save**.
+
+Lookups are cached, so each address is looked up once.
+
+### Country and ASN blocking
+
+Block one application — **Choose app…** — or **All apps** from reaching a whole
+**Country** (`RU`), **Continent** (`EU`) or network operator (**ASN**, `AS13335`),
+then **Add rule**. It needs a GeoIP data source (above).
+
+Matching is reactive: GunWall blocks an address the moment it sees a connection to
+it, so it is most effective against repeated or sustained traffic. **Clear active
+blocks** removes the addresses blocked so far; the rules stay.
+
+### Filtering DNS
+
+Points Windows at a filtering DNS service for a second blocking layer with no lists
+to maintain — **AdGuard** blocks ads and trackers, **Quad9** blocks malware and
+phishing. **Apply DNS** sets it on all active adapters; every change is logged.
 
 ---
 
@@ -384,7 +417,7 @@ kernel-level domain blocks, so give it a moment to re-establish.
 
 ## 10. Watching traffic
 
-**Dashboard** — protection state, uptime, live throughput, a 60-second graph, top
+**Overview** — protection state, uptime, live throughput, a 60-second graph, top
 talkers, and recent allow/block decisions.
 
 **Activity** — a running history of what GunWall did and why.
@@ -463,7 +496,16 @@ modern phone does by default. It is privacy working, not a fault.
 
 **Settings** is the last item in the left-hand sidebar. It is one long page of
 cards, each headed with a name in capitals — scroll to find the card named below.
-Hover the **ⓘ** beside a card's heading or an option for what it does.
+Hover the **ⓘ** beside a card's heading or an option for what it does. Most
+options are staged: press **Apply** to save them.
+
+### Firewall mode
+
+**Alert mode (recommended)** allows new applications and notifies you. **Strict
+mode** blocks everything except the applications you allow - the same state as the
+protection switch in the bottom-left panel. Core Windows networking and loopback
+stay allowed either way. **Alert on new apps** (Connection alerts) controls the
+notifications.
 
 ### Preferences
 
@@ -478,33 +520,39 @@ Hover the **ⓘ** beside a card's heading or an option for what it does.
 | Send firewall events to the Windows Event Log | For central log collection |
 | Play a sound on notification popups | |
 | Show a tray notification when a new app is detected | |
+| Always confirm before exiting GunWall | Asks even when protection is off |
+| Keep apps with no rule and no connections in the list | Otherwise they are tidied away |
+| Keep window always on top | |
+| Compute SHA-256 hash of apps | Tamper detection: notices when an allowed program's file changes |
+| Experimental options | Precise per-app data metering (ETW), and kernel event detection |
 
-### Alerts
+Also in **Preferences**:
 
-Choose which categories reach the Alerts page: security, protection changes,
-network, and rules/profiles.
-
-### Popup behaviour
-
+- **Alert categories** — which categories reach the Alerts page: security,
+  protection changes, network, and rules/profiles
 - **Popup stays open for** — *Never* by default, so a prompt waits for you.
-  **With a timeout set, anything unanswered gets a permanent rule.**
-- **then** — what happens on timeout: Block or Allow
+  **With a timeout set, anything unanswered gets a permanent rule.** **then** sets
+  what happens on timeout: Block or Allow
 - **Silence popups while a fullscreen app or game is running** — held back and
   shown afterwards
-
-### Logging
-
-- **Log packets to a CSV file**, with a size limit and rotation
-- **Keep at most N live rows** in the on-screen logs
-- **Confirm before clearing** the Activity and Packet logs
+- **Log packets to a CSV file**, rotated at a size you choose; **Keep at most N
+  live rows** in the on-screen logs; **Confirm before clearing** the Activity and
+  Packet logs
 - **Open log folder**, **View error log**
-
-### Diagnostics
-
 - **Verify kernel layers** — confirms every WFP layer GunWall uses is available
 - **Check filter integrity** — confirms every filter it believes it installed is
   actually present
+
+### Diagnostics
+
 - **Export diagnostics (.zip)** — the bundle to attach to a bug report
+- **Open data folder**
+
+**App health** shows GunWall's own counters live, the same ones the export records.
+**Connectivity check** detects a hotel or airport login page (captive portal);
+**Portal mode** pauses filtering for 5 minutes so you can sign in, then resumes.
+**Refresh interval** sets how often connections and the graph update - slower uses
+less CPU. **Windows Firewall** shows its state per profile.
 
 ### Appearance
 
@@ -540,13 +588,17 @@ again.
 
 - **Profile (rules backup)** — **Export profile** and **Import profile** write or
   read every rule and setting as one file
-- **Profiles** — named rule sets you can load, save and delete
+- **Profiles** — save every rule **and setting** under a name (e.g. Home, Work,
+  Travel) and switch between them
+- **Rule profiles** — save only your per-app allow/block decisions under a name
+  (e.g. Gaming, Work); applications not in the profile are left as they are
 - **Backups** — **Back up now**, **Restore**, and an option to back up on each launch
 
 ### Reset
 
-- **Remove all GunWall filtering** — removes everything and clears saved rules;
-  your VirusTotal key and custom blocklist path are kept
+- **Remove all GunWall filtering** — removes everything and clears saved rules,
+  which also turns protection off; your VirusTotal key and custom blocklist path
+  are kept
 - **Reset settings to defaults** — preferences only; **your rules and blocklists
   are kept**
 
@@ -554,8 +606,9 @@ again.
 
 ## 14. Profiles, lockdown and snooze
 
-**Rule profiles** save a whole ruleset under a name and switch between them — for
-example a permissive profile at home and a strict one on public networks.
+**Profiles** save all your rules and settings under a name and switch between them
+— for example a permissive profile at home and a strict one on public networks.
+**Rule profiles** do the same for per-app allow/block decisions only.
 
 **Turning protection off and on** (the switch in the bottom-left panel) keeps every
 approval and block — they are rules. What is reset is the list of applications
@@ -572,9 +625,15 @@ Lockdown and a snooze are separate: a snooze pauses your rules, but it does not
 lift lockdown. With both on, everything is still blocked, and GunWall shows
 *Locked down*.
 
-**Snooze 15 min** (Dashboard) pauses enforcement for a set period, then restores it
+**Snooze 15 min** (Overview) pauses enforcement for a set period, then restores it
 automatically. Useful for installing something that needs broad access, without
 leaving protection off and forgetting.
+
+**Exiting.** Closing the window keeps GunWall running in the tray. To exit, use
+**Exit** in the tray menu. If protection or lockdown is on, GunWall asks first:
+**Turn off and exit** removes enforcement before closing, **Keep on and exit**
+leaves your rules enforcing with no window to change them (they stay until the next
+restart), and **Cancel** keeps GunWall open.
 
 ---
 

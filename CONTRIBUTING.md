@@ -125,7 +125,7 @@ The kernel interop is where mistakes are most expensive and least visible.
 - **Verify every GUID against the Windows SDK headers**, not against memory or
   another project's copy. A wrong identifier can be a valid-but-different layer,
   which installs successfully and filters the wrong thing.
-- **Run Settings → Diagnostics → *Verify kernel layers*** after touching layers
+- **Run Settings → Preferences → *Verify kernel layers*** after touching layers
   or conditions. It probes each one and reports what the kernel accepts.
 - **New layers are opt-in first.** Ship behind a toggle that is off by default,
   with a description saying plainly when *not* to enable it.

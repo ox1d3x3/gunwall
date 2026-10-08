@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.188 — public beta
+# GunWall 0.99.189 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.188-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.189-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -41,6 +41,10 @@ afterwards cannot read it and needs the key entered again.
   time; starting it again shows the running window.
 - Approvals and blocks are rules: kept across restarts and when protection is
   switched off and on.
+- A fresh install starts in **Monitoring only** - nothing is blocked until
+  protection is turned on.
+- Lockdown outranks a snooze: with both on, everything is still blocked and
+  GunWall says *Locked down*.
 - GunWall finds its own filters by asking the Windows filter engine directly,
   rather than running `netsh` - faster, and complete.
 - Microsoft Store apps keep their rule when they update.
@@ -83,7 +87,11 @@ afterwards cannot read it and needs the key entered again.
 - The tray menu is drawn in GunWall's own colours, with a status line at the top,
   and offers **Engage lockdown** or **Release lockdown** as it applies; the tray
   tooltip says when lockdown is on.
-- Block and Allow change the Applications row the moment they are pressed.
+- Block and Allow change the Applications row the moment they are pressed; the
+  Application properties window keeps **Open file location** and **Copy path**
+  under the path, with **Allow**, **Block** and **Close** along the bottom.
+- **Remove all GunWall filtering** and **Import profile** redraw the whole window
+  at once, protection switch included.
 - Every confirmation and error uses GunWall's own themed dialog, with buttons that
   say what they do where it matters (e.g. **Turn off and exit**), and every
   window's title bar follows the light or dark theme.

@@ -451,7 +451,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.188 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.189 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -8159,8 +8159,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // --unblock path calls only the first - see App.xaml.cs.
             bool complete = _firewall.RemoveAllFiltering();
             _firewall.ClearStore();
-            SyncLockdownButton();
-            RebuildAppsList();
+            // Clearing the store turns protection OFF; until 0.99.189 only the
+            // lockdown button and the Applications list were redrawn, so the
+            // protection switch, sidebar and Overview kept saying "Protected"
+            // until clicked (reported from use).
+            RefreshAfterProfileChange();
             // Report what actually happened. "Some filters were kept, they are
             // inactive" was the old message and it was wrong: four kept filters
             // were a condition-less BLOCK, and they were the reason a machine had
@@ -8499,12 +8502,37 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             int count = _firewall.ImportProfile(dlg.FileName);
-            SyncFirewallToggle();
-            RebuildAppsList();
+            RefreshAfterProfileChange();
             ThemedMessageBox.Show($"Imported {count} rule(s).", "GunWall",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { ShowError(ex); }
+    }
+
+    /// <summary>Redraws everything a profile-wide change can alter: protection
+    /// switch and posture (sidebar, Overview, tray), lockdown, Applications,
+    /// Rules, system rules, per-app rules, blocklists, Overview counts and the
+    /// open page. Used after Remove all GunWall filtering and Import profile,
+    /// which replace the whole profile at once (0.99.189). Each step is
+    /// independent: one failing to redraw must not leave the rest stale.</summary>
+    private void RefreshAfterProfileChange()
+    {
+        foreach (var (name, step) in new (string, Action)[]
+        {
+            ("toggle", SyncFirewallToggle),        // also posture, hero and tray
+            ("lockdown", SyncLockdownButton),
+            ("apps", RebuildAppsList),
+            ("rules", RefreshRulesList),
+            ("systemRules", BuildSystemRulesUi),
+            ("entityRules", RefreshEntityRules),
+            ("blocklists", BuildBlocklistCatUi),
+            ("dashboard", RefreshDashboardStats),
+            ("panel", RefreshVisiblePanel),
+        })
+        {
+            try { step(); }
+            catch (Exception ex) { Services.DiagnosticLog.LogException($"RefreshAfterProfileChange/{name}", ex); }
+        }
     }
 
     private void MarkSettingsDirty()

@@ -15,6 +15,29 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.189] — 2026-10-08
+
+### Fixed — the protection switch after "Remove all GunWall filtering"
+Removing all filtering turns protection off, but the protection switch, the
+sidebar and the Overview went on showing it as on until the switch was clicked.
+The whole window is now redrawn at once - protection switch and status, lockdown,
+Applications, Rules, blocklists and Overview counts. **Import profile** had the
+same gap and gets the same fix.
+
+### Documentation
+- README: a demo of GunWall in use, new screenshots in light and dark (each
+  follows the reader's GitHub theme), the features added in recent releases, and
+  the first-run welcome in the install steps. Blocklist credits now name
+  WindowsSpyBlocker for the Windows telemetry and update lists.
+- User Guide: corrected how rules are weighed (custom rules have no order of their
+  own; a block always beats an allow), the connection prompt's fields, opening
+  **Properties...** from the right-click menu, custom-rule directions and subnets,
+  where **Verify kernel layers** and **Check filter integrity** live (Preferences),
+  **Profiles** versus **Rule profiles**, and *Overview* (not Dashboard). Added the
+  GeoIP data source, country and ASN blocking, filtering DNS, Firewall mode, the
+  rest of the Preferences options, and the exit prompt.
+- Architecture, Roadmap, Contributing and Comparison brought in line with the code.
+
 ## [0.99.188] — 2026-10-08
 
 ### Changed — UI size from 50% to 125%, with shortcuts
