@@ -11,6 +11,8 @@ public interface IDetectionPolicy
 {
     bool AlertsEnabled { get; }
     bool StrictMode { get; }
+    /// <summary>Allow Windows' core processes without asking (0.99.195).</summary>
+    bool AutoAllowCoreWindows { get; }
     bool IsBlocked(string exePath);
     bool IsAllowed(string exePath);
     bool IsSilent(string exePath);
@@ -38,6 +40,9 @@ public sealed class DetectionResult
     public List<NetActivityEvent> Activity { get; } = new();
     public PacketVerdict? Packet { get; set; }
     public List<PromptRequest> Prompts { get; } = new();
+    /// <summary>Windows core processes to allow without a popup (0.99.195): the
+    /// setting is on and the path is one of CoreWindowsProcesses.</summary>
+    public List<PromptRequest> AutoAllow { get; } = new();
     /// <summary>Apps seen on the network for the first time (monitoring mode).</summary>
     public List<string> FirstSeen { get; } = new();
     /// <summary>The window should try to show the next queued prompt: a prompt was
@@ -63,13 +68,25 @@ public sealed class ConnectionDetector
 {
     private readonly IDetectionPolicy _fw;
     private readonly string _self;
+    private readonly string? _system32;
     private readonly HashSet<string> _prompted = new(StringComparer.OrdinalIgnoreCase);
     private bool _knownSeeded;
 
-    public ConnectionDetector(IDetectionPolicy firewall, string? selfPath)
+    public ConnectionDetector(IDetectionPolicy firewall, string? selfPath, string? system32Dir = null)
     {
         _fw = firewall;
         _self = selfPath ?? "";
+        _system32 = system32Dir;
+    }
+
+    /// <summary>Either a popup or, for a Windows core process with the setting on,
+    /// an automatic allow. Called once per app per session.</summary>
+    private void Ask(DetectionResult r, PromptRequest q)
+    {
+        if (_fw.AutoAllowCoreWindows && CoreWindowsProcesses.IsCore(q.ExePath, _system32))
+            r.AutoAllow.Add(q);
+        else
+            r.Prompts.Add(q);
     }
 
     private bool IsSelf(string path) =>
@@ -129,7 +146,7 @@ public sealed class ConnectionDetector
         if (!_fw.AlertsEnabled) return r;
         if (!_fw.StrictMode) return r;
         if (!_prompted.Add(appPath)) return r;
-        r.Prompts.Add(new PromptRequest(appName, appPath, remote, remotePort, protocol, now));
+        Ask(r, new PromptRequest(appName, appPath, remote, remotePort, protocol, now));
         r.ShowQueued = true;
         return r;
     }
@@ -195,7 +212,7 @@ public sealed class ConnectionDetector
 
             string remote = c.RemoteAddress;
             if (remote is "0.0.0.0" or "::") remote = "";   // unbound -> pending
-            r.Prompts.Add(new PromptRequest(proc.Name, proc.Path, remote ?? "", c.RemotePort, c.Protocol, now));
+            Ask(r, new PromptRequest(proc.Name, proc.Path, remote ?? "", c.RemotePort, c.Protocol, now));
         }
     }
 

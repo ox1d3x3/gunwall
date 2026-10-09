@@ -228,6 +228,18 @@ you do not answer in time gets a **permanent** rule.
 **Closing the prompt without answering blocks that connection.** No rule is saved,
 so you will be asked again next time.
 
+**Several at once.** When three or more programs are waiting — after a reset, a
+fresh install or at startup — they are listed in one window instead, each with
+**Allow** and **Block**, plus **Allow all remaining** and **Block all remaining**.
+Anything left undecided stays blocked. Turn this off with *Settings → Show several
+waiting apps in one window*.
+
+**Windows' own core processes** (System, smss, csrss, wininit, winlogon, services,
+lsass, lsaiso, spoolsv — from the System32 folder only) are allowed without
+asking, because blocking them breaks Windows. `svchost` still asks. Turn this off
+with *Settings → Allow core Windows processes without asking* for the strictest
+zero trust.
+
 ---
 
 ## 6. Applications
@@ -537,6 +549,10 @@ Also in **Preferences**:
   what happens on timeout: Block or Allow
 - **Silence popups while a fullscreen app or game is running** — held back and
   shown afterwards
+- **Show several waiting apps in one window** — on by default; three or more
+  waiting programs are decided in one list ([Chapter 5](#5-the-connection-prompt))
+- **Allow core Windows processes without asking** — on by default; off for the
+  strictest zero trust ([Chapter 5](#5-the-connection-prompt))
 - **Log packets to a CSV file**, rotated at a size you choose; **Keep at most N
   live rows** in the on-screen logs; **Confirm before clearing** the Activity and
   Packet logs

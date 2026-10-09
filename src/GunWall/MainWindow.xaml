@@ -2949,6 +2949,18 @@
                             <CheckBox x:Name="FullscreenSilentCheck" Content="Silence popups while a fullscreen app or game is running"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <CheckBox x:Name="GroupPromptsCheck" Content="Show several waiting apps in one window"
+                                          Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                          Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                                <gw:InfoTip Text="When three or more applications are waiting at once - after a reset, a fresh install or at startup - they are listed in one window with Allow and Block for each, instead of one popup after another." />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <CheckBox x:Name="AutoAllowCoreCheck" Content="Allow core Windows processes without asking"
+                                          Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                          Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                                <gw:InfoTip Text="Allows only Windows' own core processes from the System32 folder - System, smss, csrss, wininit, winlogon, services, lsass, lsaiso and spoolsv. Blocking them breaks Windows, so asking about them adds nothing. svchost is not included: it hosts most Windows services, telemetry included, so you decide it. Turn this off for the strictest zero trust, where every program asks." />
+                            </StackPanel>
                             <CheckBox x:Name="ConfirmClearCheck" Content="Confirm before clearing the Activity / Packets logs"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />

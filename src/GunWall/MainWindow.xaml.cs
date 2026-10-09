@@ -136,7 +136,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // is toggled so a fresh takeover re-prompts everything.
     private ConnectionDetector? _detectorInstance;
     private ConnectionDetector _detector =>
-        _detectorInstance ??= new ConnectionDetector(_firewall, Environment.ProcessPath);
+        _detectorInstance ??= new ConnectionDetector(_firewall, Environment.ProcessPath, Environment.SystemDirectory);
 
     // Session data totals
     private long _sessionStartRx = -1, _sessionStartTx = -1;
@@ -400,6 +400,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
             if (EtwMeterCheck != null) EtwMeterCheck.IsChecked = _firewall.EtwMeterEnabled;
             if (FullscreenSilentCheck != null) FullscreenSilentCheck.IsChecked = _firewall.FullscreenSilent;
+            if (AutoAllowCoreCheck != null) AutoAllowCoreCheck.IsChecked = _firewall.AutoAllowCoreWindows;
+            if (GroupPromptsCheck != null) GroupPromptsCheck.IsChecked = _firewall.GroupPrompts;
             if (ConfirmClearCheck != null) ConfirmClearCheck.IsChecked = _firewall.ConfirmClearLogs;
             if (ConfirmExitCheck != null) ConfirmExitCheck.IsChecked = _firewall.AlwaysConfirmExit;
             if (KeepUnusedCheck != null) KeepUnusedCheck.IsChecked = _firewall.KeepUnusedApps;
@@ -451,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.194 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.195 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -582,6 +584,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Notify("info",
                    $"First network activity: {System.IO.Path.GetFileNameWithoutExtension(path)}",
                    $"{path} made its first network connection on this system.", "rules");
+        // Windows core processes, with "Allow core Windows processes" on (0.99.195).
+        foreach (var q in r.AutoAllow)
+        {
+            _firewall.AllowApp(q.ExePath, q.ProcessName);
+            LogActivity(new NetActivityEvent
+            {
+                ProcessName = q.ProcessName,
+                Detail = "allowed automatically (core Windows process)"
+            });
+            while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
+            Services.DiagnosticLog.Log($"Allowed automatically: {q.ProcessName} (core Windows process, seen in the {source}).");
+        }
+        if (r.AutoAllow.Count > 0) RebuildAppsList();
         foreach (var q in r.Prompts)
         {
             _alertQueue.Enqueue(new AlertWindow.AlertInfo(
@@ -3040,12 +3055,62 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         });
     }
 
+    /// <summary>Waiting popups from which they are grouped into one window.</summary>
+    private const int GroupPromptsFrom = 3;
+
+    private void ShowReviewWindow()
+    {
+        var batch = new List<AlertWindow.AlertInfo>();
+        while (_alertQueue.Count > 0) batch.Add(_alertQueue.Dequeue());
+        _promptsShown += batch.Count;
+        Services.DiagnosticLog.Log($"Prompts grouped: {batch.Count} applications in one review window ({string.Join(", ", batch.Select(b => b.ProcessName))}).");
+        _alertOpen = true;
+
+        if (_firewall.NotificationSound)
+            try { System.Media.SystemSounds.Asterisk.Play(); } catch { }
+        if (_firewall.TrayNotifications && _tray != null)
+        {
+            try
+            {
+                _tray.BalloonTipTitle = "New applications";
+                _tray.BalloonTipText = $"{batch.Count} applications are waiting for a decision.";
+                _tray.ShowBalloonTip(5000);
+            }
+            catch { }
+        }
+
+        var win = new ReviewAppsWindow(batch, _firewall.StrictMode,
+            onAllow: a =>
+            {
+                _firewall.AllowApp(a.ExePath, a.ProcessName);
+                Services.DiagnosticLog.Log($"Review window: allowed {a.ProcessName}.");
+                RebuildAppsList();
+            },
+            onBlock: a =>
+            {
+                _firewall.BlockApp(a.ExePath, a.ProcessName);
+                Services.DiagnosticLog.Log($"Review window: blocked {a.ProcessName}.");
+                RebuildAppsList();
+            });
+        win.Closed += (_, _) => { _alertOpen = false; ShowNextAlert(); };
+        win.Show();
+    }
+
     private void ShowNextAlert()
     {
         if (_alertOpen || _alertQueue.Count == 0) return;
         // Fullscreen-silent: hold approval popups while a game/fullscreen app is
         // foreground. The alert stays queued and appears once fullscreen ends.
         if (_firewall.FullscreenSilent && Services.FullscreenDetector.IsFullscreenAppActive()) return;
+
+        // Several waiting at once (after a reset, a fresh install, a burst at
+        // startup): one review window instead of a popup each (0.99.195).
+        if (_firewall.GroupPrompts && _alertQueue.Count >= GroupPromptsFrom)
+        {
+            ShowReviewWindow();
+            return;
+        }
+
         var info = _alertQueue.Dequeue();
         _promptsShown++;
         Services.DiagnosticLog.Log($"Prompt shown: {info.ProcessName}.");
@@ -8520,6 +8585,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         _firewall.SetPacketFileLogging(PacketLogFileCheck?.IsChecked == true);
         _firewall.SetFullscreenSilent(FullscreenSilentCheck?.IsChecked == true);
+        if (AutoAllowCoreCheck != null) _firewall.SetAutoAllowCoreWindows(AutoAllowCoreCheck.IsChecked == true);
+        if (GroupPromptsCheck != null) _firewall.SetGroupPrompts(GroupPromptsCheck.IsChecked == true);
         _firewall.SetConfirmClearLogs(ConfirmClearCheck?.IsChecked == true);
         _firewall.SetAlwaysConfirmExit(ConfirmExitCheck?.IsChecked == true);
         _firewall.SetKeepUnusedApps(KeepUnusedCheck?.IsChecked == true);

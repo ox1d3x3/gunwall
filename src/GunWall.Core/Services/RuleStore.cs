@@ -323,6 +323,14 @@ public sealed class StoreData
     /// <summary>Suppress new-app approval popups while a fullscreen app/game is foreground.</summary>
     public bool FullscreenSilent { get; set; }
 
+    /// <summary>Allow Windows' core processes (CoreWindowsProcesses) without a
+    /// popup. On by default; off is the strictest zero trust (0.99.195).</summary>
+    public bool AutoAllowCoreWindows { get; set; } = true;
+
+    /// <summary>When several apps are waiting, show them in one review window
+    /// instead of one popup each (0.99.195).</summary>
+    public bool GroupPrompts { get; set; } = true;
+
     /// <summary>Ask for confirmation before clearing the Activity / Packets logs.</summary>
     public bool ConfirmClearLogs { get; set; } = true;
 

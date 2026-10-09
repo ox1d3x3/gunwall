@@ -2509,6 +2509,10 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
 
     public bool FullscreenSilent => _data.FullscreenSilent;
     public void SetFullscreenSilent(bool v) { _data.FullscreenSilent = v; SaveStore(); }
+    public bool AutoAllowCoreWindows => _data.AutoAllowCoreWindows;
+    public void SetAutoAllowCoreWindows(bool v) { _data.AutoAllowCoreWindows = v; SaveStore(); }
+    public bool GroupPrompts => _data.GroupPrompts;
+    public void SetGroupPrompts(bool v) { _data.GroupPrompts = v; SaveStore(); }
     public bool ConfirmClearLogs => _data.ConfirmClearLogs;
     public void SetConfirmClearLogs(bool v) { _data.ConfirmClearLogs = v; SaveStore(); }
     public bool AlwaysConfirmExit => _data.AlwaysConfirmExit;

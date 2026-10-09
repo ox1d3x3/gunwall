@@ -15,6 +15,25 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.195] — 2026-10-09
+
+### Added — fewer popups at once
+After a reset or a fresh install every running program asks at the same moment;
+fourteen popups in three seconds was reported. Two new settings, both on by
+default (Settings → Preferences):
+
+- **Show several waiting apps in one window** — when three or more applications
+  are waiting, they appear in one list with **Allow** and **Block** for each, plus
+  **Allow all remaining** and **Block all remaining**. Anything left undecided
+  stays blocked, as with a single popup.
+- **Allow core Windows processes without asking** — System, smss, csrss,
+  wininit, winlogon, services, lsass, lsaiso and spoolsv, and only from the
+  System32 folder. Blocking these breaks Windows, so asking adds nothing.
+  `svchost` is not included: it hosts most Windows services, telemetry included,
+  and stays your decision.
+
+Turn either off for the strictest zero trust, where every program asks on its own.
+
 ## [0.99.194] — 2026-10-09
 
 ### Fixed — new applications sometimes got no popup
