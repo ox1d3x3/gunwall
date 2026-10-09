@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.196 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.197 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -8168,7 +8168,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         if (!RequireEngine()) return;
         var answer = ThemedMessageBox.Show(
-            "Remove every GunWall filter and clear all saved rules?\n\nThis cannot be undone.",
+            "Remove every GunWall filter and clear all saved rules?\n\n" +
+            "Your settings are kept. Rules cannot be brought back.",
             "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes) return;
 

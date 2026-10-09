@@ -1114,14 +1114,32 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
     /// one rule is how the two drift, and the drift is silent: a credential
     /// survives one path and is destroyed by the other, with nothing to say so.
     /// </summary>
-    internal static readonly string[] UserOwnedSettings =
+    /// <summary>Scalars that ClearStore resets although they are not rules: the
+    /// protection state (Remove all turns protection off), machine state that
+    /// RemoveAllFiltering has just undone, and the active rule profile, whose rules
+    /// are gone.</summary>
+    public static readonly string[] ClearedState =
+    {
+        "StrictMode", "LockdownEngaged", "ReviewWindowPending",
+        "DnsRedirectActive", "DnsGamingSession", "ActiveProfile",
+    };
+
+    /// <summary>Collections that ClearStore keeps: preferences and the user's own
+    /// notes and saved profiles - not decisions about what may connect.</summary>
+    public static readonly string[] KeptCollections =
+    {
+        "CategoryColors", "MutedAlertCategories", "AppNotes", "DeviceNotes", "RuleProfiles",
+    };
+
+    public static readonly string[] UserOwnedSettings =
     {
         "VirusTotalApiKey",     // issued by another service; cannot be reissued here
         "CustomBlocklistPath",  // a path they chose; losing it loses the list
     };
 
     /// <summary>
-    /// Discards rules and settings, keeping what the user owns.
+    /// Discards the user's rules and decisions, keeping their preferences and what
+    /// they own.
     ///
     /// Separate from <see cref="RemoveAllFiltering"/> because they answer
     /// different questions. Removing filtering is "undo what GunWall did to this
@@ -1134,20 +1152,51 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
     /// keep the profile. Answering "No" to that prompt preserved a file that had
     /// already been emptied, so an uninstall-then-reinstall lost every rule and
     /// the VirusTotal key while reporting that it had kept them.
+    ///
+    /// PREFERENCES ARE KEPT (0.99.197). Until then this started from an empty
+    /// profile and copied back only <see cref="UserOwnedSettings"/>, so Remove all
+    /// also switched off Run at startup, Start minimised, the precise metering,
+    /// the UI size and every other preference (reported after five resets in one
+    /// test session) - while the startup task itself stayed registered. Settings
+    /// has its own "Reset settings to defaults" for that. Now every scalar setting
+    /// is carried over except the protection and machine state in
+    /// <see cref="ClearedState"/>, plus the collections in
+    /// <see cref="KeptCollections"/> that are preferences or the user's own notes.
+    /// Everything else - rules, blocklists, filter ids, reactive blocks - starts
+    /// empty, as before.
     /// </summary>
-    public void ClearStore()
+    /// <summary>The new, empty profile Remove all starts from, with the user's
+    /// preferences carried over from <paramref name="from"/> (see ClearStore).
+    /// Static and public so the bench can prove what survives.</summary>
+    public static (StoreData Profile, int Kept) CarryOverOnClear(StoreData from)
     {
         var keep = new StoreData();
-        foreach (string name in UserOwnedSettings)
+        int kept = 0;
+        foreach (var prop in typeof(StoreData).GetProperties())
+        {
+            if (!prop.CanRead || !prop.CanWrite) continue;
+            var t = prop.PropertyType;
+            bool scalar = t.IsPrimitive || t.IsEnum || t == typeof(string) || t == typeof(decimal);
+            bool keepIt = scalar
+                ? Array.IndexOf(ClearedState, prop.Name) < 0
+                : Array.IndexOf(KeptCollections, prop.Name) >= 0;
+            if (Array.IndexOf(UserOwnedSettings, prop.Name) >= 0) keepIt = true;
+            if (!keepIt) continue;
+            prop.SetValue(keep, prop.GetValue(from));
+            kept++;
+        }
+        return (keep, kept);
+    }
+
+    public void ClearStore()
+    {
+        var (keep, kept) = CarryOverOnClear(_data);
+        foreach (string name in UserOwnedSettings.Concat(ClearedState).Concat(KeptCollections))
         {
             var prop = typeof(StoreData).GetProperty(name);
             if (prop is null || !prop.CanRead || !prop.CanWrite)
-            {
                 DiagnosticLog.Log($"Store clear: '{name}' is not a settable StoreData "
-                                + "property - it protects nothing.");
-                continue;
-            }
-            prop.SetValue(keep, prop.GetValue(_data));
+                                + "property - it does nothing.");
         }
 
         // Every rule is gone, so every running app will ask at once: the first
@@ -1155,8 +1204,8 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
         keep.ReviewWindowPending = true;
         _data = keep;
         SaveStore();
-        DiagnosticLog.Log("Store cleared; user-owned settings kept ("
-                        + string.Join(", ", UserOwnedSettings) + ").");
+        DiagnosticLog.Log($"Store cleared: rules and decisions removed; {kept} setting(s) kept, "
+                        + "including " + string.Join(", ", UserOwnedSettings) + ".");
     }
 
     /// <summary>Empties every filter-id collection in the store, leaving the rules

@@ -15,6 +15,18 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.197] — 2026-10-09
+
+### Fixed — Remove all no longer resets your settings
+**Remove all GunWall filtering** cleared your preferences along with your rules:
+Run at startup, Start minimised, precise per-app metering, the UI size and the
+rest went back to their defaults (while the startup task itself stayed
+registered). It now clears only rules, blocklists and app decisions. Settings,
+app and device notes, colours, saved profiles, the VirusTotal key and the custom
+blocklist path are kept, and the confirmation says so. **Reset settings to
+defaults** remains the way to reset preferences. A reset no longer shows the
+first-run screen again either.
+
 ## [0.99.196] — 2026-10-09
 
 ### Changed — the review window is for a fresh start only

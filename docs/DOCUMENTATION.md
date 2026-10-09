@@ -617,9 +617,9 @@ again.
 
 ### Reset
 
-- **Remove all GunWall filtering** — removes everything and clears saved rules,
-  which also turns protection off; your VirusTotal key and custom blocklist path
-  are kept
+- **Remove all GunWall filtering** — removes every filter and clears your rules,
+  blocklists and app decisions, which also turns protection off. Your settings,
+  notes, colours, saved profiles, VirusTotal key and custom blocklist path are kept
 - **Reset settings to defaults** — preferences only; **your rules and blocklists
   are kept**
 
