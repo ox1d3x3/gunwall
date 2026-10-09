@@ -451,7 +451,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.193 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.194 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -472,9 +472,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 LogActivity(new NetActivityEvent
                 {
                     ProcessName = "GunWall",
-                    Detail = "Kernel event detection was auto-disabled after an unclean exit; " +
+                    Detail = "Kernel event detection was auto-disabled after repeated crashes; " +
                              "polling is active. Re-enable in Settings if you want to retry."
                 });
+                // Also on the Alerts page: without kernel events some new apps are
+                // never prompted for, which the activity feed alone hid (0.99.194).
+                Notify("warn", "Kernel event detection turned off",
+                       "GunWall stopped twice in a row shortly after starting kernel event detection, " +
+                       "so it was switched off. Some new applications may not be prompted for until it " +
+                       "is turned back on in Settings, Preferences.", "general");
             }
         }
         catch (Exception ex)
@@ -527,6 +533,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 // Approval prompts and §1 reactive geo-blocking (polling path):
                 // decided in GunWall.Core's ConnectionDetector, shown here.
                 if (_engineReady) ShowDetection(_detector.OnPoll(conns, procs, DateTime.Now), "connection table");
+                EventMarkerHeartbeat();
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex)
@@ -2939,29 +2946,40 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (!_firewall.ExperimentalEvents) { _eventDriven = false; return; }
 
         // CRASH-LOOP GUARD: kernel event interop runs in a callback that, if its
-        // struct layout is wrong on this OS build, can hard-crash the process.
-        // We write a marker file before subscribing and delete it on clean exit.
-        // If we find the marker at startup, the previous run did NOT exit cleanly
-        // while events were on — so we disable events this run and recover
-        // automatically, instead of crash-looping. The user can re-enable in
-        // Settings once they understand it's unstable on their machine.
+        // struct layout is wrong on this OS build, can hard-crash the process. A
+        // marker file exists while events run and is deleted on a clean exit.
+        // EventCrashGuard (Core) decides what a leftover marker means: since
+        // 0.99.194 only repeated SHORT unclean runs switch detection off. One
+        // leftover marker did, before - and every upgrade force-closes GunWall,
+        // so detection was silently off on ordinary machines.
+        int strikes = 0;
         try
         {
             string marker = EventMarkerPath();
-            if (File.Exists(marker))
+            bool exists = File.Exists(marker);
+            string? text = exists ? File.ReadAllText(marker) : null;
+            var verdict = EventCrashGuard.Decide(text, exists);
+            if (exists)
             {
                 File.Delete(marker);
+                Services.DiagnosticLog.Log($"Kernel event detection: {verdict.Reason}.");
+            }
+            if (verdict.Disable)
+            {
                 _firewall.SetExperimentalEvents(false);
                 _eventDriven = false;
                 _eventsRecovered = true; // surfaced in the UI as a notice
                 return;
             }
+            strikes = verdict.Strikes;
         }
         catch { /* if the guard itself fails, fall through cautiously */ }
 
         try
         {
-            File.WriteAllText(EventMarkerPath(), DateTime.UtcNow.ToString("o"));
+            _eventsStartedUtc = DateTime.UtcNow;
+            _eventStrikes = strikes;
+            WriteEventMarker();
             _netEvents = new NetEventMonitor(_firewall.EngineHandle);
             _netEvents.ConnectionEvent += OnKernelConnectionEvent;
             _eventDriven = _netEvents.Start();
@@ -2978,6 +2996,28 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private string EventMarkerPath() =>
         System.IO.Path.Combine(_firewall.ProfileFolder, "events.lock");
+
+    private DateTime _eventsStartedUtc, _eventsHeartbeatUtc;
+    private int _eventStrikes;
+
+    /// <summary>Writes the marker with the start time, now as the heartbeat, and
+    /// the strikes carried from earlier short unclean runs.</summary>
+    private void WriteEventMarker()
+    {
+        _eventsHeartbeatUtc = DateTime.UtcNow;
+        File.WriteAllText(EventMarkerPath(), EventCrashGuard.Format(
+            new EventCrashGuard.Marker(_eventsStartedUtc, _eventsHeartbeatUtc, _eventStrikes)));
+    }
+
+    /// <summary>Refreshes the marker's heartbeat while events run, so a later
+    /// unclean exit can be told apart from a crash soon after starting.</summary>
+    private void EventMarkerHeartbeat()
+    {
+        if (!_eventDriven) return;
+        if (DateTime.UtcNow - _eventsHeartbeatUtc < EventCrashGuard.HeartbeatEvery) return;
+        try { WriteEventMarker(); }
+        catch { _eventsHeartbeatUtc = DateTime.UtcNow; /* retry next interval */ }
+    }
 
     private void ClearEventMarker()
     {

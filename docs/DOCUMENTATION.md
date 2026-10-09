@@ -789,6 +789,13 @@ behaviour for a firewall. Restart GunWall, or see [Chapter 16](#16-recovery).
 Also expected: filters keep enforcing, but nothing can ask you. Start GunWall and
 you will be prompted. Enable **Run GunWall when Windows starts** to avoid it.
 
+**A new program connected (or failed to) and GunWall never asked me.**
+Check **Settings → Preferences → Experimental: kernel event detection** is ticked.
+Without it GunWall can only notice programs whose connections appear in Windows'
+connection list, and a new program blocked on its first attempt may never appear
+there. GunWall switches it off by itself only after crashing twice in a row soon
+after starting it, and then says so on the **Alerts** page.
+
 **Why does my VPN's country not show on the map?**
 The map plots the destinations traffic is going **to**, not the tunnel it travels
 through. Changing your VPN exit does not change where the websites are.

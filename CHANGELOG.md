@@ -15,6 +15,24 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.194] — 2026-10-09
+
+### Fixed — new applications sometimes got no popup
+Kernel event detection, which is on by default, could switch itself off silently.
+A safety guard turned it off after any exit that was not a normal close, to stop
+a crash repeating - but the installer closes GunWall that way on every upgrade,
+and so does a Windows restart. Without it, an application whose first connection
+is blocked before it shows in Windows' connection list is never asked about
+(reported for Telegram and UniGetUI).
+
+The guard now switches detection off only after two crashes in a row, each within
+two minutes of starting. An upgrade, restart or power cut no longer counts. When
+the guard does act, the Alerts page says so, and the diagnostics log records every
+decision it makes.
+
+If kernel event detection is off on your PC, turn it back on once: **Settings →
+Preferences → Experimental: kernel event detection**.
+
 ## [0.99.193] — 2026-10-09
 
 ### Diagnostics — approval popups are recorded
