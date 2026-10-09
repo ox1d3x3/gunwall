@@ -19,14 +19,18 @@ public static class DiagnosticLog
     public static string? PreviousLogPath => _path == null ? null : _path + ".1";
 
     /// <summary>Sets the proper data folder, rotates an oversized log, writes a session header.</summary>
-    public static void Init(string dataFolder)
+    public static void Init(string dataFolder) => Init(dataFolder, "diagnostics.log");
+
+    /// <summary>The background service writes its own file, service.log, so the
+    /// two processes never append to one file (0.99.199).</summary>
+    public static void Init(string dataFolder, string fileName)
     {
         lock (_lock)
         {
             try
             {
                 Directory.CreateDirectory(dataFolder);
-                _path = Path.Combine(dataFolder, "diagnostics.log");
+                _path = Path.Combine(dataFolder, fileName);
                 RotateIfLarge();
             }
             catch { }

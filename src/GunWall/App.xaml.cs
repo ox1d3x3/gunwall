@@ -6,9 +6,39 @@ namespace GunWall;
 
 public partial class App : Application
 {
+    private System.IO.FileStream? _engineLock;
+    // Held by --unblock / --purge-sublayer until the process exits (a static, so it
+    // is not finalised - and the lock released - half way through).
+    private static System.IO.FileStream? _recoveryLock;
+
+    /// <summary>The engine lock claimed at startup, handed to the window once.</summary>
+    public System.IO.FileStream? TakeEngineLock()
+    {
+        var l = _engineLock;
+        _engineLock = null;
+        return l;
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // ------------------------------------------------ background service
+        // GunWall.exe --service is started by Windows, never by hand (0.99.199).
+        // Checked before anything else: no window, no theme, no UI timing, and
+        // its own log (service.log) so it never appends to the window's.
+        foreach (string arg in e.Args)
+        {
+            if (arg.Trim().TrimStart('-', '/').Equals("service", StringComparison.OrdinalIgnoreCase))
+            {
+                // StartupUri would still build MainWindow after OnStartup returns -
+                // in session 0, as SYSTEM - keeping the process alive past STOPPED.
+                StartupUri = null;
+                Shutdown(ServiceShell.Run());
+                return;
+            }
+        }
+
         Services.PerfMonitor.MarkStartup("app");
         Services.PerfMonitor.RegisterUiThread();   // before anything is timed
         WindowTheme.Register();   // every standard title bar in the app's theme (0.99.182)
@@ -43,6 +73,7 @@ public partial class App : Application
             if (a is "purge-sublayer" or "purgesublayer")
             {
                 int pcode = RunPurgeSublayer();
+                StartupUri = null;
                 Shutdown(pcode);
                 return;
             }
@@ -50,6 +81,7 @@ public partial class App : Application
             if (a is not ("unblock" or "panic" or "reset")) continue;
 
             int code = RunEmergencyUnblock();
+            StartupUri = null;
             Shutdown(code);
             return;
         }
@@ -66,6 +98,18 @@ public partial class App : Application
             return;
         }
         ListenForActivation();
+
+        // ------------------------------------------------ engine ownership (0.99.199)
+        // Taken here, before the window exists, so waiting for the background
+        // service to hand over never shows a frozen window. The window adopts the
+        // lock (TakeEngineLock) before it reads the profile.
+        try
+        {
+            _engineLock = EngineOwnership.ClaimForWindow(
+                ProfilePaths.FileIn(EngineOwnership.LockFileName), EngineOwnership.PipeName,
+                TimeSpan.FromSeconds(45), DiagnosticLog.Log, BackgroundServiceControl.Stop);
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("ClaimEngine", ex); }
 
         // Surface unhandled UI-thread exceptions instead of silently dying,
         // and record them for the diagnostics bundle.
@@ -247,6 +291,22 @@ public partial class App : Application
         int self = Environment.ProcessId;
         int stopped = 0;
 
+        // The background service first (0.99.199). It is the same GunWall.exe, so
+        // the kill below would reach it - but Windows restarts a service that dies,
+        // and a restarted service takes the engine back and re-applies everything
+        // this is about to remove. Stopped through the SCM, and kept from starting
+        // with Windows until the user turns it back on in Settings.
+        try
+        {
+            if (BackgroundServiceControl.IsInstalled())
+            {
+                string r = BackgroundServiceControl.DisableForRecovery();
+                DiagnosticLog.Log($"Emergency unblock: background service stopped and set to manual start ({r}).");
+                say($"  Background service stopped ({r}). Turn it back on in Settings when ready.");
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("StopOtherInstances/service", ex); }
+
         System.Diagnostics.Process[] found;
         try { found = System.Diagnostics.Process.GetProcessesByName("GunWall"); }
         catch (Exception ex)
@@ -324,6 +384,9 @@ public partial class App : Application
         {
             DiagnosticLog.Log("=== Sublayer purge requested from the command line ===");
             StopOtherInstances(Say);
+            // Held for the rest of this run: nothing else may run the engine while
+            // filters are being removed (released when the process exits).
+            _recoveryLock ??= EngineOwnership.WaitAcquire(ProfilePaths.FileIn(EngineOwnership.LockFileName), TimeSpan.FromSeconds(10));
 
             fw = new FirewallManager();
             fw.Initialize();
@@ -403,6 +466,9 @@ public partial class App : Application
             // substitute for it - it is what makes the command correct when it is
             // run by hand, which is exactly when a machine is already broken.
             StopOtherInstances(Say);
+            // Held for the rest of this run: nothing else may run the engine while
+            // filters are being removed (released when the process exits).
+            _recoveryLock ??= EngineOwnership.WaitAcquire(ProfilePaths.FileIn(EngineOwnership.LockFileName), TimeSpan.FromSeconds(10));
 
             fw = new FirewallManager();
             fw.Initialize();

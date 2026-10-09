@@ -2356,12 +2356,14 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
     /// </summary>
     public bool IsFirstRun => !_data.FirstRunCompleted;
 
-    public void MarkFirstRunComplete()
+    /// <param name="freshInstall">False when an upgrade marker completes it: the
+    /// review window is for a fresh install or reset only, never an upgrade.</param>
+    public void MarkFirstRunComplete(bool freshInstall = true)
     {
         if (_data.FirstRunCompleted) return;
         _data.FirstRunCompleted = true;
         // A fresh install: the first burst of popups may be grouped (0.99.196).
-        _data.ReviewWindowPending = true;
+        if (freshInstall) _data.ReviewWindowPending = true;
         SaveStore();
     }
 
@@ -3154,8 +3156,14 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
             }
         }
         catch (Exception ex) { DiagnosticLog.LogException("SnapshotProfileOnUpgrade", ex); }
-        _data.LastRunVersion = current;   // persisted by the next normal save
+        // The background service must not mark the new version as seen: that is
+        // what makes the window show "Update complete" (0.99.199).
+        if (!ServiceHost) _data.LastRunVersion = current;   // persisted by the next normal save
     }
+
+    /// <summary>True in the background service's process (0.99.199). Set before the
+    /// first FirewallManager is created there.</summary>
+    public static bool ServiceHost { get; set; }
 
     public int PruneDeadRules()
     {
@@ -3664,6 +3672,21 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
                     System.IO.File.Copy(DiagnosticLog.LogPath, System.IO.Path.Combine(tmp, "diagnostics.log"), true);
                 if (DiagnosticLog.PreviousLogPath != null && System.IO.File.Exists(DiagnosticLog.PreviousLogPath))
                     System.IO.File.Copy(DiagnosticLog.PreviousLogPath, System.IO.Path.Combine(tmp, "diagnostics.previous.log"), true);
+                // The background service's own log (0.99.199). Copied with sharing,
+                // because the service may be writing to it right now.
+                foreach (var (src, name) in new[] { ("service.log", "service.log"), ("service.log.1", "service.previous.log") })
+                {
+                    try
+                    {
+                        string from = System.IO.Path.Combine(ProfileFolder, src);
+                        if (!System.IO.File.Exists(from)) continue;
+                        using var inp = new System.IO.FileStream(from, System.IO.FileMode.Open, System.IO.FileAccess.Read,
+                                                                 System.IO.FileShare.ReadWrite | System.IO.FileShare.Delete);
+                        using var outp = System.IO.File.Create(System.IO.Path.Combine(tmp, name));
+                        inp.CopyTo(outp);
+                    }
+                    catch (Exception ex) { DiagnosticLog.Log($"Diagnostics: {src} not included ({ex.GetType().Name})."); }
+                }
             }
             catch { }
 

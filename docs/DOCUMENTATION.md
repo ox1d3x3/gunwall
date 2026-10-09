@@ -533,6 +533,7 @@ notifications.
 | UI size | 50% to 125%; 90% by default. Also **Ctrl + mouse wheel**, **Ctrl + plus / minus**, and **Ctrl + 0** for the default, anywhere in the app |
 | App icon size | Small, Medium (default) or Large icons in the Applications list |
 | **Run GunWall when Windows starts** | **Recommended** — without it, nothing can prompt after a reboot |
+| **Keep protection running when GunWall is closed (background service)** | Off by default. A Windows service runs protection whenever the window is not open — after you exit, after sign-out, and from boot, before anyone signs in. Programs needing a decision wait for the window and stay blocked meanwhile in Zero Trust. Needs the installed version |
 | Send firewall events to the Windows Event Log | For central log collection |
 | Play a sound on notification popups | |
 | Show a tray notification when a new app is detected | |
@@ -725,7 +726,9 @@ GunWall.exe --unblock
 
 It removes all filtering, restores the hosts file and adapter DNS, prints what it
 did, and exits without opening a window. It runs before any interface is built, so
-a broken window cannot prevent recovery.
+a broken window cannot prevent recovery. If the background service is on, it is
+stopped first and set not to start with Windows, so it cannot put the filters
+back; turn it on again in Settings when you are ready.
 
 ### Confirming the machine is clean
 
@@ -806,7 +809,9 @@ behaviour for a firewall. Restart GunWall, or see [Chapter 16](#16-recovery).
 
 **I closed GunWall and now a new program cannot connect, with no prompt.**
 Also expected: filters keep enforcing, but nothing can ask you. Start GunWall and
-you will be prompted. Enable **Run GunWall when Windows starts** to avoid it.
+you will be prompted. With **Keep protection running when GunWall is closed** on,
+the background service notes the program and GunWall asks about it as soon as you
+open the window.
 
 **A new program connected (or failed to) and GunWall never asked me.**
 Check **Settings → Preferences → Experimental: kernel event detection** is ticked.

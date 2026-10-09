@@ -2890,6 +2890,14 @@
                             <CheckBox x:Name="RunAtStartupCheck" Content="Run GunWall when Windows starts"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                <CheckBox x:Name="BackgroundServiceCheck" Content="Keep protection running when GunWall is closed (background service)"
+                                          Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                          Click="BackgroundServiceCheck_Click" />
+                                <gw:InfoTip Text="A small Windows service runs GunWall's protection whenever this window is not open - after you exit, after you sign out, and from the moment Windows starts. It restores your rules at startup and watches for new programs; any that need a decision wait until you next open GunWall, and stay blocked until then in Zero Trust. When you open GunWall, the window takes over from it. Turned off, filters still keep enforcing after you exit, but nothing watches for new programs and nothing restores them after a restart until you open GunWall." />
+                            </StackPanel>
+                            <TextBlock x:Name="BackgroundServiceStatus" FontSize="11" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondary}" Margin="24,0,0,8" />
                             <CheckBox x:Name="EventLogCheck" Content="Send firewall events to the Windows Event Log"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />

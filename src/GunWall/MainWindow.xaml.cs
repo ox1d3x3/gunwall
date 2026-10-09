@@ -289,6 +289,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // then flipping to light seconds later is a worse defect than the one
         // being fixed. EnsureSettingsLoaded() is idempotent, so this costs one
         // file read and Initialize() still owns everything else.
+        ClaimEngine();
         _firewall.EnsureSettingsLoaded();
         bool dark = _firewall.ThemeDark;
         if (ThemeToggle != null) ThemeToggle.IsChecked = !dark; // checked = light
@@ -313,34 +314,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 try
                 {
-                    _firewall.ReconcileOrphanFilters();
-
-                    // Then the other direction. The reconcile removes filters the
-                    // kernel has and the store does not; this installs filters the
-                    // store has and the kernel does not.
-                    //
-                    // Since 0.99.143 filters do not survive a restart, so after
-                    // every reboot the kernel has none of them. Only the tamper
-                    // watchdog was putting them back, and that is a preference the
-                    // user can switch off - which one did, leaving 187 of 360
-                    // filters absent for eighteen hours while the window read
-                    // Protected. Restoring your own filtering is not tamper
-                    // detection and is not optional.
-                    int restored = _firewall.RestoreFilteringIfLost();
-                    // The repair rebuilds the self-permit and service blocks with
-                    // everything else. Refreshing them on the UI thread at the same
-                    // time installed the self-permit twice - the constant "4
-                    // superseded" in every restart log - and raced the repair over
-                    // BlockedServices. Now only when nothing needed restoring.
-                    if (restored == 0)
-                    {
-                        _firewall.EnsureSelfConnectivity(); // GunWall must not block its own update/list/VT traffic
-                        _firewall.ReapplyServiceBlocks();   // service rules survive an engine rebuild
-                    }
-
-                    // Dead rules go in the same pass: both are "things the store
-                    // says that the machine no longer agrees with".
-                    if (_firewall.PruneDeadRules() > 0)
+                    // Orphans out, filtering restored after a reboot, own permit and
+                    // service blocks re-asserted, dead rules pruned - shared with the
+                    // background service (EngineStartup, 0.99.199; the reasons for
+                    // each step are recorded there).
+                    if (EngineStartup.RestoreAndReconcile(_firewall) > 0)
                         Dispatcher.Invoke(() => { try { RebuildAppsList(); } catch { } });
                 }
                 catch (Exception ex) { Services.DiagnosticLog.LogException("StartupReconcile", ex); }
@@ -360,9 +338,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 try { _firewall.WarmBlocklistDomains(); } catch { }   // the Security tab draws without parsing
             });
             _firewall.LoadCategoryColors();      // apply any customised category dot colors
-            _firewall.ReconcileTempBlocks(); // re-arm or expire timed blocks after a restart
-            _firewall.AutoBackupIfEnabled(); // snapshot the profile on launch (if enabled)
-            _firewall.MigrateLegacyBlocklists(); // move v0.24 IP-filter blocklists to the hosts model
+            EngineStartup.AfterInitialize(_firewall); // timed blocks, launch backup, blocklist migration - shared with the service
             Services.DiagnosticLog.Init(_firewall.ProfileFolder); // point the log at the real data folder
             Services.DiagnosticLog.Log($"GunWall {Services.UpdateService.CurrentVersion} loaded. Engine started: {_firewall.EngineHandle != IntPtr.Zero}.");
 
@@ -409,6 +385,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _firewall.ClearStalePendingUpdate();
             _firewall.CleanUpdateFolder();
             RefreshUpdatesUi();
+            RefreshBackgroundServiceUi();
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
@@ -467,7 +444,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.198 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.199 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -512,6 +489,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _cts = new CancellationTokenSource();
         _ = SampleLoopAsync(_cts.Token);
         _detection.StartPolling();
+        if (_engineReady) ShowPromptsQueuedByService();
         _ = VtLoopAsync(_cts.Token);
     }
 
@@ -522,6 +500,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _detectionHost?.Dispose(); // clean exit - clears the crash-guard marker
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         _firewall.Dispose();
+        // Last: the background service takes the engine back the moment this goes.
+        try { _engineLock?.Dispose(); } catch { }
+        _engineLock = null;
     }
 
     // ================================================================ sampling
@@ -531,6 +512,123 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// Task.Run. Only the cheap UI application happens on the dispatcher, so
     /// the window stays perfectly responsive regardless of system load.
     /// </summary>
+    // ------------------------------------------- hand-over with the background service
+    // Exactly one process runs the engine (EngineOwnership, 0.99.199). The window
+    // claims it before reading the profile - the service may have just written to
+    // it - and holds it until it exits; the service takes it back then.
+    private System.IO.FileStream? _engineLock;
+
+    private void ClaimEngine()
+    {
+        // Claimed in App.OnStartup, before this window existed (no frozen window
+        // while the service hands over); adopted here, before the profile is read.
+        try { _engineLock = ((App)Application.Current).TakeEngineLock(); }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("ClaimEngine", ex); }
+        if (_engineLock == null) RetryEngineLockInBackground();
+    }
+
+    /// <summary>The claim failed (rare: the service would not stop in time). The
+    /// window runs as it always did, and keeps trying for the lock, so the service
+    /// can never take the engine while this window is open (reviewed 0.99.199).</summary>
+    private void RetryEngineLockInBackground()
+    {
+        Services.DiagnosticLog.Log("Engine hand-over: the window runs without the engine lock; retrying in the background.");
+        string path = Services.ProfilePaths.FileIn(EngineOwnership.LockFileName);
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            while (true)
+            {
+                var got = EngineOwnership.TryAcquire(path);
+                if (got != null)
+                {
+                    try
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            if (_engineLock == null) _engineLock = got;
+                            else got.Dispose();
+                        });
+                        Services.DiagnosticLog.Log("Engine hand-over: the window now holds the engine lock.");
+                    }
+                    catch { got.Dispose(); }   // the window closed meanwhile
+                    return;
+                }
+                await System.Threading.Tasks.Task.Delay(2000);
+            }
+        });
+    }
+
+    /// <summary>What Windows says about the background service, last time asked -
+    /// for the Settings box and the diagnostics summary.</summary>
+    private string _serviceState = "not checked";
+
+    /// <summary>The Settings box shows what Windows will actually do (start type
+    /// read from the SCM), never a stored preference that could disagree with it.</summary>
+    private async void RefreshBackgroundServiceUi()
+    {
+        if (BackgroundServiceCheck == null) return;
+        try
+        {
+            var (installed, enabled, running) = await System.Threading.Tasks.Task.Run(() =>
+                (BackgroundServiceControl.IsInstalled(), BackgroundServiceControl.IsEnabled(), BackgroundServiceControl.IsRunning()));
+            _serviceState = !installed ? "not installed" : $"{(enabled ? "on" : "off")}, {(running ? "running" : "stopped")}";
+            BackgroundServiceCheck.IsEnabled = installed;
+            BackgroundServiceCheck.IsChecked = installed && enabled;
+            if (BackgroundServiceStatus != null)
+                BackgroundServiceStatus.Text = !installed
+                    ? "Not available in this copy - install GunWall with the installer to use it."
+                    : enabled
+                        ? (running ? "On - it takes over whenever this window is closed." : "On - it starts with Windows.")
+                        : "Off - after you exit, filters keep enforcing but nothing watches for new programs.";
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("RefreshBackgroundServiceUi", ex); }
+    }
+
+    private async void BackgroundServiceCheck_Click(object sender, RoutedEventArgs e)
+    {
+        if (BackgroundServiceCheck == null) return;
+        bool want = BackgroundServiceCheck.IsChecked == true;
+        if (want && _engineLock == null)
+        {
+            // Started now, it would find the engine free and run a second one
+            // beside this window.
+            BackgroundServiceCheck.IsChecked = false;
+            if (BackgroundServiceStatus != null)
+                BackgroundServiceStatus.Text = "Not now - this window has not taken the engine from the service yet. Restart GunWall and try again.";
+            return;
+        }
+        BackgroundServiceCheck.IsEnabled = false;
+        if (BackgroundServiceStatus != null) BackgroundServiceStatus.Text = want ? "Turning on..." : "Turning off...";
+        string result = await System.Threading.Tasks.Task.Run(() =>
+            want ? BackgroundServiceControl.Enable() : BackgroundServiceControl.Disable());
+        Services.DiagnosticLog.Log($"Background service turned {(want ? "on" : "off")} from Settings: {result}.");
+        RefreshBackgroundServiceUi();
+    }
+
+    /// <summary>Applications the service saw while the window was closed: asked
+    /// about now, one popup each, oldest first. Already-decided ones are skipped.</summary>
+    private void ShowPromptsQueuedByService()
+    {
+        try
+        {
+            var waiting = PendingPrompts.TakeAll(Services.ProfilePaths.FileIn(PendingPrompts.FileName));
+            int asked = 0;
+            foreach (var q in waiting)
+            {
+                if (_firewall.IsBlocked(q.ExePath) || _firewall.IsAllowed(q.ExePath) || _firewall.IsSilent(q.ExePath)) continue;
+                if (!_detector.MarkPrompted(q.ExePath)) continue;
+                _alertQueue.Enqueue(new AlertWindow.AlertInfo(
+                    q.ProcessName, q.ExePath, q.RemoteAddress, q.RemotePort, q.Protocol, q.Time));
+                _promptsQueued++;
+                asked++;
+            }
+            if (waiting.Count > 0)
+                Services.DiagnosticLog.Log($"Prompts from the background service: {waiting.Count} waiting, {asked} still undecided and asked now.");
+            if (asked > 0) ShowNextAlert();
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("ShowPromptsQueuedByService", ex); }
+    }
+
     /// <summary>Displays what one detection pass decided: activity lines, the Packet
     /// Log row, first-activity notices and approval prompts. The decisions
     /// themselves are made in GunWall.Core (ConnectionDetector, 0.99.191).</summary>
@@ -5776,6 +5874,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             $"connection table=on, alerts={(_firewall.AlertsEnabled ? "on" : "off")}, " +
             $"prompts queued={_promptsQueued}, shown={_promptsShown}, waiting={_alertQueue.Count}, " +
             $"popup open={_alertOpen}");
+        Services.DiagnosticLog.Log($"Background service: {_serviceState}; window owns the engine: {(_engineLock != null ? "yes" : "NO")}.");
         Services.DiagnosticLog.Log(
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
@@ -7390,7 +7489,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             string marker = Services.ProfilePaths.FileIn("upgraded.marker");
             if (System.IO.File.Exists(marker))
             {
-                _firewall.MarkFirstRunComplete();
+                _firewall.MarkFirstRunComplete(freshInstall: false);
                 System.IO.File.Delete(marker);
                 Services.DiagnosticLog.Log("Upgrade marker consumed; the first-run "
                                          + "database offer will not be shown.");

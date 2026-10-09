@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.190 — public beta
+# GunWall 0.99.199 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.190-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.199-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -109,10 +109,10 @@ afterwards cannot read it and needs the key entered again.
 
 ## Known limitations
 
-- Filters are not enforced from boot until GunWall starts; enable **Run GunWall
-  when Windows starts** (Settings → Preferences).
-- GunWall runs as a single elevated process; a privileged service is planned
-  before 1.0.
+- Without the optional background service, filters are not enforced from boot
+  until GunWall starts; turn on **Keep protection running when GunWall is closed**
+  or **Run GunWall when Windows starts** (Settings → Preferences).
+- The GunWall window still needs administrator rights to open.
 - Releases are not code-signed. The published checksums are the integrity check.
 
 The full detail of every release is in [CHANGELOG.md](../CHANGELOG.md).

@@ -170,6 +170,87 @@ Filename: "{app}\{#AppExe}"; Description: "Start GunWall now"; \
 [Code]
 const
   ProfileDir = '{commonappdata}\GunWall';
+  SvcName = 'GunWallService';
+
+var
+  ServiceWasRunning: Boolean;
+  InstallDone: Boolean;
+
+{ The background service (0.99.199) is GunWall.exe --service, so it holds the
+  same files the installer replaces. It is stopped through the service manager
+  before any copy - a plain kill would be restarted by Windows' recovery
+  settings within seconds - and started again afterwards if it was running. }
+function ServiceInstalled(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec(ExpandConstant('{sys}\sc.exe'), 'query ' + SvcName, '', SW_HIDE,
+                 ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+function ServiceRunning(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec('cmd.exe', '/C sc query ' + SvcName + ' | find "RUNNING"', '', SW_HIDE,
+                 ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+function ServiceStopped(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec('cmd.exe', '/C sc query ' + SvcName + ' | find "STOPPED"', '', SW_HIDE,
+                 ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+{ Waits for STOPPED, not merely "not RUNNING": sc stop returns at STOP_PENDING,
+  and a taskkill of GunWall.exe that lands on a stopping service is a crash to
+  Windows - whose recovery would restart it from the old files mid-copy. Recovery
+  is switched off first for the same reason; RegisterService puts it back. }
+procedure StopServiceAndWait();
+var
+  ResultCode, I: Integer;
+begin
+  if not ServiceInstalled() then Exit;
+  Exec(ExpandConstant('{sys}\sc.exe'), 'failure ' + SvcName + ' reset= 0 actions= ""',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\sc.exe'), 'stop ' + SvcName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  for I := 1 to 60 do
+  begin
+    if ServiceStopped() then Break;
+    Sleep(500);
+  end;
+  Sleep(2000);   { STOPPED is reported a moment before the process has exited }
+end;
+
+{ Registered on every install, so the Settings option can switch it on. Created
+  with a manual start: it starts with Windows only once the user turns it on in
+  GunWall (which sets it to automatic). An existing registration keeps its start
+  type; only the path and recovery settings are refreshed. }
+procedure RegisterService();
+var
+  ResultCode: Integer;
+  Bin: String;
+begin
+  Bin := '"\"' + ExpandConstant('{app}\{#AppExe}') + '\" --service"';
+  if ServiceInstalled() then
+    Exec(ExpandConstant('{sys}\sc.exe'), 'config ' + SvcName + ' binPath= ' + Bin,
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+  else
+    Exec(ExpandConstant('{sys}\sc.exe'), 'create ' + SvcName + ' binPath= ' + Bin
+         + ' start= demand DisplayName= "GunWall Protection"',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\sc.exe'), 'description ' + SvcName
+       + ' "Keeps GunWall''s firewall protection running while the GunWall window is closed."',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\sc.exe'), 'failure ' + SvcName
+       + ' reset= 86400 actions= restart/5000/restart/30000/restart/60000',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  { Recovery also when the service reports a failure, not only when it crashes. }
+  Exec(ExpandConstant('{sys}\sc.exe'), 'failureflag ' + SvcName + ' 1',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
 
 { Windows will not let us overwrite a running executable, and a half-replaced
   firewall is a worse outcome than a refused install. Ask rather than fail. }
@@ -192,6 +273,8 @@ var
   ResultCode: Integer;
 begin
   Result := True;
+  ServiceWasRunning := ServiceInstalled() and ServiceRunning();
+  if ServiceWasRunning then StopServiceAndWait();
   if GunWallIsRunning() then
   begin
     if MsgBox('GunWall is running and must be closed before it can be updated.'#13#10#13#10
@@ -212,7 +295,23 @@ end;
   raise a prompt in that state. A new program is then correctly denied and simply
   fails, with nothing on screen explaining it. Running at startup is what keeps
   the deny-with-a-prompt contract intact across a reboot. }
+{ Setup cancelled or failed after the service was stopped: put it back. }
+procedure DeinitializeSetup();
+var
+  ResultCode: Integer;
+begin
+  if ServiceWasRunning and not InstallDone and ServiceInstalled() then
+  begin
+    Exec(ExpandConstant('{sys}\sc.exe'), 'failure ' + SvcName
+         + ' reset= 86400 actions= restart/5000/restart/30000/restart/60000',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{sys}\sc.exe'), 'start ' + SvcName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
 begin
   { Recorded BEFORE any file is copied, while the previous installation is still
     identifiable. If a profile folder is already here, this machine has run
@@ -225,10 +324,12 @@ begin
     own store. GunWall consumes and deletes this on the next launch. }
   if CurStep = ssInstall then
   begin
-    if DirExists(ProfileDir) then
+    { ExpandConstant: without it this tested the literal text "{commonappdata}..."
+      and the marker was never written (found in review, 0.99.199). }
+    if DirExists(ExpandConstant(ProfileDir)) then
     begin
-      ForceDirectories(ProfileDir);
-      SaveStringToFile(ProfileDir + '\upgraded.marker',
+      ForceDirectories(ExpandConstant(ProfileDir));
+      SaveStringToFile(ExpandConstant(ProfileDir) + '\upgraded.marker',
                        'Written by the installer on upgrade. Consumed and deleted '
                        + 'by GunWall on the next launch. Safe to delete.', False);
     end;
@@ -236,6 +337,25 @@ begin
 
   if CurStep = ssPostInstall then
   begin
+    RegisterService();
+    if ServiceWasRunning then
+      Exec(ExpandConstant('{sys}\sc.exe'), 'start ' + SvcName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    InstallDone := True;
+
+    { The data folder: SYSTEM and Administrators only, everyone else read.
+      Inherited from ProgramData it let any user create files there - a planted
+      engine.lock could keep the background service out, and a planted
+      pending-prompts.json could put a program in front of an elevated Allow
+      button (0.99.199). }
+    ForceDirectories(ExpandConstant(ProfileDir));
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant(ProfileDir) + '" /inheritance:r '
+         + '/grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /T /C /Q',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    { And ownership: a file planted before this ran would keep its owner, who
+      could change its permissions back. }
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant(ProfileDir) + '" /setowner *S-1-5-32-544 /T /C /Q',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
     if WizardIsTaskSelected('startup') then
       RegWriteStringValue(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
                           'GunWall', '"' + ExpandConstant('{app}\{#AppExe}') + '"')
@@ -282,6 +402,14 @@ begin
 
     Not fatal if it fails. --unblock closes other instances itself for exactly
     this reason, and the codes below still report what happened. }
+  { The background service goes first and for good: a running service would take
+    the engine back and re-apply the filters --unblock is about to remove. }
+  if ServiceInstalled() then
+  begin
+    StopServiceAndWait();
+    Exec(ExpandConstant('{sys}\sc.exe'), 'delete ' + SvcName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+
   if GunWallIsRunning() then
   begin
     Exec('taskkill.exe', '/IM GunWall.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);

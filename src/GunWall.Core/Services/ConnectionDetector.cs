@@ -95,6 +95,11 @@ public sealed class ConnectionDetector
     /// <summary>A mode change re-prompts for every undecided app.</summary>
     public void ResetPrompts() => _prompted.Clear();
 
+    /// <summary>An app already asked about by other means - a prompt the background
+    /// service queued while the window was closed (0.99.199) - so detection does not
+    /// ask again this session. False if it was already marked.</summary>
+    public bool MarkPrompted(string exePath) => !string.IsNullOrEmpty(exePath) && _prompted.Add(exePath);
+
     /// <summary>The kernel event path: one filtered connection.</summary>
     public DetectionResult OnKernelEvent(string appPath, string? remoteAddress, int remotePort,
                                          string protocol, bool dropped, DateTime now)

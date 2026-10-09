@@ -15,6 +15,30 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.199] — 2026-10-09
+
+### Added — protection while GunWall is closed (background service, optional)
+A new setting, **Keep protection running when GunWall is closed (background
+service)** in Settings → Preferences, off by default. When it is on, a small
+Windows service runs GunWall's protection whenever the GunWall window is not open:
+after you exit, after you sign out, and from the moment Windows starts - before
+anyone signs in. It restores your rules at startup and watches for new programs.
+Programs that need a decision wait until you next open GunWall and stay blocked
+until then in Zero Trust; you are asked about each of them when the window opens.
+Opening GunWall hands protection back to the window, which works exactly as before.
+
+The service is GunWall.exe itself started by Windows with `--service`; the
+installer registers it (manual start until you turn it on). Its log is
+`service.log`, included in the diagnostics bundle. **GunWall.exe --unblock** and
+uninstall stop and remove it before anything else.
+
+### Changed
+- GunWall's data folder (`C:\ProgramData\GunWall`) can now be changed only by
+  Windows and administrators; other users can read it. It used to inherit
+  ProgramData's "any user may create files".
+- The installer now writes its upgrade marker as intended (the check looked at the
+  wrong path, so the marker was never written).
+
 ## [0.99.198] — 2026-10-09
 
 ### Changed — detection moved into the engine
