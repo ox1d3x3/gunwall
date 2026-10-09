@@ -20,13 +20,34 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # Since 0.99.190 the engine lives in src/GunWall.Core. Uploading a release by
+      # copying files over the repository adds and replaces but never deletes, so
+      # the old copies can stay in src/GunWall and the build then fails with
+      # "already contains a definition for ...". Say that plainly instead.
+      - name: Check for files left over from an older upload
+        shell: pwsh
+        run: |
+          $allowed = @(
+            'src/GunWall/Services/IconService.cs',
+            'src/GunWall/Models/DisplayRows.cs',
+            'src/GunWall/Models/RangeObservableCollection.cs'
+          )
+          $stale = @(Get-ChildItem -Path src/GunWall/Services, src/GunWall/Models -Recurse -File -ErrorAction SilentlyContinue |
+            ForEach-Object { [IO.Path]::GetRelativePath((Get-Location).Path, $_.FullName).Replace('\', '/') } |
+            Where-Object { $allowed -notcontains $_ })
+          if ($stale.Count -gt 0) {
+            foreach ($f in $stale) { Write-Host "::error file=$f::Left over from an older version - this file now lives in src/GunWall.Core. Delete it from the repository." }
+            exit 1
+          }
+          Write-Host 'No leftover engine files in the window project.'
+
       - name: Restore
         run: dotnet restore GunWall.sln
 
       - name: Build (Release, x64)
         run: dotnet build GunWall.sln --configuration Release --no-restore /p:Platform=x64
 
-      - name: Publish self-contained EXE
+      - name: Publish single-file EXE (needs the .NET 8 Desktop Runtime)
         run: >
           dotnet publish src/GunWall/GunWall.csproj
           --configuration Release

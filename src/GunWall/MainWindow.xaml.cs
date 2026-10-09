@@ -453,7 +453,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.195 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.196 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -536,6 +536,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 // decided in GunWall.Core's ConnectionDetector, shown here.
                 if (_engineReady) ShowDetection(_detector.OnPoll(conns, procs, DateTime.Now), "connection table");
                 EventMarkerHeartbeat();
+                ExpireReviewWindow();
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex)
@@ -3058,10 +3059,28 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// <summary>Waiting popups from which they are grouped into one window.</summary>
     private const int GroupPromptsFrom = 3;
 
+    /// <summary>How long protection may be on with the review window pending and
+    /// no burst, before it stops being pending (0.99.196).</summary>
+    private static readonly TimeSpan ReviewWindowGrace = TimeSpan.FromMinutes(3);
+    private DateTime? _strictSinceUtc;
+
+    /// <summary>The burst after a fresh install or reset comes within moments of
+    /// protection going on. If it never comes (few apps running), the window must
+    /// not wait for a later, ordinary day - so it stops being pending.</summary>
+    private void ExpireReviewWindow()
+    {
+        if (!_engineReady || !_firewall.StrictMode) { _strictSinceUtc = null; return; }
+        _strictSinceUtc ??= DateTime.UtcNow;
+        if (_firewall.ReviewWindowPending && !_alertOpen && _alertQueue.Count == 0
+            && DateTime.UtcNow - _strictSinceUtc.Value > ReviewWindowGrace)
+            _firewall.ClearReviewWindowPending("protection on for 3 minutes without a burst");
+    }
+
     private void ShowReviewWindow()
     {
         var batch = new List<AlertWindow.AlertInfo>();
         while (_alertQueue.Count > 0) batch.Add(_alertQueue.Dequeue());
+        _firewall.ClearReviewWindowPending("shown once");
         _promptsShown += batch.Count;
         Services.DiagnosticLog.Log($"Prompts grouped: {batch.Count} applications in one review window ({string.Join(", ", batch.Select(b => b.ProcessName))}).");
         _alertOpen = true;
@@ -3103,9 +3122,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // foreground. The alert stays queued and appears once fullscreen ends.
         if (_firewall.FullscreenSilent && Services.FullscreenDetector.IsFullscreenAppActive()) return;
 
-        // Several waiting at once (after a reset, a fresh install, a burst at
-        // startup): one review window instead of a popup each (0.99.195).
-        if (_firewall.GroupPrompts && _alertQueue.Count >= GroupPromptsFrom)
+        // Several waiting at once after a fresh install or Remove all: one review
+        // window instead of a popup each (0.99.195). Only then (0.99.196) - never
+        // after an ordinary upgrade or on a normal day.
+        if (_firewall.GroupPrompts && _firewall.ReviewWindowPending && _alertQueue.Count >= GroupPromptsFrom)
         {
             ShowReviewWindow();
             return;

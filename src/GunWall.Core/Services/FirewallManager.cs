@@ -1150,6 +1150,9 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
             prop.SetValue(keep, prop.GetValue(_data));
         }
 
+        // Every rule is gone, so every running app will ask at once: the first
+        // burst after this may be grouped (0.99.196).
+        keep.ReviewWindowPending = true;
         _data = keep;
         SaveStore();
         DiagnosticLog.Log("Store cleared; user-owned settings kept ("
@@ -2308,6 +2311,8 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
     {
         if (_data.FirstRunCompleted) return;
         _data.FirstRunCompleted = true;
+        // A fresh install: the first burst of popups may be grouped (0.99.196).
+        _data.ReviewWindowPending = true;
         SaveStore();
     }
 
@@ -2513,6 +2518,15 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
     public void SetAutoAllowCoreWindows(bool v) { _data.AutoAllowCoreWindows = v; SaveStore(); }
     public bool GroupPrompts => _data.GroupPrompts;
     public void SetGroupPrompts(bool v) { _data.GroupPrompts = v; SaveStore(); }
+    /// <summary>See StoreData.ReviewWindowPending.</summary>
+    public bool ReviewWindowPending => _data.ReviewWindowPending;
+    public void ClearReviewWindowPending(string why)
+    {
+        if (!_data.ReviewWindowPending) return;
+        _data.ReviewWindowPending = false;
+        SaveStore();
+        DiagnosticLog.Log($"Review window: no longer pending ({why}).");
+    }
     public bool ConfirmClearLogs => _data.ConfirmClearLogs;
     public void SetConfirmClearLogs(bool v) { _data.ConfirmClearLogs = v; SaveStore(); }
     public bool AlwaysConfirmExit => _data.AlwaysConfirmExit;

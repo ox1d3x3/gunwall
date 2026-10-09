@@ -331,6 +331,14 @@ public sealed class StoreData
     /// instead of one popup each (0.99.195).</summary>
     public bool GroupPrompts { get; set; } = true;
 
+    /// <summary>The review window may open (0.99.196): set on a fresh install
+    /// (first run completed) and by Remove all; cleared once it has been shown,
+    /// or a few minutes after protection is on without a burst. Mahabub: grouping
+    /// is for the first burst after a fresh install or reset only - never after an
+    /// ordinary upgrade. Defaults to false so an upgraded profile, which lacks the
+    /// property, does not arm it.</summary>
+    public bool ReviewWindowPending { get; set; }
+
     /// <summary>Ask for confirmation before clearing the Activity / Packets logs.</summary>
     public bool ConfirmClearLogs { get; set; } = true;
 

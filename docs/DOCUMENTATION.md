@@ -228,11 +228,13 @@ you do not answer in time gets a **permanent** rule.
 **Closing the prompt without answering blocks that connection.** No rule is saved,
 so you will be asked again next time.
 
-**Several at once.** When three or more programs are waiting — after a reset, a
-fresh install or at startup — they are listed in one window instead, each with
+**Several at once, after a fresh start.** The first time protection is on after a
+fresh install or **Remove all GunWall filtering**, every running program asks at
+once. Three or more waiting programs are then listed in one window, each with
 **Allow** and **Block**, plus **Allow all remaining** and **Block all remaining**.
-Anything left undecided stays blocked. Turn this off with *Settings → Show several
-waiting apps in one window*.
+Anything left undecided stays blocked. It happens once; after that, and after
+ordinary upgrades, each program asks with its own popup. Turn it off with
+*Settings → After a fresh install or reset, show waiting apps in one window*.
 
 **Windows' own core processes** (System, smss, csrss, wininit, winlogon, services,
 lsass, lsaiso, spoolsv — from the System32 folder only) are allowed without
@@ -549,8 +551,9 @@ Also in **Preferences**:
   what happens on timeout: Block or Allow
 - **Silence popups while a fullscreen app or game is running** — held back and
   shown afterwards
-- **Show several waiting apps in one window** — on by default; three or more
-  waiting programs are decided in one list ([Chapter 5](#5-the-connection-prompt))
+- **After a fresh install or reset, show waiting apps in one window** — on by
+  default; the first burst is decided in one list, once
+  ([Chapter 5](#5-the-connection-prompt))
 - **Allow core Windows processes without asking** — on by default; off for the
   strictest zero trust ([Chapter 5](#5-the-connection-prompt))
 - **Log packets to a CSV file**, rotated at a size you choose; **Keep at most N

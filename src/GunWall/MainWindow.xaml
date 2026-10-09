@@ -2950,10 +2950,10 @@
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                <CheckBox x:Name="GroupPromptsCheck" Content="Show several waiting apps in one window"
+                                <CheckBox x:Name="GroupPromptsCheck" Content="After a fresh install or reset, show waiting apps in one window"
                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
                                           Checked="Pref_Changed" Unchecked="Pref_Changed" />
-                                <gw:InfoTip Text="When three or more applications are waiting at once - after a reset, a fresh install or at startup - they are listed in one window with Allow and Block for each, instead of one popup after another." />
+                                <gw:InfoTip Text="The first time protection is on after a fresh install or Remove all GunWall filtering, every running program asks at once. With this on, three or more waiting programs are listed in one window with Allow and Block for each. It happens once; after that, and after ordinary upgrades, each program asks with its own popup." />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                 <CheckBox x:Name="AutoAllowCoreCheck" Content="Allow core Windows processes without asking"

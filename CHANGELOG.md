@@ -15,6 +15,22 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.196] — 2026-10-09
+
+### Changed — the review window is for a fresh start only
+The window that lists several waiting applications now opens only for the first
+burst after a fresh install or **Remove all GunWall filtering** - once. After
+that, after ordinary upgrades, and on any normal day, each application asks with
+its own popup as before. If protection has been on for three minutes after a fresh
+start without three applications waiting at once, the window is not used at all.
+The setting is now named **After a fresh install or reset, show waiting apps in
+one window**.
+
+### Build
+The GitHub build now stops with a plain message naming any file left behind in
+`src/GunWall` by an older upload (the engine moved to `src/GunWall.Core` in
+0.99.190), instead of a list of duplicate-definition compiler errors.
+
 ## [0.99.195] — 2026-10-09
 
 ### Added — fewer popups at once
