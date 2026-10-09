@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.189 — public beta
+# GunWall 0.99.190 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.189-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.190-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -57,6 +57,7 @@ afterwards cannot read it and needs the key entered again.
   and can be refreshed automatically (off by default; skipped on metered
   connections).
 - The profile is snapshotted before every upgrade; automatic backups are available.
+- Uninstall removes the **Run at startup** task too, not just the startup entry.
 
 **Privacy and trust**
 - The VirusTotal API key is stored encrypted with Windows DPAPI, readable only on

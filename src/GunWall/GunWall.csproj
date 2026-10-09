@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.99.189</Version>
+    <Version>0.99.193</Version>
     <Company>Ox1d3x3</Company>
     <Authors>Ox1d3x3</Authors>
     <Product>GunWall Firewall</Product>
@@ -60,6 +60,12 @@
     <Resource Include="Fonts\*.ttf" />
   </ItemGroup>
 
+
+  <!-- The engine lives in its own library (src/GunWall.Core) so a background
+       service can host it later. Published alongside GunWall.exe. -->
+  <ItemGroup>
+    <ProjectReference Include="..\GunWall.Core\GunWall.Core.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- WPF UI (lepoco/wpfui) - MIT. Supplies the Fluent control set and

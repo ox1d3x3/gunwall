@@ -17,9 +17,10 @@ public partial class App : Application
 
         // ------------------------------------------------ emergency recovery
         //
-        // GunWall's filters are PERSISTENT by design: they keep enforcing after a
-        // crash, a close or a reboot, which is what a kernel firewall must do. The
-        // cost is that a machine can be left filtered by software that is not
+        // GunWall's filters live in the kernel, not in this process: they keep
+        // enforcing after a crash or a close, which is what a kernel firewall must
+        // do. (They are not persistent, so a reboot clears them - see WfpEngine.
+        // FilterFlags.) The cost is that a machine can be left filtered by software that is not
         // running - and with nothing running, nothing can prompt, so a program
         // without a rule simply fails and says nothing.
         //

@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- GunWall's engine: the firewall (WFP), rule store, DNS, ETW, GeoIP, scanning
+       and every other service the window uses. No WPF and no WinForms - that is
+       the point of this library. The window (src/GunWall) references it today; a
+       background service will reference it later (see docs/ARCHITECTURE.md).
+
+       UseWindowsForms is set only to bring in the Windows Desktop shared framework,
+       which supplies System.Diagnostics.EventLog and ProtectedData (DPAPI) without
+       a NuGet package. WinForms itself must not be used here; the release checks
+       enforce that. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>GunWall.Core</AssemblyName>
+    <RootNamespace>GunWall</RootNamespace>
+    <Company>Ox1d3x3</Company>
+    <Authors>Ox1d3x3</Authors>
+    <Product>GunWall Firewall</Product>
+    <Copyright>Copyright (c) Ox1d3x3. MIT licence.</Copyright>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <!-- Same as the window project: keep WinForms and System.Drawing out of the
+       global usings, so nothing here picks them up by accident. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <!-- The window uses some internal members of the engine; it is the only
+       assembly allowed to. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="GunWall" />
+  </ItemGroup>
+
+</Project>

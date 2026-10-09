@@ -1,0 +1,4353 @@
+using GunWall.Models;
+using GunWall.Services.Wfp;
+
+namespace GunWall.Services;
+
+/// <summary>
+/// The central firewall service used by the UI. Coordinates the WFP engine with
+/// the persistent rule store, so that:
+///  - Blocking/unblocking an app creates/removes the right WFP filters and saves
+///    the change.
+///  - Lockdown can be toggled and survives restarts.
+///  - On startup, persisted state is reconciled (filters already live in WFP).
+///
+/// Privacy note: this class only ever acts on explicit user instructions. It
+/// never blocks or allows anything on its own and never sends data anywhere.
+/// </summary>
+public sealed class FirewallManager : IDisposable, IDetectionPolicy
+{
+    private readonly WfpEngine _engine = new();
+
+    /// <summary>WFP engine handle, for the kernel net-event monitor.</summary>
+    public IntPtr EngineHandle => _engine.EngineHandle;
+    private readonly RuleStore _store = new();
+    private StoreData _data = new();
+    private bool _settingsLoaded;
+
+    /// <summary>
+    /// Guards <c>_data</c> against being read while it is being restructured.
+    ///
+    /// The startup reconcile runs on a background thread and walks the whole
+    /// store reflectively. EnsureSelfConnectivity runs on the UI thread at the
+    /// same moment and clears and replaces SelfFilterIds. The walk therefore
+    /// enumerated a collection that another thread was mutating, threw
+    /// "collection was modified", and had that exception swallowed by the
+    /// per-property catch - abandoning the Rules subtree and reporting four
+    /// tracked filters where there were a hundred.
+    ///
+    /// Intermittent by nature, which is why it presented as "sometimes the rules
+    /// come back and sometimes they do not": the same machine logged "all
+    /// accounted for" twice and "4 tracked" three times over two days.
+    /// </summary>
+    private readonly object _dataLock = new();
+
+    /// <summary>
+    /// Reads persisted settings from disk if they have not been read yet, and
+    /// does nothing on every call after the first.
+    ///
+    /// This exists because settings were readable before they were loaded.
+    /// <c>_data</c> is a default-constructed <see cref="StoreData"/> until the
+    /// store is read, and every property on this class reads through it - so a
+    /// caller that asked for a setting too early received the DEFAULT and no
+    /// indication anything was wrong. The window's Loaded handler did exactly
+    /// that with the theme, applying the default on every launch regardless of
+    /// what had been saved.
+    ///
+    /// Idempotent by design: any caller that needs a setting may call this,
+    /// without knowing whether <see cref="Initialize"/> has run and without
+    /// having to be ordered relative to it. Correct ordering that depends on
+    /// every caller remembering the ordering is not correct ordering - the same
+    /// conclusion reached for <c>ReconcileReady</c> below, for the same reason.
+    /// </summary>
+    /// <summary>
+    /// Writes the profile, and REFUSES to do so before it has been read.
+    ///
+    /// Every setter on this class ends in a save. Until the store is loaded,
+    /// <c>_data</c> is a default-constructed StoreData - so any setter reached
+    /// early does not write one wrong field, it writes an entire empty profile
+    /// over the user's, and the load that follows reads back defaults.
+    ///
+    /// That happened. A ComboBoxItem in the settings XAML carried
+    /// IsSelected="True", so WPF raised SelectionChanged during
+    /// InitializeComponent - in the constructor, before OnLoaded reads the store.
+    /// The handler called SetDbRefreshHours, which saved. Every launch destroyed
+    /// the profile before reading it: rules gone, theme back to default,
+    /// protection off, every application asking for approval again.
+    ///
+    /// The XAML is fixed too, but that fixes one control. This makes the class
+    /// incapable of the mistake, which matters because there are ninety-odd
+    /// setters and any of them can be reached from a designer-raised event.
+    /// </summary>
+    private void SaveStore()
+    {
+        if (!_settingsLoaded)
+        {
+            DiagnosticLog.Log("REFUSED to save the profile before it was read. A "
+                            + "setter ran before EnsureSettingsLoaded, which would "
+                            + "have written an empty profile over the real one. "
+                            + "Nothing was written; the caller is at fault and this "
+                            + "line names the bug.");
+            return;
+        }
+        _store.Save(_data);
+    }
+
+    public void EnsureSettingsLoaded()
+    {
+        if (_settingsLoaded) return;
+        _data = _store.Load();
+        SnapshotProfileOnUpgrade();   // before anything can write to it (trap 2.34)
+        _settingsLoaded = true;
+        LoadVirusTotalKey("load");    // may save: only once the profile is read
+
+        // Recorded because three separate diagnoses of "the rules disappeared"
+        // were made without knowing whether the profile had been read, which file
+        // was read, or what was in it. Every one of those was a guess. This turns
+        // the next occurrence into one line of evidence.
+        int ruleIds = 0;
+        try { foreach (var r in _data.Rules) ruleIds += r.FilterIds.Count; } catch { }
+        bool exists = false; long size = -1; string when = "-";
+        try
+        {
+            var fi = new System.IO.FileInfo(_store.FilePath);
+            exists = fi.Exists;
+            if (exists) { size = fi.Length; when = fi.LastWriteTimeUtc.ToString("u"); }
+        }
+        catch { }
+
+        DiagnosticLog.Log($"Profile read from {_store.FilePath} | exists={exists} "
+                        + $"size={size} modifiedUtc={when} | rules={_data.Rules.Count} "
+                        + $"ruleFilterIds={ruleIds} strict={_data.StrictFilterIds.Count} "
+                        + $"self={_data.SelfFilterIds.Count} StrictMode={_data.StrictMode}");
+    }
+
+    public bool LockdownEngaged => _data.LockdownEngaged;
+    public bool AlertsEnabled => _data.AlertsEnabled;
+    public bool StrictMode => _data.StrictMode;
+
+    private HashSet<string>? _knownSet;
+    private HashSet<string> KnownSet =>
+        _knownSet ??= new HashSet<string>(_data.KnownApps, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Opens the WFP engine and loads persisted rules. Call once at startup.</summary>
+    public void Initialize()
+    {
+        try
+        {
+            _engine.Initialize();
+            DiagnosticLog.Log($"WFP engine initialised (handle {(EngineHandle != IntPtr.Zero ? "valid" : "NULL")}).");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("WfpEngine.Initialize", ex);
+            throw;
+        }
+        EnsureSettingsLoaded();
+        // Set HERE, by the thing that makes it true, not by a caller who has to
+        // remember the ordering. 0.99.93 put this in the window's Loaded handler
+        // thirty lines above the Initialize() call that loads the store, with a
+        // comment asserting the store was already loaded. It was not, and the
+        // reconcile read an empty store against 28 live filters.
+        //
+        // Readiness is a property of this object's state. Nothing outside it can
+        // know when that becomes true, so nothing outside it gets to say so.
+        ReconcileReady = true;
+        // GeoIP is NOT loaded here (0.99.158). It took 6.2 s at cold boot, ahead of
+        // the startup restore; it now loads in the startup task after the restore.
+        // Recovery commands, which call Initialize, no longer load it at all.
+        ReloadCustomList();
+        ClearEntityReactiveBlocks(); // §1: drop last session's reactive geo-blocks; they re-form on demand
+        // Filters from an earlier run of this boot are still in WFP (they outlive
+        // the process but not a reboot), so the saved record is the source of truth
+        // here; startup restore and reconcile rebuild or remove as needed.
+    }
+
+    public IReadOnlyList<FirewallRule> GetRules() => _data.Rules.AsReadOnly();
+
+    // ============================================================= GeoIP (§4)
+    // Read-only enrichment: remote IP -> country / ASN / owner. No enforcement.
+    private readonly GeoIpService _geo = new();
+    public GeoIpService GeoIp => _geo;
+    public bool GeoIpLoaded => _geo.Loaded;
+    public int GeoIpRangeCount => _geo.RangeCount;
+    /// <summary>IPv6 ranges loaded. Reported separately because a single "ranges"
+    /// number that silently means "IPv4 only" is the kind of half-truth this log
+    /// exists to eliminate.</summary>
+    public int GeoIpRangeCountV6 => _geo.RangeCountV6;
+    private string GeoIpCachePath => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v4.tsv");
+    private string GeoIpCachePathV6 => System.IO.Path.Combine(_store.ProfileFolder, "geoip-v6.tsv");
+
+    /// <summary>Whether the GeoIP database is on disk - not whether it has finished
+    /// loading, which since 0.99.158 happens after startup.</summary>
+    public bool GeoIpDatabaseOnDisk => System.IO.File.Exists(GeoIpCachePath);
+
+    // GeoIP source selection: "local" (downloaded table) or "api" (self-hosted server).
+    public string GeoIpMode => _data.GeoIpMode == "api" ? "api" : "local";
+    public string GeoIpApiUrl => _data.GeoIpApiUrl ?? "";
+    public bool GeoIpApiActive => GeoIpMode == "api" && !string.IsNullOrWhiteSpace(GeoIpApiUrl);
+    /// <summary>True when enrichment/matching can produce data (API active, or a local table loaded).</summary>
+    public bool GeoIpActive => GeoIpApiActive || _geo.Loaded;
+
+    public void LoadGeoIp()
+    {
+        using var _perf = PerfMonitor.Measure("LoadGeoIp");
+        if (GeoIpApiActive) { _geo.EnableApi(GeoIpApiUrl); return; }
+        _geo.DisableApi();
+        try { _geo.LoadFromFile(GeoIpCachePath); } catch { }
+        // Separate try: a corrupt or missing v6 file must not stop the v4 table
+        // loading. Partial coverage beats none.
+        try { _geo.LoadV6FromFile(GeoIpCachePathV6); } catch { }
+        var freed = GeoIpService.ReturnFreedMemory();   // once, after both tables
+        DiagnosticLog.Log($"Perf: GeoIP tables loaded; returning freed memory took the working "
+                        + $"set from {freed.BeforeMb:F0} to {freed.AfterMb:F0} MB in {freed.Ms} ms.");
+    }
+
+    /// <summary>Switch the GeoIP source at runtime and persist the choice.</summary>
+    public void SetGeoIpSource(string mode, string url)
+    {
+        _data.GeoIpMode = mode == "api" ? "api" : "local";
+        _data.GeoIpApiUrl = (url ?? "").Trim();
+        SaveStore();
+        LoadGeoIp(); // (re)configure the service for the new source
+    }
+
+    /// <summary>One-shot test of an API server URL (resolves 8.8.8.8). UI awaits this.</summary>
+    public System.Threading.Tasks.Task<string> TestGeoIpApiAsync(string url) =>
+        GeoIpService.TestApiAsync(url);
+
+    // ===================================================== rule profiles (§10)
+    // Named snapshots of the per-app allow/block rules. Applying a profile goes
+    // through the same AllowApp/BlockApp paths the UI uses, so WFP filters are
+    // torn down and recreated correctly. Apps not in the profile are untouched.
+    public IEnumerable<string> RuleProfileNames => _data.RuleProfiles.Keys.OrderBy(k => k);
+    public string ActiveRuleProfile => _data.ActiveProfile;
+
+    /// <summary>Snapshot the current Allowed/Blocked app rules under a name.</summary>
+    public void SaveRuleProfile(string name)
+    {
+        var snap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in _data.Rules)
+            if (r.Status is AppStatus.Allowed or AppStatus.Blocked)
+                snap[r.ExecutablePath] = $"{r.Status}|{r.DisplayName}";
+        _data.RuleProfiles[name] = snap;
+        SaveStore();
+    }
+
+    /// <summary>Apply a saved profile. Returns rules changed, or -1 if unknown.</summary>
+    public int ApplyRuleProfile(string name)
+    {
+        if (!_data.RuleProfiles.TryGetValue(name, out var snap)) return -1;
+        int changed = 0;
+        foreach (var kv in snap)
+        {
+            int bar = kv.Value.IndexOf('|');
+            if (bar <= 0) continue;
+            string status = kv.Value[..bar], disp = kv.Value[(bar + 1)..];
+            if (EffectiveStatus(kv.Key).ToString() == status) continue;
+            if (status == "Allowed") AllowApp(kv.Key, disp);
+            else if (status == "Blocked") BlockApp(kv.Key, disp);
+            else continue;
+            changed++;
+        }
+        _data.ActiveProfile = name;
+        SaveStore();
+        return changed;
+    }
+
+    public void DeleteRuleProfile(string name)
+    {
+        if (_data.RuleProfiles.Remove(name))
+        {
+            if (_data.ActiveProfile == name) _data.ActiveProfile = "";
+            SaveStore();
+        }
+    }
+
+    // ================================================== verdict reasons (§8)
+    /// <summary>Why a connection was blocked or allowed, evaluated in the same
+    /// precedence order the engine enforces: lockdown, app blocks (timed blocks
+    /// labeled), custom rules, explicit allows, then the mode default. Derived
+    /// from the same rule state the engine acts on, so the reason matches
+    /// GunWall's own decision.</summary>
+    public string ExplainVerdict(string exePath, string remoteAddress, int remotePort,
+                                 string protocol, bool outbound, out bool blocked)
+    {
+        if (_data.LockdownEngaged) { blocked = true; return "Lockdown \u2014 all traffic blocked"; }
+
+        if (IsBlocked(exePath))
+        {
+            blocked = true;
+            if (_data.TempBlocks.TryGetValue(exePath, out var until) && until > DateTime.UtcNow)
+                return $"Timed block \u2014 until {until.ToLocalTime():HH:mm}";
+            return "App rule \u2014 Block";
+        }
+
+        foreach (var r in _data.CustomRules)   // first enabled match, filter order
+        {
+            if (!r.Enabled || !r.Applied) continue;
+            if (r.Outbound != outbound) continue;
+            if (r.Protocol is not ("Any" or "") &&
+                !string.Equals(r.Protocol, protocol, StringComparison.OrdinalIgnoreCase)) continue;
+            if (r.RemotePort != 0 && r.RemotePort != remotePort) continue;
+            if (!string.IsNullOrEmpty(r.RemoteAddress) &&
+                !AddressMatches(r.RemoteAddress, remoteAddress)) continue;
+
+            blocked = r.Block;
+            string label = string.IsNullOrWhiteSpace(r.Name) ? r.TargetText : r.Name;
+            return $"Custom rule \u2014 {(r.Block ? "Block" : "Allow")}: {label}";
+        }
+
+        if (IsSilent(exePath)) { blocked = false; return "Muted \u2014 allowed, no popups"; }
+        if (IsAllowed(exePath)) { blocked = false; return "App rule \u2014 Allow"; }
+
+        if (_data.StrictMode) { blocked = true; return "Zero-Trust \u2014 no allow rule yet"; }
+
+        blocked = false;
+        return "Monitor mode \u2014 allowed by default";
+    }
+
+    /// <summary>Exact match, or IPv4 CIDR containment when the rule uses "a.b.c.d/n".</summary>
+    private static bool AddressMatches(string rule, string address)
+    {
+        if (string.Equals(rule, address, StringComparison.OrdinalIgnoreCase)) return true;
+        int slash = rule.IndexOf('/');
+        if (slash <= 0) return false;
+        if (!System.Net.IPAddress.TryParse(rule[..slash], out var net) ||
+            !int.TryParse(rule[(slash + 1)..], out int bits) || bits is < 0 or > 32 ||
+            !System.Net.IPAddress.TryParse(address, out var ip) ||
+            net.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
+            ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return false;
+        uint n = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(net.GetAddressBytes());
+        uint a = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(ip.GetAddressBytes());
+        uint mask = bits == 0 ? 0u : uint.MaxValue << (32 - bits);
+        return (n & mask) == (a & mask);
+    }
+
+    // ================================================ app-health snapshot (§12)
+    // Cheap counters for the live health card in Settings.
+    public int AppRuleCount => _data.Rules.Count;
+    public int CustomRuleCount => _data.CustomRules.Count;
+    public int SystemRuleCount => _data.SystemRules.Count;
+    public int VtCacheCount => _data.VtCache.Count;
+
+    // ============================================= VirusTotal verdict cache (§VT)
+    // Auto-checks store their result per SHA-256 so each unique file is looked up
+    // once (VirusTotal's free tier is rate-limited) and verdicts survive restarts.
+    public VtCacheEntry? GetVtCached(string sha256) =>
+        !string.IsNullOrEmpty(sha256) && _data.VtCache.TryGetValue(sha256, out var e) ? e : null;
+
+    public void SaveVtResult(string sha256, bool found, int flagged, int total)
+    {
+        if (string.IsNullOrEmpty(sha256)) return;
+        _data.VtCache[sha256] = new VtCacheEntry
+        {
+            Found = found, Flagged = flagged, Total = total, CheckedUtc = DateTime.UtcNow
+        };
+        SaveStore();
+    }
+
+    // ===================================================== local DNS resolver (§3)
+    // GunWall's OWN loopback resolver. These accessors only persist its config; the
+    // running resolver itself lives in the UI layer. It binds to 127.0.0.1 and never
+    // changes the system DNS on its own — the user points DNS at it (a guided redirect
+    // and "Gaming Session" toggle are the next phase).
+    public int DnsResolverPort => _data.DnsResolverPort is > 0 and <= 65535 ? _data.DnsResolverPort : 53;
+    public string DnsResolverUpstream =>
+        string.IsNullOrWhiteSpace(_data.DnsResolverUpstream) ? "1.1.1.1" : _data.DnsResolverUpstream.Trim();
+    public IReadOnlyList<string> DnsResolverBlocklist => _data.DnsResolverBlocklist.AsReadOnly();
+
+    /// <summary>Persist the local resolver's port, upstream and blocklist.</summary>
+    public void SaveDnsResolverConfig(int port, string upstream, IEnumerable<string> blocklist)
+    {
+        _data.DnsResolverPort = port is > 0 and <= 65535 ? port : 53;
+        _data.DnsResolverUpstream = (upstream ?? "").Trim();
+        _data.DnsResolverBlocklist = blocklist?.ToList() ?? new List<string>();
+        SaveStore();
+    }
+
+    // §3a: secure DNS (DoH) configuration.
+    public string DnsDohUrl => _data.DnsDohUrl ?? "";
+    public bool DnsDohFallback => _data.DnsDohFallback;
+    public bool DnsBlockCloakedCnames => _data.DnsBlockCloakedCnames;
+
+    // ---- per-service rules -------------------------------------------------
+    public IReadOnlyCollection<string> BlockedServiceNames => _data.BlockedServices.Keys;
+
+    public bool IsServiceBlocked(string serviceName) =>
+        !string.IsNullOrWhiteSpace(serviceName) && _data.BlockedServices.ContainsKey(serviceName);
+
+    /// <summary>
+    /// Blocks or unblocks one Windows service by name. Unlike a rule on the
+    /// executable, this separates services that share a host process.
+    /// </summary>
+    public bool SetServiceBlocked(string serviceName, bool blocked)
+    {
+        if (string.IsNullOrWhiteSpace(serviceName)) return false;
+
+        if (blocked)
+        {
+            if (_data.BlockedServices.ContainsKey(serviceName)) return true;
+            var ids = _engine.AddServiceBlock(serviceName);
+            if (ids.Count == 0)
+            {
+                EventLog($"Could not block service {serviceName} - no filter was accepted.");
+                return false;
+            }
+            _data.BlockedServices[serviceName] = ids;
+            SaveStore();
+            EventLog($"Service blocked: {serviceName} ({ids.Count} filters)");
+            DiagnosticLog.Log($"Service block ON: {serviceName} -> {ids.Count} filter(s), " +
+                              $"sid={ServiceSidService.SidForServiceName(serviceName)}");
+            return true;
+        }
+
+        if (!_data.BlockedServices.TryGetValue(serviceName, out var existing)) return true;
+        try { _engine.RemoveFilters(existing); } catch { }
+        _data.BlockedServices.Remove(serviceName);
+        SaveStore();
+        EventLog($"Service unblocked: {serviceName}");
+        DiagnosticLog.Log($"Service block OFF: {serviceName} -> {existing.Count} filter(s) removed.");
+        return true;
+    }
+
+    /// <summary>Re-asserts service blocks after the engine is rebuilt.</summary>
+    public void ReapplyServiceBlocks()
+    {
+        if (_data.BlockedServices.Count == 0) return;
+        foreach (var name in _data.BlockedServices.Keys.ToList())
+        {
+            // Add, then remove what it replaces. Runs on every launch, and after
+            // an app restart that was not a reboot the previous filters are still
+            // installed - overwriting their ids orphaned them, the same defect as
+            // RepairFiltering.
+            var old = _data.BlockedServices[name];
+            var ids = _engine.AddServiceBlock(name);
+            if (ids.Count == 0) continue;
+            _data.BlockedServices[name] = ids;
+            foreach (ulong id in old)
+                if (!ids.Contains(id)) _engine.TryDeleteFilter(id);
+        }
+        SaveStore();
+        DiagnosticLog.Log($"Re-applied {_data.BlockedServices.Count} service block(s).");
+    }
+
+    public bool DnsObserveSystemLookups => _data.DnsObserveSystemLookups;
+    public void SetDnsObserveSystemLookups(bool on)
+    {
+        if (_data.DnsObserveSystemLookups == on) return;
+        _data.DnsObserveSystemLookups = on;
+        SaveStore();
+        EventLog(on ? "Watching system DNS lookups (passive)"
+                    : "Stopped watching system DNS lookups");
+    }
+    public void SaveDnsCloakConfig(bool enabled)
+    {
+        if (_data.DnsBlockCloakedCnames == enabled) return;
+        _data.DnsBlockCloakedCnames = enabled;
+        SaveStore();
+        EventLog(enabled
+            ? "CNAME-cloaking defense enabled"
+            : "CNAME-cloaking defense disabled");
+    }
+    public void SaveDnsDohConfig(string url, bool fallback)
+    {
+        _data.DnsDohUrl = (url ?? "").Trim();
+        _data.DnsDohFallback = fallback;
+        SaveStore();
+        EventLog(_data.DnsDohUrl.Length > 0
+            ? $"Secure DNS (DoH) set to {_data.DnsDohUrl}" + (fallback ? " with plaintext fallback" : " (fail closed)")
+            : "Secure DNS (DoH) disabled - queries forward in plaintext");
+    }
+
+    // §3 Phase 2: system-DNS routing state (intent + captured adapter config).
+    public bool DnsRedirectActive => _data.DnsRedirectActive;
+    public bool DnsGamingSession => _data.DnsGamingSession;
+    public List<SavedAdapterDns> DnsSavedAdapters => _data.DnsSavedAdapters;
+
+    /// <summary>Persist routing intent/bypass; pass a non-null capture to replace
+    /// the saved adapter state (null keeps the existing capture).</summary>
+    public void SaveDnsRedirectState(bool active, bool gaming, List<SavedAdapterDns>? saved)
+    {
+        _data.DnsRedirectActive = active;
+        _data.DnsGamingSession = gaming;
+        if (saved != null) _data.DnsSavedAdapters = saved;
+        SaveStore();
+    }
+
+    /// <summary>Download the free CC0 database, then load it. Returns ranges loaded.</summary>
+    public int DownloadAndLoadGeoIp()
+    {
+        using var _perf = PerfMonitor.Measure("DownloadAndLoadGeoIp");
+        GeoIpService.DownloadDatabase(GeoIpCachePath);
+        _geo.LoadFromFile(GeoIpCachePath);
+
+        // v6 after v4, and failing softly. Every IPv6 destination resolved to
+        // nothing before 0.99.106 because there was no v6 table at all; if this
+        // half cannot be fetched the user is no worse off than they were.
+        try
+        {
+            GeoIpService.DownloadDatabaseV6(GeoIpCachePathV6);
+            _geo.LoadV6FromFile(GeoIpCachePathV6);
+            DiagnosticLog.Log($"GeoIP: {_geo.RangeCount:N0} IPv4 ranges, "
+                            + $"{_geo.RangeCountV6:N0} IPv6 ranges loaded.");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Log("GeoIP: the IPv4 table loaded but the IPv6 table could not be "
+                            + $"downloaded ({ex.GetType().Name}). IPv6 destinations will show no "
+                            + "country until it is retried.");
+        }
+        var freed = GeoIpService.ReturnFreedMemory();   // once, after both tables
+        DiagnosticLog.Log($"Perf: GeoIP tables loaded; returning freed memory took the working "
+                        + $"set from {freed.BeforeMb:F0} to {freed.AfterMb:F0} MB in {freed.Ms} ms.");
+        return _geo.RangeCount;
+    }
+
+    // ============================================ custom domain blocklist (§5)
+    private readonly HashSet<string> _customDomains = new(StringComparer.OrdinalIgnoreCase);
+    private BloomFilter _customBloom = new(1, 0.01);
+    public int CustomDomainCount => _customDomains.Count;
+    public string CustomListPath => _data.CustomBlocklistPath ?? "";
+
+    public void SetCustomListPath(string path)
+    {
+        _data.CustomBlocklistPath = path ?? "";
+        SaveStore();
+        ReloadCustomList();
+    }
+
+    /// <summary>(Re)load the user's custom domain list and rebuild its bloom index.</summary>
+    public int ReloadCustomList()
+    {
+        _customDomains.Clear();
+        string path = _data.CustomBlocklistPath ?? "";
+        try
+        {
+            if (!string.IsNullOrEmpty(path) && System.IO.File.Exists(path))
+                foreach (var raw in System.IO.File.ReadAllLines(path))
+                {
+                    string d = CleanDomainLine(raw);
+                    if (d.Length > 0) _customDomains.Add(d);
+                }
+        }
+        catch { }
+        _customBloom = new BloomFilter(Math.Max(1, _customDomains.Count), 0.01);
+        foreach (var d in _customDomains) _customBloom.Add(d);
+        return _customDomains.Count;
+    }
+
+    /// <summary>Fast membership test (bloom pre-filter + exact confirm).</summary>
+    public bool IsCustomDomainBlocked(string domain)
+    {
+        if (string.IsNullOrEmpty(domain) || _customDomains.Count == 0) return false;
+        if (!_customBloom.MightContain(domain)) return false;
+        return _customDomains.Contains(domain.TrimEnd('.'));
+    }
+
+    private static string CleanDomainLine(string raw)
+    {
+        string s = raw.Trim();
+        if (s.Length == 0 || s[0] == '#') return "";
+        // Accept hosts-style "0.0.0.0 domain" / "127.0.0.1 domain" lines.
+        int sp = s.IndexOfAny(new[] { ' ', '\t' });
+        if (sp > 0)
+        {
+            string first = s.Substring(0, sp);
+            if (first is "0.0.0.0" or "127.0.0.1" or "::1" or "::")
+                s = s.Substring(sp + 1).Trim();
+        }
+        int hash = s.IndexOf('#');
+        if (hash >= 0) s = s.Substring(0, hash).Trim();
+        return s.TrimEnd('.');
+    }
+
+    // ================================================== entity rule engine (§1)
+    // Block rules keyed on a remote's GeoIP entity (country / continent / ASN),
+    // evaluated reactively in the connect-event handler. On a match GunWall installs
+    // a per-app block for that specific remote IP (reusing the proven scope-block WFP
+    // path). IPv4-only (the GeoIP table is IPv4); blocks are post-hoc (the first
+    // packet to a brand-new remote may complete before the filter lands) - effective
+    // for sustained traffic. Enforcement is independent of monitoring/strict mode: an
+    // explicit entity rule always applies once the engine is up, like a scope block.
+    private readonly HashSet<string> _entityBlocked = new(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyList<EntityRule> EntityRules => _data.EntityRules.AsReadOnly();
+    public int EntityReactiveBlockCount => _data.EntityReactiveFilters.Count;
+
+    public void AddEntityRule(EntityRule rule)
+    {
+        if (rule == null || string.IsNullOrWhiteSpace(rule.Value)) return;
+        rule.Value = rule.Value.Trim();
+        _data.EntityRules.Add(rule);
+        SaveStore();
+        EventLog($"Entity rule added: {rule.TypeLabel} {rule.Value} -> block for {rule.AppLabel}");
+    }
+
+    public void RemoveEntityRule(string id)
+    {
+        int removed = _data.EntityRules.RemoveAll(r => r.Id == id);
+        if (removed > 0)
+        {
+            // A rule changed: tear down the reactive filters it (and others) spawned;
+            // still-active rules re-form their blocks on the next matching connection.
+            ClearEntityReactiveBlocks();
+            SaveStore();
+        }
+    }
+
+    public void SetEntityRuleEnabled(string id, bool enabled)
+    {
+        var r = _data.EntityRules.FirstOrDefault(x => x.Id == id);
+        if (r == null) return;
+        r.Enabled = enabled;
+        ClearEntityReactiveBlocks();   // re-evaluate cleanly under the new rule set
+        SaveStore();
+    }
+
+    /// <summary>Pure-logic match: does any enabled rule block this app from talking to
+    /// a remote with the given GeoInfo? Returns the matched rule, else null.</summary>
+    public EntityRule? MatchEntityBlock(string appPath, GeoIpService.GeoInfo geo)
+    {
+        if (_data.EntityRules.Count == 0 || !geo.HasData) return null;
+        foreach (var r in _data.EntityRules)
+        {
+            if (!r.Enabled) continue;
+            if (r.AppPath.Length > 0 &&
+                !string.Equals(r.AppPath, appPath, StringComparison.OrdinalIgnoreCase)) continue;
+            bool hit = r.Type switch
+            {
+                "country"   => geo.Country.Length > 0 &&
+                               string.Equals(geo.Country, r.Value, StringComparison.OrdinalIgnoreCase),
+                "continent" => geo.Country.Length > 0 &&
+                               string.Equals(GeoData.Continent(geo.Country), r.Value, StringComparison.OrdinalIgnoreCase),
+                "asn"       => geo.Asn != 0 && geo.Asn == ParseAsn(r.Value),
+                _           => false
+            };
+            if (hit) return r;
+        }
+        return null;
+    }
+
+    /// <summary>Reactive enforcement: look up the remote, match entity rules, and on a
+    /// hit install a per-app block for that IP (deduped per session). Returns a short
+    /// reason string for logging (e.g. "country RU"), or null if nothing was blocked.</summary>
+    public string? ApplyEntityBlocks(string appPath, string remoteIp)
+    {
+        if (!_engine.IsInitialized) return null;
+        if (string.IsNullOrEmpty(appPath) || string.IsNullOrEmpty(remoteIp)) return null;
+        if (_data.EntityRules.Count == 0) return null;
+
+        // Never reactively block our own process - GunWall must keep reaching its API
+        // server, update check, list mirrors, and VirusTotal regardless of any rule.
+        if (string.Equals(appPath, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        // Enforcement is IPv4-only (the WFP block path is v4). An IPv6 remote can still
+        // be *enriched* in the connection list, but we can't install a block for it yet,
+        // so bail before claiming one.
+        // v4 AND v6. This gated on IPv4 because the GeoIP table was IPv4-only and
+        // the engine could not express a v6 address block. Both were fixed, and
+        // this guard was left behind - so country and ASN rules silently ignored
+        // every IPv6 connection while the interface claimed they were enforced.
+        if (!System.Net.IPAddress.TryParse(remoteIp, out var ipAddr)) return null;
+        if (ipAddr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork &&
+            ipAddr.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+            return null;
+
+        var geo = _geo.Lookup(remoteIp);
+        var rule = MatchEntityBlock(appPath, geo);
+        if (rule == null) return null;
+
+        string key = appPath.ToLowerInvariant() + "|" + remoteIp;
+        int gen = ReactiveGeneration;
+        if (gen != _entityGenerationSeen) { _entityBlocked.Clear(); _entityGenerationSeen = gen; }
+        if (!_entityBlocked.Add(key)) return null; // already handled this app+remote this session
+
+        List<ulong> ids;
+        try { ids = _engine.AddAppRemoteIpBlock(appPath, remoteIp); }
+        catch (Exception ex) { DiagnosticLog.LogException("ApplyEntityBlocks", ex); return null; }
+
+        if (ids.Count == 0) return null; // nothing was installed - don't claim a block
+
+        _data.EntityReactiveFilters.AddRange(ids);
+        SaveStore();
+
+        string reason = rule.Type switch
+        {
+            "country"   => $"country {rule.Value}",
+            "continent" => $"continent {rule.Value}",
+            "asn"       => $"ASN {rule.Value}",
+            _           => "entity rule"
+        };
+        EventLog($"Entity block: {System.IO.Path.GetFileName(appPath)} -> {remoteIp} ({reason})");
+        return reason;
+    }
+
+    /// <summary>Remove every reactive entity block installed this session and reset the
+    /// dedup set. The entity rules themselves are kept.</summary>
+    public void ClearEntityReactiveBlocks()
+    {
+        if (_data.EntityReactiveFilters.Count > 0)
+        {
+            try { _engine.RemoveFilters(_data.EntityReactiveFilters); } catch { }
+            _data.EntityReactiveFilters.Clear();
+            SaveStore();
+        }
+        _entityBlocked.Clear();
+    }
+
+    private static int ParseAsn(string v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return -1;
+        v = v.Trim();
+        if (v.StartsWith("AS", StringComparison.OrdinalIgnoreCase)) v = v.Substring(2);
+        return int.TryParse(v, out int n) ? n : -1;
+    }
+
+    public bool IsBlocked(string exePath) =>
+        _data.Rules.Any(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase) &&
+            r.Status == AppStatus.Blocked);
+
+    public bool IsAllowed(string exePath) =>
+        _data.Rules.Any(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase) &&
+            r.Status == AppStatus.Allowed);
+
+    /// <summary>
+    /// The user-facing status of an app under the current mode:
+    /// explicit block always wins; in strict mode anything not allowed is blocked.
+    /// </summary>
+    /// <summary>True for GunWall's own executable, which is permitted by
+    /// SelfFilterIds rather than by a rule.</summary>
+    public static bool IsOwnExecutable(string exePath)
+        => !string.IsNullOrEmpty(exePath)
+           && string.Equals(exePath, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
+
+    public AppStatus EffectiveStatus(string exePath)
+    {
+        // GunWall is permitted by EnsureSelfConnectivity, not by an entry in
+        // Rules - so the strict-mode test below called it Blocked while the
+        // kernel was permitting it. The Applications list showed GunWall denied,
+        // with a Block button beside it, on a machine where it was working.
+        //
+        // A firewall that misreports its own state is worse than one that
+        // misreports an application's, because it is the thing the reader uses
+        // to judge everything else.
+        if (IsOwnExecutable(exePath)) return AppStatus.Allowed;
+
+        if (IsBlocked(exePath)) return AppStatus.Blocked;
+        if (_data.StrictMode && !IsAllowed(exePath)) return AppStatus.Blocked;
+        return AppStatus.Allowed;
+    }
+
+    /// <summary>
+    /// Allows an application: removes any explicit block; in strict mode also
+    /// creates persistent PERMIT filters and records the allow rule.
+    /// </summary>
+    public void AllowApp(string exePath, string displayName)
+    {
+        UnblockApp(exePath);
+        if (!_data.StrictMode || IsAllowed(exePath)) return;
+
+        var ids = _engine.PermitApplication(exePath);
+        _data.Rules.Add(new FirewallRule
+        {
+            ExecutablePath = exePath,
+            DisplayName = displayName,
+            Status = AppStatus.Allowed,
+            FilterIds = ids,
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
+        });
+        SaveStore();
+    }
+
+    private void RemoveAllowRule(string exePath)
+    {
+        var rule = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase) &&
+            r.Status == AppStatus.Allowed);
+        if (rule is null) return;
+        _engine.RemoveFilters(rule.FilterIds);
+        _data.Rules.Remove(rule);
+        SaveStore();
+    }
+
+    /// <summary>Blocks an application and persists the rule. Idempotent.</summary>
+    public void BlockApp(string exePath, string displayName)
+    {
+        // Refused for our own executable. BlockApplication would install block
+        // filters for the same path EnsureSelfConnectivity permits, and which of
+        // them wins is a question about WFP weights rather than about what the
+        // user meant. The consequence is a firewall that cannot check for its own
+        // updates, verify a hash, or fetch a blocklist - and no way to undo it
+        // from inside the application that is now offline.
+        if (IsOwnExecutable(exePath))
+        {
+            DiagnosticLog.Log("Refused to block GunWall's own executable. It is "
+                            + "permitted by the self-permit so that updates, "
+                            + "blocklists and VirusTotal keep working; use "
+                            + "Settings -> Remove all GunWall filtering to stop "
+                            + "enforcement entirely.");
+            return;
+        }
+
+        if (IsBlocked(exePath)) return;
+        RemoveAllowRule(exePath); // an explicit block supersedes an allow
+
+        var ids = _engine.BlockApplication(exePath);
+        _data.Rules.RemoveAll(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        _data.Rules.Add(new FirewallRule
+        {
+            ExecutablePath = exePath,
+            DisplayName = displayName,
+            Status = AppStatus.Blocked,
+            FilterIds = ids,
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
+        });
+        SaveStore();
+    }
+
+    /// <summary>
+    /// Blocks an app in one direction only (outbound or inbound), leaving the
+    /// other direction untouched. Recorded as a normal blocked rule so it shows
+    /// in the Apps list and persists.
+    /// </summary>
+    public void BlockAppDirection(string exePath, string displayName, bool outbound)
+    {
+        RemoveAllowRule(exePath);
+        // Remove any existing full block first so directions don't stack oddly.
+        var existing = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        if (existing != null) { try { _engine.RemoveFilters(existing.FilterIds); } catch { } _data.Rules.Remove(existing); }
+
+        var ids = _engine.BlockApplicationDirectional(exePath, outbound);
+        _data.Rules.Add(new FirewallRule
+        {
+            ExecutablePath = exePath,
+            DisplayName = displayName + (outbound ? " (outbound blocked)" : " (inbound blocked)"),
+            Status = AppStatus.Blocked,
+            FilterIds = ids,
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
+        });
+        EventLog($"Blocked {(outbound ? "outbound" : "inbound")}: {displayName}");
+        SaveStore();
+    }
+
+    /// <summary>Removes the block for an application and persists. Idempotent.</summary>
+    public void UnblockApp(string exePath)
+    {
+        var rule = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        if (rule is null) return;
+
+        _engine.RemoveFilters(rule.FilterIds);
+        _data.Rules.Remove(rule);
+        SaveStore();
+    }
+
+    /// <summary>§12: probe every WFP layer to confirm this Windows build
+    /// accepts it. Adds and immediately removes a harmless permit filter on
+    /// each; nothing is persisted or left behind.</summary>
+    public List<Wfp.WfpEngine.LayerProbe> VerifyKernelLayers() => _engine.VerifyLayers();
+
+    /// <summary>Engages or releases global lockdown (block-all). Persisted.</summary>
+    public void SetLockdown(bool engaged)
+    {
+        if (engaged == _data.LockdownEngaged) return;
+
+        if (engaged)
+        {
+            _data.LockdownFilterIds = _engine.EngageLockdown();
+            _data.LockdownEngaged = true;
+            // Logged because releasing lockdown erases every other trace of it:
+            // the filters go and the ID list is cleared, so without this line a
+            // diagnostics export can't tell lockdown was ever engaged.
+            DiagnosticLog.Log($"Lockdown ENGAGED: {_data.LockdownFilterIds.Count} block filters installed.");
+        }
+        else
+        {
+            int had = _data.LockdownFilterIds.Count;
+            _engine.RemoveFilters(_data.LockdownFilterIds);
+            _data.LockdownFilterIds.Clear();
+            _data.LockdownEngaged = false;
+            DiagnosticLog.Log($"Lockdown RELEASED: {had} block filters removed.");
+        }
+        SaveStore();
+    }
+
+    /// <summary>
+    /// Removes every GunWall filter from the system and clears all saved
+    /// rules. Use before uninstalling or to fully reset.
+    /// </summary>
+    /// <summary>Removes every filter GunWall installed and clears saved rules.
+    ///
+    /// Order matters and it was wrong until 0.99.80. This went straight to the
+    /// sublayer delete, which WFP refuses with FWP_E_IN_USE while any filter
+    /// still references it - and the exception fired BEFORE the store was
+    /// cleared, so the reset aborted with both the kernel filters and the saved
+    /// rules intact. The button says "run this before uninstalling", so the
+    /// failure mode was a machine left filtering traffic with no GunWall on it.
+    ///
+    /// The ids are gathered by walking the store rather than by listing the
+    /// collections here. There are ten of them today - lockdown, strict, self,
+    /// blocklist, system rules, scopes, blocklist WFP filters, entity reactive,
+    /// blocked services, and the per-rule lists on two different rule types - and
+    /// a reset that forgets one leaves filters behind and fails exactly the same
+    /// way. A walk cannot forget one, and it picks up any collection added
+    /// later without this method being touched again.</summary>
+    /// <summary>Puts every preference back to its default while keeping rules,
+    /// filters and enforcement state untouched.
+    ///
+    /// Done by field KIND rather than by listing setters, because a hand-written
+    /// list of thirty-odd preferences is a thing to forget - and the one forgotten
+    /// is the one the user was trying to reset. Collections hold rules, filter ids,
+    /// known apps and saved adapter DNS, so they are preserved wholesale; scalars
+    /// are preferences and go back to a fresh StoreData's values.
+    ///
+    /// Except for the scalars that are STATE rather than preference. Resetting
+    /// StrictMode would silently switch protection off from a button captioned
+    /// "reset settings", and resetting the DNS-redirect flags would leave the
+    /// machine pointed at a resolver GunWall no longer believes it configured.
+    /// Those are named, and named is right here: the list is short, each entry has
+    /// a reason, and getting it wrong disarms a firewall.</summary>
+    public int ResetSettingsToDefaults()
+    {
+        var fresh = new StoreData();
+        var keep = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "StrictMode",          // protection on/off - not a preference
+            "LockdownEngaged",     // ditto
+            "DnsRedirectActive",   // adapters are actually pointed at us
+
+            // Names verified against StoreData rather than written from memory. A
+            // keep-list entry matching no property protects nothing and fails
+            // silently - the first draft guarded "CustomListPath", which does not
+            // exist, while the real "CustomBlocklistPath" sat in the reset set and
+            // would have taken the user's chosen list file with it.
+            "DnsGamingSession",    // a live session, not a preference
+        };
+
+        // The user's own values, from the one list ClearStore also reads. Kept
+        // here rather than repeated, so the two paths cannot disagree about what
+        // belongs to the user.
+        foreach (string name in UserOwnedSettings) keep.Add(name);
+
+        // Every keep-list entry must name a real property, checked rather than
+        // trusted, because the failure mode above is invisible.
+        var known = new HashSet<string>(
+            typeof(StoreData).GetProperties().Select(pi => pi.Name), StringComparer.Ordinal);
+        foreach (string k in keep)
+            if (!known.Contains(k))
+                DiagnosticLog.Log($"Settings reset: keep-list names '{k}', which is not a "
+                                + "StoreData property - it protects nothing.");
+
+        int changed = 0;
+        foreach (var prop in typeof(StoreData).GetProperties())
+        {
+            if (!prop.CanRead || !prop.CanWrite) continue;
+            if (prop.DeclaringType != typeof(StoreData)) continue;
+            if (keep.Contains(prop.Name)) continue;
+
+            var t = prop.PropertyType;
+            // Collections are rules, filter ids and machine state. Never reset.
+            bool scalar = t.IsPrimitive || t.IsEnum || t == typeof(string) || t == typeof(decimal);
+            if (!scalar) continue;
+
+            object? now = prop.GetValue(_data);
+            object? def = prop.GetValue(fresh);
+            if (Equals(now, def)) continue;
+            prop.SetValue(_data, def);
+            changed++;
+        }
+
+        SaveStore();
+        EventLog($"Settings reset: {changed} preference(s) returned to default. "
+               + "Rules, filters and protection state were not touched.");
+        return changed;
+    }
+
+    public bool RemoveAllFiltering()
+    {
+        var ids = new HashSet<ulong>();
+        CollectFilterIds(_data, ids, new HashSet<object>(ReferenceEqualityComparer.Instance));
+        if (ids.Count > 0)
+        {
+            DiagnosticLog.Log($"Reset: removing {ids.Count} tracked filter(s) before the sublayer.");
+            try { _engine.RemoveFilters(ids.ToList()); }
+            catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/filters", ex); }
+        }
+
+        bool sublayerGone = _engine.RemoveAllFiltering();
+
+        // Tracked ids only reach what GunWall still knows about. Anything orphaned
+        // - a crash between installing a filter and saving its id, a store cleared
+        // before its filters were deleted - stays in the kernel, which is what
+        // FWP_E_IN_USE has been reporting.
+        //
+        // This used to sweep once and give up. One sweep is not enough: the
+        // enumeration returns a DIFFERENT partial set each time it is called, so
+        // a single pass removed 190 filters and left 4 behind that the next call
+        // could see perfectly well. Both passes reported every delete as
+        // successful, and the sublayer stayed in use after each - which is how a
+        // machine ended up with four block-everything filters and no network.
+        //
+        // PurgeSublayer loops until a pass finds nothing. On the machine that
+        // failed, that cleared 204 filters across two passes and removed the
+        // sublayer, verified empty.
+        if (!sublayerGone)
+        {
+            var purge = PurgeSublayer();
+            sublayerGone = purge.SublayerGone;
+            LastPurge = purge;
+
+            DiagnosticLog.Log(sublayerGone
+                ? $"Reset: sublayer removed after {purge.Passes} purge pass(es), "
+                  + $"{purge.Removed} filter(s) cleared - the machine is back to "
+                  + "Windows defaults."
+                : $"Reset: sublayer still in use after {purge.Passes} purge pass(es). "
+                  + $"{purge.Remaining} filter(s) remain and {purge.Failed} would not "
+                  + "delete. Filters are not persistent from 0.99.143, so a reboot "
+                  + "clears whatever is left.");
+        }
+
+        // Filters are not the only thing GunWall changes about this machine, and
+        // a button captioned "removes every filter GunWall has created... run this
+        // before uninstalling" was leaving two of them in place:
+        //
+        //  - the hosts file, where blocklist categories are written as 0.0.0.0
+        //    entries. Left behind, the machine keeps blocking those domains with
+        //    nothing installed to explain it or undo it.
+        //  - adapter DNS servers, if the DNS redirect was ever used. Left behind,
+        //    the PC keeps pointing at a resolver that is no longer running, which
+        //    is a machine with no working DNS at all.
+        //
+        // Both are recorded and reversible, and neither was being reversed.
+        try
+        {
+            var blocked = HostsFileService.GetBlockedDomains();
+            if (blocked.Count > 0)
+            {
+                HostsFileService.SetBlockedDomains(Array.Empty<string>(), _store.ProfileFolder);
+                DiagnosticLog.Log($"Reset: cleared {blocked.Count} domain(s) from the hosts file.");
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/hosts", ex); }
+
+        try
+        {
+            if (_data.DnsSavedAdapters is { Count: > 0 })
+            {
+                int n = DnsService.RestoreAdapters(_data.DnsSavedAdapters);
+                DiagnosticLog.Log($"Reset: restored DNS servers on {n} adapter(s).");
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/dns", ex); }
+
+        try { HostsFileService.FlushDns(); } catch { }
+
+        // The filters are gone, so the ids tracking them are stale and the
+        // machine-state flags are false by fact. Recorded here because this
+        // method is what made them false. Rules, preferences and credentials are
+        // NOT touched - see ClearStore for that, and for why the two are apart.
+        ForgetFilterIds(_data, new HashSet<object>(ReferenceEqualityComparer.Instance));
+        _data.StrictMode = false;
+        _data.LockdownEngaged = false;
+        _data.DnsRedirectActive = false;
+        _data.DnsGamingSession = false;
+        SaveStore();
+
+        DiagnosticLog.Log(sublayerGone
+            ? "Reset: complete - sublayer removed; rules and settings kept."
+            : "Reset: filters removed, rules and settings kept; sublayer retained "
+            + "(untracked filters remain).");
+        return sublayerGone;
+    }
+
+    /// <summary>
+    /// Empties every tracked filter-id collection in the store.
+    ///
+    /// Mirrors <see cref="CollectFilterIds"/> deliberately: the same reflective
+    /// walk that finds the ids to remove is the one that forgets them, so a
+    /// collection added later cannot be swept by one and missed by the other.
+    /// A hand-written list of the six known collections is what trap 2.19 was.
+    /// </summary>
+    private static void ForgetFilterIds(object? node, HashSet<object> seen)
+    {
+        if (node is null || node is string || node.GetType().IsPrimitive
+            || node is decimal || node is DateTime) return;
+        if (!seen.Add(node)) return;   // cycle guard
+
+        if (node is System.Collections.IEnumerable seq)
+        {
+            if (node is List<ulong> ids) { ids.Clear(); return; }
+            foreach (var item in seq)
+            {
+                if (item is System.Collections.DictionaryEntry de)
+                { ForgetFilterIds(de.Value, seen); continue; }
+                var kt = item?.GetType();
+                if (kt is { IsGenericType: true } &&
+                    kt.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+                { ForgetFilterIds(kt.GetProperty("Value")?.GetValue(item), seen); continue; }
+                ForgetFilterIds(item, seen);
+            }
+            return;
+        }
+
+        if (node.GetType().Namespace?.StartsWith("GunWall", StringComparison.Ordinal) != true) return;
+        foreach (var p in node.GetType().GetProperties())
+        {
+            if (p.GetIndexParameters().Length > 0 || !p.CanRead) continue;
+            try { ForgetFilterIds(p.GetValue(node), seen); }
+            catch { /* a property that throws holds no filter ids */ }
+        }
+    }
+
+    /// <summary>
+    /// Settings that belong to the user rather than to GunWall, and that GunWall
+    /// cannot recreate for them.
+    ///
+    /// Shared by <see cref="ResetSettingsToDefaults"/> and
+    /// <see cref="ClearStore"/> rather than written out in both. Two copies of
+    /// one rule is how the two drift, and the drift is silent: a credential
+    /// survives one path and is destroyed by the other, with nothing to say so.
+    /// </summary>
+    internal static readonly string[] UserOwnedSettings =
+    {
+        "VirusTotalApiKey",     // issued by another service; cannot be reissued here
+        "CustomBlocklistPath",  // a path they chose; losing it loses the list
+    };
+
+    /// <summary>
+    /// Discards rules and settings, keeping what the user owns.
+    ///
+    /// Separate from <see cref="RemoveAllFiltering"/> because they answer
+    /// different questions. Removing filtering is "undo what GunWall did to this
+    /// machine". Clearing the store is "discard what the user decided". The
+    /// in-app reset button means both and says so. The uninstaller means only the
+    /// first.
+    ///
+    /// Previously they were one method, and the uninstaller reached it through
+    /// <c>--unblock</c> in InitializeUninstall - BEFORE the prompt offering to
+    /// keep the profile. Answering "No" to that prompt preserved a file that had
+    /// already been emptied, so an uninstall-then-reinstall lost every rule and
+    /// the VirusTotal key while reporting that it had kept them.
+    /// </summary>
+    public void ClearStore()
+    {
+        var keep = new StoreData();
+        foreach (string name in UserOwnedSettings)
+        {
+            var prop = typeof(StoreData).GetProperty(name);
+            if (prop is null || !prop.CanRead || !prop.CanWrite)
+            {
+                DiagnosticLog.Log($"Store clear: '{name}' is not a settable StoreData "
+                                + "property - it protects nothing.");
+                continue;
+            }
+            prop.SetValue(keep, prop.GetValue(_data));
+        }
+
+        _data = keep;
+        SaveStore();
+        DiagnosticLog.Log("Store cleared; user-owned settings kept ("
+                        + string.Join(", ", UserOwnedSettings) + ").");
+    }
+
+    /// <summary>Empties every filter-id collection in the store, leaving the rules
+    /// and settings that own them intact.
+    ///
+    /// Walked rather than listed, for the same reason the collection is: the ids
+    /// live in ten places and any list written here would be one refactor behind.
+    /// Clearing them matters as much as deleting the filters - an id left in the
+    /// store points at a filter that no longer exists, and the next teardown would
+    /// quietly fail to remove something real.</summary>
+    private static void ClearAllFilterIds(object? node, HashSet<object>? seen = null)
+    {
+        if (node is null) return;
+        seen ??= new HashSet<object>(ReferenceEqualityComparer.Instance);
+        if (node is string || node.GetType().IsPrimitive) return;
+        if (!seen.Add(node)) return;
+
+        if (node is List<ulong> ul) { ul.Clear(); return; }
+
+        if (node is System.Collections.IEnumerable seq)
+        {
+            foreach (var item in seq)
+            {
+                if (item is System.Collections.DictionaryEntry de)
+                { ClearAllFilterIds(de.Value, seen); continue; }
+                var t = item?.GetType();
+                if (t is { IsGenericType: true } &&
+                    t.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+                { ClearAllFilterIds(t.GetProperty("Value")?.GetValue(item), seen); continue; }
+                ClearAllFilterIds(item, seen);
+            }
+            return;
+        }
+
+        if (node.GetType().Namespace?.StartsWith("GunWall", StringComparison.Ordinal) != true) return;
+        foreach (var p in node.GetType().GetProperties())
+        {
+            if (p.GetIndexParameters().Length > 0 || !p.CanRead) continue;
+            try { ClearAllFilterIds(p.GetValue(node), seen); }
+            catch { }
+        }
+    }
+
+    /// <summary>Walks an object graph collecting every ulong it finds.
+    ///
+    /// Safe because every ulong in the persisted model is a filter id - there is
+    /// no other use of the type in StoreData or the rule classes. If that ever
+    /// stops being true this becomes wrong silently, so the store-shape check in
+    /// release checks assert it rather than leaving it to be remembered.</summary>
+    private static void CollectFilterIds(object? node, HashSet<ulong> into, HashSet<object> seen)
+    {
+        if (node is null) return;
+        if (node is ulong id) { into.Add(id); return; }
+        if (node is string || node.GetType().IsPrimitive || node is decimal || node is DateTime) return;
+        if (!seen.Add(node)) return;   // cycle guard
+
+        if (node is System.Collections.IEnumerable seq)
+        {
+            foreach (var item in seq)
+            {
+                if (item is System.Collections.DictionaryEntry de)
+                { CollectFilterIds(de.Value, into, seen); continue; }
+                // KeyValuePair<,> - read Value without boxing assumptions.
+                var t = item?.GetType();
+                if (t is { IsGenericType: true } &&
+                    t.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+                { CollectFilterIds(t.GetProperty("Value")?.GetValue(item), into, seen); continue; }
+                CollectFilterIds(item, into, seen);
+            }
+            return;
+        }
+
+        if (node.GetType().Namespace?.StartsWith("GunWall", StringComparison.Ordinal) != true) return;
+        foreach (var p in node.GetType().GetProperties())
+        {
+            if (p.GetIndexParameters().Length > 0 || !p.CanRead) continue;
+            // NOT swallowed. A property that genuinely holds no ids does not
+            // throw; a property being mutated on another thread does, and that
+            // exception abandons an entire subtree. Swallowing it turned a race
+            // into "4 tracked" with no evidence anywhere that a hundred rules had
+            // just been skipped, and the reconcile then deleted the filters they
+            // held. Whatever the cause, the caller must know the walk is partial.
+            try { CollectFilterIds(p.GetValue(node), into, seen); }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log($"Filter-id walk failed on {node.GetType().Name}."
+                                + $"{p.Name} ({ex.GetType().Name}: {ex.Message}). The "
+                                + "tracked set is INCOMPLETE and must not be treated as "
+                                + "a complete picture of what this installation owns.");
+                throw new InvalidOperationException(
+                    $"Filter-id walk incomplete at {node.GetType().Name}.{p.Name}.", ex);
+            }
+        }
+    }
+
+    // ------------------------------------------------ alerts / known apps
+
+    public bool IsKnownApp(string exePath) => KnownSet.Contains(exePath);
+
+    /// <summary>Marks one app as seen and persists. Returns true if it was new.</summary>
+    public bool MarkKnown(string exePath)
+    {
+        if (string.IsNullOrEmpty(exePath) || !KnownSet.Add(exePath)) return false;
+        _data.KnownApps.Add(exePath);
+        SaveStore();
+        return true;
+    }
+
+    /// <summary>Bulk-seeds known apps (first run) with a single save.</summary>
+    public void SeedKnownApps(IEnumerable<string> exePaths)
+    {
+        bool changed = false;
+        foreach (var p in exePaths)
+        {
+            if (string.IsNullOrEmpty(p)) continue;
+            if (KnownSet.Add(p)) { _data.KnownApps.Add(p); changed = true; }
+        }
+        if (changed) SaveStore();
+    }
+
+    /// <summary>
+    /// Guarantees GunWall's own executable can reach the network, so its update
+    /// check, blocklist downloads and VirusTotal lookups are never blocked by its
+    /// own Zero-Trust block-all (which otherwise denies GunWall.exe just like any
+    /// other unapproved app). Re-asserted on every launch. A user's *explicit*
+    /// block on GunWall still wins, since that filter has higher weight.
+    /// </summary>
+    /// <summary>Every filter id in GunWall's sublayer, tracked or not.</summary>
+    public List<ulong> FindAllSublayerFilterIds() => _engine.FindAllSublayerFilterIds();
+
+    /// <summary>Result of the last purge run by RemoveAllFiltering, so the
+    /// interface can tell the user what actually happened rather than just
+    /// "done".</summary>
+    public PurgeResult? LastPurge { get; private set; }
+
+    /// <summary>
+    /// Removes every filter in GunWall's sublayer that the store does not name.
+    ///
+    /// Unlike PurgeSublayer this NEVER deletes a tracked filter, so it is safe to
+    /// run while protection may be switched back on. It re-checks StrictMode each
+    /// pass and stops as soon as protection is re-engaged; and it only deletes ids
+    /// that were untracked at the moment they were enumerated, so a filter created
+    /// by a later engage can never be among them.
+    ///
+    /// Looped for the same reason the purge is: the netsh listing used before
+    /// 0.99.169 returned a different partial set on each call. With the native
+    /// listing a second pass simply finds nothing, and the loop costs one call.
+    /// </summary>
+    public int SweepUntrackedFilters()
+    {
+        using var _perf = PerfMonitor.Measure("SweepUntrackedFilters");
+        const int MaxPasses = 12;
+        int removed = 0;
+        for (int pass = 0; pass < MaxPasses; pass++)
+        {
+            if (_data.StrictMode) break;
+
+            List<ulong> live;
+            try { live = _engine.FindAllSublayerFilterIds(); }
+            catch (Exception ex) { DiagnosticLog.LogException("SweepUntracked/enumerate", ex); break; }
+
+            HashSet<ulong> tracked;
+            lock (_dataLock) tracked = new HashSet<ulong>(AllKnownFilterIds());
+            if (_data.StrictMode) break;
+
+            var untracked = live.Where(id => !tracked.Contains(id)).ToList();
+            if (untracked.Count == 0) break;
+
+            int thisPass = 0;
+            foreach (ulong id in untracked)
+                if (_engine.TryDeleteFilter(id) == 0) { removed++; thisPass++; }
+            if (thisPass == 0) break;
+        }
+
+        if (removed > 0)
+            DiagnosticLog.Log($"Protection OFF: removed {removed} filter(s) no list named - "
+                            + "orphans that would otherwise keep blocking with protection off.");
+        return removed;
+    }
+
+    /// <summary>Outcome of a sublayer purge, for reporting to a console or a dialog.</summary>
+    public readonly record struct PurgeResult(
+        int Passes, int Removed, int AlreadyGone, int Failed, int Remaining, bool SublayerGone);
+
+    /// <summary>
+    /// Removes EVERY filter in GunWall's sublayer, re-enumerating between passes.
+    ///
+    /// One pass was not enough, and that was measured rather than assumed.
+    /// FindAllSublayerFilterIds parsed `netsh wfp show filters` until 0.99.169,
+    /// and on
+    /// 2026-09-12 that output listed 4 filters at a moment the kernel confirmed
+    /// 144 of 144 present. Two consecutive single-pass purges saw ~190 filters
+    /// and then 4 completely different ones, every delete returning success both
+    /// times, and the sublayer stayed FWP_E_IN_USE after each.
+    ///
+    /// Looping fixed it on the first attempt: pass 1 removed 200, pass 2 found
+    /// the four orphans that had been invisible to pass 1, and the sublayer then
+    /// deleted cleanly - zero filters remaining, machine back to Windows
+    /// defaults.
+    ///
+    /// Bounded, and it stops early when a pass removes nothing: an enumeration
+    /// still returning ids after a successful delete is a condition another pass
+    /// will not fix, and spinning on it would hang the interface.
+    ///
+    /// The proper repair is FwpmFilterEnum0 with FWPM_FILTER0 marshalled against
+    /// win32metadata. Until that exists, this is what makes the reset complete.
+    /// </summary>
+    public PurgeResult PurgeSublayer(Action<string>? report = null)
+    {
+        using var _perf = PerfMonitor.Measure("PurgeSublayer");
+        const int MaxPasses = 12;
+        int passes = 0, removed = 0, gone = 0, failed = 0;
+
+        while (passes < MaxPasses)
+        {
+            List<ulong> ids;
+            try { ids = _engine.FindAllSublayerFilterIds(); }
+            catch (Exception ex)
+            {
+                DiagnosticLog.LogException("PurgeSublayer/enumerate", ex);
+                break;
+            }
+            if (ids.Count == 0) break;
+
+            passes++;
+            report?.Invoke($"pass {passes}: {ids.Count} filter(s) found.");
+            DiagnosticLog.Log($"Purge pass {passes}: {ids.Count} filter(s) in the sublayer.");
+
+            int removedThisPass = 0;
+            foreach (ulong id in ids)
+            {
+                uint r;
+                try { r = _engine.TryDeleteFilter(id); }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.LogException($"PurgeSublayer/delete {id}", ex);
+                    failed++;
+                    continue;
+                }
+                if (r == 0) { removed++; removedThisPass++; }
+                else if (r == 0x80320003) gone++;
+                else
+                {
+                    failed++;
+                    DiagnosticLog.Log($"Purge: filter {id} would not delete (0x{r:X8}).");
+                }
+            }
+
+            if (removedThisPass == 0)
+            {
+                DiagnosticLog.Log("Purge: a pass removed nothing - stopping rather than "
+                                + "spinning on an enumeration that cannot be acted on.");
+                break;
+            }
+        }
+
+        // -1 when the final listing fails: unknown is not zero (trap 2.20).
+        int left = -1;
+        try { left = _engine.FindAllSublayerFilterIds().Count; }
+        catch (Exception ex) { DiagnosticLog.LogException("PurgeSublayer/count", ex); }
+
+        bool sublayerGone;
+        try { sublayerGone = _engine.TryDeleteSublayer() is 0 or 0x80320007; }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("PurgeSublayer/sublayer", ex);
+            sublayerGone = false;
+        }
+
+        DiagnosticLog.Log($"Purge complete: passes={passes} removed={removed} "
+                        + $"alreadyGone={gone} failed={failed} remaining={left} "
+                        + $"sublayerRemoved={sublayerGone}");
+
+        return new PurgeResult(passes, removed, gone, failed, left, sublayerGone);
+    }
+
+    /// <summary>Deletes one filter, returning the code instead of throwing.</summary>
+    public uint TryDeleteFilter(ulong id) => _engine.TryDeleteFilter(id);
+
+    /// <summary>Deletes GunWall's sublayer, returning the code instead of throwing.</summary>
+    public uint TryDeleteSublayer() => _engine.TryDeleteSublayer();
+
+    public void EnsureSelfConnectivity()
+    {
+        try
+        {
+            string self = Environment.ProcessPath ?? "";
+            if (string.IsNullOrEmpty(self)) return;
+
+            // Under the gate: the startup reconcile walks _data reflectively on a
+            // background thread and this is the mutation it was racing.
+            lock (_dataLock)
+            {
+                // Drop any stale permit from a previous run, then add a fresh one.
+                if (_data.SelfFilterIds.Count > 0)
+                {
+                    try { _engine.RemoveFilters(_data.SelfFilterIds); } catch { }
+                    _data.SelfFilterIds.Clear();
+                }
+                _data.SelfFilterIds = _engine.PermitApplication(self);
+                SaveStore();
+            }
+            EventLog("Self-permit re-asserted for GunWall's own executable.");
+        }
+        catch { /* never let self-permit setup crash startup */ }
+    }
+
+    /// <summary>Loads saved category colors into the palette (called at startup).</summary>
+    public void LoadCategoryColors() => CategoryPalette.Load(_data.CategoryColors);
+
+    /// <summary>Persists the current palette to the profile.</summary>
+    public void SaveCategoryColors()
+    {
+        _data.CategoryColors = CategoryPalette.ToDict();
+        SaveStore();
+    }
+
+    /// <summary>The note attached to an executable, or empty.</summary>
+    public string GetNote(string exePath) =>
+        !string.IsNullOrEmpty(exePath) && _data.AppNotes.TryGetValue(exePath, out var n) ? n : "";
+
+    /// <summary>Sets or clears the note for an executable.</summary>
+    /// <summary>Normalises a MAC to the form notes are keyed by: hex only,
+    /// uppercase. Accepts colons, dashes or nothing, so a note written from one
+    /// display format is found from another.</summary>
+    public static string MacKey(string? mac) =>
+        mac is null ? "" : new string(mac.Where(Uri.IsHexDigit).ToArray()).ToUpperInvariant();
+
+    public string GetDeviceNote(string? mac)
+    {
+        string k = MacKey(mac);
+        return k.Length > 0 && _data.DeviceNotes.TryGetValue(k, out var n) ? n : "";
+    }
+
+    public void SetDeviceNote(string? mac, string note)
+    {
+        string k = MacKey(mac);
+        if (k.Length == 0) return;
+        if (string.IsNullOrWhiteSpace(note)) _data.DeviceNotes.Remove(k);
+        else _data.DeviceNotes[k] = note.Trim();
+        SaveStore();
+    }
+
+    public void SetNote(string exePath, string note)
+    {
+        if (string.IsNullOrEmpty(exePath)) return;
+        if (string.IsNullOrWhiteSpace(note)) _data.AppNotes.Remove(exePath);
+        else _data.AppNotes[exePath] = note.Trim();
+        SaveStore();
+    }
+
+    /// <summary>
+    /// Removes apps GunWall has merely seen (in the known list) but for which no
+    /// allow/block rule exists - housekeeping for "seen but never decided" apps.
+    /// They'll prompt again the next time they connect. Returns the count removed.
+    /// </summary>
+    public int PurgeUnusedApps()
+    {
+        var ruled = new HashSet<string>(
+            _data.Rules.Select(r => r.ExecutablePath), StringComparer.OrdinalIgnoreCase);
+        int before = _data.KnownApps.Count;
+        _data.KnownApps.RemoveAll(p => !ruled.Contains(p));
+        _knownSet = null; // force a rebuild on next access
+        int removed = before - _data.KnownApps.Count;
+        if (removed > 0) SaveStore();
+        return removed;
+    }
+
+    /// <summary>
+    /// Enables or disables strict (whitelist) mode. When enabling, core
+    /// Windows networking services are auto-allowed so DNS/DHCP keep working —
+    /// without this, strict mode would appear to "break the internet".
+    /// </summary>
+    /// <summary>
+    /// A short fingerprint of the ruleset currently in force.
+    ///
+    /// Real, not decorative: it hashes the things that actually change what the
+    /// firewall does - mode, the per-app verdicts, custom and system rules,
+    /// blocked services. Two machines showing the same fingerprint are enforcing
+    /// the same policy, and a fingerprint that changes when you did not change
+    /// anything is worth investigating.
+    /// </summary>
+    public string RulesetFingerprint
+    {
+        get
+        {
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.Append(_data.StrictMode ? 'S' : 'a').Append(_data.LockdownEngaged ? 'L' : '-');
+                foreach (var r in _data.Rules.OrderBy(r => r.ExecutablePath, StringComparer.OrdinalIgnoreCase))
+                    sb.Append(r.ExecutablePath).Append('=').Append((int)r.Status).Append(';');
+                foreach (var c in _data.CustomRules.OrderBy(c => c.Id, StringComparer.Ordinal))
+                    sb.Append(c.Block ? 'B' : 'A').Append(c.Outbound ? 'O' : 'I')
+                      .Append(c.Protocol).Append(c.RemoteAddress).Append(';');
+                foreach (var k in _data.SystemRules.Keys.OrderBy(k => k)) sb.Append(k).Append(';');
+                foreach (var k in _data.BlockedServices.Keys.OrderBy(k => k)) sb.Append(k).Append(';');
+
+                byte[] h = System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(sb.ToString()));
+                string hex = Convert.ToHexString(h).ToLowerInvariant();
+                // Head and tail, as the design shows it: enough to compare by eye
+                // without pretending the whole digest is readable.
+                return $"{hex[..4]}\u2026{hex[^4..]}";
+            }
+            catch { return "\u2014"; }
+        }
+    }
+
+    /// <summary>Whether the WFP engine is open and usable.</summary>
+    public bool EngineStarted => EngineHandle != IntPtr.Zero;
+
+    // ==================== tamper detection ====================
+
+    /// <summary>Every filter id GunWall believes it has installed.</summary>
+    private IEnumerable<ulong> AllKnownFilterIds()
+    {
+        foreach (var id in _data.StrictFilterIds) yield return id;
+        foreach (var id in _data.SelfFilterIds) yield return id;
+        foreach (var id in _data.LockdownFilterIds) yield return id;
+        foreach (var id in _data.BlocklistFilterIds) yield return id;
+        foreach (var id in _data.EntityReactiveFilters) yield return id;
+        foreach (var r in _data.Rules)
+            foreach (var id in r.FilterIds) yield return id;
+        // Custom rules were missing here, so a restart that cleared them went
+        // unnoticed by every integrity check (trap 2.43).
+        foreach (var c in _data.CustomRules)
+            foreach (var id in c.FilterIds) yield return id;
+        foreach (var d in new[] { _data.SystemRules, _data.ScopeFilters, _data.Blocklists,
+                                  _data.BlocklistWfpFilters, _data.BlockedServices })
+            foreach (var list in d.Values)
+                foreach (var id in list) yield return id;
+    }
+
+    /// <summary>Result of an integrity check, for the interface and the log.</summary>
+    public readonly record struct TamperReport(int Expected, int Missing, bool Repaired, string Detail)
+    {
+        public bool Intact => Missing == 0;
+    }
+
+    /// <summary>
+    /// Checks that GunWall's filters are still in the kernel, and puts back any
+    /// that are not.
+    ///
+    /// This is detection and repair, not prevention: a process with
+    /// administrator rights can remove these filters, and no access control
+    /// GunWall can apply would stop it while GunWall itself runs as an elevated
+    /// user rather than as the system. What changes is that removal is no
+    /// longer silent or lasting - it is noticed, reported and undone.
+    /// </summary>
+    public TamperReport CheckIntegrity(bool repair)
+    {
+        using var _perf = PerfMonitor.Measure("CheckIntegrity");
+        if (!EngineStarted) return new TamperReport(0, 0, false, "engine not running");
+        try
+        {
+            var report = _engine.CheckFilters(AllKnownFilterIds());
+            if (report.Intact || !repair)
+                return new TamperReport(report.Expected, report.Missing, false, report.Summary);
+
+            // Something removed filters behind our back. Rebuild from the saved
+            // rules rather than trying to patch individual ids: the stored ids
+            // are now stale, and a rebuild is the operation we already trust.
+            DiagnosticLog.Log($"FILTER TAMPERING DETECTED: {report.Missing} of {report.Expected} " +
+                              "filters are missing from the kernel. Re-applying.");
+            int restored = RepairFiltering();
+            return new TamperReport(report.Expected, report.Missing, true,
+                                    $"{report.Missing} filter(s) were missing; {restored} re-applied");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("CheckIntegrity", ex);
+            return new TamperReport(0, 0, false, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Re-installs filtering at startup when the kernel has lost it.
+    ///
+    /// Filters stopped being persistent in 0.99.143, so a restart clears every
+    /// one of them. That was deliberate - it is the recovery path that stops an
+    /// orphaned block-everything filter bricking a machine. What was NOT done at
+    /// the time is the other half: putting the filtering back.
+    ///
+    /// Nothing did. The tamper watchdog happened to, because missing filters
+    /// look exactly like tampering, and it fired 1,172 times in seven days doing
+    /// it. When that watchdog was switched off - a user preference, in Settings -
+    /// the restore stopped with it, and eighteen hours later 187 of 360 filters
+    /// were absent while the interface read Protected.
+    ///
+    /// A firewall reporting protection it is not providing is the worst state it
+    /// can be in, worse than failing loudly. Restoring your own filtering after a
+    /// restart is not tamper *detection* and must not be gated behind a
+    /// preference about it.
+    ///
+    /// Returns the number of filters installed, or 0 when nothing was needed.
+    /// </summary>
+    public int RestoreFilteringIfLost()
+    {
+        using var _perf = PerfMonitor.Measure("RestoreFilteringIfLost");
+        if (!EngineStarted || !_data.StrictMode) return 0;
+
+        var report = _engine.CheckFilters(AllKnownFilterIds());
+        if (report.Intact) return 0;
+
+        DiagnosticLog.Log($"Startup: {report.Missing} of {report.Expected} filter(s) are "
+                        + "absent from the kernel - filters do not survive a restart. "
+                        + "Re-installing from the saved rules.");
+        int made = RepairFiltering();
+        DiagnosticLog.Log($"Startup: filtering restored, {made} filter(s) installed.");
+        return made;
+    }
+
+    /// <summary>Re-installs filtering from the saved rules. Returns how many
+    /// filters were created.</summary>
+    public int RepairFiltering()
+    {
+        using var _perf = PerfMonitor.Measure("RepairFiltering");
+        int made = 0;
+        var wfpToRestore = new List<string>();
+        try
+        {
+            lock (_dataLock)
+            {
+                // Snapshot what the store names BEFORE rebuilding.
+                //
+                // This used to overwrite every id it rebuilt without removing the
+                // filter the old id named. After a reboot that is harmless - the
+                // kernel is empty. Called by the watchdog when four of 384 filters
+                // were missing, it installed 380 duplicates and forgot the 380
+                // originals: 380 orphans every thirty seconds. On 2026-09-21 the
+                // sublayer reached 1140 filters against 384 tracked.
+                //
+                // Among the orphans were copies of the condition-less block-all.
+                // Protection OFF removes only what the store names, so those stayed,
+                // and a machine with protection OFF denied every connection -
+                // ERR_NETWORK_ACCESS_DENIED - until protection was turned back on
+                // and fresh permits outranked them.
+                //
+                // Rebuild first, THEN remove what is no longer named. Removing first
+                // would leave a window with nothing installed, not even the
+                // block-all; this order keeps enforcement continuous, briefly
+                // doubled, which is harmless.
+                var previous = AllKnownFilterIds().ToList();
+
+                if (_data.StrictMode)
+                {
+                    _data.StrictFilterIds = _engine.EngageStrictMode();
+                    made += _data.StrictFilterIds.Count;
+                }
+                _data.SelfFilterIds = _engine.PermitApplication(Environment.ProcessPath ?? "");
+                made += _data.SelfFilterIds.Count;
+
+                // Blocked rules too. They were skipped, so after a reboot a
+                // Blocked rule's ids named filters that no longer existed and
+                // nothing would ever recreate. That is the permanently "missing"
+                // set that made the watchdog repair every thirty seconds.
+                foreach (var rule in _data.Rules)
+                {
+                    try
+                    {
+                        // A missing file cannot be given a filter (Windows needs it to
+                        // exist), so skip quietly instead of logging an error: a Store
+                        // update leaves exactly this until PruneDeadRules follows it.
+                        if (!System.IO.File.Exists(rule.ExecutablePath)) { rule.FilterIds = new List<ulong>(); continue; }
+                        rule.FilterIds = rule.Status == AppStatus.Allowed
+                            ? _engine.PermitApplication(rule.ExecutablePath)
+                            : InstallBlock(rule);
+                        made += rule.FilterIds.Count;
+                    }
+                    catch (Exception ex)
+                    {
+                        rule.FilterIds = new List<ulong>();
+                        DiagnosticLog.LogException($"RepairFiltering/rule {rule.DisplayName}", ex);
+                    }
+                }
+
+                foreach (var name in _data.BlockedServices.Keys.ToList())
+                {
+                    var ids = _engine.AddServiceBlock(name);
+                    if (ids.Count > 0) { _data.BlockedServices[name] = ids; made += ids.Count; }
+                }
+                if (_data.LockdownEngaged)
+                {
+                    _data.LockdownFilterIds = _engine.EngageLockdown();
+                    made += _data.LockdownFilterIds.Count;
+                }
+
+                // Everything else recorded by intent, and the reactive filters the
+                // kernel lost (trap 2.43). Until 0.99.154 neither was here.
+                made += ReinstallRecordedFeatures();
+                if (PruneLostReactiveFilters(wfpToRestore) > 0)
+                    System.Threading.Interlocked.Increment(ref _reactiveGeneration);
+                SaveStore();
+
+                var current = new HashSet<ulong>(AllKnownFilterIds());
+                int superseded = 0, failed = 0;
+                foreach (ulong id in previous)
+                {
+                    if (current.Contains(id)) continue;
+                    uint r = _engine.TryDeleteFilter(id);
+                    if (r == 0) superseded++;
+                    else if (r != 0x80320003) failed++;   // not-found: already gone, which is why we are here
+                }
+
+                DiagnosticLog.Log($"Filtering re-applied: {made} filter(s) installed, "
+                                + $"{superseded} superseded filter(s) removed"
+                                + (failed > 0 ? $", {failed} would not delete" : "") + ".");
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("RepairFiltering", ex); }
+        if (wfpToRestore.Count > 0) RestoreBlocklistWfpInBackground(wfpToRestore);
+        return made;
+    }
+
+    /// <summary>
+    /// Installs a Blocked rule's filters, honouring a directional block.
+    ///
+    /// FirewallRule has no direction field. BlockAppDirection records the
+    /// direction only in the display-name suffix, so that is what is read here -
+    /// the existing contract, not a guess. Never for GunWall itself: a block on its
+    /// own path would outrank nothing useful and cut off updates and blocklists.
+    /// </summary>
+    private List<ulong> InstallBlock(FirewallRule rule)
+    {
+        if (IsOwnExecutable(rule.ExecutablePath)) return new List<ulong>();
+        if (rule.DisplayName.EndsWith(" (outbound blocked)", StringComparison.Ordinal))
+            return _engine.BlockApplicationDirectional(rule.ExecutablePath, outbound: true);
+        if (rule.DisplayName.EndsWith(" (inbound blocked)", StringComparison.Ordinal))
+            return _engine.BlockApplicationDirectional(rule.ExecutablePath, outbound: false);
+        return _engine.BlockApplication(rule.ExecutablePath);
+    }
+
+    /// <summary>Proves GunWall can still add and remove its own filters - the
+    /// escape hatch every other safeguard rests on.</summary>
+    public bool VerifyRecoveryPath(out string detail)
+    {
+        if (!EngineStarted) { detail = "engine not running"; return false; }
+        return _engine.VerifyRecoveryPath(out detail);
+    }
+
+    public bool TamperWatchEnabled => _data.TamperWatchEnabled;
+    public void SetTamperWatch(bool on)
+    {
+        if (_data.TamperWatchEnabled == on) return;
+        _data.TamperWatchEnabled = on;
+        SaveStore();
+        EventLog(on ? "Filter integrity watch enabled" : "Filter integrity watch disabled");
+    }
+
+    public void SetStrictMode(bool enabled)
+    {
+        using var _perf = PerfMonitor.Measure("SetStrictMode");
+        if (enabled == _data.StrictMode) return;
+
+        // Logged, because enforcement posture is the single most important
+        // control variable in any test and it left no trace at all. A diagnostics
+        // bundle could show a DNS path test failing and give no way to tell
+        // whether the firewall was even enforcing at the time - which made the
+        // one experiment that separates "GunWall is dropping this" from
+        // "something else is" unverifiable after the fact.
+        DiagnosticLog.Log(enabled
+            ? "Protection ON - zero-trust enforcement engaged."
+            : "Protection OFF - monitoring only, nothing is being blocked.");
+
+        if (enabled)
+        {
+            // 1) Base block + loopback keep-alive (atomic transaction).
+            _data.StrictFilterIds = _engine.EngageStrictMode();
+            _data.StrictMode = true;
+
+            // Forget the "seen" list: applications GunWall has noticed but the user
+            // never decided on prompt again when they next connect. Approvals and
+            // blocks are not in it - they are rules, saved, kept across restarts and
+            // reinstalled above. (An earlier wording, "every app must be approved or
+            // denied again", read as clearing approvals; it never did. 0.99.160 added
+            // a setting against that misreading; 0.99.161 removed it.)
+            _data.KnownApps.Clear();
+            _knownSet = null;
+            SaveStore();
+
+            // 2) Re-create permits for previously allowed apps.
+            // Blocked rules as well. Only Allowed rules were rebuilt here, so an
+            // explicit block - which carries veto, and so holds even against
+            // another product's permit - was silently dropped by every OFF/ON
+            // cycle, leaving the app denied only by the baseline.
+            foreach (var rule in _data.Rules)
+            {
+                try
+                {
+                    rule.FilterIds = rule.Status == AppStatus.Allowed
+                        ? _engine.PermitApplication(rule.ExecutablePath)
+                        : InstallBlock(rule);
+                }
+                catch { /* exe may be gone; rule stays recorded */ }
+            }
+            SaveStore();
+
+            // 3) Safety net: keep core Windows networking alive (DNS/DHCP live
+            //    inside these system hosts). Permitting them by app-ID is the
+            //    reliable way to keep the connection working in strict mode.
+            foreach (var path in WfpEngine.CoreSystemApps())
+            {
+                try { AllowApp(path, System.IO.Path.GetFileNameWithoutExtension(path)); }
+                catch { /* best effort */ }
+            }
+
+            // 4) GunWall itself. Turning protection OFF sweeps EVERY tracked
+            //    filter id, SelfFilterIds among them, and ClearAllFilterIds then
+            //    forgets they existed. Turning it back ON rebuilt the baseline,
+            //    the allowed rules and the core system apps - and not this. So
+            //    after one OFF/ON cycle GunWall was denied by its own baseline
+            //    until the next restart, when EnsureSelfConnectivity ran again.
+            //
+            //    The visible symptom was the first-run database download failing
+            //    on a clean install: the firewall correctly blocked an
+            //    unapproved application, and the unapproved application was
+            //    GunWall. Update checks and VirusTotal lookups were failing the
+            //    same way and had nothing to report it.
+            //
+            //    Idempotent, so calling it here costs nothing when the permit is
+            //    already present.
+            try { EnsureSelfConnectivity(); }
+            catch (Exception ex) { DiagnosticLog.LogException("SetStrictMode/self", ex); }
+
+            // Protection OFF removed every filter but kept what each feature records
+            // as ON. Put those back, and let reactive blocks re-form from traffic:
+            // the enforcers' session memory still says "handled" (trap 2.43).
+            var wfpToRestore = new List<string>();
+            lock (_dataLock)
+            {
+                int back = ReinstallRecordedFeatures();
+                PruneLostReactiveFilters(wfpToRestore);
+                SaveStore();
+                if (back > 0)
+                    DiagnosticLog.Log($"Protection ON: {back} filter(s) reinstalled for system rules, "
+                                    + "scope blocks, custom rules and the IP blocklist.");
+            }
+            System.Threading.Interlocked.Increment(ref _reactiveGeneration);
+            if (wfpToRestore.Count > 0) RestoreBlocklistWfpInBackground(wfpToRestore);
+        }
+        else
+        {
+            // OFF means nothing is enforced. It did not, and that was the bug: this
+            // removed the baseline and the filters of rules whose status was
+            // Allowed, and stopped there.
+            //
+            // So every explicitly BLOCKED application kept its block filters - the
+            // Where(Allowed) above skipped exactly the rules whose filters deny
+            // traffic - and lockdown, blocklists, domain-derived address blocks,
+            // system rules, blocked services and entity filters were never touched
+            // at all. Turning the firewall off removed the permits and left the
+            // denials, on a kernel that keeps enforcing them after the app closes.
+            //
+            // Swept the same way the reset sweeps, for the same reason: there are
+            // ten collections of filter ids and a hand-written list is a thing to
+            // forget. The rules themselves are kept - the user asked to stop
+            // enforcing, not to lose their decisions - but every filter behind them
+            // goes, and re-engaging reinstalls from the surviving rules.
+            // Under the lock: the startup reconcile walks the same store on a
+            // background thread, and this was the one walk left outside it.
+            lock (_dataLock)
+            {
+                var ids = new HashSet<ulong>();
+                CollectFilterIds(_data, ids, new HashSet<object>(ReferenceEqualityComparer.Instance));
+                if (ids.Count > 0)
+                {
+                    DiagnosticLog.Log($"Protection OFF: removing {ids.Count} filter(s) - "
+                                    + "baseline, app rules, system rules, blocklists and scopes.");
+
+                    // One at a time. RemoveFilters throws on the first real failure,
+                    // so every id after it was skipped - and ClearAllFilterIds below
+                    // then forgot them all anyway, leaving them installed with
+                    // nothing naming them. One failed delete could orphan the
+                    // block-all.
+                    int failed = 0;
+                    foreach (ulong id in ids)
+                    {
+                        uint r = _engine.TryDeleteFilter(id);
+                        if (r != 0 && r != 0x80320003) failed++;
+                    }
+                    if (failed > 0)
+                        DiagnosticLog.Log($"Protection OFF: {failed} filter(s) would not delete; "
+                                        + "the sweep that follows will try them again.");
+                }
+
+                ClearAllFilterIds(_data);
+                _data.StrictMode = false;
+                SaveStore();
+            }
+
+            // Then anything the store never named. OFF promises "nothing is being
+            // blocked", and an orphaned block-all breaks that promise without being
+            // on any list above. Background, so a slow listing never holds up the
+            // switch; it stops the moment protection is re-engaged, and it can only
+            // ever delete filters the store does not name.
+            _ = System.Threading.Tasks.Task.Run(() =>
+            {
+                try { SweepUntrackedFilters(); }
+                catch (Exception ex) { DiagnosticLog.LogException("SetStrictMode/sweep", ex); }
+            });
+        }
+    }
+
+    public void SetAlertsEnabled(bool enabled)
+    {
+        if (_data.AlertsEnabled == enabled) return;
+        _data.AlertsEnabled = enabled;
+        SaveStore();
+    }
+
+    // ------------------------------------------------ silent apps
+    public bool IsSilent(string exePath) =>
+        _data.Rules.Any(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase) && r.Silent);
+
+    /// <summary>
+    /// Marks an allowed app "silent": it stays allowed but never raises a popup.
+    /// If the app has no rule yet, an allowed+silent rule is created.
+    /// </summary>
+    public void SetSilent(string exePath, string displayName, bool silent)
+    {
+        var rule = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        if (rule is null)
+        {
+            rule = new FirewallRule
+            {
+                ExecutablePath = exePath,
+                DisplayName = displayName,
+                Status = AppStatus.Allowed,
+                Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
+            };
+            _data.Rules.Add(rule);
+        }
+        rule.Silent = silent;
+        SaveStore();
+    }
+
+    /// <summary>Returns the stored hash for an app, or empty if none.</summary>
+    public string GetHash(string exePath) =>
+        _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase))?.Hash ?? "";
+
+    // ------------------------------------------------ settings
+    public bool StartMinimized => _data.StartMinimized;
+    public bool AlwaysOnTop => _data.AlwaysOnTop;
+    public bool HashesEnabled => _data.HashesEnabled;
+    public bool ExperimentalEvents => _data.ExperimentalEvents;
+
+    /// <summary>Where the user's profile (rules + settings) is stored on disk.</summary>
+    public string ProfileFolder => _store.ProfileFolder;
+
+    public void SetStartMinimized(bool v) { _data.StartMinimized = v; SaveStore(); }
+    public void SetAlwaysOnTop(bool v) { _data.AlwaysOnTop = v; SaveStore(); }
+    public void SetHashesEnabled(bool v) { _data.HashesEnabled = v; SaveStore(); }
+    public void SetExperimentalEvents(bool v) { _data.ExperimentalEvents = v; SaveStore(); }
+
+    public bool EtwMeterEnabled => _data.EtwMeterEnabled;
+    public void SetEtwMeterEnabled(bool v) { _data.EtwMeterEnabled = v; SaveStore(); }
+
+    // ------------------------------------------------ custom rules
+    public IReadOnlyList<CustomRule> CustomRules => _data.CustomRules;
+
+    public void AddCustomRule(CustomRule rule)
+    {
+        if (rule.Enabled)
+        {
+            rule.FilterIds = _engine.AddCustomRule(
+                rule.Block, rule.Outbound, rule.Protocol, rule.RemoteAddress, rule.RemotePort, rule.LocalPort);
+            rule.Applied = rule.FilterIds.Count > 0;
+        }
+        _data.CustomRules.Add(rule);
+        SaveStore();
+    }
+
+    public bool RemoveCustomRule(string id)
+    {
+        var rule = _data.CustomRules.FirstOrDefault(r => r.Id == id);
+        if (rule is null) return false;
+        if (rule.Protected) return false; // protected rules cannot be deleted
+        try { _engine.RemoveFilters(rule.FilterIds); } catch { }
+        _data.CustomRules.Remove(rule);
+        SaveStore();
+        return true;
+    }
+
+    /// <summary>Marks a custom rule protected (non-removable) or removes that protection.</summary>
+    public void SetCustomRuleProtected(string id, bool prot)
+    {
+        var rule = _data.CustomRules.FirstOrDefault(r => r.Id == id);
+        if (rule is null) return;
+        rule.Protected = prot;
+        SaveStore();
+    }
+
+    /// <summary>Manual sweep: unblocks and clears any timed blocks already past expiry
+    /// (the per-block timer normally does this automatically). Returns the count purged.</summary>
+    public int PurgeExpiredTimers()
+    {
+        if (_data.TempBlocks.Count == 0) return 0;
+        var now = DateTime.UtcNow;
+        int n = 0;
+        foreach (var kv in new Dictionary<string, DateTime>(_data.TempBlocks))
+        {
+            if (kv.Value > now) continue; // still active
+            string key = kv.Key;
+            try { UnblockApp(key); } catch { }
+            _data.TempBlocks.Remove(key);
+            if (_tempTimers.TryGetValue(key, out var t)) { t.Dispose(); _tempTimers.Remove(key); }
+            n++;
+        }
+        if (n > 0) { try { SaveStore(); } catch { } }
+        return n;
+    }
+
+    // ------------------------------------------------ blocklist
+    public IReadOnlyList<string> Blocklist => _data.Blocklist;
+
+    /// <summary>Adds IPs to the blocklist and installs block filters for them.</summary>
+    public int AddToBlocklist(IEnumerable<string> addresses)
+    {
+        int added = 0;
+        foreach (var raw in addresses)
+        {
+            string ip = raw.Trim();
+            if (string.IsNullOrEmpty(ip) || ip.StartsWith('#')) continue;
+            if (_data.Blocklist.Contains(ip, StringComparer.OrdinalIgnoreCase)) continue;
+
+            // Accept a single IPv4 or an IPv4/prefix subnet. Both apply via the
+            // conditioned-filter address+mask path. Non-IP entries are stored
+            // but not filtered (kept for a future DNS-resolving blocklist).
+            if (IsFilterableBlocklistEntry(ip))
+            {
+                var ids = _engine.AddCustomRule(true, true, "Any", ip, 0);
+                _data.BlocklistFilterIds.AddRange(ids);
+            }
+            _data.Blocklist.Add(ip);
+            added++;
+        }
+        SaveStore();
+        return added;
+    }
+
+    public void ClearBlocklist()
+    {
+        try { _engine.RemoveFilters(_data.BlocklistFilterIds); } catch { }
+        _data.BlocklistFilterIds.Clear();
+        _data.Blocklist.Clear();
+        SaveStore();
+    }
+
+    // ------------------------------------------------ startup
+    public bool RunAtStartup => _data.RunAtStartup;
+    public bool ThemeDark => _data.ThemeDark;
+    public void SetThemeDark(bool v) { _data.ThemeDark = v; SaveStore(); }
+
+    public string UiFontFamily => _data.UiFontFamily ?? "";
+    public void SetUiFontFamily(string v) { _data.UiFontFamily = v ?? ""; SaveStore(); }
+
+    // ---- Update checking ----------------------------------------------------
+
+    public bool AutoUpdateCheck => _data.AutoUpdateCheck;
+    public bool AutoUpdateDownload => _data.AutoUpdateDownload;
+
+    /// <summary>Clamped on READ as well as write, so a hand-edited 0 cannot mean
+    /// "check on every tick" against someone else's server.</summary>
+    public int UpdateCheckDays =>
+        _data.UpdateCheckDays is 1 or 7 or 30 ? _data.UpdateCheckDays : 7;
+
+    public void SetAutoUpdateCheck(bool on)
+    {
+        _data.AutoUpdateCheck = on;
+        // Downloading is meaningless without checking - it has nothing to act
+        // on. Turned off together so the interface cannot show a setting that
+        // does nothing.
+        if (!on) _data.AutoUpdateDownload = false;
+        SaveStore();
+    }
+
+    public void SetAutoUpdateDownload(bool on)
+    { _data.AutoUpdateDownload = on; SaveStore(); }
+
+    public void SetUpdateCheckDays(int days)
+    { _data.UpdateCheckDays = days is 1 or 7 or 30 ? days : 7; SaveStore(); }
+
+    public DateTime? LastUpdateCheck => ParseUtc(_data.LastUpdateCheckUtc);
+    public string LastUpdateCheckResult => _data.LastUpdateCheckResult;
+    public string PendingUpdateVersion => _data.PendingUpdateVersion;
+    public string PendingUpdatePath => _data.PendingUpdatePath;
+
+    /// <summary>True when the scheduled check is due. False when checking is off,
+    /// so the caller cannot accidentally check anyway.</summary>
+    public bool UpdateCheckDue()
+    {
+        if (!_data.AutoUpdateCheck) return false;
+        var last = ParseUtc(_data.LastUpdateCheckUtc);
+        return last is null || DateTime.UtcNow - last.Value >= TimeSpan.FromDays(UpdateCheckDays);
+    }
+
+    /// <summary>
+    /// Records the outcome of a check. The timestamp advances ONLY on success.
+    ///
+    /// The first version advanced it either way, reasoning that a server which is
+    /// down should not be retried hourly. With a Monthly interval that turned one
+    /// failed attempt - offline at the wrong hour, a GitHub rate limit - into a
+    /// month without a check. Retrying on the hourly tick while it fails costs
+    /// nothing when offline and stays far inside GitHub's limits.
+    /// </summary>
+    public void NoteUpdateCheck(string result, bool succeeded)
+    {
+        if (succeeded) _data.LastUpdateCheckUtc = DateTime.UtcNow.ToString("o");
+        _data.LastUpdateCheckResult = result;
+        SaveStore();
+    }
+
+    /// <summary>
+    /// Clears a pending update that is no longer newer than what is running.
+    ///
+    /// The profile survives upgrades, by design. So after Update now installed
+    /// the release, the NEW version started with the old record still saying
+    /// that release was waiting: yellow tray, Update now offering to install what
+    /// was already running. With automatic checking off - the default - nothing
+    /// would ever have cleared it.
+    /// </summary>
+    public void ClearStalePendingUpdate()
+    {
+        string v = _data.PendingUpdateVersion;
+        if (v.Length == 0 || UpdateService.IsNewer(v)) return;
+        DiagnosticLog.Log($"Update: {v} is not newer than the running "
+                        + $"{UpdateService.CurrentVersion} - clearing the pending update.");
+        SetPendingUpdate("", "");
+    }
+
+    /// <summary>
+    /// Removes installers in the updates folder that are not the pending one.
+    ///
+    /// SetPendingUpdate deletes a superseded file, but a delete can fail - the
+    /// installer that just ran may still be open when the new version starts.
+    /// Swept on every launch, so a file that could not go once goes next time
+    /// rather than accumulating.
+    /// </summary>
+    public void CleanUpdateFolder()
+    {
+        try
+        {
+            if (!System.IO.Directory.Exists(UpdateFolder)) return;
+            foreach (string f in System.IO.Directory.GetFiles(UpdateFolder))
+            {
+                if (string.Equals(f, _data.PendingUpdatePath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                try { System.IO.File.Delete(f); }
+                catch { /* still in use; retried at the next launch */ }
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("CleanUpdateFolder", ex); }
+    }
+
+    /// <summary>Records a release waiting to be installed, and the verified file
+    /// if one was downloaded. Pass an empty version to clear both.</summary>
+    public void SetPendingUpdate(string version, string path)
+    {
+        // A file for a version we are no longer offering is not a saving, it is
+        // a stale installer that Update now might run. Removed here so the two
+        // can never disagree.
+        string old = _data.PendingUpdatePath;
+        if (old.Length > 0 && !string.Equals(old, path, StringComparison.OrdinalIgnoreCase))
+        {
+            try { if (System.IO.File.Exists(old)) System.IO.File.Delete(old); }
+            catch (Exception ex) { DiagnosticLog.LogException("SetPendingUpdate/cleanup", ex); }
+        }
+
+        _data.PendingUpdateVersion = version ?? "";
+        _data.PendingUpdatePath = path ?? "";
+        SaveStore();
+    }
+
+    /// <summary>Where a pending installer is kept.
+    ///
+    /// Beside the profile, not in %TEMP%: Windows clears temp, and "downloaded
+    /// and ready" would quietly stop being true without anything saying so.</summary>
+    public string UpdateFolder => System.IO.Path.Combine(_store.ProfileFolder, "updates");
+
+    // ---- Additional data: GeoIP and MAC vendor databases -------------------
+
+    public bool DbAutoRefresh => _data.DbAutoRefresh;
+
+    /// <summary>Clamped on READ, not only on write. A hand-edited profile with 0
+    /// would otherwise mean "refresh on every tick".</summary>
+    public int DbRefreshHours =>
+        _data.DbRefreshHours is 6 or 12 or 24 ? _data.DbRefreshHours : 24;
+
+    public void SetDbAutoRefresh(bool on)
+    { _data.DbAutoRefresh = on; SaveStore(); }
+
+    public void SetDbRefreshHours(int hours)
+    { _data.DbRefreshHours = hours is 6 or 12 or 24 ? hours : 24; SaveStore(); }
+
+    public DateTime? GeoIpLastRefresh => ParseUtc(_data.GeoIpLastRefreshUtc);
+    public DateTime? OuiLastRefresh => ParseUtc(_data.OuiLastRefreshUtc);
+    public string GeoIpLastResult => _data.GeoIpLastRefreshResult;
+    public string OuiLastResult => _data.OuiLastRefreshResult;
+
+    private static DateTime? ParseUtc(string s) =>
+        DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.RoundtripKind,
+                          out var d) ? d : null;
+
+    /// <summary>
+    /// Records the outcome of a refresh attempt.
+    ///
+    /// The timestamp advances only on success; the message is written either way.
+    /// A refresh that has been failing nightly for a month must be readable as
+    /// exactly that, rather than as an old date with no explanation.
+    /// </summary>
+    public void NoteDbRefresh(bool geo, bool success, string message)
+    {
+        string stamp = DateTime.UtcNow.ToString("o");
+        string line = $"{DateTime.Now:yyyy-MM-dd HH:mm} - {message}";
+        if (geo)
+        {
+            _data.GeoIpLastRefreshResult = line;
+            if (success) _data.GeoIpLastRefreshUtc = stamp;
+        }
+        else
+        {
+            _data.OuiLastRefreshResult = line;
+            if (success) _data.OuiLastRefreshUtc = stamp;
+        }
+        SaveStore();
+        DiagnosticLog.Log($"Database refresh ({(geo ? "GeoIP" : "vendor")}): {message}");
+    }
+
+    /// <summary>True when this database is older than the chosen interval, or has
+    /// never been fetched.</summary>
+    public bool DbRefreshDue(bool geo)
+    {
+        DateTime? last = geo ? GeoIpLastRefresh : OuiLastRefresh;
+        if (last is null) return true;
+        return DateTime.UtcNow - last.Value >= TimeSpan.FromHours(DbRefreshHours);
+    }
+
+    /// <summary>
+    /// Whether this is the first launch after a clean install.
+    ///
+    /// False after an upgrade, because the installer writes the marker when it
+    /// finds an existing installation. Not inferred from whether a profile or a
+    /// database exists - see StoreData.FirstRunCompleted for why that cannot work.
+    /// </summary>
+    public bool IsFirstRun => !_data.FirstRunCompleted;
+
+    public void MarkFirstRunComplete()
+    {
+        if (_data.FirstRunCompleted) return;
+        _data.FirstRunCompleted = true;
+        SaveStore();
+    }
+
+    // ------------------------------------------------ VirusTotal credential
+    // The profile stores the key only in its encrypted form (SecretProtector,
+    // DPAPI at machine scope). The decrypted key lives in memory alone: never
+    // serialised, never logged, never echoed back into the settings box.
+
+    public enum VtKeyState { None, Saved, Unreadable }
+
+    private readonly object _vtKeyLock = new();
+    private string _vtKeyPlain = "";
+    private VtKeyState _vtKeyState = VtKeyState.None;
+
+    /// <summary>The decrypted key, or "" when none is set or it cannot be read on
+    /// this machine. Read on every Apps-list rebuild and from background lookups:
+    /// a cached field, never a decryption per call.</summary>
+    public string VirusTotalApiKey { get { lock (_vtKeyLock) return _vtKeyPlain; } }
+
+    public VtKeyState VirusTotalKeyState { get { lock (_vtKeyLock) return _vtKeyState; } }
+
+    /// <summary>
+    /// Stores a new key, or removes it when empty. Encrypts before anything is
+    /// written; if encryption fails nothing is saved and the caller is told, rather
+    /// than falling back to writing the plain text.
+    /// </summary>
+    public void SetVirusTotalApiKey(string v)
+    {
+        string key = v?.Trim() ?? "";
+        if (key.Length == 0)
+        {
+            lock (_vtKeyLock) { _vtKeyPlain = ""; _vtKeyState = VtKeyState.None; }
+            _data.VirusTotalApiKey = "";
+            SaveStore();
+            DiagnosticLog.Log("VirusTotal key: removed.");
+            return;
+        }
+
+        string stored;
+        try { stored = SecretProtector.Protect(key); }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Log($"VirusTotal key: NOT saved - encryption failed ({ex.GetType().Name}, "
+                            + $"0x{ex.HResult:X8}). The previous value is unchanged.");
+            throw new InvalidOperationException(
+                "The key could not be encrypted, so it was not saved. The previous key, if any, is unchanged.");
+        }
+
+        lock (_vtKeyLock) { _vtKeyPlain = key; _vtKeyState = VtKeyState.Saved; }
+        _data.VirusTotalApiKey = stored;
+        SaveStore();
+        DiagnosticLog.Log("VirusTotal key: saved, encrypted at rest (DPAPI, machine scope).");
+    }
+
+    /// <summary>
+    /// Reads the stored key into memory after the profile is loaded or replaced.
+    ///
+    /// Three cases. Empty: no key. Encrypted: decrypted, or - when the profile came
+    /// from another computer or Windows was reinstalled - marked unreadable and LEFT
+    /// AS STORED: a value this machine cannot read is not proof that nothing is
+    /// there (trap 2.20), and deleting it would turn a copied profile into a lost
+    /// credential. Plain text from an earlier version: encrypted, saved, and the
+    /// copies of the plain text beside the profile re-encrypted the same way.
+    /// </summary>
+    private void LoadVirusTotalKey(string context)
+    {
+        string stored = _data.VirusTotalApiKey ?? "";
+        if (stored.Length == 0)
+        {
+            lock (_vtKeyLock) { _vtKeyPlain = ""; _vtKeyState = VtKeyState.None; }
+            return;
+        }
+
+        if (SecretProtector.IsProtected(stored))
+        {
+            if (SecretProtector.TryUnprotect(stored, out string plain))
+            {
+                lock (_vtKeyLock) { _vtKeyPlain = plain; _vtKeyState = VtKeyState.Saved; }
+            }
+            else
+            {
+                lock (_vtKeyLock) { _vtKeyPlain = ""; _vtKeyState = VtKeyState.Unreadable; }
+                DiagnosticLog.Log($"VirusTotal key ({context}): saved, but this machine cannot decrypt it "
+                                + "(profile from another computer, or Windows reinstalled). Kept as stored; "
+                                + "VirusTotal lookups are off until the key is entered again.");
+            }
+            return;
+        }
+
+        string legacy = stored.Trim();
+        lock (_vtKeyLock) { _vtKeyPlain = legacy; _vtKeyState = VtKeyState.Saved; }
+        string protectedValue;
+        try { protectedValue = SecretProtector.Protect(legacy); }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Log($"VirusTotal key ({context}): stored in plain text by an earlier version and "
+                            + $"could not be encrypted ({ex.GetType().Name}, 0x{ex.HResult:X8}). Left as "
+                            + "stored; it is tried again on the next start.");
+            return;
+        }
+        _data.VirusTotalApiKey = protectedValue;
+        SaveStore();
+        int copies = ReencryptPlainTextCopies(legacy, protectedValue);
+        DiagnosticLog.Log($"VirusTotal key ({context}): plain-text value from an earlier version encrypted "
+                        + $"at rest (DPAPI, machine scope); {copies} other cop{(copies == 1 ? "y" : "ies")} "
+                        + "beside the profile re-encrypted.");
+    }
+
+    /// <summary>
+    /// Replaces the plain-text key with its encrypted form in every copy of the
+    /// profile GunWall keeps beside it: upgrade snapshots, unreadable-profile
+    /// keepsakes, backups and named profiles. Without this, encrypting rules.json
+    /// leaves the same credential readable one file over.
+    ///
+    /// A text replacement of the exact JSON string, not a re-serialisation: every
+    /// other byte stays as written, and a keepsake that does not parse is still
+    /// covered. Each file is written to a temporary name and moved over the
+    /// original, so a failure leaves the old copy whole. Returns the files changed.
+    /// Exported profiles saved elsewhere by the user are outside reach and are not
+    /// claimed to be covered.
+    /// </summary>
+    private int ReencryptPlainTextCopies(string plain, string protectedValue)
+    {
+        string find = System.Text.Json.JsonSerializer.Serialize(plain);
+        string replace = System.Text.Json.JsonSerializer.Serialize(protectedValue);
+        int changed = 0;
+        var files = new List<string>();
+        try
+        {
+            string dir = _store.ProfileFolder;
+            if (System.IO.Directory.Exists(dir))
+            {
+                files.AddRange(System.IO.Directory.GetFiles(dir, "rules.pre-*.json"));
+                files.AddRange(System.IO.Directory.GetFiles(dir, "rules.json.unreadable-*"));
+            }
+            foreach (string sub in new[] { "backups", "profiles" })
+            {
+                string d = System.IO.Path.Combine(dir, sub);
+                if (System.IO.Directory.Exists(d))
+                    files.AddRange(System.IO.Directory.GetFiles(d, "*.json"));
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("ReencryptPlainTextCopies (list)", ex); }
+
+        foreach (string f in files)
+        {
+            try
+            {
+                string text = System.IO.File.ReadAllText(f);
+                if (!text.Contains(find, StringComparison.Ordinal)) continue;
+                string tmp = f + ".tmp";
+                System.IO.File.WriteAllText(tmp, text.Replace(find, replace, StringComparison.Ordinal));
+                System.IO.File.Move(tmp, f, overwrite: true);
+                changed++;
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log($"VirusTotal key: could not re-encrypt the copy in "
+                                + $"{System.IO.Path.GetFileName(f)} ({ex.GetType().Name}); it still holds "
+                                + "the key in plain text.");
+            }
+        }
+        return changed;
+    }
+
+    // ------------------------------------------------ system rules
+    public bool IsSystemRuleOn(string key) =>
+        _data.SystemRules.TryGetValue(key, out var ids) && ids.Count > 0;
+
+    public void SetSystemRule(string key, bool enabled)
+    {
+        if (enabled)
+        {
+            if (IsSystemRuleOn(key)) return;
+            var ids = InstallSystemRule(key);
+            _data.SystemRules[key] = ids;
+            EventLog($"System rule enabled: {key}");
+            // Filter count matters: 0 means every layer this rule needs was
+            // rejected, which otherwise looks identical to success.
+            DiagnosticLog.Log($"System rule ON: {key} -> {ids.Count} filter(s) installed."
+                              + (ids.Count == 0 ? "  WARNING: no filters were accepted." : ""));
+        }
+        else
+        {
+            if (_data.SystemRules.TryGetValue(key, out var ids))
+            {
+                try { _engine.RemoveFilters(ids); } catch { }
+                _data.SystemRules.Remove(key);
+                EventLog($"System rule disabled: {key}");
+                DiagnosticLog.Log($"System rule OFF: {key} -> {ids.Count} filter(s) removed.");
+            }
+        }
+        SaveStore();
+    }
+
+    // ------------------------------------------------ event log
+    public bool EventLogEnabled => _data.EventLogEnabled;
+    public void SetEventLogEnabled(bool v) { _data.EventLogEnabled = v; SaveStore(); }
+
+    public bool FullscreenSilent => _data.FullscreenSilent;
+    public void SetFullscreenSilent(bool v) { _data.FullscreenSilent = v; SaveStore(); }
+    public bool ConfirmClearLogs => _data.ConfirmClearLogs;
+    public void SetConfirmClearLogs(bool v) { _data.ConfirmClearLogs = v; SaveStore(); }
+    public bool AlwaysConfirmExit => _data.AlwaysConfirmExit;
+    public void SetAlwaysConfirmExit(bool v) { _data.AlwaysConfirmExit = v; SaveStore(); }
+    public int MaxLogEntries => _data.MaxLogEntries;
+    public void SetMaxLogEntries(int v) { _data.MaxLogEntries = v < 0 ? 0 : v; SaveStore(); }
+    public int MaxLogFileMB => _data.MaxLogFileMB;
+    public void SetMaxLogFileMB(int v) { _data.MaxLogFileMB = v < 1 ? 1 : v; SaveStore(); }
+    public bool KeepUnusedApps => _data.KeepUnusedApps;
+    public void SetKeepUnusedApps(bool v) { _data.KeepUnusedApps = v; SaveStore(); }
+
+    /// <summary>Total WFP filters GunWall currently has installed across all layers
+    /// (sum of every stored filter id). A live window into the kernel-side footprint.</summary>
+    public int ActiveFilterCount =>
+        _data.Rules.Sum(r => r.FilterIds.Count)
+        + _data.CustomRules.Sum(r => r.FilterIds.Count)
+        + _data.SystemRules.Values.Sum(v => v.Count)
+        + _data.BlocklistFilterIds.Count
+        + _data.BlocklistWfpFilters.Values.Sum(v => v.Count)
+        + _data.StrictFilterIds.Count
+        + _data.LockdownFilterIds.Count
+        + _data.SelfFilterIds.Count
+        + _data.ScopeFilters.Values.Sum(v => v.Count);
+
+    private static string ScopeKey(string exePath, string scope) => exePath.ToLowerInvariant() + "|" + scope;
+
+    // ------------------------------------------------ restore after restart / protection ON
+    //
+    // Trap 2.43. Every feature below records what the user switched ON separately
+    // from the filter ids it installed, and only the ids get lost: to a restart,
+    // since 0.99.143 made filters non-persistent, and to protection OFF, which
+    // removes every filter and empties every id list but keeps each record.
+    // RepairFiltering and protection ON put back strict mode, app rules, services
+    // and lockdown - and nothing else. After a restart these features read ON
+    // while nothing enforced them, and their stale ids made the watchdog "repair"
+    // every thirty seconds with a repair that could not fix them. After OFF and ON
+    // they read OFF and stayed off.
+
+    /// <summary>The five per-app scope blocks. Anything else in ScopeFilters is reactive.</summary>
+    private static readonly HashSet<string> DeclarativeScopes =
+        new(StringComparer.Ordinal) { "local", "lan", "incoming", "internet", "server" };
+
+    private static bool IsDeclarativeScopeKey(string key, out string path, out string scope)
+    {
+        path = scope = "";
+        if (key.StartsWith("domainblock|", StringComparison.Ordinal) ||
+            key.StartsWith("appdomainblock|", StringComparison.Ordinal)) return false;
+        int bar = key.LastIndexOf('|');
+        if (bar <= 0) return false;
+        scope = key[(bar + 1)..];
+        path = key[..bar];
+        return DeclarativeScopes.Contains(scope);
+    }
+
+    private static bool IsReactiveScopeKey(string key) => !IsDeclarativeScopeKey(key, out _, out _);
+
+    /// <summary>Scope keys hold a lowercased path; reinstall with the rule's own spelling when known.</summary>
+    private string OriginalCasePath(string lowered) =>
+        _data.Rules.FirstOrDefault(r => string.Equals(r.ExecutablePath, lowered, StringComparison.OrdinalIgnoreCase))
+             ?.ExecutablePath ?? lowered;
+
+    /// <summary>IPv4 or IPv4/prefix - the user IP blocklist entries enforced as filters.</summary>
+    private static bool IsFilterableBlocklistEntry(string ip)
+    {
+        string ipPart = ip.Contains('/') ? ip[..ip.IndexOf('/')] : ip;
+        return System.Net.IPAddress.TryParse(ipPart, out var parsed)
+            && parsed.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork;
+    }
+
+    /// <summary>Installs one system rule's filters: the single path for switching
+    /// it on and for reinstalling it, so the two cannot drift apart.</summary>
+    private List<ulong> InstallSystemRule(string key)
+    {
+        var preset = Models.SystemRuleCatalog.All.FirstOrDefault(p => p.Key == key);
+        return preset == null || preset.Special
+            ? _engine.AddSystemRule(key)   // special handling (block-all / IPv6)
+            : _engine.AddServiceRule(preset.Block, preset.Direction, preset.Protocol, preset.Ports, preset.Name);
+    }
+
+    /// <summary>
+    /// Reinstalls every feature recorded by intent - system rules, scope blocks,
+    /// custom rules and the user's IP blocklist - from what the store says is ON.
+    /// Replaces ids rather than adding to them; the caller removes what old ids
+    /// named. Called by RepairFiltering and by protection ON. Returns filters made.
+    /// </summary>
+    private int ReinstallRecordedFeatures()
+    {
+        int made = 0;
+        foreach (var key in _data.SystemRules.Keys.ToList())
+        {
+            try { _data.SystemRules[key] = InstallSystemRule(key); made += _data.SystemRules[key].Count; }
+            catch (Exception ex)
+            {
+                _data.SystemRules[key] = new List<ulong>();
+                DiagnosticLog.LogException($"Reinstall/system rule {key}", ex);
+            }
+        }
+        foreach (var key in _data.ScopeFilters.Keys.ToList())
+        {
+            if (!IsDeclarativeScopeKey(key, out string path, out string scope)) continue;
+            try { _data.ScopeFilters[key] = _engine.AddAppScopeBlock(OriginalCasePath(path), scope); made += _data.ScopeFilters[key].Count; }
+            catch (Exception ex)
+            {
+                _data.ScopeFilters[key] = new List<ulong>();
+                DiagnosticLog.LogException($"Reinstall/scope {scope}", ex);
+            }
+        }
+        foreach (var c in _data.CustomRules)
+        {
+            if (!c.Enabled) { c.FilterIds = new List<ulong>(); continue; }
+            try
+            {
+                c.FilterIds = _engine.AddCustomRule(c.Block, c.Outbound, c.Protocol, c.RemoteAddress, c.RemotePort, c.LocalPort);
+                c.Applied = c.FilterIds.Count > 0;
+                made += c.FilterIds.Count;
+            }
+            catch (Exception ex)
+            {
+                c.FilterIds = new List<ulong>(); c.Applied = false;
+                DiagnosticLog.LogException("Reinstall/custom rule", ex);
+            }
+        }
+        var blocklist = new List<ulong>();
+        foreach (var entry in _data.Blocklist)
+        {
+            if (!IsFilterableBlocklistEntry(entry)) continue;
+            try { blocklist.AddRange(_engine.AddCustomRule(true, true, "Any", entry, 0)); }
+            catch (Exception ex) { DiagnosticLog.LogException("Reinstall/blocklist entry", ex); }
+        }
+        _data.BlocklistFilterIds = blocklist;
+        made += blocklist.Count;
+        return made;
+    }
+
+    private int _reactiveGeneration;
+    private int _entityGenerationSeen;
+
+    /// <summary>
+    /// Changes whenever reactive blocks were dropped or removed wholesale. Each
+    /// enforcer keeps a session memory of what it already blocked; when this
+    /// changes it clears that memory on its own thread and blocks again as the
+    /// traffic is next seen. Without it, a block the kernel lost mid-session would
+    /// stay lost: the memory still says "handled", and the id is no longer counted.
+    /// </summary>
+    public int ReactiveGeneration => System.Threading.Volatile.Read(ref _reactiveGeneration);
+
+    /// <summary>
+    /// Drops reactive filter ids the kernel no longer has, and queues curated
+    /// blocklists on the WFP fallback for a fresh resolve. Returns ids dropped.
+    ///
+    /// Reactive filters - P2P, access policy, blocked domains, country and ASN -
+    /// are added per observed connection and the store keeps only their ids, so
+    /// they cannot be rebuilt from it. Left in place, a lost id is counted missing
+    /// by every integrity check and "repaired" by a repair that cannot restore it.
+    /// Curated blocklists are rebuilt instead: their domains are known, only the
+    /// resolution is slow, so it runs in the background.
+    /// </summary>
+    private int PruneLostReactiveFilters(List<string> wfpToRestore)
+    {
+        var reactive = new List<ulong>(_data.EntityReactiveFilters);
+        foreach (var kv in _data.ScopeFilters) if (IsReactiveScopeKey(kv.Key)) reactive.AddRange(kv.Value);
+        foreach (var v in _data.Blocklists.Values) reactive.AddRange(v);
+        foreach (var v in _data.BlocklistWfpFilters.Values) reactive.AddRange(v);
+        var lost = reactive.Count == 0 ? new HashSet<ulong>() : _engine.MissingFilterIds(reactive);
+
+        int dropped = _data.EntityReactiveFilters.RemoveAll(lost.Contains);
+        foreach (var key in _data.ScopeFilters.Keys.Where(IsReactiveScopeKey).ToList())
+        {
+            var ids = _data.ScopeFilters[key];
+            dropped += ids.RemoveAll(lost.Contains);
+            if (ids.Count == 0) _data.ScopeFilters.Remove(key);
+        }
+        foreach (var key in _data.Blocklists.Keys.ToList())
+        {
+            var ids = _data.Blocklists[key];
+            dropped += ids.RemoveAll(lost.Contains);
+            if (ids.Count == 0) _data.Blocklists.Remove(key);
+        }
+        foreach (var key in _data.BlocklistWfpFilters.Keys.ToList())
+        {
+            var ids = _data.BlocklistWfpFilters[key];
+            if (ids.Count > 0 && !ids.Any(lost.Contains)) continue;          // intact
+            // Partly or wholly lost: rebuild the whole list. Clear the survivors so
+            // the result is one fresh set, not survivors plus a fresh set.
+            foreach (ulong id in ids.Where(i => !lost.Contains(i)).ToList())
+                _engine.TryDeleteFilter(id);
+            dropped += ids.Count(lost.Contains);
+            ids.Clear();
+            if (_data.EnabledBlocklists.Contains(key)) wfpToRestore.Add(key);
+        }
+        if (dropped > 0)
+            DiagnosticLog.Log($"Reactive filters: {dropped} id(s) the kernel no longer has were dropped; "
+                            + "those blocks re-form as the traffic is seen.");
+        return dropped;
+    }
+
+    /// <summary>
+    /// Re-resolves curated blocklists enforced through WFP, off the UI thread and
+    /// outside the store lock - thousands of lookups must not hold either. Network
+    /// may not be up at boot, so an empty result is retried, five times a minute
+    /// apart. Before keeping anything it re-checks, under the lock, that protection
+    /// and the list are still on; if not, it removes what it installed.
+    /// </summary>
+    private void RestoreBlocklistWfpInBackground(List<string> keys)
+    {
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            foreach (var key in keys)
+            {
+                var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+                var domains = cat == null ? new List<string>() : ActiveDomainsFor(cat);
+                if (domains.Count == 0) { DiagnosticLog.Log($"Blocklist {key}: no domains to restore."); continue; }
+                for (int attempt = 1; attempt <= 5; attempt++)
+                {
+                    List<ulong> ids;
+                    try { ids = BlockDomainsViaWfp(domains); }
+                    catch (Exception ex) { DiagnosticLog.LogException($"RestoreBlocklistWfp/{key}", ex); ids = new List<ulong>(); }
+                    if (ids.Count > 0)
+                    {
+                        bool kept;
+                        lock (_dataLock)
+                        {
+                            kept = _data.StrictMode && _data.EnabledBlocklists.Contains(key)
+                                && _data.BlocklistWfpFilters.ContainsKey(key);
+                            if (kept) { _data.BlocklistWfpFilters[key].AddRange(ids); SaveStore(); }
+                        }
+                        if (!kept) { try { _engine.RemoveFilters(ids); } catch { } }
+                        DiagnosticLog.Log(kept
+                            ? $"Blocklist {key}: restored through WFP, {ids.Count} filter(s)."
+                            : $"Blocklist {key}: switched off while restoring; {ids.Count} filter(s) removed again.");
+                        break;
+                    }
+                    DiagnosticLog.Log($"Blocklist {key}: no addresses resolved (attempt {attempt} of 5)"
+                                    + (attempt < 5 ? " - retrying in a minute." : " - giving up until the next repair."));
+                    if (attempt < 5) await System.Threading.Tasks.Task.Delay(TimeSpan.FromMinutes(1));
+                }
+            }
+        });
+    }
+
+    /// <summary>Is the given network scope (local | lan | incoming) currently blocked for this app?</summary>
+    public bool IsScopeBlocked(string exePath, string scope) =>
+        _data.ScopeFilters.TryGetValue(ScopeKey(exePath, scope), out var ids) && ids.Count > 0;
+
+    /// <summary>Turns a per-app network-scope block on or off. Filters install through the
+    /// engine's fault-tolerant path and are fully removed when turned off.</summary>
+    // ===================== §1: per-app ordered access policies =====================
+
+    /// <summary>The app's policy, or null if it has none (allow-all).</summary>
+    public AppAccessPolicy? GetAccessPolicy(string exePath) =>
+        _data.AccessPolicies.TryGetValue(exePath.ToLowerInvariant(), out var p) ? p : null;
+
+    /// <summary>All apps that currently have a policy (for the sampling loop).</summary>
+    public IReadOnlyCollection<AppAccessPolicy> ActiveAccessPolicies =>
+        _data.AccessPolicies.Values.Where(p => p.IsActive).ToList();
+
+    /// <summary>Fetch-or-create the app's policy (created empty = allow-all).</summary>
+    public AppAccessPolicy GetOrCreateAccessPolicy(string exePath)
+    {
+        string key = exePath.ToLowerInvariant();
+        if (!_data.AccessPolicies.TryGetValue(key, out var p))
+        {
+            p = new AppAccessPolicy { AppPath = exePath };
+            _data.AccessPolicies[key] = p;
+        }
+        return p;
+    }
+
+    /// <summary>Persist edits to an app's policy. If the policy became inert and
+    /// empty, it is dropped and its reactive filters cleared.</summary>
+    public void SaveAccessPolicy(string exePath)
+    {
+        string key = exePath.ToLowerInvariant();
+        if (_data.AccessPolicies.TryGetValue(key, out var p) &&
+            p.Rules.Count == 0 && !p.DefaultBlock)
+        {
+            _data.AccessPolicies.Remove(key);
+        }
+        ClearAccessReactiveBlocks(exePath); // re-evaluate cleanly under the new rules
+        SaveStore();
+        EventLog($"Access policy updated for {System.IO.Path.GetFileName(exePath)}");
+    }
+
+    /// <summary>Reactively block one destination for an app under its policy,
+    /// stored under the app's "access" scope key so a policy change clears it.
+    /// Returns true if a filter was actually added.</summary>
+    public bool AddAccessReactiveBlock(string exePath, string remoteIp)
+    {
+        var ids = _engine.AddAppRemoteIpBlock(exePath, remoteIp);
+        if (ids.Count == 0) return false;
+        string key = ScopeKey(exePath, "access");
+        if (_data.ScopeFilters.TryGetValue(key, out var existing)) existing.AddRange(ids);
+        else _data.ScopeFilters[key] = ids;
+        SaveStore();
+        return true;
+    }
+
+    /// <summary>Remove every reactive access-block filter for one app.</summary>
+    public void ClearAccessReactiveBlocks(string exePath)
+    {
+        string key = ScopeKey(exePath, "access");
+        if (_data.ScopeFilters.TryGetValue(key, out var ids))
+        {
+            try { _engine.RemoveFilters(ids); } catch { }
+            _data.ScopeFilters.Remove(key);
+        }
+    }
+
+    public bool IsP2pBlocked(string exePath) =>
+        _data.P2pApps.Contains(exePath.ToLowerInvariant());
+
+    public IReadOnlyList<string> P2pAppPaths => _data.P2pApps.AsReadOnly();
+
+    /// <summary>Toggle the reactive P2P/direct scope. Enabling only flags the
+    /// app; blocking happens reactively as direct connections are observed.
+    /// Disabling also removes every reactive filter accumulated for it.</summary>
+    public void SetP2pBlock(string exePath, bool blocked)
+    {
+        string lower = exePath.ToLowerInvariant();
+        string key = ScopeKey(exePath, "p2p");
+        if (blocked)
+        {
+            if (_data.P2pApps.Contains(lower)) return;
+            _data.P2pApps.Add(lower);
+            EventLog($"P2P/direct blocking enabled for {System.IO.Path.GetFileName(exePath)}");
+        }
+        else
+        {
+            _data.P2pApps.Remove(lower);
+            if (_data.ScopeFilters.TryGetValue(key, out var ids))
+            {
+                try { _engine.RemoveFilters(ids); } catch { }
+                _data.ScopeFilters.Remove(key);
+            }
+            EventLog($"P2P/direct blocking disabled for {System.IO.Path.GetFileName(exePath)}");
+        }
+        SaveStore();
+    }
+
+    /// <summary>Reactively block one direct destination for a P2P-flagged app.
+    /// The filter IDs are stored under the app's p2p scope key so disabling
+    /// the toggle cleans everything up. Returns false if nothing was added.</summary>
+    /// <summary>
+    /// Blocks an address that a blocked domain resolved to, for every
+    /// application. Stored under the domain so removing the domain from the
+    /// blocklist removes everything it accumulated.
+    /// </summary>
+    /// <summary>Removes any filter sitting in GunWall's sublayer that this
+    /// installation cannot name. Returns how many were removed.
+    ///
+    /// The sublayer belongs to GunWall alone, so a filter in it that the store
+    /// has no id for is by definition something GunWall installed and then lost
+    /// track of - a crash between adding the filter and saving its id, or a store
+    /// cleared while its filters were still in the kernel. Every reset before
+    /// 0.99.81 did the latter: it discarded the ids first and then failed to
+    /// delete the sublayer, orphaning the entire filter set each time.
+    ///
+    /// One machine reached **843 orphans against 4 tracked**. Filters were
+    /// PERSISTENT then (no longer - see WfpEngine.FilterFlags), so they survived every reboot and every protection toggle, and they were
+    /// unreachable because nothing knew their ids. They blocked an antivirus's
+    /// updates and a git client for days while every diagnostics bundle reported
+    /// zero errors - GunWall was truthfully reporting on the four it knew about.
+    ///
+    /// Running this at startup is what makes that state unreachable rather than
+    /// merely recoverable: an orphan can now survive at most until the next
+    /// launch, instead of accumulating for the life of the installation.</summary>
+    /// <summary>Set once the store has loaded and posture has been applied.
+    /// Until then this manager's view of its own filters is not yet true, and
+    /// nothing may be deleted on the strength of it.</summary>
+    public bool ReconcileReady { get; private set; }
+
+    public int ReconcileOrphanFilters()
+    {
+        using var _perf = PerfMonitor.Measure("ReconcileOrphanFilters");
+        // GUARD TWO. 0.99.92 fired this from the window's field initialisers, two
+        // minutes of wall-clock before the store had anything in it. Ordering, not
+        // logic, was what made it destructive.
+        if (!ReconcileReady)
+        {
+            DiagnosticLog.Log("Startup reconcile: skipped - store not loaded yet.");
+            return 0;
+        }
+        try
+        {
+            var live = _engine.FindAllSublayerFilterIds();
+            if (live.Count == 0) return 0;
+
+            var tracked = new HashSet<ulong>();
+            int ruleIdsInStore = 0;
+            lock (_dataLock)
+            {
+                CollectFilterIds(_data, tracked, new HashSet<object>(ReferenceEqualityComparer.Instance));
+                foreach (var r in _data.Rules) ruleIdsInStore += r.FilterIds.Count;
+            }
+
+            // The two numbers that separate "the walk is broken" from "the store
+            // is empty". They have been indistinguishable in every report so far.
+            DiagnosticLog.Log($"Reconcile input: live={live.Count} walked={tracked.Count} "
+                            + $"rules={_data.Rules.Count} ruleFilterIdsInStore={ruleIdsInStore} "
+                            + $"self={_data.SelfFilterIds.Count} strict={_data.StrictFilterIds.Count}");
+
+            // GUARD ONE. Knowing nothing is not the same as knowing everything is
+            // an orphan, and 0.99.92 could not tell the difference: it ran while
+            // the store was still empty, read "0 tracked" against 116 live filters,
+            // and deleted the entire working filter set of a protected machine.
+            //
+            // The risk was identified while writing that code and reasoned away as
+            // "correct behaviour if the store is lost". It is not. A firewall that
+            // disarms itself because it briefly could not read its own notes is
+            // worse than one that leaves an orphan behind.
+            //
+            // So: nothing tracked and something live means this component cannot
+            // distinguish the two. Say so and touch nothing. The reset path is
+            // unaffected - there the user has explicitly asked for everything to go.
+            // Self-permit ids are NOT knowledge about this machine. EnsureSelfConnectivity
+            // writes four of them to the store before this runs, so a store that has lost
+            // everything still presents as "4 tracked" rather than 0 - and the guard below,
+            // written against 0, could not fire. On 2026-09-08 that let a reconcile read
+            // 4 tracked against 320 live, delete 316, and take a working machine from 73
+            // application rules to 22 with protection off.
+            //
+            // The question is not "do we know any ids" but "do we know anything this store
+            // did not create for itself two hundred milliseconds ago".
+            var selfIds = new HashSet<ulong>(_data.SelfFilterIds);
+            int knownBeyondSelf = tracked.Count(id => !selfIds.Contains(id));
+
+            if (knownBeyondSelf == 0)
+            {
+                DiagnosticLog.Log(
+                    $"Startup reconcile: {live.Count} filter(s) in the sublayer but nothing "
+                    + $"tracked beyond GunWall's own {selfIds.Count} self-permit filter(s) - "
+                    + "declining to act. Nothing was removed. This means the profile could "
+                    + "not be read or is not describing this machine; the filters are left "
+                    + "alone rather than deleted. If the machine is stuck, Settings -> "
+                    + "Remove all GunWall filtering clears the sublayer deliberately.");
+                return 0;
+            }
+
+            var orphans = live.Where(id => !tracked.Contains(id)).ToList();
+            if (orphans.Count == 0)
+            {
+                DiagnosticLog.Log($"Startup reconcile: {live.Count} filter(s) in the sublayer, "
+                                + "all accounted for.");
+                return 0;
+            }
+
+            DiagnosticLog.Log($"Startup reconcile: {live.Count} filter(s) in the sublayer, "
+                            + $"{tracked.Count} tracked - removing {orphans.Count} orphan(s) this "
+                            + "installation cannot name.");
+            _engine.RemoveFilters(orphans);
+            return orphans.Count;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("ReconcileOrphanFilters", ex);
+            return 0;
+        }
+    }
+
+    /// <summary>Drops rules whose executable is gone and which hold no filters.
+    ///
+    /// Applications that update into versioned folders leave these behind on every
+    /// release - one machine carried six at once, from Edge WebView, GitHub
+    /// Desktop, OneDrive twice, Kaspersky and FileCoAuth. They are inert, but they
+    /// accumulate forever, they clutter the list with entries that look like
+    /// working rules, and applying one throws FwpmGetAppIdFromFileName0 with
+    /// ERROR_FILE_NOT_FOUND at whoever pressed the button.
+    ///
+    /// Only rules holding NO filters are removed. One that still holds filters is
+    /// enforcing something and gets left alone to be looked at, and a path that is
+    /// merely unreachable for a moment - a removable drive, a network share - has
+    /// filters and so survives. The conservative half of the test is the important
+    /// half: the cost of a wrong removal is an application being asked about
+    /// again, and the cost of leaving one is a line in a log.</summary>
+    /// <summary>True when a missing file can be trusted to be genuinely gone.
+    ///
+    /// "The executable is not there" has two meanings and they need separating.
+    /// An application that updated into a new versioned folder is gone for good;
+    /// one on a USB stick you have unplugged, or a network share not currently
+    /// reachable, is merely absent. Removing a rule for the second is destroying
+    /// a decision the user made, and they would have no idea why.
+    ///
+    /// The volume tells them apart. If the drive is a fixed local disk and it is
+    /// mounted, a path under it that does not exist does not exist. If the drive
+    /// is removable, unmounted, or the path is a UNC share, nothing can be
+    /// concluded and the rule stays.
+    ///
+    /// UNC is refused outright rather than probed: reaching a dead share blocks
+    /// for the SMB timeout, and this runs during startup.</summary>
+    private static bool VolumeSaysGone(string path)
+    {
+        try
+        {
+            if (path.StartsWith(@"\\", StringComparison.Ordinal)) return false;   // UNC
+            string root = System.IO.Path.GetPathRoot(path) ?? "";
+            if (root.Length == 0) return false;
+
+            var drive = new System.IO.DriveInfo(root);
+            if (!drive.IsReady) return false;                       // not mounted
+            return drive.DriveType == System.IO.DriveType.Fixed;    // not removable/network
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Moves rules whose Store app updated to the new version's path, reinstalling their
+    /// filters if protection is on, and takes them out of <paramref name="dead"/>.
+    /// See StorePackagePaths. The hash is left alone: a Store update is a changed
+    /// binary, treated like any application that updates in place.
+    /// </summary>
+    private int FollowStoreUpdates(List<FirewallRule> dead)
+    {
+        int followed = 0;
+        foreach (var r in dead.ToList())
+        {
+            string? next = StorePackagePaths.FindUpdated(r.ExecutablePath);
+            if (next == null) continue;
+            if (r.FilterIds.Count > 0) { try { _engine.RemoveFilters(r.FilterIds); } catch { } }
+            lock (_dataLock)
+            {
+                r.ExecutablePath = next;
+                try
+                {
+                    r.FilterIds = !_data.StrictMode ? new List<ulong>()
+                        : r.Status == AppStatus.Allowed ? _engine.PermitApplication(next) : InstallBlock(r);
+                }
+                catch (Exception ex)
+                {
+                    r.FilterIds = new List<ulong>();
+                    DiagnosticLog.LogException($"FollowStoreUpdates/{r.DisplayName}", ex);
+                }
+                SaveStore();
+            }
+            DiagnosticLog.Log($"Store app updated: the rule for {r.DisplayName} followed it to "
+                            + $"{System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(next))} instead of being removed.");
+            dead.Remove(r);
+            followed++;
+        }
+        return followed;
+    }
+
+    /// <summary>
+    /// Keeps the profile exactly as the previous version left it, before this version
+    /// writes to it: rules.pre-&lt;old&gt;.json beside rules.json. If an upgrade ever
+    /// mishandles a profile, the rules come back by copying that file over rules.json.
+    /// Runs straight after the load, before any save. Keeps the newest three; takes
+    /// none on a fresh install or when the version has not changed.
+    /// </summary>
+    /// <summary>The version this one replaced, when this launch is the first after
+    /// an upgrade to a NEWER version; otherwise empty. Drives the "update complete"
+    /// screen (0.99.186). Empty on a fresh install (no previous version recorded)
+    /// and after a downgrade, which is not something to welcome anyone to.</summary>
+    public string UpgradedFrom { get; private set; } = "";
+
+    private void SnapshotProfileOnUpgrade()
+    {
+        string current = UpdateService.CurrentVersion;
+        string last = _data.LastRunVersion ?? "";
+        if (last == current) return;
+        if (Version.TryParse(last, out var lv) && Version.TryParse(current, out var cv) && cv > lv)
+            UpgradedFrom = last;
+        try
+        {
+            string file = _store.FilePath;
+            if (System.IO.File.Exists(file))
+            {
+                string from = last.Length > 0 ? last : "unknown";
+                string dir = System.IO.Path.GetDirectoryName(file)!;
+                string snap = System.IO.Path.Combine(dir, $"rules.pre-{from}.json");
+                if (!System.IO.File.Exists(snap)) System.IO.File.Copy(file, snap);
+                foreach (var old in new System.IO.DirectoryInfo(dir).GetFiles("rules.pre-*.json")
+                             .OrderByDescending(f => f.CreationTimeUtc).Skip(3))
+                    try { old.Delete(); } catch { }
+                DiagnosticLog.Log($"Upgrade {from} -> {current}: profile saved as "
+                                + $"{System.IO.Path.GetFileName(snap)} before this version wrote to it.");
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("SnapshotProfileOnUpgrade", ex); }
+        _data.LastRunVersion = current;   // persisted by the next normal save
+    }
+
+    public int PruneDeadRules()
+    {
+        if (!ReconcileReady) return 0;
+        try
+        {
+            // No longer requires the rule to hold zero filters.
+            //
+            // That condition was the conservative half of an earlier version, and
+            // it left every dead rule that still had filters installed: six of
+            // them on one machine, holding twenty-four kernel filters between
+            // them, growing with each application that updates into a versioned
+            // folder. Edge WebView alone contributed two.
+            //
+            // What replaces it is a better question than "does it hold filters" -
+            // it asks whether the file can be TRUSTED to be gone. See
+            // VolumeSaysGone.
+            // Snapshotted under the gate. This runs on the startup background
+            // thread while the UI thread can be adding rules from an approval
+            // prompt; enumerating _data.Rules while that happens throws, and the
+            // caller sees an empty prune rather than a broken one.
+            List<FirewallRule> dead;
+            lock (_dataLock)
+                dead = _data.Rules
+                    .Where(r => !IsApplicablePath(r.ExecutablePath)
+                                && VolumeSaysGone(r.ExecutablePath))
+                    .ToList();
+            int followed = FollowStoreUpdates(dead);   // before pruning: a Store update is not a removal
+            if (dead.Count == 0) return followed;
+
+            // The filters must go with the rule. Removing the rule alone would
+            // leave them in the kernel with nothing naming them - which is the
+            // definition of the orphans the startup reconcile exists to clean up,
+            // manufactured here on purpose.
+            int filters = 0;
+            foreach (var r in dead)
+            {
+                if (r.FilterIds.Count > 0)
+                {
+                    try { _engine.RemoveFilters(r.FilterIds); filters += r.FilterIds.Count; }
+                    catch (Exception ex) { DiagnosticLog.LogException("PruneDeadRules/filters", ex); }
+                }
+                lock (_dataLock) _data.Rules.Remove(r);
+            }
+
+            lock (_dataLock) SaveStore();
+            DiagnosticLog.Log($"Startup reconcile: removed {dead.Count} rule(s) whose program is "
+                            + $"gone from a mounted local disk, and {filters} filter(s) they held - "
+                            + string.Join(", ", dead.Select(r => r.DisplayName)));
+            return dead.Count + followed;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("PruneDeadRules", ex);
+            return 0;
+        }
+    }
+
+    /// <summary>True when a rule can actually be applied to this path.
+    ///
+    /// FwpmGetAppIdFromFileName0 wants a real file and returns ERROR_FILE_NOT_FOUND
+    /// otherwise. Two ways that happens here: a rule left behind by an application
+    /// that updated into a new versioned folder, and a short-lived process that
+    /// has already exited by the time its prompt is answered - GitHub Desktop's
+    /// Squirrel updater copies itself into a temp folder, runs, and deletes it,
+    /// so the prompt outlives the executable it is asking about.
+    ///
+    /// Pseudo-processes are exempt: "System" and "Idle" are kernel identities with
+    /// no file behind them, and WFP accepts them.</summary>
+    public static bool IsApplicablePath(string? exePath)
+    {
+        string p = (exePath ?? "").Trim();
+        if (p.Length == 0) return false;
+        if (!p.Contains('\\')) return true;    // pseudo-process, not a path
+        return System.IO.File.Exists(p);
+    }
+
+    /// <summary>Tests a name against the active DNS blocklist. Supplied by the
+    /// host, because the blocklist lives in the resolver and this class must not
+    /// reach into it. Null means the question cannot be answered - which is
+    /// treated as "do not block", never as "not blocked".</summary>
+    public Func<string, bool>? DomainBlockTest { set => _isDomainBlocked = value; }
+    private Func<string, bool>? _isDomainBlocked;
+
+    /// <summary>True for a name the user marked "!!" in the DNS resolver's blocklist:
+    /// block its addresses even when they also serve names the user has not
+    /// blocked. Set by the window, like DomainBlockTest.</summary>
+    public Func<string, bool>? DomainForceTest { set => _isDomainForced = value; }
+    private Func<string, bool>? _isDomainForced;
+
+    /// <summary>Blocks the application that asked for a blocked name from reaching
+    /// the address it resolved to.
+    ///
+    /// Preferred over the global form whenever the process is known, because it
+    /// carries no collateral: the filter names one executable, so a tracker a
+    /// browser fetched cannot affect anything else on the machine even when the
+    /// address is a shared CDN edge.
+    ///
+    /// That removes the whole reason the global path needs a sharing veto. Here the
+    /// address may be shared with a hundred other services and it does not matter -
+    /// none of them is this process reaching this name.</summary>
+    /// <summary>True when this application is exempt from kernel domain blocking.</summary>
+    public bool BypassesBlocklists(string exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath)) return false;
+        var rule = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        return rule?.BypassBlocklists == true;
+    }
+
+    /// <summary>Sets the exemption and, when turning it ON, removes the domain
+    /// filters already installed for that application.
+    ///
+    /// Removing them is the whole point rather than tidiness. A blocklist filter
+    /// is persistent: setting the exemption without clearing what is already in
+    /// the kernel would leave the application exactly as blocked as before, and
+    /// the setting would appear to do nothing. Someone would then toggle it,
+    /// restart, and conclude the feature is broken - which it would be.
+    ///
+    /// Turning it OFF removes nothing: enforcement simply resumes the next time
+    /// that application reaches a blocked address.</summary>
+    public int SetBypassBlocklists(string exePath, bool bypass)
+    {
+        var rule = _data.Rules.FirstOrDefault(r =>
+            string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+        if (rule is null) return 0;
+
+        rule.BypassBlocklists = bypass;
+        int removed = 0;
+
+        if (bypass)
+        {
+            // Keyed "appdomainblock|<lowercased exe>|<address>" - see
+            // AddAppDomainBlock. Matched on the app segment so one application's
+            // exemption cannot clear another's filters.
+            string prefix = $"appdomainblock|{exePath.ToLowerInvariant()}|";
+            foreach (var key in _data.ScopeFilters.Keys
+                         .Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+            {
+                try { _engine.RemoveFilters(_data.ScopeFilters[key]); removed += _data.ScopeFilters[key].Count; }
+                catch (Exception ex) { DiagnosticLog.LogException("SetBypassBlocklists", ex); }
+                _data.ScopeFilters.Remove(key);
+            }
+        }
+
+        SaveStore();
+        EventLog(bypass
+            ? $"Blocklists no longer apply to {System.IO.Path.GetFileName(exePath)} at the kernel "
+              + $"layer; removed {removed} existing filter(s). Blocked names are still refused by "
+              + "GunWall's DNS resolver."
+            : $"Blocklists apply to {System.IO.Path.GetFileName(exePath)} again.");
+        return removed;
+    }
+
+    public bool AddAppDomainBlock(string exePath, string domain, string remoteIp)
+    {
+        if (string.IsNullOrWhiteSpace(exePath) || !IsApplicablePath(exePath)) return false;
+
+        string key = $"appdomainblock|{exePath.ToLowerInvariant()}|{remoteIp}";
+        if (_data.ScopeFilters.ContainsKey(key)) return true;   // already in place
+
+        var ids = _engine.AddAppRemoteIpBlock(exePath, remoteIp, $"Blocked domain {domain}");
+        if (ids.Count == 0) return false;
+
+        _data.ScopeFilters[key] = ids;
+        SaveStore();
+        EventLog($"Blocked domain enforced for one app: {System.IO.Path.GetFileName(exePath)} "
+               + $"-> {remoteIp} ({domain}). Other applications are unaffected.");
+        return true;
+    }
+
+    public bool AddDomainReactiveBlock(string domain, string remoteIp, out string declined)
+    {
+        declined = "";
+        // A global /32 block, above every application rule. That is correct for an
+        // address belonging to the blocked site and catastrophic for one it merely
+        // shares: CDN edges answer for thousands of names, so blocking one tracker
+        // takes down every other service behind the same address - permanently,
+        // for every application, and with nothing on screen explaining it.
+        //
+        // This is not hypothetical. A 12-hour session accumulated blocks on Akamai,
+        // CloudFront, Cloudflare, Google and Microsoft edge addresses from tracker
+        // names alone, and the machine lost Kaspersky's update service and GitHub
+        // Desktop's sign-in. Allowing those applications did nothing, because the
+        // block is on the destination and outranks application rules.
+        //
+        // 0.99.87 refused outright whenever an address had served more than one
+        // name. That stopped the collateral and gave away real enforcement with it:
+        // a host dedicated to two tracker names is exactly the thing a blocklist
+        // exists to stop, and it was being spared.
+        //
+        // The question is not "is this address shared" but "is it shared with
+        // anything the user wants to keep". So every name seen on the address is
+        // tested against the blocklist, and the address is blocked only when they
+        // are ALL blocked. One name the user has not asked to block is enough to
+        // veto it, because that name is the collateral.
+        var seen = DnsObservations.NameListForIp(remoteIp);
+
+        // "!!name" in the blocklist: the user has asked for the address to go even
+        // when it is shared, knowing what that costs. Every check below exists to
+        // protect names the user has NOT blocked - this is the user saying they
+        // accept losing them - so it skips them, and says so where it is visible.
+        bool forced = _isDomainForced?.Invoke(domain) ?? false;
+        if (forced && seen.Count > 1)
+            EventLog($"Blocked domain {domain} is marked !! (block everywhere): blocking {remoteIp} although "
+                   + $"it has also served {Math.Max(0, seen.Count - 1)} other name(s) - "
+                   + string.Join(", ", seen.Where(n => !string.Equals(n, domain, StringComparison.OrdinalIgnoreCase)).Take(5))
+                   + (seen.Count > 6 ? ", ..." : "") + ". Those stop working on this PC too.");
+        if (!forced && seen.Count > 1)
+        {
+            // Saturation first. The per-address name set is capped, so a busy CDN
+            // edge stops recording once it fills - and at that point "every name
+            // here is blocked" is unprovable rather than true. An incomplete
+            // answer must not be read as a positive one, which is the same
+            // mistake as reading an unloaded store as an empty one.
+            if (DnsObservations.NameListSaturated(remoteIp))
+            {
+                declined = $"{remoteIp} has served at least {seen.Count} different names, too "
+                         + "many to be sure they are all on your blocklist. The address was left "
+                         + "alone so nothing unrelated is cut off.";
+                EventLog($"Blocked domain {domain} resolved to {remoteIp}, which has served at "
+                       + $"least {seen.Count} names - too many to be sure they are all blocked, "
+                       + "so the address is left alone.");
+                return false;
+            }
+
+            var keep = new List<string>();
+            foreach (string n in seen)
+                if (!(_isDomainBlocked?.Invoke(n) ?? false)) keep.Add(n);
+
+            if (_isDomainBlocked is null)
+            {
+                declined = $"{remoteIp} is shared and GunWall could not check the other names "
+                         + "on it, so the address was left alone.";
+                EventLog($"Blocked domain {domain} resolved to shared address {remoteIp} and no "
+                       + "blocklist test is available - not blocking the address.");
+                return false;
+            }
+
+            if (keep.Count > 0)
+            {
+                declined = $"{remoteIp} also serves {string.Join(", ", keep)}, which you have "
+                         + "not blocked. Blocking the address would cut those off too, so it was "
+                         + $"left alone - {domain} is still blocked at the DNS layer.";
+                EventLog($"Blocked domain {domain} resolved to {remoteIp}, which also serves "
+                       + $"{string.Join(", ", keep)} - not on your blocklist, so the address is "
+                       + "left alone. The name itself is still blocked at the DNS layer.");
+                return false;
+            }
+
+            EventLog($"Address {remoteIp} serves only blocked names ({string.Join(", ", seen)}) "
+                   + "- blocking the address.");
+        }
+
+        var ids = _engine.AddGlobalRemoteIpBlock(remoteIp, $"Blocked domain: {domain}");
+        if (ids.Count == 0) return false;
+        string key = "domainblock|" + domain.ToLowerInvariant();
+        if (_data.ScopeFilters.TryGetValue(key, out var existing)) existing.AddRange(ids);
+        else _data.ScopeFilters[key] = ids;
+        SaveStore();
+        EventLog($"Blocked domain enforced: {domain} -> {remoteIp}");
+        return true;
+    }
+
+    /// <summary>Removes every filter accumulated for a blocked domain.</summary>
+    public int ClearDomainReactiveBlocks()
+    {
+        int removed = 0;
+        // BOTH prefixes. The app-scoped form was added in 0.99.101 and a teardown
+        // that only knew the global one would have left a filter per (app, address)
+        // pair behind on every blocklist edit - the exact way 843 orphans
+        // accumulated, arriving by a new route.
+        bool IsDomainDerived(string k) =>
+            k.StartsWith("domainblock|", StringComparison.Ordinal)
+            || k.StartsWith("appdomainblock|", StringComparison.Ordinal);
+
+        foreach (var key in _data.ScopeFilters.Keys.Where(IsDomainDerived).ToList())
+        {
+            try { _engine.RemoveFilters(_data.ScopeFilters[key]); removed += _data.ScopeFilters[key].Count; }
+            catch { }
+            _data.ScopeFilters.Remove(key);
+        }
+        if (removed > 0) { SaveStore(); EventLog($"Cleared {removed} blocked-domain filter(s)."); }
+        return removed;
+    }
+
+    public bool AddP2pReactiveBlock(string exePath, string remoteIp)
+    {
+        var ids = _engine.AddAppRemoteIpBlock(exePath, remoteIp);
+        if (ids.Count == 0) return false;
+        string key = ScopeKey(exePath, "p2p");
+        if (_data.ScopeFilters.TryGetValue(key, out var existing)) existing.AddRange(ids);
+        else _data.ScopeFilters[key] = ids;
+        SaveStore();
+        EventLog($"P2P direct connection blocked: {System.IO.Path.GetFileName(exePath)} -> {remoteIp}");
+        return true;
+    }
+
+    public void SetScopeBlock(string exePath, string scope, bool blocked)
+    {
+        string key = ScopeKey(exePath, scope);
+        if (blocked)
+        {
+            if (IsScopeBlocked(exePath, scope)) return;
+            var ids = _engine.AddAppScopeBlock(exePath, scope);
+            _data.ScopeFilters[key] = ids;
+            EventLog($"Scope block enabled: {scope} for {System.IO.Path.GetFileName(exePath)}");
+        }
+        else
+        {
+            if (_data.ScopeFilters.TryGetValue(key, out var ids))
+            {
+                try { _engine.RemoveFilters(ids); } catch { }
+                _data.ScopeFilters.Remove(key);
+                EventLog($"Scope block disabled: {scope} for {System.IO.Path.GetFileName(exePath)}");
+            }
+        }
+        SaveStore();
+    }
+
+    // ------------------------------------------------ packet file logging
+    private PacketLogFile? _packetLog;
+    public bool PacketFileLogging => _data.PacketFileLogging;
+    public void SetPacketFileLogging(bool v) { _data.PacketFileLogging = v; SaveStore(); }
+
+    /// <summary>Writes one packet entry to the CSV log if file logging is on.</summary>
+    public void LogPacketToFile(DateTime time, bool blocked, string app, string protocol,
+                                string direction, string remote, string exePath)
+    {
+        if (!_data.PacketFileLogging) return;
+        _packetLog ??= new PacketLogFile(_store.ProfileFolder);
+        _packetLog.SetMaxMB(_data.MaxLogFileMB);
+        _packetLog.Append(time, blocked ? "Blocked" : "Allowed", app, protocol, direction, remote, exePath);
+    }
+
+    public string PacketLogPath => System.IO.Path.Combine(_store.ProfileFolder, "packets.csv");
+
+    // ------------------------------------------------ notification options
+    public bool NotificationSound => _data.NotificationSound;
+    public void SetNotificationSound(bool v) { _data.NotificationSound = v; SaveStore(); }
+    /// <summary>Alerts-page categories the user silenced (see MainWindow.Notify).</summary>
+    public IReadOnlyList<string> MutedAlertCategories => _data.MutedAlertCategories;
+    public void SetAlertCategoryMuted(string cat, bool muted)
+    {
+        bool has = _data.MutedAlertCategories.Contains(cat);
+        if (muted == has) return;               // no change - skip the disk write
+        if (muted) _data.MutedAlertCategories.Add(cat);
+        else _data.MutedAlertCategories.Remove(cat);
+        SaveStore();
+    }
+
+    public bool TraySingleClick => _data.TraySingleClick;
+    public void SetTraySingleClick(bool v) { _data.TraySingleClick = v; SaveStore(); }
+
+    public int UiZoomPercent => _data.UiZoomPercent;
+    public void SetUiZoomPercent(int v) { _data.UiZoomPercent = Math.Clamp(v, 50, 150); SaveStore(); }
+
+    /// <summary>Applications-list icon size. Only the three offered sizes are
+    /// stored; anything else (a hand-edited profile) reads as medium.</summary>
+    public int AppIconSize => _data.AppIconSize is 16 or 22 or 32 ? _data.AppIconSize : 22;
+    public void SetAppIconSize(int px) { _data.AppIconSize = px is 16 or 22 or 32 ? px : 22; SaveStore(); }
+
+    public bool TrayNotifications => _data.TrayNotifications;
+    public void SetTrayNotifications(bool v) { _data.TrayNotifications = v; SaveStore(); }
+
+    public int PopupTimeoutSeconds => _data.PopupTimeoutSeconds;
+    public void SetPopupTimeoutSeconds(int v) { _data.PopupTimeoutSeconds = v < 0 ? 0 : v; SaveStore(); }
+    public bool PopupDefaultAllow => _data.PopupDefaultAllow;
+    public void SetPopupDefaultAllow(bool v) { _data.PopupDefaultAllow = v; SaveStore(); }
+
+    /// <summary>Writes to the Windows Event Log if the user enabled it, and always to the diagnostic log.</summary>
+    public void EventLog(string message)
+    {
+        DiagnosticLog.Log(message);
+        if (_data.EventLogEnabled) EventLogService.Write("GunWall: " + message);
+    }
+
+    // ------------------------------------------------ diagnostics bundle
+    private static bool IsElevated()
+    {
+        try
+        {
+            using var id = System.Security.Principal.WindowsIdentity.GetCurrent();
+            return new System.Security.Principal.WindowsPrincipal(id)
+                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
+    }
+
+    private static string RunCapture(string exe, string args)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo(exe, args)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) return $"(failed to start {exe})";
+            string o = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(8000);
+            return o;
+        }
+        catch (Exception ex) { return $"(error running {exe}: {ex.Message})"; }
+    }
+
+    /// <summary>
+    /// The settings document for the diagnostics bundle, with the user's
+    /// VirusTotal credential replaced.
+    ///
+    /// Redaction happens in the PRODUCED DOCUMENT, never on <c>_data</c>. The
+    /// previous implementation assigned "(redacted)" to
+    /// <c>_data.VirusTotalApiKey</c>, serialised, and restored the real value in
+    /// a <c>finally</c>. That is correct on one thread and wrong on two.
+    ///
+    /// The export runs on a background thread (<c>Task.Run</c> from the settings
+    /// screen) and takes seconds, because it shells out to netsh and ipconfig
+    /// with an eight-second timeout each. The UI thread is free throughout. Any
+    /// of the ninety-plus <c>SaveStore()</c> call sites reached inside
+    /// that window - approving one application at a prompt is enough -
+    /// serialises the SAME object and writes "(redacted)" to rules.json as the
+    /// real value. The user would lose their API key by exporting a diagnostics
+    /// bundle, and the loss would be silent and permanent.
+    ///
+    /// Fail-closed on the property name: if the redaction target is not present
+    /// in the serialised document, no config is written at all. Overwriting a
+    /// key that is not there would ADD it and emit the real credential beside
+    /// it, so a rename must break the export rather than leak.
+    /// </summary>
+    private string SanitizedConfigJson()
+    {
+        try
+        {
+            bool hasKey = !string.IsNullOrEmpty(_data.VirusTotalApiKey);
+
+            if (System.Text.Json.Nodes.JsonNode.Parse(
+                    System.Text.Json.JsonSerializer.Serialize(_data))
+                is not System.Text.Json.Nodes.JsonObject obj)
+                return "(config omitted: unexpected document shape)";
+
+            const string secret = nameof(StoreData.VirusTotalApiKey);
+            if (!obj.ContainsKey(secret))
+                return $"(config omitted: redaction target '{secret}' not found, " +
+                       "so the document could not be proven safe to include)";
+
+            obj[secret] = hasKey ? "(redacted)" : "";
+
+            return obj.ToJsonString(
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex) { return "(failed to serialize config: " + ex.Message + ")"; }
+    }
+
+    /// <summary>
+    /// Builds a diagnostics zip at <paramref name="destZipPath"/>: app/system info,
+    /// the user's settings (secrets redacted), the runtime diagnostic log, recent
+    /// packets, the GunWall hosts block, and network/firewall/DNS state. Intended
+    /// to be attached to a bug report.
+    /// </summary>
+    public void ExportDiagnostics(string destZipPath)
+    {
+        DiagnosticLog.Log("Diagnostics export requested.");
+        string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "GunWallDiag_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(tmp);
+        try
+        {
+            // 1. system + app info
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("GunWall diagnostics");
+            sb.AppendLine("Generated:        " + DateTime.Now.ToString("u"));
+            sb.AppendLine("App version:      " + UpdateService.CurrentVersion);
+            sb.AppendLine("OS:               " + Environment.OSVersion + (Environment.Is64BitOperatingSystem ? " (x64)" : " (x86)"));
+            sb.AppendLine(".NET:             " + System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription);
+            sb.AppendLine("Process 64-bit:   " + Environment.Is64BitProcess);
+            sb.AppendLine("Elevated (admin): " + IsElevated());
+            sb.AppendLine("Engine started:   " + (EngineHandle != IntPtr.Zero));
+            sb.AppendLine("Culture:          " + System.Globalization.CultureInfo.CurrentCulture.Name);
+            sb.AppendLine("Machine:          " + Environment.MachineName);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "system-info.txt"), sb.ToString());
+
+            // 2. current state summary
+            var st = new System.Text.StringBuilder();
+            st.AppendLine("Lockdown:    " + LockdownEngaged);
+            st.AppendLine("Strict mode: " + StrictMode);
+            try { st.AppendLine("Live TCP/UDP rows: " + new NetworkMonitor().GetTcpConnections().Count); }
+            catch (Exception cex) { st.AppendLine("Live TCP/UDP rows: ERROR - " + cex.Message); }
+            st.AppendLine("DNS provider: " + CurrentDnsProvider);
+            st.AppendLine("Enabled blocklists: " + (_data.EnabledBlocklists.Count == 0 ? "(none)" : string.Join(", ", _data.EnabledBlocklists)));
+            foreach (var cat in Models.BlocklistCatalog.All)
+                st.AppendLine($"  {cat.Key}: on={IsBlocklistOn(cat.Key)}, domains={BlocklistDomainCount(cat.Key)}");
+            st.AppendLine("App rules:    " + _data.Rules.Count);
+            st.AppendLine("Custom rules: " + _data.CustomRules.Count);
+            st.AppendLine("System rules: " + _data.SystemRules.Count);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "state.txt"), st.ToString());
+
+            // 3. settings (secrets redacted)
+            System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "config.json"), SanitizedConfigJson());
+
+            // 4. runtime diagnostic log(s)
+            try
+            {
+                if (DiagnosticLog.LogPath != null && System.IO.File.Exists(DiagnosticLog.LogPath))
+                    System.IO.File.Copy(DiagnosticLog.LogPath, System.IO.Path.Combine(tmp, "diagnostics.log"), true);
+                if (DiagnosticLog.PreviousLogPath != null && System.IO.File.Exists(DiagnosticLog.PreviousLogPath))
+                    System.IO.File.Copy(DiagnosticLog.PreviousLogPath, System.IO.Path.Combine(tmp, "diagnostics.previous.log"), true);
+            }
+            catch { }
+
+            // 5. recent packets (if file logging is on)
+            try
+            {
+                string pkts = System.IO.Path.Combine(_store.ProfileFolder, "packets.csv");
+                if (System.IO.File.Exists(pkts))
+                    System.IO.File.Copy(pkts, System.IO.Path.Combine(tmp, "packets.csv"), true);
+            }
+            catch { }
+
+            // 6. GunWall hosts block
+            try
+            {
+                var domains = HostsFileService.GetBlockedDomains();
+                var hb = new System.Text.StringBuilder();
+                hb.AppendLine($"GunWall is blocking {domains.Count} domains via the hosts file.");
+                hb.AppendLine();
+                foreach (var d in domains.Take(20000)) hb.AppendLine(d);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "hosts-gunwall-block.txt"), hb.ToString());
+            }
+            catch { }
+
+            // 7. network / firewall / DNS state
+            try
+            {
+                var net = new System.Text.StringBuilder();
+                var wf = WindowsFirewallService.GetState();
+                net.AppendLine($"Windows Firewall - Domain: {wf.Domain}, Private: {wf.Private}, Public: {wf.Public}");
+                net.AppendLine("GunWall DNS selection: " + CurrentDnsProvider);
+                net.AppendLine();
+                net.AppendLine("===== ipconfig /all =====");
+                net.AppendLine(RunCapture("ipconfig", "/all"));
+                net.AppendLine();
+                // The configuration Windows is REALLY using, both address
+                // families plus name-resolution policy. ipconfig alone hides
+                // NRPT rules, which override adapter DNS and can send queries
+                // somewhere other than where GunWall pointed them.
+                net.AppendLine(DnsService.DescribeCurrentDnsState());
+                System.IO.File.WriteAllText(System.IO.Path.Combine(tmp, "network.txt"), net.ToString());
+            }
+            catch { }
+
+            // zip it up
+            if (System.IO.File.Exists(destZipPath)) System.IO.File.Delete(destZipPath);
+            System.IO.Compression.ZipFile.CreateFromDirectory(tmp, destZipPath);
+            DiagnosticLog.Log("Diagnostics export written: " + destZipPath);
+        }
+        finally
+        {
+            try { System.IO.Directory.Delete(tmp, true); } catch { }
+        }
+    }
+
+    // ------------------------------------------------ temporary (timed) rules
+    private readonly Dictionary<string, System.Threading.Timer> _tempTimers = new();
+
+    /// <summary>
+    /// Blocks an app now and automatically unblocks it after the given duration.
+    /// In-memory only — a restart cancels pending reverts (the block persists
+    /// until manually changed). Returns the revert time.
+    /// </summary>
+    public DateTime BlockAppTemporarily(string exePath, string displayName, TimeSpan duration)
+    {
+        BlockApp(exePath, displayName);
+        EventLog($"Temporary block for {duration.TotalMinutes:0} min: {displayName}");
+
+        string key = exePath.ToLowerInvariant();
+        DateTime expiryUtc = DateTime.UtcNow.Add(duration);
+        _data.TempBlocks[key] = expiryUtc;   // persist so it survives a restart
+        SaveStore();
+
+        ArmTempTimer(key, exePath, displayName, duration);
+        return DateTime.Now.Add(duration);
+    }
+
+    private void ArmTempTimer(string key, string exePath, string displayName, TimeSpan duration)
+    {
+        if (_tempTimers.TryGetValue(key, out var existing)) { existing.Dispose(); _tempTimers.Remove(key); }
+        // Cap the timer to a sane max; if duration is negative it fires immediately.
+        if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
+
+        var timer = new System.Threading.Timer(_ =>
+        {
+            try { UnblockApp(exePath); EventLog($"Temporary block expired: {displayName}"); }
+            catch { }
+            finally
+            {
+                _data.TempBlocks.Remove(key);
+                try { SaveStore(); } catch { }
+                if (_tempTimers.TryGetValue(key, out var t)) { t.Dispose(); _tempTimers.Remove(key); }
+            }
+        }, null, duration, System.Threading.Timeout.InfiniteTimeSpan);
+        _tempTimers[key] = timer;
+    }
+
+    /// <summary>
+    /// On startup, reconcile persisted temporary blocks: any that have already
+    /// expired are unblocked now; the rest get their timers re-armed for the
+    /// remaining time. This makes timed rules survive a restart.
+    /// </summary>
+    public void ReconcileTempBlocks()
+    {
+        if (_data.TempBlocks.Count == 0) return;
+        var now = DateTime.UtcNow;
+        foreach (var kv in new Dictionary<string, DateTime>(_data.TempBlocks))
+        {
+            string key = kv.Key;
+            DateTime expiry = kv.Value;
+            // Find the matching rule's display name/path if we still have it.
+            var rule = _data.Rules.FirstOrDefault(r =>
+                r.ExecutablePath.Equals(key, StringComparison.OrdinalIgnoreCase));
+            string path = rule?.ExecutablePath ?? key;
+            string name = rule?.DisplayName ?? System.IO.Path.GetFileName(key);
+
+            if (expiry <= now)
+            {
+                try { UnblockApp(path); } catch { }
+                _data.TempBlocks.Remove(key);
+            }
+            else
+            {
+                ArmTempTimer(key, path, name, expiry - now);
+            }
+        }
+        SaveStore();
+    }
+
+    // ------------------------------------------------ snooze (pause protection)
+    private System.Threading.Timer? _snoozeTimer;
+    private bool _wasStrictBeforeSnooze;
+    public bool IsSnoozed { get; private set; }
+    public DateTime SnoozeUntil { get; private set; }
+
+    /// <summary>
+    /// Temporarily lifts strict-mode blocking for the given duration, then
+    /// automatically restores it. In-memory only — closing GunWall ends the
+    /// snooze and protection comes back on next launch (the safe default).
+    /// Returns the time protection resumes.
+    /// </summary>
+    public DateTime SnoozeProtection(TimeSpan duration)
+    {
+        if (!IsSnoozed)
+        {
+            _wasStrictBeforeSnooze = StrictMode;
+            if (StrictMode) SetStrictMode(false);
+        }
+        IsSnoozed = true;
+        SnoozeUntil = DateTime.Now.Add(duration);
+        EventLog($"Protection snoozed for {duration.TotalMinutes:0} min");
+
+        _snoozeTimer?.Dispose();
+        _snoozeTimer = new System.Threading.Timer(_ => EndSnooze(), null, duration,
+            System.Threading.Timeout.InfiniteTimeSpan);
+        return SnoozeUntil;
+    }
+
+    /// <summary>Ends a snooze early and restores the prior protection state.</summary>
+    public void EndSnooze()
+    {
+        if (!IsSnoozed) return;
+        try { if (_wasStrictBeforeSnooze && !StrictMode) SetStrictMode(true); }
+        catch { }
+        IsSnoozed = false;
+        _snoozeTimer?.Dispose();
+        _snoozeTimer = null;
+        EventLog("Protection resumed");
+    }
+
+    public void SetRunAtStartup(bool enabled)
+    {
+        bool ok = StartupService.SetEnabled(enabled);
+        // Persist the user's intent regardless; reflect actual state if it failed.
+        _data.RunAtStartup = enabled && ok;
+        SaveStore();
+        if (!ok && enabled)
+            throw new InvalidOperationException(
+                "Could not register the startup task. Make sure GunWall is running as administrator.");
+    }
+
+    // ------------------------------------------------ profile export / import
+    /// <summary>Exports all rules and settings to a portable file.</summary>
+    public void ExportProfile(string filePath) => _store.Export(_data, filePath);
+
+    // ------------------------------------------------ named profiles
+    // Profiles are named snapshots of the whole rule set, stored as JSON files
+    // in a "profiles" subfolder. Switching a profile imports it as the active
+    // configuration. This builds on the same serialization as export/import.
+
+    private string ProfilesFolder
+    {
+        get
+        {
+            string dir = System.IO.Path.Combine(_store.ProfileFolder, "profiles");
+            try { System.IO.Directory.CreateDirectory(dir); } catch { }
+            return dir;
+        }
+    }
+
+    public List<string> ListProfiles()
+    {
+        var names = new List<string>();
+        try
+        {
+            foreach (var f in System.IO.Directory.GetFiles(ProfilesFolder, "*.json"))
+                names.Add(System.IO.Path.GetFileNameWithoutExtension(f));
+        }
+        catch { }
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
+    }
+
+    /// <summary>Saves the current configuration as a named profile.</summary>
+    public void SaveProfile(string name)
+    {
+        string safe = SanitizeName(name);
+        if (string.IsNullOrEmpty(safe)) throw new ArgumentException("Enter a valid profile name.");
+        _store.Export(_data, System.IO.Path.Combine(ProfilesFolder, safe + ".json"));
+    }
+
+    /// <summary>Loads a named profile as the active configuration.</summary>
+    public int LoadProfile(string name)
+    {
+        string path = System.IO.Path.Combine(ProfilesFolder, SanitizeName(name) + ".json");
+        if (!System.IO.File.Exists(path))
+            throw new System.IO.FileNotFoundException("That profile no longer exists.");
+        return ImportProfile(path);
+    }
+
+    public void DeleteProfile(string name)
+    {
+        try
+        {
+            string path = System.IO.Path.Combine(ProfilesFolder, SanitizeName(name) + ".json");
+            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+        }
+        catch { }
+    }
+
+    private static string SanitizeName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "";
+        foreach (var c in System.IO.Path.GetInvalidFileNameChars())
+            name = name.Replace(c, '_');
+        return name.Trim();
+    }
+
+    // ------------------------------------------------ auto-backup / versioned profiles
+    private const int MaxBackups = 15;
+
+    public bool AutoBackup => _data.AutoBackup;
+    public void SetAutoBackup(bool v) { _data.AutoBackup = v; SaveStore(); }
+
+    // ------------------------------------------------ curated blocklists (hosts-file based)
+    private string ListsFolder
+    {
+        get
+        {
+            string d = System.IO.Path.Combine(_store.ProfileFolder, "lists");
+            try { System.IO.Directory.CreateDirectory(d); } catch { }
+            return d;
+        }
+    }
+
+    /// <summary>Baked-in + downloaded domains for a category, de-duplicated.</summary>
+    // Parsed lists, keyed by category and stamped with the list file's time and size,
+    // so a refreshed list is re-read and an unchanged one never is. DomainsFor read
+    // and parsed the file on every call - including once per Security card while the
+    // tab drew, on the UI thread: the 251 ms "froze on Security" in the 0.99.159 bundle.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Stamp, List<string> Domains)>
+        _domainsCache = new(StringComparer.Ordinal);
+
+    private List<string> DomainsFor(Models.BlocklistCategory cat)
+    {
+        using var _perf = PerfMonitor.Measure("DomainsFor");
+        string f = System.IO.Path.Combine(ListsFolder, cat.Key + ".txt");
+        string stamp;
+        try
+        {
+            var fi = new System.IO.FileInfo(f);
+            stamp = fi.Exists ? $"{fi.LastWriteTimeUtc.Ticks}:{fi.Length}" : "none";
+        }
+        catch { stamp = "unreadable"; }
+        if (_domainsCache.TryGetValue(cat.Key, out var hit) && hit.Stamp == stamp)
+            return new List<string>(hit.Domains);   // a copy: callers may change theirs
+
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var h in cat.Hosts) set.Add(h);
+        try
+        {
+            if (System.IO.File.Exists(f))
+                foreach (var line in System.IO.File.ReadAllLines(f))
+                {
+                    var d = line.Trim();
+                    if (d.Length > 0) set.Add(d);
+                }
+        }
+        catch { }
+        var list = set.ToList();
+        _domainsCache[cat.Key] = (stamp, list);
+        return new List<string>(list);
+    }
+
+    /// <summary>Parses every list once, off the UI thread, so the Security tab's
+    /// first draw finds them ready. Called from the startup task.</summary>
+    public void WarmBlocklistDomains()
+    {
+        foreach (var c in Models.BlocklistCatalog.All)
+            try { DomainsFor(c); } catch { }
+    }
+
+    public bool IsBlocklistOn(string key)
+    {
+        return _data.EnabledBlocklists.Contains(key);
+    }
+
+    // ------------------------------------------------ per-domain exclusions
+    // A category is on or off; inside it, the user can untick single domains
+    // (Security - Show domains) so one entry that breaks something does not mean
+    // turning the whole category off. Every path that enforces a category - the
+    // hosts block, the WFP fallback, and its restore after a restart - reads
+    // ActiveDomainsFor, never DomainsFor, so an unticked name is never blocked.
+
+    /// <summary>Every domain in the category, sorted, unticked ones included -
+    /// for the list the user ticks and unticks.</summary>
+    public List<string> BlocklistDomains(string key)
+    {
+        var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+        var list = cat == null ? new List<string>() : DomainsFor(cat);
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list;
+    }
+
+    /// <summary>The names the user has unticked in this category.</summary>
+    public HashSet<string> BlocklistExclusions(string key)
+    {
+        lock (_dataLock)
+            return _data.BlocklistExclusions.TryGetValue(key, out var l)
+                ? new HashSet<string>(l, StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public int BlocklistExcludedCount(string key)
+    {
+        var excluded = BlocklistExclusions(key);
+        if (excluded.Count == 0) return 0;
+        return BlocklistDomains(key).Count(excluded.Contains);
+    }
+
+    /// <summary>The category's domains minus the ones the user unticked. The only
+    /// list any enforcement path may use.</summary>
+    private List<string> ActiveDomainsFor(Models.BlocklistCategory cat)
+    {
+        var all = DomainsFor(cat);
+        var excluded = BlocklistExclusions(cat.Key);
+        return excluded.Count == 0 ? all : all.Where(d => !excluded.Contains(d)).ToList();
+    }
+
+    /// <summary>
+    /// Replaces the category's unticked names and re-applies it if it is on.
+    /// Hosts-enforced: the hosts block is rewritten. WFP-enforced (the fallback
+    /// when security software locks the hosts file): the category is switched off
+    /// and on again, since its filters are per resolved address and cannot be
+    /// edited by name. Slow in that case - call it off the UI thread.
+    /// Returns false only when re-applying a category that was on failed.
+    /// </summary>
+    public bool SetBlocklistExclusions(string key, IEnumerable<string> excluded)
+    {
+        var list = excluded.Select(d => d.Trim().ToLowerInvariant()).Where(d => d.Length > 0)
+                           .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(d => d, StringComparer.Ordinal).ToList();
+        lock (_dataLock)
+        {
+            if (list.Count == 0) _data.BlocklistExclusions.Remove(key);
+            else _data.BlocklistExclusions[key] = list;
+        }
+        SaveStore();
+        EventLog($"Blocklist {key}: {list.Count} domain(s) unticked - kept working while the category is on.");
+
+        if (!IsBlocklistOn(key)) return true;
+        if (IsBlocklistViaWfp(key))
+        {
+            SetBlocklistEnabled(key, false);
+            return SetBlocklistEnabled(key, true);
+        }
+        return RebuildHostsBlock();
+    }
+
+    /// <summary>True when a category is being enforced via WFP IP filters rather
+    /// than the hosts file (because security software blocked the hosts write).</summary>
+    public bool IsBlocklistViaWfp(string key) => _data.BlocklistWfpFilters.ContainsKey(key);
+
+    public int BlocklistDomainCount(string key)
+    {
+        var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+        return cat == null ? 0 : DomainsFor(cat).Count;
+    }
+
+    // Lists larger than this won't fall back to WFP (one filter per resolved IP
+    // doesn't scale to tens of thousands of ad domains — those use hosts/DNS).
+    private const int MaxWfpBlocklistDomains = 5000;
+
+    /// <summary>Rewrites the GunWall hosts block from every hosts-enforced category
+    /// (WFP-enforced categories are excluded — they're handled by the engine).</summary>
+    public bool RebuildHostsBlock()
+    {
+        var all = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var cat in Models.BlocklistCatalog.All)
+            if (_data.EnabledBlocklists.Contains(cat.Key) && !_data.BlocklistWfpFilters.ContainsKey(cat.Key))
+                foreach (var d in ActiveDomainsFor(cat)) all.Add(d);
+        foreach (var d in _customDomains) all.Add(d); // §5 user custom list
+        return HostsFileService.SetBlockedDomains(all, _store.ProfileFolder);
+    }
+
+    /// <summary>
+    /// Resolves a category's domains to IPv4 addresses (in parallel) and blocks
+    /// them outbound via WFP. Defender can't revert WFP filters, so this is the
+    /// fallback when the hosts file is locked/reverted. Returns the filter IDs.
+    /// </summary>
+    private List<ulong> BlockDomainsViaWfp(IReadOnlyList<string> domains)
+    {
+        var ips = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
+        using (var sem = new System.Threading.SemaphoreSlim(64))
+        {
+            var tasks = new List<System.Threading.Tasks.Task>();
+            foreach (var d in domains)
+            {
+                sem.Wait();
+                tasks.Add(System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        foreach (var a in System.Net.Dns.GetHostAddresses(d))
+                            if (a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                                ips.TryAdd(a.ToString(), 0);
+                    }
+                    catch { /* unresolvable — skip */ }
+                    finally { sem.Release(); }
+                }));
+            }
+            try { System.Threading.Tasks.Task.WaitAll(tasks.ToArray()); } catch { }
+        }
+
+        var idList = new List<ulong>();
+        foreach (var ip in ips.Keys)
+        {
+            try { idList.AddRange(_engine.AddCustomRule(true, true, "Any", ip, 0)); } // block outbound
+            catch { /* skip a bad entry, keep going */ }
+        }
+        return idList;
+    }
+
+    /// <summary>
+    /// Turns a category on/off. Tries the hosts file first (fast, scales). If the
+    /// hosts write is blocked/reverted by security software, small lists fall back
+    /// to WFP IP blocking (which can't be reverted). Only commits the logical state
+    /// when blocking actually took effect, so a toggle never falsely shows "on".
+    /// </summary>
+    public bool SetBlocklistEnabled(string key, bool on)
+    {
+        bool has = _data.EnabledBlocklists.Contains(key);
+
+        if (!on)
+        {
+            // Disable: drop any WFP filters and re-assert the hosts block without it.
+            if (_data.BlocklistWfpFilters.TryGetValue(key, out var existing))
+            {
+                try { _engine.RemoveFilters(existing); } catch { }
+                _data.BlocklistWfpFilters.Remove(key);
+            }
+            _data.EnabledBlocklists.Remove(key);
+            RebuildHostsBlock(); // best effort for any remaining hosts-enforced lists
+            SaveStore();
+            EventLog($"Blocklist disabled: {key}");
+            return true;
+        }
+
+        if (has) return true; // already on
+
+        // 1) Try the hosts file.
+        _data.EnabledBlocklists.Add(key);
+        if (RebuildHostsBlock())
+        {
+            SaveStore();
+            EventLog($"Blocklist enabled (hosts file): {key}");
+            return true;
+        }
+
+        // 2) Hosts blocked (e.g. Defender). Fall back to WFP IP blocking for lists
+        //    small enough that one-filter-per-IP is practical.
+        var cat = Models.BlocklistCatalog.All.FirstOrDefault(c => c.Key == key);
+        var domains = cat == null ? new List<string>() : ActiveDomainsFor(cat);
+        if (cat == null || domains.Count == 0 || domains.Count > MaxWfpBlocklistDomains)
+        {
+            _data.EnabledBlocklists.Remove(key);
+            RebuildHostsBlock(); // leave the file consistent
+            EventLog($"Blocklist enable failed (hosts blocked; {domains.Count} domains too large for WFP fallback): {key}");
+            return false;
+        }
+
+        var ids = BlockDomainsViaWfp(domains);
+        if (ids.Count == 0)
+        {
+            _data.EnabledBlocklists.Remove(key);
+            RebuildHostsBlock();
+            EventLog($"Blocklist enable failed (hosts blocked; WFP fallback produced no filters): {key}");
+            return false;
+        }
+
+        _data.BlocklistWfpFilters[key] = ids;       // enforced via WFP now
+        RebuildHostsBlock();                         // ensure this one isn't in the hosts file
+        SaveStore();
+        EventLog($"Blocklist enabled (WFP fallback, {ids.Count} filters): {key}");
+        return true;
+    }
+
+    /// <summary>
+    /// Downloads the latest community lists for every category, caches them, and
+    /// re-applies the hosts block. Returns a short per-category summary. Network +
+    /// file I/O, so call it off the UI thread.
+    /// </summary>
+    public async System.Threading.Tasks.Task<string> UpdateBlocklistsOnlineAsync()
+    {
+        var results = new List<string>();
+        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+        http.DefaultRequestHeaders.Add("User-Agent", "GunWall");
+
+        foreach (var cat in Models.BlocklistCatalog.All)
+        {
+            var domains = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var url in cat.SourceUrls)
+            {
+                try
+                {
+                    string text = await http.GetStringAsync(url);
+                    foreach (var d in ParseHostsDomains(text)) domains.Add(d);
+                }
+                catch { /* one source failed - keep others */ }
+            }
+
+            if (domains.Count > 0)
+            {
+                try { System.IO.File.WriteAllLines(System.IO.Path.Combine(ListsFolder, cat.Key + ".txt"), domains); }
+                catch { }
+                results.Add($"{cat.Name}: {domains.Count:n0}");
+            }
+            else
+            {
+                results.Add($"{cat.Name}: not updated");
+            }
+        }
+
+        RebuildHostsBlock();
+        return string.Join("   \u2022   ", results);
+    }
+
+    private static IEnumerable<string> ParseHostsDomains(string text)
+    {
+        foreach (var raw in text.Replace("\r", "").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line[0] == '#') continue;
+
+            string domain;
+            if (line.StartsWith("0.0.0.0 ", StringComparison.Ordinal) ||
+                line.StartsWith("127.0.0.1 ", StringComparison.Ordinal))
+            {
+                var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) continue;
+                domain = parts[1];
+            }
+            else if (!line.Contains(' ') && line.Contains('.'))
+            {
+                domain = line; // bare-domain list
+            }
+            else continue;
+
+            domain = domain.Trim().TrimEnd('.').ToLowerInvariant();
+            if (domain.Length == 0 || domain == "0.0.0.0" || domain == "localhost" || domain.Contains('/'))
+                continue;
+            yield return domain;
+        }
+    }
+
+    /// <summary>v0.24 used WFP filters for blocklists; remove those and move to the hosts model.</summary>
+    public void MigrateLegacyBlocklists()
+    {
+        if (_data.Blocklists.Count == 0) return;
+        foreach (var kv in _data.Blocklists)
+        {
+            try { _engine.RemoveFilters(kv.Value); } catch { }
+            if (!_data.EnabledBlocklists.Contains(kv.Key)) _data.EnabledBlocklists.Add(kv.Key);
+        }
+        _data.Blocklists.Clear();
+        SaveStore();
+        try { RebuildHostsBlock(); } catch { }
+    }
+
+    // ------------------------------------------------ filtering DNS
+    public string CurrentDnsProvider => string.IsNullOrEmpty(_data.DnsProvider) ? "auto" : _data.DnsProvider;
+
+    public int SetDnsProvider(string key)
+    {
+        var preset = DnsService.ByKey(key);
+        int n = DnsService.Apply(preset);
+        _data.DnsProvider = preset.Key;
+        SaveStore();
+        EventLog($"DNS set to {preset.Name} on {n} adapter(s)");
+        // In diagnostics too: Ads & trackers changed DNS and took the internet down,
+        // and the bundle held no trace of it - the change went to the activity log only.
+        DiagnosticLog.Log($"DNS provider set to {preset.Key} ("
+                        + (preset.Primary.Length > 0 ? $"{preset.Primary}, {preset.Secondary}" : "from the network")
+                        + $") on {n} adapter(s).");
+        return n;
+    }
+
+    // ------------------------------------------------ Windows Firewall import
+    /// <summary>
+    /// Imports BLOCK rules from Windows Defender Firewall as GunWall blocks
+    /// (allow rules are skipped — GunWall allows by default). Returns the count
+    /// of programs newly blocked.
+    /// </summary>
+    public int ImportWindowsFirewallRules()
+    {
+        int added = 0;
+        foreach (var r in WindowsFirewallService.GetAppRules())
+        {
+            if (!r.Block) continue;                       // only import blocks
+            if (string.IsNullOrEmpty(r.AppPath)) continue;
+            string path = Environment.ExpandEnvironmentVariables(r.AppPath);
+            if (!System.IO.File.Exists(path)) continue;
+            if (IsBlocked(path)) continue;                // already blocked here
+            try
+            {
+                BlockApp(path, System.IO.Path.GetFileName(path));
+                added++;
+            }
+            catch { /* skip a problematic rule, keep importing */ }
+        }
+        if (added > 0) { EventLog($"Imported {added} block rule(s) from Windows Firewall"); AutoBackupIfEnabled(); }
+        return added;
+    }
+
+    // ------------------------------------------------ critical-process guard
+    private static readonly HashSet<string> CriticalProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "system", "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
+        "services.exe", "lsass.exe", "svchost.exe", "fontdrvhost.exe",
+        "dwm.exe", "spoolsv.exe", "explorer.exe", "ntoskrnl.exe",
+        "lsm.exe", "conhost.exe", "RuntimeBroker.exe", "sihost.exe"
+    };
+
+    /// <summary>True if blocking this executable could destabilise Windows.</summary>
+    public static bool IsCriticalProcess(string exePath)
+    {
+        if (string.IsNullOrEmpty(exePath)) return false;
+        string name = System.IO.Path.GetFileName(exePath);
+        return CriticalProcesses.Contains(name);
+    }
+
+    /// <summary>Critical check by process name (with or without the .exe suffix).</summary>
+    public static bool IsCriticalProcessName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        return CriticalProcesses.Contains(name) || CriticalProcesses.Contains(name + ".exe");
+    }
+
+    private string BackupsFolder
+    {
+        get
+        {
+            string dir = System.IO.Path.Combine(_store.ProfileFolder, "backups");
+            try { System.IO.Directory.CreateDirectory(dir); } catch { }
+            return dir;
+        }
+    }
+
+    /// <summary>Writes a timestamped backup of the current profile and prunes old ones.</summary>
+    public string CreateBackup()
+    {
+        string name = "backup_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string path = System.IO.Path.Combine(BackupsFolder, name + ".json");
+        _store.Export(_data, path);
+        PruneBackups();
+        return name;
+    }
+
+    /// <summary>Called after meaningful changes when auto-backup is on (best-effort).</summary>
+    public void AutoBackupIfEnabled()
+    {
+        if (!_data.AutoBackup) return;
+        try { CreateBackup(); } catch { }
+    }
+
+    /// <summary>Backups newest-first, as (name, timestamp) pairs.</summary>
+    public List<(string Name, DateTime When)> ListBackups()
+    {
+        var list = new List<(string, DateTime)>();
+        try
+        {
+            foreach (var f in System.IO.Directory.GetFiles(BackupsFolder, "backup_*.json"))
+            {
+                var fi = new System.IO.FileInfo(f);
+                list.Add((System.IO.Path.GetFileNameWithoutExtension(f), fi.LastWriteTime));
+            }
+        }
+        catch { }
+        list.Sort((a, b) => b.Item2.CompareTo(a.Item2)); // newest first
+        return list;
+    }
+
+    /// <summary>Restores a backup as the active configuration.</summary>
+    public int RestoreBackup(string name)
+    {
+        string path = System.IO.Path.Combine(BackupsFolder, SanitizeName(name) + ".json");
+        if (!System.IO.File.Exists(path))
+            throw new System.IO.FileNotFoundException("That backup no longer exists.");
+        return ImportProfile(path);
+    }
+
+    private void PruneBackups()
+    {
+        try
+        {
+            var files = new List<System.IO.FileInfo>();
+            foreach (var f in System.IO.Directory.GetFiles(BackupsFolder, "backup_*.json"))
+                files.Add(new System.IO.FileInfo(f));
+            files.Sort((a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
+            for (int i = MaxBackups; i < files.Count; i++)
+                try { files[i].Delete(); } catch { }
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Replaces current rules/settings with those from a file. Note: this loads
+    /// the records; the live WFP filters are reconciled on next strict-mode
+    /// toggle. Returns the number of rules imported.
+    /// </summary>
+    public int ImportProfile(string filePath)
+    {
+        var imported = _store.Import(filePath);
+        _data = imported;
+        _knownSet = null;
+        SaveStore();
+        LoadVirusTotalKey("import");  // the imported key replaces the one in memory
+        return _data.Rules.Count;
+    }
+
+    public void Dispose()
+    {
+        _engine.Dispose();
+    }
+}

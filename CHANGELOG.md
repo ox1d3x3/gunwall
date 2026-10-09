@@ -15,6 +15,55 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.193] — 2026-10-09
+
+### Diagnostics — approval popups are recorded
+Each approval popup is now written to the diagnostics log when it is queued
+(with where the application was seen: the connection table or kernel events) and
+when it is shown. The diagnostics summary states which detectors are running and
+how many popups were queued, shown and still waiting. A report that an application
+never got a popup can now be answered from the diagnostics file.
+
+## [0.99.192] — 2026-10-09
+
+### Fixed — Overview counts followed the Applications search
+**Apps seen**, **Blocked** and **Allowed** on the Overview were counted from the
+Applications list as it was displayed. A search there (for example "edge") made
+the Overview report 3 apps seen until the search was cleared, and **Show all
+running apps** added programs that had never used the network. The Overview now
+counts on its own: every application with a live connection, plus every
+application GunWall holds a rule for. The numbers also stay up to date while the
+Overview is open.
+
+## [0.99.191] — 2026-10-09
+
+### Changed — approval decisions moved into the engine
+Deciding which applications to ask about, when monitoring mode stays quiet, what
+the Packet Log says about each connection, and when a country or ASN rule blocks
+one now happens in the engine library rather than in the window. The window only
+shows the result. Nothing changes in use. These decisions now have their own
+automated tests, and a background service will be able to make them later
+without the window open.
+
+## [0.99.190] — 2026-10-09
+
+### Changed — the engine is now its own library
+The firewall engine, rule store, DNS, metering, GeoIP and network scanning moved
+into a separate library, `GunWall.Core.dll`, with no user-interface code in it.
+Nothing changes in use. This is the first step toward running protection as a
+background Windows service, so that it no longer depends on the window and no
+longer needs an administrator prompt to open GunWall.
+
+### Fixed — uninstall left the startup task behind
+When **Run at startup** had been turned on in Settings, uninstalling left its
+scheduled task in place, pointing at a GunWall.exe that no longer existed. Uninstall
+now removes it.
+
+### Documentation
+- Code comments no longer describe GunWall's filters as surviving a reboot. They
+  survive closing or a crash, not a restart; only GunWall's filter group does.
+- ARCHITECTURE and CONTRIBUTING describe the two projects.
+
 ## [0.99.189] — 2026-10-08
 
 ### Fixed — the protection switch after "Remove all GunWall filtering"

@@ -418,7 +418,9 @@ kernel-level domain blocks, so give it a moment to re-establish.
 ## 10. Watching traffic
 
 **Overview** — protection state, uptime, live throughput, a 60-second graph, top
-talkers, and recent allow/block decisions.
+talkers, and recent allow/block decisions. **Apps seen** counts every application
+with a live connection plus every application you have a rule for; it, **Blocked**
+and **Allowed** are not affected by the search or options on the Applications page.
 
 **Activity** — a running history of what GunWall did and why.
 

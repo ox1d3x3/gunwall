@@ -22,7 +22,7 @@ public partial class AppPropertiesWindow : Window
         _app = app;
         _firewall = firewall;
 
-        IconImage.Source = app.Icon;
+        IconImage.Source = app.Icon as System.Windows.Media.ImageSource;
         NameText.Text = app.Name;
         PathText.Text = string.IsNullOrEmpty(app.ExecutablePath) ? "\u2014" : app.ExecutablePath;
         HashText.Text = string.IsNullOrWhiteSpace(app.Hash) ? "\u2014" : app.Hash;

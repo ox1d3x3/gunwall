@@ -312,10 +312,17 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Dir: String;
+  TaskResult: Integer;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
     RegDeleteValue(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'GunWall');
+
+    { Run at startup can also be a scheduled task, created by the app itself
+      (Settings, Run at startup). Uninstall used to leave it behind, pointing at
+      a deleted GunWall.exe. Result ignored: no task is the normal case. }
+    Exec(ExpandConstant('{sys}\schtasks.exe'), '/Delete /TN "GunWallAutoStart" /F', '',
+      SW_HIDE, ewWaitUntilTerminated, TaskResult);
 
     { Asked, never assumed. The profile holds every allow and block decision the
       user has made; deleting it silently would be indefensible, and keeping it

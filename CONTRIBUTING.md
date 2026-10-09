@@ -58,10 +58,14 @@ dotnet publish src/GunWall/GunWall.csproj -c Release -r win-x64 ^
 dotnet build GunWall.sln -c Release
 ```
 
-The executable lands in `src/GunWall/bin/x64/Release/net8.0-windows/GunWall.exe`.
+The executable lands in `src/GunWall/bin/x64/Release/net8.0-windows/GunWall.exe`,
+with `GunWall.Core.dll` (the engine library) beside it.
+
+The solution has two projects: `src/GunWall.Core`, the engine (firewall, rules,
+DNS, metering — no WPF or WinForms allowed), and `src/GunWall`, the window.
 
 Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before changing anything in
-`Services/Wfp` — it explains the sublayer model, filter weights, and why removal
+`src/GunWall.Core/Services/Wfp` — it explains the sublayer model, filter weights, and why removal
 is done the way it is.
 
 ## Non-negotiables
@@ -98,7 +102,7 @@ If in doubt, the test is simple: **did a file that gets compiled change?**
 
 Four files carry the version and must agree:
 `src/GunWall/GunWall.csproj`, `src/GunWall/app.manifest`, the About string in
-`MainWindow.xaml.cs`, and `CurrentVersion` in `Services/UpdateService.cs`.
+`MainWindow.xaml.cs`, and `CurrentVersion` in `src/GunWall.Core/Services/UpdateService.cs`.
 The release checks fail if they disagree.
 
 Nothing else should reference a version. The README badge states the stage, not

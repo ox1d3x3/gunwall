@@ -5,6 +5,8 @@ VisualStudioVersion = 17.9.34728.123
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GunWall", "src\GunWall\GunWall.csproj", "{B1A2C3D4-E5F6-47A8-9B0C-1D2E3F4A5B6C}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GunWall.Core", "src\GunWall.Core\GunWall.Core.csproj", "{C7D8E9F0-1A2B-4C3D-8E4F-5A6B7C8D9E0F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -15,6 +17,10 @@ Global
 		{B1A2C3D4-E5F6-47A8-9B0C-1D2E3F4A5B6C}.Debug|x64.Build.0 = Debug|x64
 		{B1A2C3D4-E5F6-47A8-9B0C-1D2E3F4A5B6C}.Release|x64.ActiveCfg = Release|x64
 		{B1A2C3D4-E5F6-47A8-9B0C-1D2E3F4A5B6C}.Release|x64.Build.0 = Release|x64
+		{C7D8E9F0-1A2B-4C3D-8E4F-5A6B7C8D9E0F}.Debug|x64.ActiveCfg = Debug|x64
+		{C7D8E9F0-1A2B-4C3D-8E4F-5A6B7C8D9E0F}.Debug|x64.Build.0 = Debug|x64
+		{C7D8E9F0-1A2B-4C3D-8E4F-5A6B7C8D9E0F}.Release|x64.ActiveCfg = Release|x64
+		{C7D8E9F0-1A2B-4C3D-8E4F-5A6B7C8D9E0F}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

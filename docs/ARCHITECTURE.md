@@ -71,9 +71,26 @@ them. Enforcement does not depend on the app staying open — the filters
 stay in the kernel until removed or until the next reboot (see §6). Splitting into a privileged
 service is tracked for 1.0.
 
+The code is already divided for that split. Everything below the window — the
+firewall engine, rule store, DNS, metering, GeoIP, scanning — is a separate
+library, **GunWall.Core**, with no WPF or WinForms in it. The window project
+references it. A background service can host the same library later without the
+engine being rewritten.
+
 ---
 
 ## 3. Projects and folders
+
+Two projects in `GunWall.sln`:
+
+| Project | What it is |
+|---------|------------|
+| `src/GunWall.Core` | The engine library: `Services/` and `Models/`. No WPF, no WinForms; the release checks enforce it. |
+| `src/GunWall` | The window: XAML, controls, themes, tray, dialogs. References GunWall.Core. Builds `GunWall.exe`. |
+
+Paths below are relative to the project that holds them: the first four rows and
+the icon cache (`Services/IconService.cs`) are in `src/GunWall`; the rest are in
+`src/GunWall.Core`.
 
 | Path | Responsibility |
 |------|----------------|
@@ -85,6 +102,7 @@ service is tracked for 1.0.
 | `Services/Wfp/WfpEngine.cs` | Safe managed facade over WFP. Filter construction, weights, removal, self-test. |
 | `Services/Wfp/NetEventMonitor.cs` | Kernel net-event subscription for event-driven detection. |
 | `Services/FirewallManager.cs` | The one class the UI talks to for policy. Owns the engine and the store. |
+| `Services/ConnectionDetector.cs` | The approval pipeline: which apps to prompt for, monitoring-mode seeding, Packet Log verdicts (including drops by other software), country/ASN reactions. The window only displays its results. |
 | `Services/AppRuleEngine.cs` | Pure, testable first-match-wins evaluator plus the IP scope classifier. |
 | `Services/DnsResolver.cs`, `DnsMessage.cs` | Resolver, DoH transport, blocklists, CNAME-chain inspection, wire-format parsing. |
 | `Services/EtwByteMeterService.cs` | Real-time ETW session against the kernel network provider. |

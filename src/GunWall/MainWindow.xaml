@@ -5,7 +5,7 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:gw="clr-namespace:GunWall.Controls"
     xmlns:conv="clr-namespace:GunWall.Converters"
-    xmlns:svc="clr-namespace:GunWall.Services"
+    xmlns:svc="clr-namespace:GunWall.Services;assembly=GunWall.Core"
     Title="GunWall"
     Height="760" Width="1180"
     MinHeight="640" MinWidth="1000"

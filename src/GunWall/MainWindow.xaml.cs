@@ -131,12 +131,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Connection alerts (a connection popup)
     private readonly Queue<AlertWindow.AlertInfo> _alertQueue = new();
     private bool _alertOpen;
-    private bool _knownSeeded;
-    // Apps we've already raised a Zero-Trust prompt for this session (prevents
-    // re-prompting every 300ms while the user hasn't decided). Cleared when
-    // strict mode is toggled so a fresh takeover re-prompts everything.
-    private readonly HashSet<string> _promptedThisSession =
-        new(StringComparer.OrdinalIgnoreCase);
+    // Which apps to prompt for, once per session, and the seeding of monitoring
+    // mode: GunWall.Core's ConnectionDetector (0.99.191). Reset when strict mode
+    // is toggled so a fresh takeover re-prompts everything.
+    private ConnectionDetector? _detectorInstance;
+    private ConnectionDetector _detector =>
+        _detectorInstance ??= new ConnectionDetector(_firewall, Environment.ProcessPath);
 
     // Session data totals
     private long _sessionStartRx = -1, _sessionStartTx = -1;
@@ -451,7 +451,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.189 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.193 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -524,8 +524,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     var pr = _processes.SnapshotProcesses();
                     return (c, pr);
                 }, ct);
-                DetectNewApps(conns, procs);
-                ApplyEntityBlocksForConns(conns, procs); // §1 reactive geo-blocking (polling path)
+                // Approval prompts and §1 reactive geo-blocking (polling path):
+                // decided in GunWall.Core's ConnectionDetector, shown here.
+                if (_engineReady) ShowDetection(_detector.OnPoll(conns, procs, DateTime.Now), "connection table");
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex)
@@ -541,30 +542,47 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
-    /// <summary>§1 polling-path enforcement: apply entity blocks to every observed
-    /// connection. Runs alongside the event-driven path; the firewall manager dedups
-    /// per app+remote, so double-processing is harmless and does no extra WFP work.</summary>
-    private void ApplyEntityBlocksForConns(List<ConnectionInfo> conns,
-                                           Dictionary<int, (string Name, string Path)> procs)
+    /// <summary>Displays what one detection pass decided: activity lines, the Packet
+    /// Log row, first-activity notices and approval prompts. The decisions
+    /// themselves are made in GunWall.Core (ConnectionDetector, 0.99.191).</summary>
+    // Prompt accounting (0.99.193). A report of "no popup for Telegram" could not be
+    // answered from the bundle: nothing recorded whether a prompt was ever queued,
+    // shown, or held. Each app is queued at most once per session, so one line each.
+    private int _promptsQueued, _promptsShown;
+
+    private void ShowDetection(DetectionResult r, string source)
     {
-        if (!_engineReady) return;
-        foreach (var c in conns)
+        foreach (var ev in r.Activity)
         {
-            if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
-            if (c.RemoteAddress is "127.0.0.1" or "::1" or "0.0.0.0" or "::") continue;
-            if (!procs.TryGetValue(c.ProcessId, out var p) || string.IsNullOrEmpty(p.Path)) continue;
-            if (string.Equals(p.Path, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)) continue;
-            string? reason = _firewall.ApplyEntityBlocks(p.Path, c.RemoteAddress);
-            if (reason != null)
-            {
-                LogActivity(new NetActivityEvent
-                {
-                    ProcessName = System.IO.Path.GetFileNameWithoutExtension(p.Path),
-                    Detail = $"blocked {c.RemoteAddress} ({reason})"
-                });
-                while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
-            }
+            LogActivity(ev);
+            while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
         }
+        if (r.Packet is { } p)
+        {
+            LogPacket(new PacketLogEntry
+            {
+                AppName = p.AppName,
+                ExePath = p.ExePath,
+                Protocol = p.Protocol,
+                Direction = p.Direction,
+                RemoteEndpoint = p.RemoteEndpoint,
+                Blocked = p.Blocked,
+                Reason = p.Reason
+            });
+            while (_packets.Count > MaxPackets) _packets.RemoveAt(_packets.Count - 1);
+        }
+        foreach (var path in r.FirstSeen)
+            Notify("info",
+                   $"First network activity: {System.IO.Path.GetFileNameWithoutExtension(path)}",
+                   $"{path} made its first network connection on this system.", "rules");
+        foreach (var q in r.Prompts)
+        {
+            _alertQueue.Enqueue(new AlertWindow.AlertInfo(
+                q.ProcessName, q.ExePath, q.RemoteAddress, q.RemotePort, q.Protocol, q.Time));
+            _promptsQueued++;
+            Services.DiagnosticLog.Log($"Prompt queued: {q.ProcessName} (seen in the {source}, {q.Protocol}).");
+        }
+        if (r.ShowQueued) ShowNextAlert();
     }
 
     private async Task SampleLoopAsync(CancellationToken ct)
@@ -2974,174 +2992,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Dispatcher.BeginInvoke(() =>
         {
             if (!_engineReady || string.IsNullOrEmpty(e.AppPath)) return;
-            if (string.Equals(e.AppPath, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            // Log into the activity feed (every event, drop or allow).
-            string verb = e.Dropped ? "blocked" : "connected to";
-            string remote = string.IsNullOrEmpty(e.RemoteAddress)
-                ? "" : $" {e.RemoteAddress}:{e.RemotePort}";
-            LogActivity(new NetActivityEvent
-            {
-                ProcessName = System.IO.Path.GetFileNameWithoutExtension(e.AppPath),
-                Detail = $"{verb}{remote} ({e.Protocol})"
-            });
-            while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
-
-            // Packets Log: verdict + reason from GunWall's own rule state (§8) —
-            // the same precedence the engine enforces, so they always agree.
-            // This also fixes lockdown events previously showing as allowed.
-            string appName = System.IO.Path.GetFileNameWithoutExtension(e.AppPath);
-            string reason = _firewall.ExplainVerdict(e.AppPath, e.RemoteAddress ?? "",
-                e.RemotePort, e.Protocol, outbound: true, out bool blocked);
-
-            // Where GunWall's opinion and the kernel's record disagree, the
-            // DISAGREEMENT is the useful fact - and until 0.99.102 it could not
-            // even be observed, because the kernel's verdict was discarded and the
-            // log showed only what GunWall would have decided.
-            //
-            // The kernel dropped it and GunWall would not have: something else on
-            // this machine is filtering. Windows Firewall, an antivirus, a VPN
-            // client. Saying "Allowed" there is not merely unhelpful, it points
-            // the reader at the wrong program - which is what three separate
-            // investigations here lost days to.
-            if (e.Dropped && !blocked)
-            {
-                blocked = true;
-                reason = "Blocked by something else - not GunWall";
-            }
-            else if (!e.Dropped && blocked)
-            {
-                // GunWall holds a rule that should have stopped this and the
-                // kernel let it through. Rare, and worth knowing about: it means a
-                // filter is missing or outranked.
-                reason += " (kernel allowed it - filter may be missing)";
-            }
-            LogPacket(new PacketLogEntry
-            {
-                AppName = appName,
-                ExePath = e.AppPath,
-                Protocol = e.Protocol,
-                Direction = "Out",
-                RemoteEndpoint = string.IsNullOrEmpty(e.RemoteAddress)
-                    ? "\u2014" : $"{e.RemoteAddress}:{e.RemotePort}",
-                Blocked = blocked,
-                Reason = reason
-            });
-            while (_packets.Count > MaxPackets) _packets.RemoveAt(_packets.Count - 1);
-
-            // Optional: persist this entry to the CSV log file.
-            _firewall.LogPacketToFile(DateTime.Now, blocked, appName, e.Protocol, "Out",
-                string.IsNullOrEmpty(e.RemoteAddress) ? "" : $"{e.RemoteAddress}:{e.RemotePort}",
-                e.AppPath);
-
-            // §1 entity rules: reactively block this remote if a country / continent /
-            // ASN rule matches it. Independent of monitoring/strict mode (an explicit
-            // rule always applies). Post-hoc by design - blocks sustained traffic.
-            string? entReason = _firewall.ApplyEntityBlocks(e.AppPath, e.RemoteAddress ?? "");
-            if (entReason != null)
-            {
-                LogActivity(new NetActivityEvent
-                {
-                    ProcessName = appName,
-                    Detail = $"blocked {e.RemoteAddress} ({entReason})"
-                });
-                while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
-            }
-
-            // Approval pipeline: prompt once for any undecided app.
-            string path = e.AppPath;
-            if (_firewall.IsBlocked(path) || _firewall.IsAllowed(path) || _firewall.IsSilent(path))
-                return;
-            if (!_firewall.AlertsEnabled) return;
-            // Only interrupt with approval popups once the firewall is enabled.
-            // In monitoring mode GunWall observes silently - no prompts - so the
-            // user can open and explore the app without being interrupted.
-            if (!_firewall.StrictMode) return;
-            if (!_promptedThisSession.Add(path)) return;
-
-            string name = System.IO.Path.GetFileNameWithoutExtension(path);
-            _alertQueue.Enqueue(new AlertWindow.AlertInfo(
-                name, path, e.RemoteAddress ?? "", e.RemotePort, e.Protocol, DateTime.Now));
-            ShowNextAlert();
+            // Activity, Packet Log verdict (with the kernel-disagreement wording),
+            // CSV logging, §1 entity blocks and the approval decision all live in
+            // ConnectionDetector now; this only shows the result.
+            ShowDetection(_detector.OnKernelEvent(
+                e.AppPath, e.RemoteAddress, e.RemotePort, e.Protocol, e.Dropped, DateTime.Now), "kernel events");
         });
-    }
-
-    private void DetectNewApps(List<ConnectionInfo> conns,
-                              Dictionary<int, (string Name, string Path)> procs)
-    {
-        // Polling runs ALONGSIDE kernel events (when active) as a redundant
-        // detector. Both paths share _promptedThisSession, so an app already
-        // prompted by an event won't be prompted again by the poller. This
-        // gives the union of both: events catch blocked/ICMP/short-lived
-        // connections; polling catches anything events might miss.
-        if (!_engineReady) return;
-
-        bool strict = _firewall.StrictMode;
-
-        // Seeding only applies to monitoring mode (allow-by-default), where we
-        // don't want to notify for everything already running. In strict mode
-        // (Zero Trust) we WANT to prompt for every undecided app, so we skip
-        // seeding entirely.
-        if (!strict && !_knownSeeded)
-        {
-            _knownSeeded = true;
-            var seed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var c in conns)
-            {
-                if (c.RemoteAddress is "127.0.0.1" or "::1") continue;
-                if (procs.TryGetValue(c.ProcessId, out var p) && !string.IsNullOrEmpty(p.Path))
-                    seed.Add(p.Path);
-            }
-            _firewall.SeedKnownApps(seed);
-            return;
-        }
-
-        if (!_firewall.AlertsEnabled) return;
-
-        foreach (var c in conns)
-        {
-            // Skip pure loopback (always permitted).
-            if (c.RemoteAddress is "127.0.0.1" or "::1") continue;
-            if (!procs.TryGetValue(c.ProcessId, out var proc)) continue;
-            if (string.IsNullOrEmpty(proc.Path)) continue;
-            if (string.Equals(proc.Path, Environment.ProcessPath,
-                              StringComparison.OrdinalIgnoreCase)) continue;
-
-            // A decided app never prompts again (approval/denial persists).
-            if (_firewall.IsBlocked(proc.Path)) continue;
-            if (_firewall.IsAllowed(proc.Path)) continue;
-            if (_firewall.IsSilent(proc.Path)) continue; // allowed + muted
-
-            if (strict)
-            {
-                // Zero Trust: ANY socket-owning, undecided app must be approved.
-                // It is already blocked by the default-deny rule; prompt once
-                // per session (the session set prevents 300ms re-spam). If the
-                // user ignores it, it stays blocked.
-                if (!_promptedThisSession.Add(proc.Path)) continue;
-            }
-            else
-            {
-                // Monitoring: observe silently. Mark the app as seen so the Apps
-                // list and logs stay populated, but never prompt. Approval popups
-                // only start once the firewall is enabled (Zero-Trust), so the
-                // user can open and check the app without interruption.
-                if (!string.IsNullOrEmpty(c.RemoteAddress) && c.RemoteAddress is not ("0.0.0.0" or "::"))
-                    if (_firewall.MarkKnown(proc.Path))
-                        Notify("info",
-                               $"First network activity: {System.IO.Path.GetFileNameWithoutExtension(proc.Path)}",
-                               $"{proc.Path} made its first network connection on this system.", "rules");
-                continue;
-            }
-
-            string remote = c.RemoteAddress;
-            if (remote is "0.0.0.0" or "::") remote = ""; // unbound -> pending
-            _alertQueue.Enqueue(new AlertWindow.AlertInfo(
-                proc.Name, proc.Path, remote ?? "", c.RemotePort, c.Protocol, DateTime.Now));
-        }
-
-        ShowNextAlert();
     }
 
     private void ShowNextAlert()
@@ -3151,6 +3007,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // foreground. The alert stays queued and appears once fullscreen ends.
         if (_firewall.FullscreenSilent && Services.FullscreenDetector.IsFullscreenAppActive()) return;
         var info = _alertQueue.Dequeue();
+        _promptsShown++;
+        Services.DiagnosticLog.Log($"Prompt shown: {info.ProcessName}.");
         _alertOpen = true;
 
         // Optional notification sound.
@@ -3357,7 +3215,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         cur.ServicesSummary = next.ServicesSummary;
         cur.ServicesDetail = next.ServicesDetail;
         cur.Silent = next.Silent;
-        if (!SamePoints(cur.Spark, next.Spark)) cur.Spark = next.Spark;
+        if (!SamePoints(cur.Spark as PointCollection, next.Spark as PointCollection)) cur.Spark = next.Spark;
         cur.SparkTip = next.SparkTip;
     }
 
@@ -4117,6 +3975,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 UpdateHero();
                 RefreshDashboardLists();
+                RefreshDashboardStats();   // counts stay live while Overview is open
             }
         }
         catch (Exception ex) { SampleStepError("Dashboard", ex); }
@@ -5773,14 +5632,42 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (nav != null) nav.IsChecked = true; // fires Nav_Checked -> switches panel
     }
 
+    /// <summary>
+    /// Overview APPS SEEN / BLOCKED / ALLOWED (0.99.192): every application with a
+    /// live connection, plus every application GunWall holds a rule for.
+    ///
+    /// Counted here, from the connection snapshot and the rules, NOT from the
+    /// Applications list. They used to be the list's own row count, so typing
+    /// "edge" into the Applications search made the Overview report 3 apps seen
+    /// until the search was cleared, and "Show all running apps" inflated it with
+    /// programs that never touched the network. The same set the Applications tab
+    /// shows with no search and that option off.
+    /// </summary>
+    private (int Apps, int Blocked, int Allowed) CountOverviewApps()
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in _processes.GetNetworkedApps(_lastConns, _lastProcs))
+            if (!string.IsNullOrEmpty(a.ExecutablePath)) paths.Add(a.ExecutablePath);
+        foreach (var rule in _firewall.GetRules()) paths.Add(rule.ExecutablePath);
+        int blocked = 0, allowed = 0;
+        foreach (var p in paths)
+        {
+            if (_firewall.EffectiveStatus(p) == AppStatus.Blocked) blocked++;
+            else allowed++;
+        }
+        return (paths.Count, blocked, allowed);
+    }
+
     private void RefreshDashboardStats()
     {
         if (StatApps == null) return;
         try
         {
-            StatApps.Text = _apps.Count.ToString();
-            StatBlocked.Text = _apps.Count(a => a.Status == AppStatus.Blocked).ToString();
-            StatAllowed.Text = _apps.Count(a => a.Status == AppStatus.Allowed).ToString();
+            // Independent of the Applications search and view options.
+            var (apps, blocked, allowed) = CountOverviewApps();
+            StatApps.Text = apps.ToString();
+            StatBlocked.Text = blocked.ToString();
+            StatAllowed.Text = allowed.ToString();
             StatRules.Text = _firewall.CustomRules.Count.ToString();
             StatBlocklist.Text = _firewall.Blocklist.Count.ToString();
             int sys = 0;
@@ -5878,6 +5765,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             $"statsDestinations={_stats.TotalDestinations}, statsCountries={_stats.CountryCount}, " +
             $"geoApiOk={_firewall.GeoIp.ApiOkCount}, geoApiFail={_firewall.GeoIp.ApiFailCount}, " +
             $"dnsRunning={_dnsResolver.Running}, lastSampleError=[{_lastSampleError}]");
+        // Which detectors are running decides which apps can be prompted at all:
+        // without kernel events, an app whose first connection is blocked before it
+        // reaches the connection table is never seen.
+        Services.DiagnosticLog.Log(
+            $"Detection: kernel events={(_eventDriven ? "on" : _firewall.ExperimentalEvents ? "enabled but not running" : "off")}, " +
+            $"connection table=on, alerts={(_firewall.AlertsEnabled ? "on" : "off")}, " +
+            $"prompts queued={_promptsQueued}, shown={_promptsShown}, waiting={_alertQueue.Count}, " +
+            $"popup open={_alertOpen}");
         Services.DiagnosticLog.Log(
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
@@ -8432,7 +8327,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         EnableFirewallButton.IsChecked = _firewall.StrictMode;
         // A mode change resets per-session prompt tracking, so entering Zero
         // Trust re-prompts for every undecided app.
-        _promptedThisSession.Clear();
+        _detector.ResetPrompts();
         if (StrictModeRadio != null && AlertModeRadio != null)
         {
             _suppressModeEvent = true;
