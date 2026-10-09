@@ -102,6 +102,7 @@ the icon cache (`Services/IconService.cs`) are in `src/GunWall`; the rest are in
 | `Services/Wfp/WfpEngine.cs` | Safe managed facade over WFP. Filter construction, weights, removal, self-test. |
 | `Services/Wfp/NetEventMonitor.cs` | Kernel net-event subscription for event-driven detection. |
 | `Services/FirewallManager.cs` | The one class the UI talks to for policy. Owns the engine and the store. |
+| `Services/DetectionHost.cs` | Runs detection: the 300 ms connection-table poll, kernel event subscription and its crash guard (`EventCrashGuard`). Hands every decision to one engine thread - the window's today, a service's later. |
 | `Services/ConnectionDetector.cs` | The approval pipeline: which apps to prompt for, monitoring-mode seeding, Packet Log verdicts (including drops by other software), country/ASN reactions. The window only displays its results. |
 | `Services/AppRuleEngine.cs` | Pure, testable first-match-wins evaluator plus the IP scope classifier. |
 | `Services/DnsResolver.cs`, `DnsMessage.cs` | Resolver, DoH transport, blocklists, CNAME-chain inspection, wire-format parsing. |

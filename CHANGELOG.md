@@ -15,6 +15,14 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.198] — 2026-10-09
+
+### Changed — detection moved into the engine
+The connection watch (every 300 ms), kernel event detection and its crash guard
+now run in the engine library instead of the window. Decisions are still made on
+the window's thread, exactly as before, so nothing changes in use. This completes
+the groundwork for running protection as a background service.
+
 ## [0.99.197] — 2026-10-09
 
 ### Fixed — Remove all no longer resets your settings

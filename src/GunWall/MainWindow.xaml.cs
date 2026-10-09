@@ -107,15 +107,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     // Background sampling
     private CancellationTokenSource? _cts;
-    private NetEventMonitor? _netEvents;
-    private bool _eventDriven; // true when kernel events are active (no polling needed for detection)
-    private bool _eventsRecovered; // true if we auto-disabled events after a prior crash
     private volatile int _intervalMs = 1000;
 
     // Sampling-pipeline health (surfaced in diagnostics so a stalled/erroring loop
     // is visible instead of silently emptying the Connections/Traffic panels).
     private long _sampleTicks;
-    private int _sampleErrors, _detectErrors;
+    private int _sampleErrors;
     private string _lastSampleError = "";
     private readonly Dictionary<string, int> _stepErr = new();
     private string _appFilter = "";
@@ -134,9 +131,26 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Which apps to prompt for, once per session, and the seeding of monitoring
     // mode: GunWall.Core's ConnectionDetector (0.99.191). Reset when strict mode
     // is toggled so a fresh takeover re-prompts everything.
-    private ConnectionDetector? _detectorInstance;
-    private ConnectionDetector _detector =>
-        _detectorInstance ??= new ConnectionDetector(_firewall, Environment.ProcessPath, Environment.SystemDirectory);
+    // Detection - the 300 ms poll, kernel events and their crash guard - runs in
+    // GunWall.Core's DetectionHost (0.99.198), deciding on this window's UI thread
+    // exactly as before; the window only shows what it reports.
+    private DetectionHost? _detectionHost;
+    private DetectionHost _detection
+    {
+        get
+        {
+            if (_detectionHost == null)
+            {
+                _detectionHost = new DetectionHost(_firewall, _monitor, _processes,
+                    new System.Windows.Threading.DispatcherSynchronizationContext(Dispatcher),
+                    () => _engineReady, Environment.ProcessPath, Environment.SystemDirectory);
+                _detectionHost.Detected += ShowDetection;
+                _detectionHost.Polled += ExpireReviewWindow;
+            }
+            return _detectionHost;
+        }
+    }
+    private ConnectionDetector _detector => _detection.Detector;
 
     // Session data totals
     private long _sessionStartRx = -1, _sessionStartTx = -1;
@@ -453,23 +467,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.197 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.198 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
             // becomes the primary detector and we stop relying on polling for
             // new-app prompts. If it fails on this machine, we silently keep the
             // poll-based detector — no regression.
-            TryStartEventMonitor();
+            _detection.TryStartEventMonitor();
 
             if (PacketsSubtitle != null)
             {
-                PacketsSubtitle.Text = _eventDriven
+                PacketsSubtitle.Text = _detection.EventDriven
                     ? "Live connection events from the kernel - allowed and blocked, system services included."
                     : "Kernel events are off; this log fills from polling. Enable event detection in Settings for full coverage.";
             }
 
-            if (_eventsRecovered)
+            if (_detection.EventsRecovered)
             {
                 LogActivity(new NetActivityEvent
                 {
@@ -497,7 +511,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         _cts = new CancellationTokenSource();
         _ = SampleLoopAsync(_cts.Token);
-        _ = DetectionLoopAsync(_cts.Token);
+        _detection.StartPolling();
         _ = VtLoopAsync(_cts.Token);
     }
 
@@ -505,8 +519,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         _cts?.Cancel();
         _dbRefreshCts?.Cancel();
-        ClearEventMarker(); // clean exit — not a crash
-        _netEvents?.Dispose();
+        _detectionHost?.Dispose(); // clean exit - clears the crash-guard marker
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         _firewall.Dispose();
     }
@@ -518,40 +531,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// Task.Run. Only the cheap UI application happens on the dispatcher, so
     /// the window stays perfectly responsive regardless of system load.
     /// </summary>
-    private async Task DetectionLoopAsync(CancellationToken ct)
-    {
-        // 300ms is frequent enough to catch brief VPN/handshake connections
-        // without measurable CPU cost (the table reads are cheap).
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                var (conns, procs) = await Task.Run(() =>
-                {
-                    var c = _monitor.GetTcpConnections();
-                    var pr = _processes.SnapshotProcesses();
-                    return (c, pr);
-                }, ct);
-                // Approval prompts and §1 reactive geo-blocking (polling path):
-                // decided in GunWall.Core's ConnectionDetector, shown here.
-                if (_engineReady) ShowDetection(_detector.OnPoll(conns, procs, DateTime.Now), "connection table");
-                EventMarkerHeartbeat();
-                ExpireReviewWindow();
-            }
-            catch (OperationCanceledException) { return; }
-            catch (Exception ex)
-            {
-                _detectErrors++;
-                Debug.WriteLine($"detect error: {ex.Message}");
-                if (_detectErrors == 1 || _detectErrors % 20 == 0)
-                    Services.DiagnosticLog.Log($"Detection loop error #{_detectErrors}: {ex.GetType().Name}: {ex.Message}");
-            }
-
-            try { await Task.Delay(300, ct); }
-            catch (OperationCanceledException) { return; }
-        }
-    }
-
     /// <summary>Displays what one detection pass decided: activity lines, the Packet
     /// Log row, first-activity notices and approval prompts. The decisions
     /// themselves are made in GunWall.Core (ConnectionDetector, 0.99.191).</summary>
@@ -2611,7 +2590,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (HealthPipeline == null) return;
 
         HealthPipeline.Text =
-            $"Monitoring: {_sampleTicks} ticks, {_sampleErrors} sample / {_detectErrors} detection errors"
+            $"Monitoring: {_sampleTicks} ticks, {_sampleErrors} sample / {_detection.DetectErrors} detection errors"
             + (string.IsNullOrEmpty(_lastSampleError) ? "" : $"  \u2014  last: {_lastSampleError}");
 
         var geo = _firewall.GeoIp;
@@ -2955,107 +2934,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// the very first run, everything currently networked is seeded as known
     /// so the user isn't flooded. Runs on the fast detection loop.
     /// </summary>
-    // ================================================================ event-driven detection
-    private void TryStartEventMonitor()
-    {
-        if (!_engineReady || _firewall.EngineHandle == IntPtr.Zero) return;
-        if (!_firewall.ExperimentalEvents) { _eventDriven = false; return; }
-
-        // CRASH-LOOP GUARD: kernel event interop runs in a callback that, if its
-        // struct layout is wrong on this OS build, can hard-crash the process. A
-        // marker file exists while events run and is deleted on a clean exit.
-        // EventCrashGuard (Core) decides what a leftover marker means: since
-        // 0.99.194 only repeated SHORT unclean runs switch detection off. One
-        // leftover marker did, before - and every upgrade force-closes GunWall,
-        // so detection was silently off on ordinary machines.
-        int strikes = 0;
-        try
-        {
-            string marker = EventMarkerPath();
-            bool exists = File.Exists(marker);
-            string? text = exists ? File.ReadAllText(marker) : null;
-            var verdict = EventCrashGuard.Decide(text, exists);
-            if (exists)
-            {
-                File.Delete(marker);
-                Services.DiagnosticLog.Log($"Kernel event detection: {verdict.Reason}.");
-            }
-            if (verdict.Disable)
-            {
-                _firewall.SetExperimentalEvents(false);
-                _eventDriven = false;
-                _eventsRecovered = true; // surfaced in the UI as a notice
-                return;
-            }
-            strikes = verdict.Strikes;
-        }
-        catch { /* if the guard itself fails, fall through cautiously */ }
-
-        try
-        {
-            _eventsStartedUtc = DateTime.UtcNow;
-            _eventStrikes = strikes;
-            WriteEventMarker();
-            _netEvents = new NetEventMonitor(_firewall.EngineHandle);
-            _netEvents.ConnectionEvent += OnKernelConnectionEvent;
-            _eventDriven = _netEvents.Start();
-            if (!_eventDriven) ClearEventMarker(); // didn't start, no crash risk
-            System.Diagnostics.Debug.WriteLine($"event-driven detection: {_eventDriven}");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"event monitor unavailable: {ex.Message}");
-            _eventDriven = false;
-            ClearEventMarker();
-        }
-    }
-
-    private string EventMarkerPath() =>
-        System.IO.Path.Combine(_firewall.ProfileFolder, "events.lock");
-
-    private DateTime _eventsStartedUtc, _eventsHeartbeatUtc;
-    private int _eventStrikes;
-
-    /// <summary>Writes the marker with the start time, now as the heartbeat, and
-    /// the strikes carried from earlier short unclean runs.</summary>
-    private void WriteEventMarker()
-    {
-        _eventsHeartbeatUtc = DateTime.UtcNow;
-        File.WriteAllText(EventMarkerPath(), EventCrashGuard.Format(
-            new EventCrashGuard.Marker(_eventsStartedUtc, _eventsHeartbeatUtc, _eventStrikes)));
-    }
-
-    /// <summary>Refreshes the marker's heartbeat while events run, so a later
-    /// unclean exit can be told apart from a crash soon after starting.</summary>
-    private void EventMarkerHeartbeat()
-    {
-        if (!_eventDriven) return;
-        if (DateTime.UtcNow - _eventsHeartbeatUtc < EventCrashGuard.HeartbeatEvery) return;
-        try { WriteEventMarker(); }
-        catch { _eventsHeartbeatUtc = DateTime.UtcNow; /* retry next interval */ }
-    }
-
-    private void ClearEventMarker()
-    {
-        try { if (File.Exists(EventMarkerPath())) File.Delete(EventMarkerPath()); }
-        catch { /* best effort */ }
-    }
-
-    // Called on a kernel thread for every filtered connection. Marshal to the UI
-    // thread, then run the same approval logic the poller uses.
-    private void OnKernelConnectionEvent(NetEventMonitor.Event e)
-    {
-        Dispatcher.BeginInvoke(() =>
-        {
-            if (!_engineReady || string.IsNullOrEmpty(e.AppPath)) return;
-            // Activity, Packet Log verdict (with the kernel-disagreement wording),
-            // CSV logging, §1 entity blocks and the approval decision all live in
-            // ConnectionDetector now; this only shows the result.
-            ShowDetection(_detector.OnKernelEvent(
-                e.AppPath, e.RemoteAddress, e.RemotePort, e.Protocol, e.Dropped, DateTime.Now), "kernel events");
-        });
-    }
-
     /// <summary>Waiting popups from which they are grouped into one window.</summary>
     private const int GroupPromptsFrom = 3;
 
@@ -5886,7 +5764,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // sampling loop is actually feeding the Connections/Traffic panels.
         Services.DiagnosticLog.Log(
             $"UI pipeline: sampleTicks={_sampleTicks}, sampleErrors={_sampleErrors}, " +
-            $"detectErrors={_detectErrors}, lastConns={_lastConns.Count}, " +
+            $"detectErrors={_detection.DetectErrors}, lastConns={_lastConns.Count}, " +
             $"statsDestinations={_stats.TotalDestinations}, statsCountries={_stats.CountryCount}, " +
             $"geoApiOk={_firewall.GeoIp.ApiOkCount}, geoApiFail={_firewall.GeoIp.ApiFailCount}, " +
             $"dnsRunning={_dnsResolver.Running}, lastSampleError=[{_lastSampleError}]");
@@ -5894,7 +5772,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // without kernel events, an app whose first connection is blocked before it
         // reaches the connection table is never seen.
         Services.DiagnosticLog.Log(
-            $"Detection: kernel events={(_eventDriven ? "on" : _firewall.ExperimentalEvents ? "enabled but not running" : "off")}, " +
+            $"Detection: kernel events={(_detection.EventDriven ? "on" : _firewall.ExperimentalEvents ? "enabled but not running" : "off")}, " +
             $"connection table=on, alerts={(_firewall.AlertsEnabled ? "on" : "off")}, " +
             $"prompts queued={_promptsQueued}, shown={_promptsShown}, waiting={_alertQueue.Count}, " +
             $"popup open={_alertOpen}");
