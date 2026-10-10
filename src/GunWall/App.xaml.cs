@@ -99,6 +99,12 @@ public partial class App : Application
         }
         ListenForActivation();
 
+        // ------------------------------------------------ data folder access (0.99.200)
+        // Before anything opens a file there: 0.99.199's installer could leave the
+        // files unreadable even to administrators. Repaired here if so.
+        try { DataFolderAccess.EnsureUsable(ProfilePaths.DataFolder, DiagnosticLog.Log); }
+        catch (Exception ex) { DiagnosticLog.LogException("DataFolderAccess", ex); }
+
         // ------------------------------------------------ engine ownership (0.99.199)
         // Taken here, before the window exists, so waiting for the background
         // service to hand over never shows a frozen window. The window adopts the

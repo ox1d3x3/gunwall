@@ -324,8 +324,8 @@ begin
     own store. GunWall consumes and deletes this on the next launch. }
   if CurStep = ssInstall then
   begin
-    { ExpandConstant: without it this tested the literal text "{commonappdata}..."
-      and the marker was never written (found in review, 0.99.199). }
+    { ExpandConstant: without it this tested the literal constant text, not the
+      folder, and the marker was never written (found in review, 0.99.199). }
     if DirExists(ExpandConstant(ProfileDir)) then
     begin
       ForceDirectories(ExpandConstant(ProfileDir));
@@ -348,12 +348,18 @@ begin
       pending-prompts.json could put a program in front of an elevated Allow
       button (0.99.199). }
     ForceDirectories(ExpandConstant(ProfileDir));
-    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant(ProfileDir) + '" /inheritance:r '
-         + '/grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /T /C /Q',
-         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    { And ownership: a file planted before this ran would keep its owner, who
-      could change its permissions back. }
+    { Three steps, in this order. Owner first, so administrators can always
+      rewrite the permissions. Then the FOLDER alone: protected, with entries its
+      contents inherit. Then everything inside reset to inherit from it.
+      0.99.199 applied the folder grant with /T, i.e. to every file as well; on a
+      file those inheritance flags are refused, which left the files with no
+      permissions at all and the profile unreadable (2026-10-10). }
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant(ProfileDir) + '" /setowner *S-1-5-32-544 /T /C /Q',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant(ProfileDir) + '" /inheritance:r '
+         + '/grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /C /Q',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant(ProfileDir) + '\*" /reset /T /C /Q',
          '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
     if WizardIsTaskSelected('startup') then

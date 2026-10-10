@@ -106,7 +106,7 @@ public sealed class RuleStore
             {
                 MigrateFromLegacyLocation();
                 if (!File.Exists(_file)) return new StoreData();
-                string json = File.ReadAllText(_file);
+                string json = ReadProfileText();
                 return JsonSerializer.Deserialize<StoreData>(json) ?? new StoreData();
             }
             catch (Exception ex)
@@ -141,6 +141,21 @@ public sealed class RuleStore
 
                 return new StoreData();
             }
+        }
+    }
+
+    /// <summary>Reads the profile. Denied access is a permissions fault, not a
+    /// damaged file: the folder's permissions are repaired once and the read
+    /// retried, rather than starting with no rules (0.99.200 - 0.99.199's installer
+    /// left the profile unreadable).</summary>
+    private string ReadProfileText()
+    {
+        try { return File.ReadAllText(_file); }
+        catch (UnauthorizedAccessException) when (OperatingSystem.IsWindows())
+        {
+            DiagnosticLog.Log("Profile: access denied - repairing the data folder's permissions and retrying.");
+            DataFolderAccess.EnsureUsable(_dir, DiagnosticLog.Log);
+            return File.ReadAllText(_file);
         }
     }
 

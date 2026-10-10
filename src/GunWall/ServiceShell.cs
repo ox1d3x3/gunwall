@@ -60,6 +60,8 @@ internal static class ServiceShell
     /// <summary>Runs the service until the SCM stops it. Returns the process exit code.</summary>
     public static int Run()
     {
+        // First, or the log itself may not be writable (0.99.200).
+        try { DataFolderAccess.EnsureUsable(ProfilePaths.DataFolder, _ => { }); } catch { }
         DiagnosticLog.Init(ProfilePaths.DataFolder, "service.log");
         DiagnosticLog.Log($"Service: GunWall {UpdateService.CurrentVersion} background service starting.");
         _main = ServiceMain;

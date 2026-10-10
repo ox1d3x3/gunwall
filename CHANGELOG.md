@@ -15,6 +15,17 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.200] — 2026-10-10
+
+### Fixed — "Access to the path ...rules.json is denied" after installing 0.99.199
+0.99.199's installer locked down GunWall's data folder incorrectly: it applied the
+folder's permissions to every file inside as well, which Windows refuses for
+files, and the files were left with no permissions at all - unreadable even to an
+administrator. GunWall then started with no rules (your rules file itself was not
+changed). The installer now sets the folder's permissions on the folder only and
+lets everything inside inherit them, and GunWall repairs the folder's permissions
+itself at startup if it finds the profile unreadable. Do not use 0.99.199.
+
 ## [0.99.199] — 2026-10-09
 
 ### Added — protection while GunWall is closed (background service, optional)
