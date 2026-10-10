@@ -303,6 +303,12 @@ public sealed class StoreData
     /// <summary>Temporary blocks: exe path (lowercase) -> UTC expiry time.</summary>
     public Dictionary<string, DateTime> TempBlocks { get; set; } = new();
 
+    /// <summary>A pause of protection in progress: when it ends (UTC), and whether
+    /// protection was on before it (0.99.203). Saved so a restart or a closed
+    /// window cannot turn a five-minute pause into protection off for good.</summary>
+    public DateTime? SnoozeUntilUtc { get; set; }
+    public bool SnoozeRestoresProtection { get; set; }
+
     /// <summary>Write each packet-log entry to a CSV file in the profile folder.</summary>
     public bool PacketFileLogging { get; set; }
 

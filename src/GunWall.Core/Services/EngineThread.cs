@@ -46,7 +46,11 @@ public sealed class EngineThread : SynchronizationContext, IDisposable
         if (_queue.IsAddingCompleted) throw new ObjectDisposedException(nameof(EngineThread));
         Exception? error = null;
         using var done = new ManualResetEventSlim();
-        Post(s => { try { d(s); } catch (Exception ex) { error = ex; } finally { done.Set(); } }, state);
+        // Added directly, not through Post: Post drops work once the queue is
+        // closed, and a Send whose work was dropped would wait here for ever - the
+        // queue can close between the check above and this line.
+        try { _queue.Add((s => { try { d(s); } catch (Exception ex) { error = ex; } finally { done.Set(); } }, state)); }
+        catch (InvalidOperationException) { throw new ObjectDisposedException(nameof(EngineThread)); }
         done.Wait();
         if (error != null) throw new InvalidOperationException("Engine thread work failed: " + error.Message, error);
     }

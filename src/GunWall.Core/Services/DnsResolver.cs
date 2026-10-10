@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -154,6 +155,25 @@ public sealed class DnsResolver : IDisposable
     public bool Running { get; private set; }
     public int Port { get; private set; }
     public int BlockedDomainCount => _block.Count;
+
+    /// <summary>The downloaded preset list in the data folder. Read by the window
+    /// and by the background service, which enforces the same blocklist.</summary>
+    public const string PresetFileName = "dns-blocklist-preset.txt";
+
+    /// <summary>The blocklist as the window builds it: the preset file, then the
+    /// user's own lines (0.99.203: shared with the background service).</summary>
+    public static List<string> MergedBlocklist(IEnumerable<string> userLines)
+    {
+        var merged = new List<string>();
+        try
+        {
+            string preset = ProfilePaths.FileIn(PresetFileName);
+            if (File.Exists(preset)) merged.AddRange(File.ReadAllLines(preset));
+        }
+        catch { /* no preset: the user's lines only */ }
+        merged.AddRange(userLines);
+        return merged;
+    }
 
     public string Upstream => _upstream.Port == 53
         ? _upstream.Address.ToString()

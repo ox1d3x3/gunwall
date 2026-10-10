@@ -15,6 +15,46 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.203] — 2026-10-10
+
+### Changed — the background service now enforces everything the window does
+While GunWall's window was closed, the background service kept your rules and asked
+about new programs, but four protections only ran while the window was open:
+**direct-connection (P2P) blocking**, **blocked domains** from your DNS blocklist,
+**per-app access rules** (country, continent, ASN, domain), and the **tamper
+watch** that puts back filters something else removed. The service now runs all
+four, and watches system DNS lookups (when that setting is on) so they have names
+to work with. What it blocks or repairs is written to `service.log`.
+
+### Fixed — pausing protection, then closing GunWall or restarting, left it off for good
+**Snooze 15 min** (and the 5-minute pause for a Wi-Fi sign-in page) turned
+protection off and remembered only in memory to turn it back on. Closing GunWall,
+signing out or restarting during the pause meant nothing ever did: protection
+stayed off. The pause is now saved, and whichever runs next - the window or the
+background service - ends it on time, or puts protection back straight away if the
+pause ran out while nothing was running. Switching protection on or off yourself,
+**Turn off and exit**, an emergency unblock, **Remove all** or importing a profile
+cancels a pause instead.
+
+### Fixed — country, continent and ASN access rules never matched
+Per-app access rules were checked before each connection's location was looked up,
+so rules on a country, continent or ASN never applied. They are now checked after.
+
+### Fixed — timed blocks ran beside the engine instead of on it
+A temporary block ending, or a pause ending, ran on a background thread at the same
+time as everything else GunWall was doing to the firewall. They now run in turn
+with it. A timed block armed by the background service no longer fires after the
+service has handed over to the window.
+
+## [0.99.202] — 2026-10-10
+
+### Fixed — a popup flashed and vanished when GunWall started minimised
+With **Start minimised** on, a popup raised at startup - such as one for a program
+the background service saw while GunWall was closed - appeared for a moment and
+disappeared until the GunWall window was opened, because it was attached to the
+minimised window. Popups are now attached to the GunWall window only while it is on
+screen, and otherwise stand on their own in the corner as usual.
+
 ## [0.99.201] — 2026-10-10
 
 ### Fixed — the background service would not start; --unblock ended with a crash

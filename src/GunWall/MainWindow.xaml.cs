@@ -291,6 +291,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // file read and Initialize() still owns everything else.
         ClaimEngine();
         _firewall.EnsureSettingsLoaded();
+        // Timed work (temporary-block expiry, the end of a pause) runs here on the
+        // UI thread, where every other engine call runs - not on the thread pool.
+        _firewall.TimerContext = System.Threading.SynchronizationContext.Current;
         bool dark = _firewall.ThemeDark;
         if (ThemeToggle != null) ThemeToggle.IsChecked = !dark; // checked = light
         ApplyTheme(dark);
@@ -322,6 +325,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                         Dispatcher.Invoke(() => { try { RebuildAppsList(); } catch { } });
                 }
                 catch (Exception ex) { Services.DiagnosticLog.LogException("StartupReconcile", ex); }
+                // A pause saved by the last run (0.99.203): finished on time, or
+                // protection put back if it ended while nothing ran. After the
+                // restore, and on the UI thread like every other protection change.
+                Dispatcher.Invoke(() =>
+                {
+                    try
+                    {
+                        string snooze = _firewall.ReconcileSnooze();
+                        if (snooze.Length > 0) Services.DiagnosticLog.Log("Startup: " + snooze);
+                        UpdateSnoozeUi();
+                        SyncLockdownButton();
+                    }
+                    catch (Exception ex) { Services.DiagnosticLog.LogException("ReconcileSnooze", ex); }
+                });
                 // GeoIP after the restore (0.99.158): inside Initialize it took 6.2 s at
                 // cold boot, ahead of the restore. Country and ASN blocks lose nothing:
                 // a connection seen before the tables arrive matches no rule and is not
@@ -444,7 +461,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.201 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.203 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -768,7 +785,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void ApplySnapshot(Snapshot snap)
     {
         using var _perf = PerfMonitor.Measure("ApplySnapshot");
-        SyncReactiveMemory();
         // Set the shared snapshot FIRST so the Connections panel and the inspector
         // always have data even if a later UI step misbehaves.
         _lastConns = snap.Conns;
@@ -784,13 +800,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
             // Session totals: integrate rate over the real tick spacing so the
             // footer's byte counts stay honest even if the timer drifts.
-            EnforceP2pBlocks(snap.Conns, snap.Procs);
-            EnforceBlockedDomains(snap.Conns);
-            TamperWatchTick();
             // Uptime is a clock, so the dashboard is repainted on every snapshot -
             // by RefreshVisiblePanel below, with the other panels, and only while
             // the window is on screen.
-            EnforceAccessPolicies(snap.Conns, snap.Procs);
 
             var nowUtc = DateTime.UtcNow;
             double dt = _lastThroughputSample == default
@@ -804,6 +816,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex) { SampleStepError("dashboard-speeds", ex); }
 
         try { EnrichGeo(snap.Conns); } catch (Exception ex) { SampleStepError("EnrichGeo", ex); }
+        // Enforcement on live connections (EngineUpkeep, 0.99.203): P2P, blocked
+        // domains, the tamper watch and access rules. After EnrichGeo, so access
+        // rules on a country, continent or ASN see the connection's location -
+        // before 0.99.203 they ran first and saw none. Every snapshot, on screen
+        // or not; the background service runs the same pass while this is closed.
+        try
+        {
+            foreach (var n in Upkeep.Tick(snap.Conns, snap.Procs))
+                Notify(n.Level, n.Title, n.Body, n.Category);
+        }
+        catch (Exception ex) { SampleStepError("EngineUpkeep", ex); }
         try { RecordActivity(snap.Conns); } catch (Exception ex) { SampleStepError("RecordActivity", ex); }
         try
         {
@@ -1563,7 +1586,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Same reasoning: a 99,000-domain list the user chose to download should not
     // have to be fetched again after every update.
     private static string DnsPresetPath =>
-        Services.ProfilePaths.FileIn("dns-blocklist-preset.txt");
+        Services.ProfilePaths.FileIn(DnsResolver.PresetFileName);
     private static readonly System.Net.Http.HttpClient _dnsPresetHttp =
         new() { Timeout = TimeSpan.FromSeconds(90) };
 
@@ -1587,8 +1610,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             int cleared = _firewall.ClearDomainReactiveBlocks();
-            _domainBlocked.Clear();
-            _appDomainBlocked.Clear();
+            Upkeep.ResetDomainMemory();
             if (cleared > 0)
                 Services.DiagnosticLog.Log($"Blocklist changed: removed {cleared} blocked-domain filter(s).");
         }
@@ -1692,216 +1714,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ======================================================== data usage (§7b)
-    // ------------------------------ §2 completion: reactive P2P/direct blocking
-    private readonly HashSet<string> _p2pHandled = new(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Watches connections of P2P-flagged apps. A connection to a public IPv4
-    /// that was never answered by GunWall's resolver is a direct/P2P dial: it
-    /// gets a persistent per-IP block filter, the TCP session is torn down,
-    /// and the user is told once per (app, ip). Runs only while the resolver
-    /// is up - without it "never resolved" would accuse everything.
-    /// </summary>
-    private readonly HashSet<string> _domainBlocked = new(StringComparer.OrdinalIgnoreCase);
-    /// <summary>"exePath|address" pairs already filtered at the app layer.</summary>
-    private readonly HashSet<string> _appDomainBlocked = new(StringComparer.OrdinalIgnoreCase);
-
-    private int _tamperTick;
-    private const int TamperCheckEverySeconds = 30;
-
-    /// <summary>
-    /// Periodically confirms GunWall's filters are still installed, and puts
-    /// them back if not. Checking every tick would query the kernel once per
-    /// filter per second for no benefit; every half-minute catches tampering
-    /// while it still matters and costs nothing noticeable.
-    /// </summary>
-    private void TamperWatchTick()
-    {
-        using var _perf = PerfMonitor.Measure("TamperWatchTick");
-        try
-        {
-            if (!_firewall.TamperWatchEnabled) return;
-            if (++_tamperTick < TamperCheckEverySeconds) return;
-            _tamperTick = 0;
-
-            var report = _firewall.CheckIntegrity(repair: true);
-            if (report.Intact || report.Expected == 0) return;
-
-            Notify("warn", "Firewall filters were removed",
-                   $"{report.Missing} of {report.Expected} filters had been deleted from the kernel "
-                   + "by something outside GunWall. They have been re-applied. If this repeats, "
-                   + "another program is interfering with the firewall.", "security");
-        }
-        catch (Exception ex) { Services.DiagnosticLog.LogException("TamperWatchTick", ex); }
-    }
-
-    /// <summary>
-    /// Enforces the DNS blocklist against live connections.
-    ///
-    /// The blocklist used to work only for lookups GunWall itself answered,
-    /// which meant it did nothing at all once the machine stopped sending its
-    /// DNS here. The passive watcher knows which addresses each name resolved
-    /// to, so a connection to an address belonging to a blocked name is blocked
-    /// in the kernel instead - which also holds for applications that bring
-    /// their own resolver and never ask Windows at all.
-    /// </summary>
-    private void EnforceBlockedDomains(List<ConnectionInfo> conns)
-    {
-        using var _perf = PerfMonitor.Measure("EnforceBlockedDomains");
-        try
-        {
-            if (_dnsResolver.BlockedDomainCount == 0) return;
-            if (!Services.DnsObservations.HasData) return;
-
-            foreach (var c in conns)
-            {
-                string remote = c.RemoteAddress;
-                if (string.IsNullOrEmpty(remote) || remote is "0.0.0.0" or "::") continue;
-                // v4 AND v6. Skipping v6 here meant a site on a CDN with AAAA
-                // records was never even considered for blocking, while the log
-                // reported the v4 half as "enforced".
-                if (!System.Net.IPAddress.TryParse(remote, out var ip)) continue;
-                if (ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork &&
-                    ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6) continue;
-
-                // Only ever block addresses that are actually out on the
-                // Internet. A global filter on loopback, a LAN address or a
-                // link-local one would cut the machine off from itself or its
-                // own network - and a blocklist can name such an address, since
-                // every hosts file maps its entries to 127.0.0.1. Nothing
-                // downstream should have to rely on the list being sensible.
-                if (!Services.IpScopeClassifier.IsPublicUnicast(remote)) continue;
-
-                string domain = Services.DnsObservations.DomainForIp(remote);
-                if (domain.Length == 0) continue;
-                if (!_dnsResolver.IsBlocked(domain)) continue;
-
-                // BEFORE any filter is built, not after. Building one and then
-                // removing it would leave a window in which the exempt
-                // application is blocked, and would churn the kernel for a
-                // decision already made.
-                //
-                // Only the app-scoped path is exempted. The global fallback below
-                // fires precisely when the process cannot be identified, so it
-                // cannot know whether an exemption applies - extending it there
-                // would mean guessing, and guessing wrong means an exemption
-                // silently widening to every application on the machine.
-                if (!string.IsNullOrEmpty(c.ExePath) && _firewall.BypassesBlocklists(c.ExePath))
-                    continue;
-
-                // APP LAYER FIRST. A filter naming one executable has no collateral
-                // at all, so a shared CDN address is safe to block here - which is
-                // the whole difficulty the global path has to reason about and
-                // sometimes decline over.
-                //
-                // Keyed by app+address rather than address alone, so a second
-                // application reaching the same blocked name gets its own filter
-                // instead of being silently covered by the first one's.
-                if (!string.IsNullOrEmpty(c.ExePath))
-                {
-                    if (!_appDomainBlocked.Add($"{c.ExePath}|{remote}")) continue;
-                    if (_firewall.AddAppDomainBlock(c.ExePath, domain, remote))
-                    {
-                        try
-                        {
-                            if (c.Protocol == "TCP")
-                                Services.ConnectionService.CloseTcpConnection(
-                                    c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
-                        }
-                        catch { }
-                        Notify("warn", $"Blocked domain reached: {domain}",
-                               $"{c.ProcessName} was blocked from reaching {remote}, which belongs "
-                               + $"to {domain} on your DNS blocklist. Only {c.ProcessName} is "
-                               + "affected - nothing else on this PC is cut off.", "security");
-                        continue;
-                    }
-                    // Fall through to the global path only if the app-scoped filter
-                    // could not be built - a program that has already exited, for
-                    // instance.
-                }
-
-                if (!_domainBlocked.Add(remote)) continue;    // one filter per address
-
-                if (!_firewall.AddDomainReactiveBlock(domain, remote, out string declined))
-                {
-                    // Told, not just logged. Someone who blocks a domain and then
-                    // watches traffic to it continue is owed the reason - and the
-                    // reason is a deliberate decision GunWall made on their behalf,
-                    // which is exactly the kind of thing that must not be silent.
-                    if (declined.Length > 0)
-                        Notify("info", $"{domain} was not blocked by address",
-                               declined, "security");
-                }
-                else
-                {
-                    // Tear the session down too: a new filter stops the next
-                    // connection but not one already established.
-                    try
-                    {
-                        if (c.Protocol == "TCP")
-                            Services.ConnectionService.CloseTcpConnection(
-                                c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
-                    }
-                    catch { }
-                    Notify("warn", $"Blocked domain reached: {domain}",
-                           $"{remote} belongs to {domain}, which is on your DNS blocklist. "
-                           + "Connections to it are now blocked.", "security");
-                }
-            }
-        }
-        catch (Exception ex) { Services.DiagnosticLog.LogException("EnforceBlockedDomains", ex); }
-    }
-
-    private void EnforceP2pBlocks(List<ConnectionInfo> conns,
-                                  Dictionary<int, (string Name, string Path)> procs)
-    {
-        using var _perf = PerfMonitor.Measure("EnforceP2pBlocks");
-        try
-        {
-            // Observations now come from the passive watcher as well as the
-            // resolver, so this no longer depends on the resolver running - but
-            // with no observations at all, every address would look "direct".
-            if (!Services.DnsObservations.HasData) return;
-            var flagged = _firewall.P2pAppPaths;
-            if (flagged.Count == 0) return;
-
-            foreach (var c in conns)
-            {
-                if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
-                if (!procs.TryGetValue(c.ProcessId, out var pi) || pi.Path.Length == 0) continue;
-                if (!flagged.Contains(pi.Path.ToLowerInvariant())) continue;
-
-                // Public addresses of EITHER family. This accepted IPv4 only and
-                // carried its own hand-rolled private-range test, which meant an
-                // application under the "block direct connections" scope could
-                // reach any IPv6 address it liked, unresolved and unblocked - a
-                // security feature that silently did not apply to half the
-                // internet. Both halves of the chain below already handle v6:
-                // DomainForIp consults the v6 observation table, and
-                // AddAppRemoteIpBlock installs v6 filters.
-                //
-                // Delegated to IsPublicUnicast rather than extended in place. It
-                // already rejects loopback, link-local, unique-local, multicast,
-                // CGNAT and the unspecified address for both families, and it is
-                // the routine the rest of the enforcement path uses - a second
-                // private-range test here would be one more thing to keep in step.
-                if (!Services.IpScopeClassifier.IsPublicUnicast(c.RemoteAddress)) continue;
-                if (Services.DnsObservations.WasResolved(c.RemoteAddress)) continue;
-
-                string dedupe = pi.Path + "|" + c.RemoteAddress;
-                if (!_p2pHandled.Add(dedupe)) continue;
-
-                bool added = _firewall.AddP2pReactiveBlock(pi.Path, c.RemoteAddress);
-                if (c.Protocol == "TCP")
-                    Services.ConnectionService.CloseTcpConnection(
-                        c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
-                if (added)
-                    Notify("warn", $"Direct connection blocked: {pi.Name}",
-                        $"{c.RemoteAddress}:{c.RemotePort} was never resolved via DNS - blocked as P2P/direct.", "security");
-            }
-        }
-        catch (Exception ex) { SampleStepError("EnforceP2p", ex); }
-    }
+    // ------------------------------ enforcement on live connections
+    // P2P/direct blocks, blocked-domain blocks, the tamper watch and access rules
+    // live in GunWall.Core's EngineUpkeep (0.99.203), so the background service
+    // runs them too. Built on first use: it needs the resolver's blocklist.
+    private EngineUpkeep? _upkeep;
+    private EngineUpkeep Upkeep => _upkeep ??= new EngineUpkeep(_firewall,
+        () => _dnsResolver.BlockedDomainCount,
+        n => { try { return _dnsResolver.IsBlocked(n); } catch { return false; } });
 
     // ------------------------------ §1: per-app access policy editor dialog
     private void AccessRules_Click(object sender, RoutedEventArgs e)
@@ -2198,91 +2018,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             foreach (var r in work.Rules) target.Rules.Add(r);
             target.DefaultBlock = work.DefaultBlock;
             _firewall.SaveAccessPolicy(app.ExecutablePath);
-            _accessHandled.Clear(); // let enforcement re-evaluate against the new rules
+            Upkeep.ResetAccessMemory(); // let enforcement re-evaluate against the new rules
             RebuildAppsList();
             win.Close();
         };
         win.ShowDialog();
-    }
-
-    // ------------------------------ §1: per-app access policy enforcement
-    private readonly HashSet<string> _accessHandled = new(StringComparer.OrdinalIgnoreCase);
-
-    private int _reactiveGenerationSeen;
-
-    /// <summary>
-    /// Clears the reactive enforcers' "already handled" memory when the firewall
-    /// says reactive blocks were dropped or removed wholesale - after a repair
-    /// pruned ids the kernel had lost, or protection came back on. Runs on the UI
-    /// thread, which owns these sets.
-    ///
-    /// Without it a lost block stayed lost for the session: the memory said
-    /// "handled", and once the lost id was pruned nothing counted it missing
-    /// either (trap 2.43).
-    /// </summary>
-    private void SyncReactiveMemory()
-    {
-        int gen = _firewall.ReactiveGeneration;
-        if (gen == _reactiveGenerationSeen) return;
-        _reactiveGenerationSeen = gen;
-        _p2pHandled.Clear();
-        _domainBlocked.Clear();
-        _appDomainBlocked.Clear();
-        _accessHandled.Clear();
-        Services.DiagnosticLog.Log("Reactive blocks reset: P2P, access-policy and blocked-domain "
-                                 + "blocks re-form as their connections are next seen.");
-    }
-
-    /// <summary>
-    /// Evaluates each connection of policy-bearing apps against its ordered
-    /// access policy (first-match-wins). Connections that evaluate to Block get
-    /// a persistent per-IP reactive filter + a TCP RST, deduped per (app, ip).
-    /// Facts (scope/country/continent/asn) come from the already-enriched
-    /// connection; a wrong rule can only mis-block, never crash (roadmap risk).
-    /// </summary>
-    private void EnforceAccessPolicies(List<ConnectionInfo> conns,
-                                       Dictionary<int, (string Name, string Path)> procs)
-    {
-        using var _perf = PerfMonitor.Measure("EnforceAccessPolicies");
-        try
-        {
-            if (_firewall.ActiveAccessPolicies.Count == 0) return;
-
-            foreach (var c in conns)
-            {
-                if (string.IsNullOrEmpty(c.RemoteAddress)) continue;
-                if (!procs.TryGetValue(c.ProcessId, out var pi) || pi.Path.Length == 0) continue;
-
-                var policy = _firewall.GetAccessPolicy(pi.Path);
-                if (policy is not { IsActive: true }) continue;
-
-                string scope = IpScopeClassifier.Classify(c.RemoteAddress);
-                string continent = c.Country.Length > 0 ? Services.GeoData.Continent(c.Country) : "";
-                // The connection carries only an address. The shared observation
-                // memory knows the name it came from - whether GunWall's own
-                // resolver answered the lookup or the system observer merely
-                // watched it happen.
-                string domain = Services.DnsObservations.DomainForIp(c.RemoteAddress);
-                var facts = new ConnFacts(c.RemoteAddress, scope, c.Country, continent, c.Asn, domain);
-
-                if (AppRuleEngine.Evaluate(policy, facts) != RuleVerdict.Block) continue;
-
-                string dedupe = pi.Path + "|" + c.RemoteAddress;
-                if (!_accessHandled.Add(dedupe)) continue;
-
-                bool added = _firewall.AddAccessReactiveBlock(pi.Path, c.RemoteAddress);
-                if (c.Protocol == "TCP")
-                    Services.ConnectionService.CloseTcpConnection(
-                        c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
-                if (added)
-                    Notify("warn", $"Access rule blocked: {pi.Name}",
-                        (domain.Length > 0 ? domain + " \u2014 " : "") +
-                        $"{c.RemoteAddress}:{c.RemotePort}" +
-                        (c.Country.Length > 0 ? $" ({Services.GeoData.CountryName(c.Country)})" : "") +
-                        " matched a block rule.", "security");
-            }
-        }
-        catch (Exception ex) { SampleStepError("EnforceAccess", ex); }
     }
 
     // ------------------------------ Phase 5: traffic breakdown attribution
@@ -3149,7 +2889,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             timeoutSeconds: _firewall.PopupTimeoutSeconds,
             defaultAllow: _firewall.PopupDefaultAllow,
             geo: _firewall.GeoIp);
-        win.Owner = this;
+        // Owned only while this window is on screen. An owned window is hidden
+        // with its owner, so a popup raised while GunWall was starting minimised -
+        // the prompts the background service queued - flashed and vanished until
+        // the window was restored (reported 2026-10-10). Unowned, it is still
+        // topmost in the corner like every prompt.
+        if (IsVisible && WindowState != WindowState.Minimized) win.Owner = this;
         win.Closed += (_, _) => { _alertOpen = false; ShowNextAlert(); };
         win.Show();
     }
@@ -8240,6 +7985,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             _firewall.SetStrictMode(turningOn);
             SyncFirewallToggle();
+            UpdateSnoozeUi();   // switching protection ends a running pause
             RebuildAppsList();
             // After the state is applied and the indicator has been repainted,
             // so the pulse confirms what actually happened rather than what was
@@ -8635,6 +8381,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 try { _firewall.SetStrictMode(false); } catch (Exception ex) { ShowError(ex); }
             }
+            try { UpdateSnoozeUi(); } catch { }   // switching protection ends a running pause
         }
 
         SyncFirewallToggle();
@@ -9233,6 +8980,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 {
                     if (_firewall.LockdownEngaged) _firewall.SetLockdown(false);
                     if (_firewall.StrictMode) _firewall.SetStrictMode(false);
+                    // A pause running under lockdown is saved and would put
+                    // protection back at the next start - "off" means off.
+                    _firewall.CancelSnooze();
                 }
                 catch (Exception ex) { ShowError(ex); }
             }

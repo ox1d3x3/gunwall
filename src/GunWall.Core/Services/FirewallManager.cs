@@ -14,7 +14,7 @@ namespace GunWall.Services;
 /// Privacy note: this class only ever acts on explicit user instructions. It
 /// never blocks or allows anything on its own and never sends data anywhere.
 /// </summary>
-public sealed class FirewallManager : IDisposable, IDetectionPolicy
+public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPolicy
 {
     private readonly WfpEngine _engine = new();
 
@@ -1055,6 +1055,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
         ForgetFilterIds(_data, new HashSet<object>(ReferenceEqualityComparer.Instance));
         _data.StrictMode = false;
         _data.LockdownEngaged = false;
+        ForgetSnooze();   // a recovery is not undone by a pause ending later (0.99.203)
         _data.DnsRedirectActive = false;
         _data.DnsGamingSession = false;
         SaveStore();
@@ -1122,6 +1123,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
     {
         "StrictMode", "LockdownEngaged", "ReviewWindowPending",
         "DnsRedirectActive", "DnsGamingSession", "ActiveProfile",
+        "SnoozeRestoresProtection",
     };
 
     /// <summary>Collections that ClearStore keeps: preferences and the user's own
@@ -1202,6 +1204,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
         // Every rule is gone, so every running app will ask at once: the first
         // burst after this may be grouped (0.99.196).
         keep.ReviewWindowPending = true;
+        ForgetSnooze();   // the pause's timer must not turn protection on over an empty profile
         _data = keep;
         SaveStore();
         DiagnosticLog.Log($"Store cleared: rules and decisions removed; {kept} setting(s) kept, "
@@ -1859,7 +1862,17 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
     public void SetStrictMode(bool enabled)
     {
         using var _perf = PerfMonitor.Measure("SetStrictMode");
-        if (enabled == _data.StrictMode) return;
+        // Protection switched by anything but the pause itself ends the pause
+        // WITHOUT restoring (0.99.203): the pause is saved now, and "Turn off and
+        // exit" during one must not be undone by the next start.
+        bool forgot = false;
+        if (!_snoozeChanging && (IsSnoozed || _data.SnoozeUntilUtc != null))
+        {
+            ForgetSnooze();
+            forgot = true;
+            DiagnosticLog.Log("Pause cancelled: protection was switched while it ran.");
+        }
+        if (enabled == _data.StrictMode) { if (forgot) SaveStore(); return; }
 
         // Logged, because enforcement posture is the single most important
         // control variable in any test and it left no trace at all. A diagnostics
@@ -3770,7 +3783,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
         // Cap the timer to a sane max; if duration is negative it fires immediately.
         if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
 
-        var timer = new System.Threading.Timer(_ =>
+        var timer = new System.Threading.Timer(_ => OnEngineContext(() =>
         {
             try { UnblockApp(exePath); EventLog($"Temporary block expired: {displayName}"); }
             catch { }
@@ -3780,7 +3793,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
                 try { SaveStore(); } catch { }
                 if (_tempTimers.TryGetValue(key, out var t)) { t.Dispose(); _tempTimers.Remove(key); }
             }
-        }, null, duration, System.Threading.Timeout.InfiniteTimeSpan);
+        }), null, duration, System.Threading.Timeout.InfiniteTimeSpan);
         _tempTimers[key] = timer;
     }
 
@@ -3816,7 +3829,33 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
         SaveStore();
     }
 
+    // ------------------------------------------------ timers on the engine thread
+    /// <summary>
+    /// Where timed work runs - temporary-block expiry and the end of a pause
+    /// (0.99.203). The window sets its UI context, the background service its
+    /// engine thread. FirewallManager is not thread-safe, and these timers used to
+    /// fire on the thread pool, beside whatever the engine thread was doing.
+    /// Null runs the work on the timer's thread, as before.
+    /// </summary>
+    public SynchronizationContext? TimerContext { get; set; }
+
+    private volatile bool _disposed;
+
+    private void OnEngineContext(Action work)
+    {
+        if (_disposed) return;
+        void Run() { if (!_disposed) { try { work(); } catch (Exception ex) { DiagnosticLog.LogException("EngineTimer", ex); } } }
+        var ctx = TimerContext;
+        if (ctx == null) { Run(); return; }
+        try { ctx.Post(_ => Run(), null); }
+        catch { /* the context has shut down: so has this engine */ }
+    }
+
     // ------------------------------------------------ snooze (pause protection)
+    /// <summary>The longest pause GunWall offers is 15 minutes; a saved one is never
+    /// carried over for longer than this.</summary>
+    public static readonly TimeSpan MaxPause = TimeSpan.FromHours(1);
+    private bool _snoozeChanging;
     private System.Threading.Timer? _snoozeTimer;
     private bool _wasStrictBeforeSnooze;
     public bool IsSnoozed { get; private set; }
@@ -3824,37 +3863,117 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
 
     /// <summary>
     /// Temporarily lifts strict-mode blocking for the given duration, then
-    /// automatically restores it. In-memory only — closing GunWall ends the
-    /// snooze and protection comes back on next launch (the safe default).
-    /// Returns the time protection resumes.
+    /// automatically restores it. Returns the time protection resumes.
+    ///
+    /// SAVED SINCE 0.99.203. Until then the pause lived only in memory, while the
+    /// protection switch it turned off was saved - so closing GunWall, or a
+    /// restart, during a pause left protection OFF for good: nothing remembered to
+    /// turn it back on. The comment here said the opposite. Now the end time is
+    /// saved, and whoever runs the engine next (the window or the background
+    /// service) finishes the pause on time - see <see cref="ReconcileSnooze"/>.
     /// </summary>
     public DateTime SnoozeProtection(TimeSpan duration)
     {
         if (!IsSnoozed)
         {
-            _wasStrictBeforeSnooze = StrictMode;
-            if (StrictMode) SetStrictMode(false);
+            // A saved pause that ended but was not reconciled yet still means
+            // "protection was on before" - the start-up reconcile has not run.
+            _wasStrictBeforeSnooze = StrictMode || (_data.SnoozeUntilUtc != null && _data.SnoozeRestoresProtection);
+            _snoozeChanging = true;
+            try { if (StrictMode) SetStrictMode(false); }
+            finally { _snoozeChanging = false; }
         }
         IsSnoozed = true;
         SnoozeUntil = DateTime.Now.Add(duration);
+        _data.SnoozeUntilUtc = DateTime.UtcNow.Add(duration);
+        _data.SnoozeRestoresProtection = _wasStrictBeforeSnooze;
+        SaveStore();
         EventLog($"Protection snoozed for {duration.TotalMinutes:0} min");
-
-        _snoozeTimer?.Dispose();
-        _snoozeTimer = new System.Threading.Timer(_ => EndSnooze(), null, duration,
-            System.Threading.Timeout.InfiniteTimeSpan);
+        ArmSnoozeTimer(duration);
         return SnoozeUntil;
+    }
+
+    private void ArmSnoozeTimer(TimeSpan duration)
+    {
+        if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
+        _snoozeTimer?.Dispose();
+        _snoozeTimer = new System.Threading.Timer(_ => OnEngineContext(EndSnooze), null, duration,
+            System.Threading.Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>Ends a snooze early and restores the prior protection state.</summary>
     public void EndSnooze()
     {
         if (!IsSnoozed) return;
+        _snoozeChanging = true;
         try { if (_wasStrictBeforeSnooze && !StrictMode) SetStrictMode(true); }
         catch { }
+        finally { _snoozeChanging = false; }
         IsSnoozed = false;
         _snoozeTimer?.Dispose();
         _snoozeTimer = null;
+        _data.SnoozeUntilUtc = null;
+        _data.SnoozeRestoresProtection = false;
+        try { SaveStore(); } catch { }
         EventLog("Protection resumed");
+    }
+
+    /// <summary>Ends a pause WITHOUT putting protection back - "Turn off and exit"
+    /// during one (0.99.203). Saved, so the next start does not restore it.</summary>
+    public void CancelSnooze()
+    {
+        if (!IsSnoozed && _data.SnoozeUntilUtc == null) return;
+        ForgetSnooze();
+        SaveStore();
+        DiagnosticLog.Log("Pause cancelled: protection stays off.");
+    }
+
+    /// <summary>Drops a pause without restoring anything - the user, a recovery or
+    /// a reset decided the protection state instead. Does not save.</summary>
+    private void ForgetSnooze()
+    {
+        IsSnoozed = false;
+        _wasStrictBeforeSnooze = false;
+        _snoozeTimer?.Dispose();
+        _snoozeTimer = null;
+        _data.SnoozeUntilUtc = null;
+        _data.SnoozeRestoresProtection = false;
+    }
+
+    /// <summary>
+    /// At engine start, a pause saved by the last run: still running, it carries on
+    /// for the time left; already over, protection is put back now if the pause
+    /// turned it off. Returns what it did, for the log ("" when there was no pause).
+    /// </summary>
+    public string ReconcileSnooze()
+    {
+        if (_data.SnoozeUntilUtc is not DateTime until) return "";
+        var left = until - DateTime.UtcNow;
+        // No pause GunWall offers is longer than this. A clock that was behind at
+        // boot must not stretch a five-minute pause into hours.
+        if (left > MaxPause) { left = MaxPause; until = DateTime.UtcNow + left; _data.SnoozeUntilUtc = until; SaveStore(); }
+        if (left > TimeSpan.Zero)
+        {
+            IsSnoozed = true;
+            _wasStrictBeforeSnooze = _data.SnoozeRestoresProtection;
+            SnoozeUntil = until.ToLocalTime();
+            ArmSnoozeTimer(left);
+            return $"Pause carried over: protection returns at {SnoozeUntil:HH:mm:ss}.";
+        }
+        bool restore = _data.SnoozeRestoresProtection && !StrictMode;
+        _data.SnoozeUntilUtc = null;
+        _data.SnoozeRestoresProtection = false;
+        if (restore)
+        {
+            _snoozeChanging = true;
+            try { SetStrictMode(true); }    // saves the store
+            finally { _snoozeChanging = false; }
+            EventLog("Protection resumed");
+        }
+        else SaveStore();
+        return restore
+            ? "The pause ended while GunWall was closed - protection is back ON."
+            : "The pause ended while GunWall was closed.";
     }
 
     public void SetRunAtStartup(bool enabled)
@@ -4429,6 +4548,9 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
     public int ImportProfile(string filePath)
     {
         var imported = _store.Import(filePath);
+        ForgetSnooze();   // this session's pause, and none carried in from the file
+        imported.SnoozeUntilUtc = null;
+        imported.SnoozeRestoresProtection = false;
         _data = imported;
         _knownSet = null;
         SaveStore();
@@ -4436,8 +4558,19 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy
         return _data.Rules.Count;
     }
 
+    /// <summary>
+    /// Closes the WFP session; filters stay in the kernel. The timers go too
+    /// (0.99.203): the background service builds a new manager for every session,
+    /// and a temporary-block timer left behind in a released one fired later and
+    /// saved that manager's OLD profile over the one the window had been editing.
+    /// </summary>
     public void Dispose()
     {
+        _disposed = true;
+        foreach (var t in _tempTimers.Values) { try { t.Dispose(); } catch { } }
+        _tempTimers.Clear();
+        _snoozeTimer?.Dispose();
+        _snoozeTimer = null;
         _engine.Dispose();
     }
 }

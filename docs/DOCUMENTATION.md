@@ -533,7 +533,7 @@ notifications.
 | UI size | 50% to 125%; 90% by default. Also **Ctrl + mouse wheel**, **Ctrl + plus / minus**, and **Ctrl + 0** for the default, anywhere in the app |
 | App icon size | Small, Medium (default) or Large icons in the Applications list |
 | **Run GunWall when Windows starts** | **Recommended** — without it, nothing can prompt after a reboot |
-| **Keep protection running when GunWall is closed (background service)** | Off by default. A Windows service runs protection whenever the window is not open — after you exit, after sign-out, and from boot, before anyone signs in. Programs needing a decision wait for the window and stay blocked meanwhile in Zero Trust. Needs the installed version |
+| **Keep protection running when GunWall is closed (background service)** | Off by default. A Windows service runs protection whenever the window is not open — after you exit, after sign-out, and from boot, before anyone signs in. It enforces everything the window does: your rules, direct-connection and blocked-domain blocks, access rules and the tamper watch. Programs needing a decision wait for the window and stay blocked meanwhile in Zero Trust. Needs the installed version |
 | Send firewall events to the Windows Event Log | For central log collection |
 | Play a sound on notification popups | |
 | Show a tray notification when a new app is detected | |
@@ -649,7 +649,10 @@ lift lockdown. With both on, everything is still blocked, and GunWall shows
 
 **Snooze 15 min** (Overview) pauses enforcement for a set period, then restores it
 automatically. Useful for installing something that needs broad access, without
-leaving protection off and forgetting.
+leaving protection off and forgetting. The pause is saved: if you close GunWall or
+restart during it, protection still comes back when it was due (at the next start
+if nothing was running then). Switching protection on or off yourself, or **Turn
+off and exit**, cancels the pause instead.
 
 **Exiting.** Closing the window keeps GunWall running in the tray. To exit, use
 **Exit** in the tray menu. If protection or lockdown is on, GunWall asks first:

@@ -51,6 +51,12 @@ public sealed class DetectionHost : IDisposable
     /// is ready - for periodic upkeep that used to ride on the poll.</summary>
     public event Action? Polled;
 
+    /// <summary>Each poll's connections and processes, on the engine context, when
+    /// the engine is ready - for enforcement that works on live connections (the
+    /// background service's EngineUpkeep, 0.99.203). The window has its own
+    /// snapshot loop and does not subscribe.</summary>
+    public event Action<List<ConnectionInfo>, Dictionary<int, (string Name, string Path)>>? Snapshot;
+
     public DetectionHost(FirewallManager firewall, NetworkMonitor monitor, ProcessService processes,
                          SynchronizationContext engineContext, Func<bool> engineReady,
                          string? selfPath, string? system32Dir)
@@ -88,7 +94,11 @@ public sealed class DetectionHost : IDisposable
                 await OnEngine(() =>
                 {
                     // Approval prompts and §1 reactive geo-blocking (polling path).
-                    if (_engineReady()) Detected?.Invoke(Detector.OnPoll(conns, procs, DateTime.Now), "connection table");
+                    if (_engineReady())
+                    {
+                        Detected?.Invoke(Detector.OnPoll(conns, procs, DateTime.Now), "connection table");
+                        Snapshot?.Invoke(conns, procs);
+                    }
                     EventMarkerHeartbeat();
                     Polled?.Invoke();
                 }).ConfigureAwait(false);

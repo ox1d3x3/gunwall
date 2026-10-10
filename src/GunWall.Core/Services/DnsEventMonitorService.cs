@@ -34,7 +34,14 @@ namespace GunWall.Services;
 public sealed class DnsEventMonitorService : IDisposable
 {
     private static readonly Guid ProviderId = new("1C95126E-7EEA-49A9-A3FE-A378B03DDB4D");
-    private const string SessionName = "GunWallDnsObserver";
+    /// <summary>The background service's observer (0.99.203). It gets its own
+    /// session name and start marker: at a hand-over the window starts its session
+    /// while the service may still be stopping its own, and with one shared name
+    /// each would stop the other's by name - leaving the window with a session
+    /// that reads active and receives nothing. Set once, before any Start.</summary>
+    public static bool ServiceInstance { get; set; }
+
+    private static string SessionName => ServiceInstance ? "GunWallDnsObserverService" : "GunWallDnsObserver";
     private const ushort EventQueryCompleted = 3008;
 
     public bool SessionActive { get; private set; }
@@ -183,7 +190,7 @@ public sealed class DnsEventMonitorService : IDisposable
     // Follows the data folder too. Left in the application folder this marker
     // could survive an upgrade that changed the very code it guards, and disable
     // the observer on a build where the crash it recorded no longer exists.
-    private static string MarkerPath => ProfilePaths.FileIn("dns-observer.starting");
+    private static string MarkerPath => ProfilePaths.FileIn(ServiceInstance ? "dns-observer-service.starting" : "dns-observer.starting");
 
     private static bool MarkerPresent()
     { try { return System.IO.File.Exists(MarkerPath); } catch { return false; } }
