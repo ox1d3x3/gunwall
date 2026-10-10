@@ -533,7 +533,7 @@ notifications.
 | UI size | 50% to 125%; 90% by default. Also **Ctrl + mouse wheel**, **Ctrl + plus / minus**, and **Ctrl + 0** for the default, anywhere in the app |
 | App icon size | Small, Medium (default) or Large icons in the Applications list |
 | **Run GunWall when Windows starts** | **Recommended** — without it, nothing can prompt after a reboot |
-| **Keep protection running when GunWall is closed (background service)** | Off by default. A Windows service runs protection whenever the window is not open — after you exit, after sign-out, and from boot, before anyone signs in. It enforces everything the window does: your rules, direct-connection and blocked-domain blocks, access rules and the tamper watch. Programs needing a decision wait for the window and stay blocked meanwhile in Zero Trust. Needs the installed version |
+| **Keep protection running when GunWall is closed (background service)** | On by default in the installed version (since 0.99.205); untick it to turn it off, and later installs keep it off. A Windows service runs protection whenever the window is not open — after you exit, after sign-out, and from boot, before anyone signs in. It enforces everything the window does: your rules, direct-connection and blocked-domain blocks, access rules and the tamper watch. Programs needing a decision wait for the window and stay blocked meanwhile in Zero Trust. Needs the installed version |
 | Send firewall events to the Windows Event Log | For central log collection |
 | Play a sound on notification popups | |
 | Show a tray notification when a new app is detected | |

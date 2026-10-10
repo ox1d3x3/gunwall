@@ -462,7 +462,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.204 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.205 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -618,7 +618,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         BackgroundServiceCheck.IsEnabled = false;
         if (BackgroundServiceStatus != null) BackgroundServiceStatus.Text = want ? "Turning on..." : "Turning off...";
         string result = await System.Threading.Tasks.Task.Run(() =>
-            want ? BackgroundServiceControl.Enable() : BackgroundServiceControl.Disable());
+        {
+            string r = want ? BackgroundServiceControl.Enable() : BackgroundServiceControl.Disable();
+            // On by default since 0.99.205: remember an explicit "off" so the next
+            // install does not switch it back on.
+            BackgroundServiceControl.RecordUserChoice(want);
+            return r;
+        });
         Services.DiagnosticLog.Log($"Background service turned {(want ? "on" : "off")} from Settings: {result}.");
         RefreshBackgroundServiceUi();
     }

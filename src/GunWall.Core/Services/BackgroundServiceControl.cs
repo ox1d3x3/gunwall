@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Text.RegularExpressions;
 
 namespace GunWall.Services;
@@ -126,6 +127,28 @@ public static class BackgroundServiceControl
         if (!IsInstalled()) return "not installed";
         Sc($"failure {ServiceName} reset= 0 actions= \"\"");
         return Disable();
+    }
+
+    /// <summary>
+    /// "You turned it off" (0.99.205). The background service is on by default
+    /// for installed copies, and the installer switches it on at every install -
+    /// except where this file says the user unticked it in Settings. A start type
+    /// alone cannot tell "never chosen" from "chosen off": both read Manual.
+    /// Only the Settings box writes or removes it; a recovery (--unblock) does not,
+    /// so the next install puts protection-while-closed back.
+    /// </summary>
+    public const string OptOutMarkerName = "service-off.marker";
+
+    public static void RecordUserChoice(bool on)
+    {
+        string path = ProfilePaths.FileIn(OptOutMarkerName);
+        try
+        {
+            if (on) { if (File.Exists(path)) File.Delete(path); }
+            else File.WriteAllText(path, "Written when the background service was turned off in GunWall's Settings. "
+                                       + "The installer leaves the service off while this file exists. Safe to delete.");
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("BackgroundServiceChoice", ex); }
     }
 
     /// <summary>The hand-over's last resort: stop it now, and wait.</summary>

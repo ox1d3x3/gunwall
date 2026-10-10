@@ -224,22 +224,34 @@ begin
   Sleep(2000);   { STOPPED is reported a moment before the process has exited }
 end;
 
-{ Registered on every install, so the Settings option can switch it on. Created
-  with a manual start: it starts with Windows only once the user turns it on in
-  GunWall (which sets it to automatic). An existing registration keeps its start
-  type; only the path and recovery settings are refreshed. }
+{ On by default since 0.99.205 (service split stage 3): registered to start with
+  Windows on every install, unless the user turned it off in GunWall's Settings,
+  which leaves service-off.marker in the data folder. A start type alone cannot
+  tell "never chosen" from "chosen off" - both read Manual - so the marker is the
+  record of the choice, and with it the registration keeps its start type. }
+function ServiceOptedOut(): Boolean;
+begin
+  Result := FileExists(ExpandConstant(ProfileDir) + '\service-off.marker');
+end;
+
 procedure RegisterService();
 var
   ResultCode: Integer;
-  Bin: String;
+  Bin, StartType: String;
 begin
   Bin := '"\"' + ExpandConstant('{app}\{#AppExe}') + '\" --service"';
+  if ServiceOptedOut() then StartType := 'demand' else StartType := 'auto';
   if ServiceInstalled() then
+  begin
     Exec(ExpandConstant('{sys}\sc.exe'), 'config ' + SvcName + ' binPath= ' + Bin,
-         '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    if not ServiceOptedOut() then
+      Exec(ExpandConstant('{sys}\sc.exe'), 'config ' + SvcName + ' start= auto',
+           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end
   else
     Exec(ExpandConstant('{sys}\sc.exe'), 'create ' + SvcName + ' binPath= ' + Bin
-         + ' start= demand DisplayName= "GunWall Protection"',
+         + ' start= ' + StartType + ' DisplayName= "GunWall Protection"',
          '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\sc.exe'), 'description ' + SvcName
        + ' "Keeps GunWall''s firewall protection running while the GunWall window is closed."',
@@ -338,8 +350,6 @@ begin
   if CurStep = ssPostInstall then
   begin
     RegisterService();
-    if ServiceWasRunning then
-      Exec(ExpandConstant('{sys}\sc.exe'), 'start ' + SvcName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     InstallDone := True;
 
     { The data folder: SYSTEM and Administrators only, everyone else read.
@@ -361,6 +371,12 @@ begin
          '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant(ProfileDir) + '\*" /reset /T /C /Q',
          '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+    { Started after the folder's permissions are set, so nothing it creates is
+      made under the old ones. Started when it was running before, or when it is
+      on by default: from here until the window first opens, protection runs. }
+    if ServiceWasRunning or not ServiceOptedOut() then
+      Exec(ExpandConstant('{sys}\sc.exe'), 'start ' + SvcName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
     if WizardIsTaskSelected('startup') then
       RegWriteStringValue(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run',

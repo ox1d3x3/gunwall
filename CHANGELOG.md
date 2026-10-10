@@ -15,6 +15,15 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.205] — 2026-10-11
+
+### Changed — protection while GunWall is closed is now on by default
+The background service (**Keep protection running when GunWall is closed**) is
+switched on by the installer: protection runs from the moment installation
+finishes, while the window is closed, and from boot before anyone signs in. If you
+untick it in Settings, GunWall remembers that, and later updates leave it off. The
+portable version is unchanged: it has no service.
+
 ## [0.99.204] — 2026-10-11
 
 ### Fixed — the protection switch showed ON after Snooze turned protection off

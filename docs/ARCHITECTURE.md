@@ -69,8 +69,9 @@ The window runs as **one elevated process** (`requireAdministrator` in
 Enforcement does not depend on the app staying open — the filters stay in the
 kernel until removed or until the next reboot (see §6).
 
-**Optional background service (0.99.199).** With *Keep protection running when
-GunWall is closed* on, `GunWall.exe --service` runs as a Windows service
+**Background service (0.99.199; on by default since 0.99.205).** With *Keep
+protection running when GunWall is closed* on - the installer turns it on unless
+the user unticked it before (`service-off.marker` in the data folder) - `GunWall.exe --service` runs as a Windows service
 (LocalSystem) and runs the same engine whenever the window does not: after exit,
 after sign-out, and from boot. Exactly one process owns the engine at a time —
 ownership is an exclusive lock on `engine.lock` in the data folder, released by
