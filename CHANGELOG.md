@@ -15,6 +15,16 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.201] — 2026-10-10
+
+### Fixed — the background service would not start; --unblock ended with a crash
+In 0.99.199 and 0.99.200 the background service crashed the moment Windows
+started it ("did not respond in a timely fashion", error 1053), and
+**GunWall.exe --unblock** crashed after finishing its work - so the uninstaller
+received a crash code instead of a result. Both came from one line that tried to
+stop the main window opening in those modes in a way Windows' UI framework
+rejects. Those modes now simply exit when done. Do not use 0.99.199 or 0.99.200.
+
 ## [0.99.200] — 2026-10-10
 
 ### Fixed — "Access to the path ...rules.json is denied" after installing 0.99.199

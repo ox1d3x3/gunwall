@@ -19,6 +19,23 @@ public partial class App : Application
         return l;
     }
 
+    /// <summary>
+    /// Ends a headless run (--service, --unblock, --purge-sublayer) with its exit
+    /// code, at once.
+    ///
+    /// Not Shutdown(): App.xaml's StartupUri still builds MainWindow after
+    /// OnStartup returns - in session 0, as SYSTEM, for the service. And NOT
+    /// "StartupUri = null" either: WPF's setter throws ArgumentNullException, which
+    /// is exactly what 0.99.199 and 0.99.200 shipped - the service crashed before
+    /// its first log line (Event 1026, reported 2026-10-10), and --unblock crashed
+    /// after its work, so the uninstaller read a crash code instead of 0 or 1.
+    /// </summary>
+    private static void ExitHeadless(int code)
+    {
+        try { DiagnosticLog.Log($"Headless run finished (exit code {code})."); } catch { }
+        Environment.Exit(code);
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -31,10 +48,7 @@ public partial class App : Application
         {
             if (arg.Trim().TrimStart('-', '/').Equals("service", StringComparison.OrdinalIgnoreCase))
             {
-                // StartupUri would still build MainWindow after OnStartup returns -
-                // in session 0, as SYSTEM - keeping the process alive past STOPPED.
-                StartupUri = null;
-                Shutdown(ServiceShell.Run());
+                ExitHeadless(ServiceShell.Run());
                 return;
             }
         }
@@ -73,16 +87,14 @@ public partial class App : Application
             if (a is "purge-sublayer" or "purgesublayer")
             {
                 int pcode = RunPurgeSublayer();
-                StartupUri = null;
-                Shutdown(pcode);
+                ExitHeadless(pcode);
                 return;
             }
 
             if (a is not ("unblock" or "panic" or "reset")) continue;
 
             int code = RunEmergencyUnblock();
-            StartupUri = null;
-            Shutdown(code);
+            ExitHeadless(code);
             return;
         }
 
