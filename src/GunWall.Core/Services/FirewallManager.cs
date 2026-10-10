@@ -876,6 +876,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             DiagnosticLog.Log($"Lockdown RELEASED: {had} block filters removed.");
         }
         SaveStore();
+        RaiseProtectionChanged();
     }
 
     /// <summary>
@@ -1064,6 +1065,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             ? "Reset: complete - sublayer removed; rules and settings kept."
             : "Reset: filters removed, rules and settings kept; sublayer retained "
             + "(untracked filters remain).");
+        RaiseProtectionChanged();
         return sublayerGone;
     }
 
@@ -1209,6 +1211,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         SaveStore();
         DiagnosticLog.Log($"Store cleared: rules and decisions removed; {kept} setting(s) kept, "
                         + "including " + string.Join(", ", UserOwnedSettings) + ".");
+        RaiseProtectionChanged();
     }
 
     /// <summary>Empties every filter-id collection in the store, leaving the rules
@@ -1872,7 +1875,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             forgot = true;
             DiagnosticLog.Log("Pause cancelled: protection was switched while it ran.");
         }
-        if (enabled == _data.StrictMode) { if (forgot) SaveStore(); return; }
+        if (enabled == _data.StrictMode) { if (forgot) { SaveStore(); RaiseProtectionChanged(); } return; }
 
         // Logged, because enforcement posture is the single most important
         // control variable in any test and it left no trace at all. A diagnostics
@@ -2021,6 +2024,8 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                 catch (Exception ex) { DiagnosticLog.LogException("SetStrictMode/sweep", ex); }
             });
         }
+
+        RaiseProtectionChanged();   // every view of the posture follows (0.99.204)
     }
 
     public void SetAlertsEnabled(bool enabled)
@@ -3851,6 +3856,22 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         catch { /* the context has shut down: so has this engine */ }
     }
 
+    // ------------------------------------------------ protection state changes
+    /// <summary>
+    /// Raised whenever protection, lockdown or a pause changes - by the user, by a
+    /// timer (a pause ending, 0.99.204), by a reset or a recovery. On the engine
+    /// context: the window's UI thread there, so it can repaint every view of the
+    /// posture at once. Before this each caller repainted what it remembered to,
+    /// and Snooze left the protection switch showing ON while protection was off.
+    /// </summary>
+    public event Action? ProtectionChanged;
+
+    private void RaiseProtectionChanged()
+    {
+        try { ProtectionChanged?.Invoke(); }
+        catch (Exception ex) { DiagnosticLog.LogException("ProtectionChanged", ex); }
+    }
+
     // ------------------------------------------------ snooze (pause protection)
     /// <summary>The longest pause GunWall offers is 15 minutes; a saved one is never
     /// carried over for longer than this.</summary>
@@ -3890,6 +3911,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         SaveStore();
         EventLog($"Protection snoozed for {duration.TotalMinutes:0} min");
         ArmSnoozeTimer(duration);
+        RaiseProtectionChanged();
         return SnoozeUntil;
     }
 
@@ -3910,12 +3932,14 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         catch { }
         finally { _snoozeChanging = false; }
         IsSnoozed = false;
+        SnoozeUntil = default;
         _snoozeTimer?.Dispose();
         _snoozeTimer = null;
         _data.SnoozeUntilUtc = null;
         _data.SnoozeRestoresProtection = false;
         try { SaveStore(); } catch { }
         EventLog("Protection resumed");
+        RaiseProtectionChanged();
     }
 
     /// <summary>Ends a pause WITHOUT putting protection back - "Turn off and exit"
@@ -3926,6 +3950,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         ForgetSnooze();
         SaveStore();
         DiagnosticLog.Log("Pause cancelled: protection stays off.");
+        RaiseProtectionChanged();
     }
 
     /// <summary>Drops a pause without restoring anything - the user, a recovery or
@@ -3933,6 +3958,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     private void ForgetSnooze()
     {
         IsSnoozed = false;
+        SnoozeUntil = default;   // or the diagnostics keep reporting the cancelled pause's end
         _wasStrictBeforeSnooze = false;
         _snoozeTimer?.Dispose();
         _snoozeTimer = null;
@@ -3958,6 +3984,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             _wasStrictBeforeSnooze = _data.SnoozeRestoresProtection;
             SnoozeUntil = until.ToLocalTime();
             ArmSnoozeTimer(left);
+            RaiseProtectionChanged();
             return $"Pause carried over: protection returns at {SnoozeUntil:HH:mm:ss}.";
         }
         bool restore = _data.SnoozeRestoresProtection && !StrictMode;
@@ -3971,6 +3998,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             EventLog("Protection resumed");
         }
         else SaveStore();
+        RaiseProtectionChanged();
         return restore
             ? "The pause ended while GunWall was closed - protection is back ON."
             : "The pause ended while GunWall was closed.";
@@ -4555,6 +4583,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         _knownSet = null;
         SaveStore();
         LoadVirusTotalKey("import");  // the imported key replaces the one in memory
+        RaiseProtectionChanged();
         return _data.Rules.Count;
     }
 

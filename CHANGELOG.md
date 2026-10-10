@@ -15,6 +15,17 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.204] — 2026-10-11
+
+### Fixed — the protection switch showed ON after Snooze turned protection off
+**Snooze 15 min**, the Wi-Fi sign-in pause (**Portal mode**) and a pause ending on
+its own changed protection without moving the switch on Overview: it read ON while
+nothing was enforced, until clicked. Every change to protection, lockdown or a
+pause - from a button, a timer, a reset, an emergency unblock or a profile import -
+now updates the switch, the Settings mode, the pause line, the lockdown button, the
+sidebar and the tray together. A cancelled pause also no longer shows its old end
+time in the diagnostics.
+
 ## [0.99.203] — 2026-10-10
 
 ### Changed — the background service now enforces everything the window does

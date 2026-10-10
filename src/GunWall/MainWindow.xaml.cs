@@ -209,6 +209,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // The manager decides whether a shared address may be blocked; only the
         // resolver knows what is on the blocklist. Handing the test across keeps
         // the two from reaching into each other.
+        _firewall.ProtectionChanged += OnProtectionChanged;
         _firewall.DomainBlockTest = n => { try { return _dnsResolver.IsBlocked(n); } catch { return false; } };
         _firewall.DomainForceTest = n => { try { return _dnsResolver.IsForced(n); } catch { return false; } };
         _dnsResolver.PostureProbe = () =>
@@ -461,7 +462,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.203 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.204 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -8167,6 +8168,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     /// <summary>When the current protection state began, or null if not protecting.</summary>
     private DateTime? _protectionSince;
+
+    /// <summary>
+    /// Every view of the posture, repainted whenever the firewall reports a change
+    /// (0.99.204): the protection switch, the Settings mode, the pause line and its
+    /// Resume button, the lockdown button, the sidebar, hero and tray. Snooze, the
+    /// Wi-Fi sign-in pause and a pause ending on its own changed protection without
+    /// moving the switch - it read ON while nothing was enforced, until clicked.
+    /// One handler, so a new path that changes protection cannot forget a view.
+    /// </summary>
+    private void OnProtectionChanged()
+    {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnProtectionChanged)); return; }
+        try
+        {
+            SyncFirewallToggle();
+            UpdateSnoozeUi();
+            SyncLockdownButton();
+            if (!_firewall.IsSnoozed && PortalStatus != null
+                && PortalStatus.Text.StartsWith("Portal mode:", StringComparison.Ordinal))
+                PortalStatus.Text = "Portal mode ended - protection is back to normal.";
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("OnProtectionChanged", ex); }
+    }
 
     private void SyncFirewallToggle()
     {
