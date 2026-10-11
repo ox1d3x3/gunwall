@@ -15,6 +15,21 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.206] — 2026-10-11
+
+### Internal — groundwork for opening GunWall without administrator rights
+Nothing changes in use. The window now reaches the firewall engine through one
+defined interface, in which every operation is labelled by what it does to
+protection: reads, preferences, changes that make protection stricter, and changes
+that loosen it. The pieces that will let the background service answer the window
+over a local pipe are built and tested, but not switched on. A later release uses
+them so the window opens without a UAC prompt, with an optional **Protect settings**
+that asks for administrator confirmation before anything loosens protection.
+
+### Fixed — a custom rule could carry filter ids it did not install
+Adding a custom rule now always starts it with no recorded filters, so removing it
+later can only remove filters it installed itself.
+
 ## [0.99.205] — 2026-10-11
 
 ### Changed — protection while GunWall is closed is now on by default

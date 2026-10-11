@@ -19,7 +19,12 @@ namespace GunWall;
 
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
-    private readonly FirewallManager _firewall = new();
+    // The engine in this process (stage 4a, 0.99.206). The window talks to it only
+    // through IEngine (_firewall); what hosts the engine - start-up, detection,
+    // enforcement, timers - uses _engineLocal directly. In 4b an installed copy's
+    // window switches _firewall to the background service and stops hosting.
+    private readonly FirewallManager _engineLocal = new();
+    private IEngine _firewall => _engineLocal;
     private readonly NetworkMonitor _monitor = new();
     private readonly ProcessService _processes = new();
 
@@ -141,7 +146,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             if (_detectionHost == null)
             {
-                _detectionHost = new DetectionHost(_firewall, _monitor, _processes,
+                _detectionHost = new DetectionHost(_engineLocal, _monitor, _processes,
                     new System.Windows.Threading.DispatcherSynchronizationContext(Dispatcher),
                     () => _engineReady, Environment.ProcessPath, Environment.SystemDirectory);
                 _detectionHost.Detected += ShowDetection;
@@ -210,8 +215,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // resolver knows what is on the blocklist. Handing the test across keeps
         // the two from reaching into each other.
         _firewall.ProtectionChanged += OnProtectionChanged;
-        _firewall.DomainBlockTest = n => { try { return _dnsResolver.IsBlocked(n); } catch { return false; } };
-        _firewall.DomainForceTest = n => { try { return _dnsResolver.IsForced(n); } catch { return false; } };
+        _engineLocal.DomainBlockTest = n => { try { return _dnsResolver.IsBlocked(n); } catch { return false; } };
+        _engineLocal.DomainForceTest = n => { try { return _dnsResolver.IsForced(n); } catch { return false; } };
         _dnsResolver.PostureProbe = () =>
             _firewall.StrictMode ? "protection ON" : "protection OFF";
         AlertsList.ItemsSource = _notifications;
@@ -294,7 +299,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _firewall.EnsureSettingsLoaded();
         // Timed work (temporary-block expiry, the end of a pause) runs here on the
         // UI thread, where every other engine call runs - not on the thread pool.
-        _firewall.TimerContext = System.Threading.SynchronizationContext.Current;
+        _engineLocal.TimerContext = System.Threading.SynchronizationContext.Current;
         bool dark = _firewall.ThemeDark;
         if (ThemeToggle != null) ThemeToggle.IsChecked = !dark; // checked = light
         ApplyTheme(dark);
@@ -303,7 +308,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         try
         {
-            _firewall.Initialize();
+            _engineLocal.Initialize();
             Services.PerfMonitor.MarkStartup("engine");
             Services.PerfMonitor.Start();     // five-minute performance summary
             StartUiLagProbe();                // freezes caught as they happen
@@ -322,7 +327,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     // service blocks re-asserted, dead rules pruned - shared with the
                     // background service (EngineStartup, 0.99.199; the reasons for
                     // each step are recorded there).
-                    if (EngineStartup.RestoreAndReconcile(_firewall) > 0)
+                    if (EngineStartup.RestoreAndReconcile(_engineLocal) > 0)
                         Dispatcher.Invoke(() => { try { RebuildAppsList(); } catch { } });
                 }
                 catch (Exception ex) { Services.DiagnosticLog.LogException("StartupReconcile", ex); }
@@ -333,7 +338,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 {
                     try
                     {
-                        string snooze = _firewall.ReconcileSnooze();
+                        string snooze = _engineLocal.ReconcileSnooze();
                         if (snooze.Length > 0) Services.DiagnosticLog.Log("Startup: " + snooze);
                         UpdateSnoozeUi();
                         SyncLockdownButton();
@@ -356,9 +361,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 try { _firewall.WarmBlocklistDomains(); } catch { }   // the Security tab draws without parsing
             });
             _firewall.LoadCategoryColors();      // apply any customised category dot colors
-            EngineStartup.AfterInitialize(_firewall); // timed blocks, launch backup, blocklist migration - shared with the service
+            EngineStartup.AfterInitialize(_engineLocal); // timed blocks, launch backup, blocklist migration - shared with the service
             Services.DiagnosticLog.Init(_firewall.ProfileFolder); // point the log at the real data folder
-            Services.DiagnosticLog.Log($"GunWall {Services.UpdateService.CurrentVersion} loaded. Engine started: {_firewall.EngineHandle != IntPtr.Zero}.");
+            Services.DiagnosticLog.Log($"GunWall {Services.UpdateService.CurrentVersion} loaded. Engine started: {_engineLocal.EngineHandle != IntPtr.Zero}.");
 
             // Auto-refresh views when the network changes (Wi-Fi switch, VPN up/down).
             System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += (_, _) =>
@@ -462,7 +467,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.205 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.206 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -517,7 +522,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _dbRefreshCts?.Cancel();
         _detectionHost?.Dispose(); // clean exit - clears the crash-guard marker
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
-        _firewall.Dispose();
+        _engineLocal.Dispose();
         // Last: the background service takes the engine back the moment this goes.
         try { _engineLock?.Dispose(); } catch { }
         _engineLock = null;
@@ -1726,7 +1731,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // live in GunWall.Core's EngineUpkeep (0.99.203), so the background service
     // runs them too. Built on first use: it needs the resolver's blocklist.
     private EngineUpkeep? _upkeep;
-    private EngineUpkeep Upkeep => _upkeep ??= new EngineUpkeep(_firewall,
+    private EngineUpkeep Upkeep => _upkeep ??= new EngineUpkeep(_engineLocal,
         () => _dnsResolver.BlockedDomainCount,
         n => { try { return _dnsResolver.IsBlocked(n); } catch { return false; } });
 

@@ -13,9 +13,9 @@ namespace GunWall;
 public partial class AppPropertiesWindow : Window
 {
     private readonly AppInfo _app;
-    private readonly FirewallManager _firewall;
+    private readonly IEngine _firewall;
 
-    public AppPropertiesWindow(AppInfo app, FirewallManager firewall)
+    public AppPropertiesWindow(AppInfo app, IEngine firewall)
     {
         InitializeComponent();
         WindowTheme.Attach(this);

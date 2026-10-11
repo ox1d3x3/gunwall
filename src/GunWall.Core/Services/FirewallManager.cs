@@ -14,7 +14,7 @@ namespace GunWall.Services;
 /// Privacy note: this class only ever acts on explicit user instructions. It
 /// never blocks or allows anything on its own and never sends data anywhere.
 /// </summary>
-public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPolicy
+public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPolicy, IEngine
 {
     private readonly WfpEngine _engine = new();
 
@@ -2090,6 +2090,13 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
 
     public void AddCustomRule(CustomRule rule)
     {
+        // The store assigns what the store owns (0.99.206). A rule arriving with
+        // filter ids of its own - from the engine pipe, later - would make a later
+        // RemoveCustomRule delete filters it never installed (lockdown's, say).
+        rule.FilterIds = new();
+        rule.Applied = false;
+        if (string.IsNullOrEmpty(rule.Id) || _data.CustomRules.Any(r => r.Id == rule.Id))
+            rule.Id = Guid.NewGuid().ToString("N")[..8];
         if (rule.Enabled)
         {
             rule.FilterIds = _engine.AddCustomRule(
