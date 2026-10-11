@@ -91,14 +91,21 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     public void ReloadStoreFromDisk()
     {
         if (!ReadOnlyStore) return;
+        // Unchanged since the last read: nothing to do (0.99.221). This is asked
+        // after every state message, so a read must cost a stat, not a parse.
+        var stamp = _store.FileStamp();
+        if (stamp == _loadedStamp && stamp.Size >= 0) return;
         // Quietly, and keeping the copy it has if the read fails: this runs while
         // the service may be saving, and a failed read is not a damaged profile.
         if (!_store.TryLoadQuiet(out var fresh)) return;
+        _loadedStamp = stamp;
         _data = fresh;
         _knownSet = null;
         _settingsLoaded = true;
         LoadVirusTotalKey("reload");   // a key saved through the service
     }
+
+    private (DateTime When, long Size) _loadedStamp = (DateTime.MinValue, -1);
 
     private void SaveStore()
     {

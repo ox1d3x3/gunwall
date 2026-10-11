@@ -136,7 +136,9 @@
 
              It carries the same shield mark used in the navigation pane, so the
              identity reads in the taskbar preview and the Alt-Tab card too. -->
-        <ui:TitleBar Grid.Row="0" Title="GunWall" ShowMaximize="True" ShowMinimize="True">
+        <!-- 32 high, the Windows 11 caption height (0.99.221). The library's default
+             was taller than every other window on the desktop (Mahabub). -->
+        <ui:TitleBar Grid.Row="0" Title="GunWall" Height="32" ShowMaximize="True" ShowMinimize="True">
             <ui:TitleBar.Icon>
                 <!-- The application's own icon, not a stock shield glyph. This
                      is what appears in the taskbar preview and the Alt-Tab
@@ -1018,7 +1020,7 @@
                                 <MenuItem Header="Copy path" Click="CopyPath_Click" />
                                 <MenuItem Header="Open file location" Click="OpenLocation_Click" />
                                 <Separator />
-                                <MenuItem Header="Fit columns to content" Click="FitColumns_Click" />
+                                <MenuItem Header="Reset column widths" Click="FitColumns_Click" />
                                 <MenuItem Header="Access rules..." Click="AccessRules_Click" />
                                 <MenuItem Header="Properties..." Click="Properties_Click" />
                             </ContextMenu>
@@ -1246,7 +1248,7 @@
                                 <Separator />
                                 <MenuItem Header="Copy remote address" Click="CopyConnRemote_Click" />
                                 <Separator />
-                                <MenuItem Header="Fit columns to content" Click="FitColumns_Click" />
+                                <MenuItem Header="Reset column widths" Click="FitColumns_Click" />
                             </ContextMenu>
                         </ListView.ContextMenu>
                         <ListView.View>

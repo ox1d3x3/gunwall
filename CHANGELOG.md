@@ -15,6 +15,20 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.221] — 2026-10-11
+
+### Fixed
+- **The Overview no longer stutters every second** with the experimental service
+  option on. Each refresh asked the background service about every application
+  one by one, and the traffic graph stepped while it waited. The window now reads
+  rules and lists from its own copy of the profile, refreshed whenever the service
+  saves it.
+- **"Fit columns to content" is now "Reset column widths".** Fitting to content
+  made the Path column as wide as the longest path and pushed Block / Allow off
+  screen; the new item puts the columns back to the fit for the window.
+- **The window's title bar** (minimise / maximise / close) is the standard
+  Windows 11 height instead of a taller one.
+
 ## [0.99.220] — 2026-10-11
 
 ### Changed — a tidier window

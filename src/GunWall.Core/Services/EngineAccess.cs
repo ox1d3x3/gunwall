@@ -8,6 +8,12 @@ public enum Access
 {
     /// <summary>Reads state. Always allowed.</summary>
     Read,
+    /// <summary>A read that depends on the saved profile only - rules, notes, lists
+    /// (0.99.221). A window that uses the service answers it from its own read-only
+    /// copy of the profile, reloaded when the service saves, instead of a round
+    /// trip: the Overview asked EffectiveStatus once per application every second,
+    /// on the UI thread, and the graph stuttered. Allowed like Read.</summary>
+    ReadProfile,
     /// <summary>Changes something that is not protection: appearance, notes,
     /// logs, update checks, backups. Always allowed.</summary>
     Preference,

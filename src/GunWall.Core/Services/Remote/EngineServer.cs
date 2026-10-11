@@ -212,7 +212,7 @@ public sealed class EngineServer : IDisposable
                 if (ps[i].IsOut)
                     reply.Outs.Add(EngineWire.ToElement(args[i], ps[i].ParameterType.GetElementType()!));
             reply.Ok = true;
-            if (entry.Access != Access.Read)
+            if (entry.Access is not (Access.Read or Access.ReadProfile))
             {
                 reply.State = Capture();
                 reply.StateSeq = Interlocked.Increment(ref _stateSeq);

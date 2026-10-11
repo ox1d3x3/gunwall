@@ -23,7 +23,7 @@ public sealed class EngineCatalog
 
     /// <summary>Scalars that are not broadcast: a fingerprint that hashes every
     /// rule, and the VirusTotal key, which crosses only when asked for.</summary>
-    public static readonly string[] OnDemand = { "RulesetFingerprint", "VirusTotalApiKey" };
+    public static readonly string[] OnDemand = { "VirusTotalApiKey" };   // RulesetFingerprint: ReadProfile since 0.99.221
 
     /// <summary>After <see cref="OnDemand"/>: static fields start in order.</summary>
     public static readonly EngineCatalog Instance = new();

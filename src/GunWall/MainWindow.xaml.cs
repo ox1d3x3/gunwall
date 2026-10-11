@@ -486,7 +486,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.220 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.221 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4666,21 +4666,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex) { Services.DiagnosticLog.LogException("FitAppsColumns", ex); }
     }
 
-    /// <summary>Auto-sizes every column of the list the context menu was opened
-    /// on. Writing ActualWidth first forces a re-measure even when the width is
-    /// already NaN; setting NaN then re-fits it to the content.</summary>
+    /// <summary>"Reset column widths" (0.99.221; was "Fit columns to content"). Fitting
+    /// every column to its content made PATH as wide as the longest path and pushed
+    /// Block / Allow off screen - "looks really messy" (Mahabub). Now it puts the
+    /// columns back to the fit for the window, the same fit a resize gives.</summary>
     private void FitColumns_Click(object sender, RoutedEventArgs e)
     {
         try
         {
             if (sender is not MenuItem mi) return;
             if ((mi.Parent as ContextMenu)?.PlacementTarget is not ListView lv) return;
-            if (lv.View is not GridView gv) return;
-            foreach (var col in gv.Columns)
-            {
-                col.Width = col.ActualWidth;
-                col.Width = double.NaN;
-            }
+            if (lv == AppsList) { _appsFitWidth = -1; FitAppsColumns(); }
+            else if (lv == ConnList) ConnList_SizeChanged(ConnList, null!);   // re-applies the declared widths
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("FitColumns", ex); }
     }

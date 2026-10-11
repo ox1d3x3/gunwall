@@ -172,6 +172,14 @@ public sealed class RuleStore
     /// <summary>A second process's read of the profile (the window using the
     /// service): no migration, no recovery copy, no log line on failure - and
     /// false instead of an empty profile, so the caller keeps what it has.</summary>
+    /// <summary>When the profile file last changed, and its size (0.99.221): a
+    /// second process re-reads it only when this differs.</summary>
+    public (DateTime When, long Size) FileStamp()
+    {
+        try { var fi = new FileInfo(_file); return fi.Exists ? (fi.LastWriteTimeUtc, fi.Length) : (DateTime.MinValue, -1); }
+        catch { return (DateTime.MinValue, -1); }
+    }
+
     public bool TryLoadQuiet(out StoreData data)
     {
         data = new StoreData();

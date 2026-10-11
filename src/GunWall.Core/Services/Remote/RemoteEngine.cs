@@ -129,7 +129,7 @@ public class RemoteEngine : DispatchProxy, IDisposable
         string member = m.IsSpecialName && m.Name.StartsWith("get_", StringComparison.Ordinal) ? m.Name[4..] : m.Name;
         if (!EngineCatalog.Instance.TryGet(member, out var entry))
             throw new NotSupportedException($"IEngine.{member} is not in the engine catalog");
-        if (entry.Access == Access.Local)
+        if (entry.Access == Access.Local || (entry.Access == Access.ReadProfile && LocalFallback != null))
         {
             if (LocalFallback == null)
                 throw new NotSupportedException($"IEngine.{member} is handled by the window itself, not the service");
@@ -213,7 +213,14 @@ public class RemoteEngine : DispatchProxy, IDisposable
                 var m = EngineWire.Read(_pipe!);
                 if (m == null) break;
                 if (m.Kind == "reply" && _pending.TryGetValue(m.Id, out var tcs)) tcs.TrySetResult(m);
-                else if (m.Kind == "state" && m.State != null) ApplyState(m.State, m.StateSeq);
+                else if (m.Kind == "state" && m.State != null)
+                {
+                    ApplyState(m.State, m.StateSeq);
+                    // The service may have saved (a timer, a prompt it decided): the
+                    // window's profile copy is checked again on its next read. The
+                    // reload itself skips an unchanged file (0.99.221).
+                    Volatile.Write(ref _localStale, 1);
+                }
                 else if (m.Kind == "detected" && m.Detected != null)
                 {
                     var batch = m.Detected;

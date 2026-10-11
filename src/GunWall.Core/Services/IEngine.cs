@@ -39,12 +39,12 @@ public interface IEngine
     [EngineAccess(Access.Loosen)] void BlockAppDirection(string exePath, string displayName, bool outbound);
     [EngineAccess(Access.Loosen)] DateTime BlockAppTemporarily(string exePath, string displayName, TimeSpan duration);
     [EngineAccess(Access.Read)] IReadOnlyCollection<string> BlockedServiceNames { get; }
-    [EngineAccess(Access.Read)] IReadOnlyList<string> Blocklist { get; }
+    [EngineAccess(Access.ReadProfile)] IReadOnlyList<string> Blocklist { get; }
     [EngineAccess(Access.Read)] int BlocklistDomainCount(string key);
     [EngineAccess(Access.Read)] List<string> BlocklistDomains(string key);
     [EngineAccess(Access.Read)] int BlocklistExcludedCount(string key);
     [EngineAccess(Access.Read)] HashSet<string> BlocklistExclusions(string key);
-    [EngineAccess(Access.Read)] bool BypassesBlocklists(string exePath);
+    [EngineAccess(Access.ReadProfile)] bool BypassesBlocklists(string exePath);
     [EngineAccess(Access.Loosen)] void CancelSnooze();
     [EngineAccess(Access.Tighten)] FirewallManager.TamperReport CheckIntegrity(bool repair);
     [EngineAccess(Access.Preference)] void CleanUpdateFolder();
@@ -60,7 +60,7 @@ public interface IEngine
     [EngineAccess(Access.Read)] int CustomDomainCount { get; }
     [EngineAccess(Access.Read)] string CustomListPath { get; }
     [EngineAccess(Access.Read)] int CustomRuleCount { get; }
-    [EngineAccess(Access.Read)] IReadOnlyList<CustomRule> CustomRules { get; }
+    [EngineAccess(Access.ReadProfile)] IReadOnlyList<CustomRule> CustomRules { get; }
     [EngineAccess(Access.Read)] bool DbAutoRefresh { get; }
     [EngineAccess(Access.Read)] bool DbRefreshDue(bool geo);
     [EngineAccess(Access.Read)] int DbRefreshHours { get; }
@@ -75,7 +75,7 @@ public interface IEngine
     [EngineAccess(Access.Read)] string DnsResolverUpstream { get; }
     [EngineAccess(Access.Read)] List<SavedAdapterDns> DnsSavedAdapters { get; }
     [EngineAccess(Access.Local)] int DownloadAndLoadGeoIp();
-    [EngineAccess(Access.Read)] AppStatus EffectiveStatus(string exePath);
+    [EngineAccess(Access.ReadProfile)] AppStatus EffectiveStatus(string exePath);
     [EngineAccess(Access.Tighten)] void EndSnooze();
     [EngineAccess(Access.Preference)] void EnsureSelfConnectivity();
     [EngineAccess(Access.Local)] void EnsureSettingsLoaded();
@@ -102,17 +102,17 @@ public interface IEngine
     [EngineAccess(Access.Read)] int GeoIpRangeCountV6 { get; }
     [EngineAccess(Access.Read)] AppAccessPolicy? GetAccessPolicy(string exePath);
     [EngineAccess(Access.Read)] string GetDeviceNote(string? mac);
-    [EngineAccess(Access.Read)] string GetHash(string exePath);
-    [EngineAccess(Access.Read)] string GetNote(string exePath);
+    [EngineAccess(Access.ReadProfile)] string GetHash(string exePath);
+    [EngineAccess(Access.ReadProfile)] string GetNote(string exePath);
     [EngineAccess(Access.Local)] AppAccessPolicy GetOrCreateAccessPolicy(string exePath);
-    [EngineAccess(Access.Read)] IReadOnlyList<FirewallRule> GetRules();
+    [EngineAccess(Access.ReadProfile)] IReadOnlyList<FirewallRule> GetRules();
     [EngineAccess(Access.Read)] VtCacheEntry? GetVtCached(string sha256);
     [EngineAccess(Access.Read)] bool GroupPrompts { get; }
     [EngineAccess(Access.Read)] bool HashesEnabled { get; }
     [EngineAccess(Access.Local)] int ImportProfile(string filePath);
     [EngineAccess(Access.Loosen)] int ImportWindowsFirewallRules();
-    [EngineAccess(Access.Read)] bool IsAllowed(string exePath);
-    [EngineAccess(Access.Read)] bool IsBlocked(string exePath);
+    [EngineAccess(Access.ReadProfile)] bool IsAllowed(string exePath);
+    [EngineAccess(Access.ReadProfile)] bool IsBlocked(string exePath);
     [EngineAccess(Access.Read)] bool IsBlocklistOn(string key);
     [EngineAccess(Access.Read)] bool IsBlocklistViaWfp(string key);
     [EngineAccess(Access.Read)] bool IsFirstRun { get; }
@@ -120,9 +120,9 @@ public interface IEngine
     [EngineAccess(Access.Read)] bool IsP2pBlocked(string exePath);
     [EngineAccess(Access.Read)] bool IsScopeBlocked(string exePath, string scope);
     [EngineAccess(Access.Read)] bool IsServiceBlocked(string serviceName);
-    [EngineAccess(Access.Read)] bool IsSilent(string exePath);
+    [EngineAccess(Access.ReadProfile)] bool IsSilent(string exePath);
     [EngineAccess(Access.Read)] bool IsSnoozed { get; }
-    [EngineAccess(Access.Read)] bool IsSystemRuleOn(string key);
+    [EngineAccess(Access.ReadProfile)] bool IsSystemRuleOn(string key);
     [EngineAccess(Access.Read)] bool KeepUnusedApps { get; }
     [EngineAccess(Access.Read)] FirewallManager.PurgeResult? LastPurge { get; }
     [EngineAccess(Access.Read)] DateTime? LastUpdateCheck { get; }
@@ -159,7 +159,7 @@ public interface IEngine
     [EngineAccess(Access.Loosen)] int RestoreBackup(string name);
     [EngineAccess(Access.Read)] bool ReviewWindowPending { get; }
     [EngineAccess(Access.Read)] IEnumerable<string> RuleProfileNames { get; }
-    [EngineAccess(Access.Read)] string RulesetFingerprint { get; }
+    [EngineAccess(Access.ReadProfile)] string RulesetFingerprint { get; }
     [EngineAccess(Access.Read)] bool RunAtStartup { get; }
     [EngineAccess(Access.Loosen)] void SaveAccessPolicy(string exePath);
     [EngineAccess(Access.Loosen)] void SetAccessPolicy(string exePath, AppAccessPolicy policy);
