@@ -15,6 +15,18 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.222] — 2026-10-11
+
+### Changed
+- **Live numbers roll to their new value** instead of jumping once a second: the
+  upload and download rates (Overview and the top bar), active connections,
+  session totals, the Overview counts and the DNS resolver counters. Off when
+  Windows' animation effects are off.
+- The search box reads "Search apps, rules, IPs..." and is a little wider, so the
+  text is no longer cut off.
+- "Reset column widths" is gone from the right-click menus: the tables fit the
+  window by themselves.
+
 ## [0.99.221] — 2026-10-11
 
 ### Fixed
@@ -23,9 +35,8 @@ All notable changes to GunWall are recorded here. Format follows
   one by one, and the traffic graph stepped while it waited. The window now reads
   rules and lists from its own copy of the profile, refreshed whenever the service
   saves it.
-- **"Fit columns to content" is now "Reset column widths".** Fitting to content
-  made the Path column as wide as the longest path and pushed Block / Allow off
-  screen; the new item puts the columns back to the fit for the window.
+- **"Fit columns to content" is gone.** It made the Path column as wide as the
+  longest path and pushed Block / Allow off screen.
 - **The window's title bar** (minimise / maximise / close) is the standard
   Windows 11 height instead of a taller one.
 

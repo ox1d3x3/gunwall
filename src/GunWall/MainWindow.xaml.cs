@@ -486,7 +486,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.221 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.222 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -965,9 +965,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             Shift(_downSeries, snap.DownRate);
             Shift(_upSeries, snap.UpRate);
-            DownSpeed.Text = FormatRate(snap.DownRate);
-            UpSpeed.Text = FormatRate(snap.UpRate);
-            ConnCount.Text = snap.Conns.Count.ToString();
+            Controls.RollingNumber.Set(DownSpeed, snap.DownRate, FormatRate);
+            Controls.RollingNumber.Set(UpSpeed, snap.UpRate, FormatRate);
+            Controls.RollingNumber.Set(ConnCount, snap.Conns.Count, Whole);
 
             // Session totals: integrate rate over the real tick spacing so the
             // footer's byte counts stay honest even if the timer drifts.
@@ -1707,13 +1707,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void UpdateDnsStats()
     {
         if (DnsStatQueries == null) return;
-        DnsStatQueries.Text = _dnsResolver.Total.ToString("N0");
-        DnsStatForwarded.Text = _dnsResolver.Forwarded.ToString("N0");
-        DnsStatCached.Text = _dnsResolver.Cached.ToString("N0");
-        DnsStatBlocked.Text = _dnsResolver.Blocked.ToString("N0");
-        if (DnsStatCloaked != null) DnsStatCloaked.Text = _dnsResolver.CloakedBlocked.ToString("N0");
-        if (DnsStatObserved != null)
-            DnsStatObserved.Text = Services.DnsObservations.Count.ToString("N0");
+        Controls.RollingNumber.Set(DnsStatQueries, _dnsResolver.Total, WholeN0);
+        Controls.RollingNumber.Set(DnsStatForwarded, _dnsResolver.Forwarded, WholeN0);
+        Controls.RollingNumber.Set(DnsStatCached, _dnsResolver.Cached, WholeN0);
+        Controls.RollingNumber.Set(DnsStatBlocked, _dnsResolver.Blocked, WholeN0);
+        Controls.RollingNumber.Set(DnsStatCloaked, _dnsResolver.CloakedBlocked, WholeN0);
+        Controls.RollingNumber.Set(DnsStatObserved, Services.DnsObservations.Count, WholeN0);
     }
 
     // ======================================================== rule profiles (§10)
@@ -3081,9 +3080,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void UpdateSessionTotals()
     {
         if (_sessionStartRx < 0) { _sessionStartRx = _lastRx; _sessionStartTx = _lastTx; }
-        SessionDown.Text = $"Session: {FormatBytes(Math.Max(0, _lastRx - _sessionStartRx))}";
-        SessionUp.Text = $"Session: {FormatBytes(Math.Max(0, _lastTx - _sessionStartTx))}";
+        Controls.RollingNumber.Set(SessionDown, Math.Max(0, _lastRx - _sessionStartRx), v => $"Session: {FormatBytes((long)v)}");
+        Controls.RollingNumber.Set(SessionUp, Math.Max(0, _lastTx - _sessionStartTx), v => $"Session: {FormatBytes((long)v)}");
     }
+
+    /// <summary>A count while it rolls: whole numbers only.</summary>
+    private static string Whole(double v) => Math.Round(v).ToString("0");
+    private static string WholeN0(double v) => Math.Round(v).ToString("N0");
 
     private static string FormatBytes(long bytes)
     {
@@ -4666,22 +4669,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex) { Services.DiagnosticLog.LogException("FitAppsColumns", ex); }
     }
 
-    /// <summary>"Reset column widths" (0.99.221; was "Fit columns to content"). Fitting
-    /// every column to its content made PATH as wide as the longest path and pushed
-    /// Block / Allow off screen - "looks really messy" (Mahabub). Now it puts the
-    /// columns back to the fit for the window, the same fit a resize gives.</summary>
-    private void FitColumns_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (sender is not MenuItem mi) return;
-            if ((mi.Parent as ContextMenu)?.PlacementTarget is not ListView lv) return;
-            if (lv == AppsList) { _appsFitWidth = -1; FitAppsColumns(); }
-            else if (lv == ConnList) ConnList_SizeChanged(ConnList, null!);   // re-applies the declared widths
-        }
-        catch (Exception ex) { Services.DiagnosticLog.LogException("FitColumns", ex); }
-    }
-
     /// <summary>
     /// End-to-end check of the path Windows actually uses: a real query sent to
     /// GunWall's own resolver over loopback. Answers the question the counters
@@ -5020,8 +5007,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             if (TopDown == null) return;
-            TopDown.Text = FormatRate(downRate);
-            TopUp.Text = FormatRate(upRate);
+            // Roll to the new value rather than snap (0.99.222).
+            Controls.RollingNumber.Set(TopDown, downRate, FormatRate);
+            Controls.RollingNumber.Set(TopUp, upRate, FormatRate);
             TopDown.ToolTip = $"Downloaded {AppUsageService.FormatBytes((long)_sessionDownBytes)} this session";
             TopUp.ToolTip = $"Uploaded {AppUsageService.FormatBytes((long)_sessionUpBytes)} this session";
 
@@ -5831,15 +5819,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             // Independent of the Applications search and view options.
             var (apps, blocked, allowed) = CountOverviewApps();
-            StatApps.Text = apps.ToString();
-            StatBlocked.Text = blocked.ToString();
-            StatAllowed.Text = allowed.ToString();
-            StatRules.Text = _firewall.CustomRules.Count.ToString();
-            StatBlocklist.Text = _firewall.Blocklist.Count.ToString();
+            Controls.RollingNumber.Set(StatApps, apps, Whole);
+            Controls.RollingNumber.Set(StatBlocked, blocked, Whole);
+            Controls.RollingNumber.Set(StatAllowed, allowed, Whole);
+            Controls.RollingNumber.Set(StatRules, _firewall.CustomRules.Count, Whole);
+            Controls.RollingNumber.Set(StatBlocklist, _firewall.Blocklist.Count, Whole);
             int sys = 0;
             foreach (var k in new[] { "block_inbound", "block_ipv6", "block_smb", "block_netbios", "block_rdp_in", "block_telnet" })
                 if (_firewall.IsSystemRuleOn(k)) sys++;
-            StatSystem.Text = sys.ToString();
+            Controls.RollingNumber.Set(StatSystem, sys, Whole);
             UpdateSnoozeUi();
         }
         catch { /* stats are cosmetic */ }

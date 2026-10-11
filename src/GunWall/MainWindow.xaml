@@ -434,7 +434,7 @@
                          yet, which is dead chrome pretending to be a control. It
                          navigates now; the fuller palette with actions is still
                          0.99.48. -->
-                    <Border x:Name="SearchBox" Width="300" Height="30" HorizontalAlignment="Left"
+                    <Border x:Name="SearchBox" Width="320" Height="30" HorizontalAlignment="Left"
                             VerticalAlignment="Center" CornerRadius="7" Padding="11,0"
                             Cursor="Hand" MouseLeftButtonUp="SearchBox_Click"
                             ToolTip="Open the command palette (Ctrl K)"
@@ -446,7 +446,7 @@
                                   Stroke="{DynamicResource TextTertiary}" StrokeThickness="2"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                   Data="{StaticResource IconSearch}" />
-<TextBlock Text="Search apps, rules, addresses..." FontSize="12.5"
+<TextBlock Text="Search apps, rules, IPs..." FontSize="12.5" TextTrimming="CharacterEllipsis"
                                        Margin="23,0,42,0" VerticalAlignment="Center"
                                        IsHitTestVisible="False"
                                        Foreground="{DynamicResource TextTertiary}" />
@@ -1020,7 +1020,6 @@
                                 <MenuItem Header="Copy path" Click="CopyPath_Click" />
                                 <MenuItem Header="Open file location" Click="OpenLocation_Click" />
                                 <Separator />
-                                <MenuItem Header="Reset column widths" Click="FitColumns_Click" />
                                 <MenuItem Header="Access rules..." Click="AccessRules_Click" />
                                 <MenuItem Header="Properties..." Click="Properties_Click" />
                             </ContextMenu>
@@ -1248,7 +1247,6 @@
                                 <Separator />
                                 <MenuItem Header="Copy remote address" Click="CopyConnRemote_Click" />
                                 <Separator />
-                                <MenuItem Header="Reset column widths" Click="FitColumns_Click" />
                             </ContextMenu>
                         </ListView.ContextMenu>
                         <ListView.View>
