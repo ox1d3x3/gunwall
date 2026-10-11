@@ -6,6 +6,13 @@ using System.Text.Json;
 
 namespace GunWall.Services.Remote;
 
+/// <summary>The service is not there - stopped, restarting, or gone mid-call.
+/// The window waits for it to come back rather than calling it an error.</summary>
+public sealed class EngineUnavailableException : IOException
+{
+    public EngineUnavailableException(string message) : base(message) { }
+}
+
 /// <summary>The service refused a call (Protect settings locked, or a member that
 /// may not cross the pipe) - as opposed to the call failing.</summary>
 public sealed class EngineDeniedException : InvalidOperationException
@@ -33,6 +40,7 @@ public class RemoteEngine : DispatchProxy, IDisposable
     private volatile Dictionary<string, JsonElement> _state = new();
     private long _stateSeq;
     private readonly object _stateGate = new();
+    private readonly object _localGate = new();
     private SynchronizationContext? _eventContext;
     private Action? _protectionChanged;
     private volatile bool _closed;
@@ -47,6 +55,30 @@ public class RemoteEngine : DispatchProxy, IDisposable
     /// <summary>The pipe broke: the service stopped or restarted. Raised once, on
     /// the event context.</summary>
     public event Action? Disconnected;
+
+    /// <summary>What the service's detection decided (packet log, activity,
+    /// prompts), in order, on the event context (0.99.208).</summary>
+    public event Action<DetectionResult>? Detected;
+
+    /// <summary>Something the service's enforcement wants the user told.</summary>
+    public event Action<UpkeepNotice>? Notice;
+
+    /// <summary>Where events are raised: the window's UI thread. Settable because
+    /// the connection is made before the window exists.</summary>
+    public SynchronizationContext? EventContext { get => _eventContext; set => _eventContext = value; }
+
+    /// <summary>Serves the members tagged Local - what the window does for itself
+    /// (GeoIP lookups, exports, the VirusTotal key) - from a read-only copy of the
+    /// profile in the window's own process. Null: Local members throw.</summary>
+    public IEngine? LocalFallback { get; set; }
+
+    /// <summary>Re-reads that copy. Called before a Local member runs if anything
+    /// was changed through the service since the last read.</summary>
+    public Action? ReloadLocal { get; set; }
+    private int _localStale;
+
+    /// <summary>The pipe is gone (or never fully opened).</summary>
+    public bool IsClosed => _closed;
 
     /// <summary>Connects and completes the handshake, or throws. Events
     /// (ProtectionChanged, Disconnected) are raised on <paramref name="eventContext"/>
@@ -98,7 +130,15 @@ public class RemoteEngine : DispatchProxy, IDisposable
         if (!EngineCatalog.Instance.TryGet(member, out var entry))
             throw new NotSupportedException($"IEngine.{member} is not in the engine catalog");
         if (entry.Access == Access.Local)
-            throw new NotSupportedException($"IEngine.{member} is handled by the window itself, not the service");
+        {
+            if (LocalFallback == null)
+                throw new NotSupportedException($"IEngine.{member} is handled by the window itself, not the service");
+            if (ReloadLocal != null && Interlocked.Exchange(ref _localStale, 0) == 1)
+                lock (_localGate) { try { ReloadLocal.Invoke(); } catch { } }
+            try { return m.Invoke(LocalFallback, args); }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw(); throw; }
+        }
 
         // Mirrored property: no round trip.
         if (entry.Property != null && _state.TryGetValue(member, out var mirrored))
@@ -122,7 +162,7 @@ public class RemoteEngine : DispatchProxy, IDisposable
 
     private object? Call(string member, MethodInfo m, object?[] args)
     {
-        if (_closed) throw new IOException("the GunWall service is not connected");
+        if (_closed) throw new EngineUnavailableException("the GunWall service is not connected");
         var ps = m.IsSpecialName ? Array.Empty<ParameterInfo>() : m.GetParameters();
         var msg = new EngineMessage { Kind = "call", Id = Interlocked.Increment(ref _nextId), Member = member };
         for (int i = 0; i < ps.Length; i++)
@@ -148,7 +188,7 @@ public class RemoteEngine : DispatchProxy, IDisposable
         finally { _pending.TryRemove(msg.Id, out _); }
 
         var reply = tcs.Task.Result;
-        if (reply.State != null) ApplyState(reply.State, reply.StateSeq);
+        if (reply.State != null) { ApplyState(reply.State, reply.StateSeq); Volatile.Write(ref _localStale, 1); }
         if (!reply.Ok)
         {
             if (reply.ErrorKind == "denied") throw new EngineDeniedException(reply.Error);
@@ -174,6 +214,18 @@ public class RemoteEngine : DispatchProxy, IDisposable
                 if (m == null) break;
                 if (m.Kind == "reply" && _pending.TryGetValue(m.Id, out var tcs)) tcs.TrySetResult(m);
                 else if (m.Kind == "state" && m.State != null) ApplyState(m.State, m.StateSeq);
+                else if (m.Kind == "detected" && m.Detected != null)
+                {
+                    var batch = m.Detected;
+                    var h = Detected;
+                    if (h != null) Raise(() => { foreach (var r in batch) h(r); });
+                }
+                else if (m.Kind == "notice" && m.Notices != null)
+                {
+                    var list = m.Notices;
+                    var h = Notice;
+                    if (h != null) Raise(() => { foreach (var n in list) h(n); });
+                }
             }
         }
         catch (Exception) { /* broken pipe or garbage: treated as disconnected below */ }
@@ -214,7 +266,7 @@ public class RemoteEngine : DispatchProxy, IDisposable
     {
         if (_closed) return;
         _closed = true;
-        foreach (var p in _pending.Values) p.TrySetException(new IOException("the GunWall service disconnected"));
+        foreach (var p in _pending.Values) p.TrySetException(new EngineUnavailableException("the GunWall service disconnected"));
         try { _pipe?.Dispose(); } catch { }
         if (raise) Raise(Disconnected);
     }

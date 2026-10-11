@@ -15,6 +15,53 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.210] — 2026-10-11
+
+### Added — support links
+**Settings → About** has a **Support this project** section with two buttons,
+Ko-fi and PayPal, that open the page in your browser. The same links are in the
+README and on the repository's Sponsor button. GunWall stays free; nothing nags.
+
+## [0.99.209] — 2026-10-11
+
+### Fixed — with the experimental service option on
+- **The window reconnects when the background service restarts.** Stopping or
+  restarting the service left the window unable to make changes until GunWall was
+  restarted, and every repaint raised "An unexpected error occurred: the GunWall
+  service is not connected". The window now says once that the service stopped,
+  waits for it, and reconnects by itself.
+- **"Run GunWall when Windows starts" failed** with "Could not register the
+  startup task": the service tried to register it, for its own account. The
+  window registers it for you again; the service only records the choice.
+
+## [0.99.208] — 2026-10-11
+
+### Added — experimental: the window uses the background service
+A new option under **Keep protection running when GunWall is closed**:
+**Experimental: this window uses the background service**. With it on, the service
+keeps running the firewall while the GunWall window is open, and the window asks
+the service for everything instead of taking the firewall over. Nothing should look
+different; it is the step before GunWall can open without administrator rights.
+Takes effect the next time GunWall starts, and if the service cannot be reached the
+window runs the firewall itself, as before. Off by default. While it is on, a
+custom blocklist file cannot be chosen.
+
+### Fixed — the profile could be read half-written by another process
+The profile is now replaced in one step when it is saved, so the window and the
+background service never see half of an old file and half of a new one.
+
+### Changed — the background service follows setting changes while it runs
+Turning **Watch system DNS lookups** on or off, and changing the DNS blocklist,
+take effect in the background service without a restart. Switching protection on
+asks again about programs still undecided, in the service as in the window.
+
+## [0.99.207] — 2026-10-11
+
+### Fixed — "Resume now" started a zero-minute pause
+The **Resume now** button under a running snooze started a new pause of zero
+minutes, which ended at once - the log read "Protection snoozed for 0 min". It now
+simply ends the pause.
+
 ## [0.99.206] — 2026-10-11
 
 ### Internal — groundwork for opening GunWall without administrator rights

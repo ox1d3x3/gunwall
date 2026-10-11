@@ -23,8 +23,18 @@ public sealed class ServiceEngineSession : IEngineSession
     private long _lastUpkeepMs;
     private readonly string _pendingPath = ProfilePaths.FileIn(PendingPrompts.FileName);
 
+    // The engine pipe (stage 4b, 0.99.208): only when the window uses the service.
+    private Remote.EngineServer? _server;
+    private readonly List<DetectionResult> _batch = new();
+    private long _lastFlushMs, _lastStateMs;
+
+    /// <summary>This session offers the engine pipe, so a window that asks to
+    /// attach is told to connect instead of being handed the engine.</summary>
+    public static volatile bool ServingRemote;
+
     public ServiceEngineSession()
     {
+        ServingRemote = false;
         try
         {
             _thread.Invoke(() =>
@@ -69,6 +79,18 @@ public sealed class ServiceEngineSession : IEngineSession
                         DiagnosticLog.Log($"Service: DNS observer could not start ({_dnsObserver.LastError}).");
                 }
 
+                _lastStrict = _fw.StrictMode;
+                _fw.ProtectionChanged += OnProtectionChanged;
+                _detection.Polled += FollowSettings;
+                if (ServiceMode.Requested)
+                {
+                    _server = new Remote.EngineServer(_fw, _thread, (caller, access) => true, UpdateService.CurrentVersion);
+                    _server.Start();
+                    _detection.Polled += FlushToWindows;
+                    ServingRemote = true;
+                    DiagnosticLog.Log("Service engine: the engine pipe is open - a window that uses the service connects to it.");
+                }
+
                 _detection.StartPolling();
                 DiagnosticLog.Log($"Service engine: detection running (kernel events {(_detection.EventDriven ? "on" : "off")}, "
                                 + $"DNS watching {(dnsWatch ? "on" : "off")}, tamper watch {(_fw.TamperWatchEnabled ? "on" : "off")}"
@@ -82,21 +104,7 @@ public sealed class ServiceEngineSession : IEngineSession
             {
                 try { fw?.LoadGeoIp(); }
                 catch (Exception ex) { DiagnosticLog.LogException("ServiceGeoIp", ex); }
-                // The DNS blocklist: the preset can be 100,000 names, so it is read
-                // here and published in one reference write.
-                try
-                {
-                    List<string> user = new();
-                    if (_thread.IsDisposed) return;
-                    _thread.Invoke(() => { if (_fw != null) user = _fw.DnsResolverBlocklist.ToList(); });
-                    var r = new DnsResolver();
-                    r.SetBlocklist(DnsResolver.MergedBlocklist(user));
-                    _blocklist = r;
-                    if (r.BlockedDomainCount > 0)
-                        DiagnosticLog.Log($"Service engine: DNS blocklist loaded, {r.BlockedDomainCount:N0} name(s) enforced by address.");
-                }
-                catch (Exception) when (_thread.IsDisposed) { /* the session ended meanwhile */ }
-                catch (Exception ex) { DiagnosticLog.LogException("ServiceBlocklist", ex); }
+                LoadBlocklist();
             });
         }
         catch
@@ -108,15 +116,127 @@ public sealed class ServiceEngineSession : IEngineSession
         }
     }
 
+    /// <summary>The DNS blocklist: the preset can be 100,000 names, so it is read
+    /// off the engine thread and published in one reference write. Again whenever
+    /// the list changes (a window using the service edits it, 0.99.208).</summary>
+    private void LoadBlocklist()
+    {
+        try
+        {
+            List<string> user = new();
+            if (_thread.IsDisposed) return;
+            _thread.Invoke(() => { if (_fw != null) user = _fw.DnsResolverBlocklist.ToList(); });
+            var r = new DnsResolver();
+            r.SetBlocklist(DnsResolver.MergedBlocklist(user));
+            _blocklist = r;
+            _blocklistKey = BlocklistKey(user);
+            if (r.BlockedDomainCount > 0)
+                DiagnosticLog.Log($"Service engine: DNS blocklist loaded, {r.BlockedDomainCount:N0} name(s) enforced by address.");
+        }
+        catch (Exception) when (_thread.IsDisposed) { /* the session ended meanwhile */ }
+        catch (Exception ex) { DiagnosticLog.LogException("ServiceBlocklist", ex); }
+    }
+
+    private volatile string _blocklistKey = "";
+    private int _blocklistReloading;
+
+    /// <summary>Changes when the user's lines or the preset file change.</summary>
+    private static string BlocklistKey(IReadOnlyCollection<string> user)
+    {
+        long presetLen = 0, presetTicks = 0;
+        try
+        {
+            var fi = new System.IO.FileInfo(ProfilePaths.FileIn(DnsResolver.PresetFileName));
+            if (fi.Exists) { presetLen = fi.Length; presetTicks = fi.LastWriteTimeUtc.Ticks; }
+        }
+        catch { }
+        int h = 17;
+        foreach (var l in user) h = unchecked(h * 31 + StringComparer.OrdinalIgnoreCase.GetHashCode(l));
+        return $"{user.Count}:{h}:{presetLen}:{presetTicks}";
+    }
+
+    private long _lastFollowMs;
+    private bool? _lastStrict;
+
+    /// <summary>
+    /// Settings the window changes through the service while the session runs
+    /// (0.99.208): the DNS observer follows its switch, and the blocklist is
+    /// rebuilt when it changes. Every five seconds, on the engine thread. Before,
+    /// the window applied these to its own engine, and the service read them
+    /// once, when its session started.
+    /// </summary>
+    private void FollowSettings()
+    {
+        if (_fw == null) return;
+        long now = Environment.TickCount64;
+        if (now - _lastFollowMs < 5000) return;
+        _lastFollowMs = now;
+        try
+        {
+            bool want = _fw.DnsObserveSystemLookups;
+            if (want && _dnsObserver == null)
+            {
+                _dnsObserver = new DnsEventMonitorService();
+                if (!_dnsObserver.Start()) DiagnosticLog.Log($"Service: DNS observer could not start ({_dnsObserver.LastError}).");
+            }
+            else if (!want && _dnsObserver != null) { _dnsObserver.Stop(); _dnsObserver = null; }
+
+            if (BlocklistKey(_fw.DnsResolverBlocklist) != _blocklistKey
+                && Interlocked.Exchange(ref _blocklistReloading, 1) == 0)
+                _ = Task.Run(() => { try { LoadBlocklist(); } finally { Volatile.Write(ref _blocklistReloading, 0); } });
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("Service.FollowSettings", ex); }
+    }
+
+    /// <summary>Protection switched on or off: everything undecided may be asked
+    /// about again, as the window's switch did (SyncFirewallToggle).</summary>
+    private void OnProtectionChanged()
+    {
+        if (_fw == null) return;
+        bool strict = _fw.StrictMode;
+        if (_lastStrict != null && _lastStrict != strict) _detection?.Detector.ResetPrompts();
+        _lastStrict = strict;
+        _server?.PushState();
+    }
+
+    /// <summary>Every poll, on the engine thread: what detection decided goes to
+    /// the windows in one batch, and the state at least every two seconds (rules
+    /// pruned, a setting changed by a timer - changes no call reported).</summary>
+    private void FlushToWindows()
+    {
+        var server = _server;
+        if (server == null) return;
+        long now = Environment.TickCount64;
+        if (_batch.Count > 0 && now - _lastFlushMs >= 250)
+        {
+            // Core Windows processes were already allowed here (OnDetected); the
+            // window must not allow them a second time.
+            foreach (var b in _batch) b.AutoAllow.Clear();
+            bool hasPrompt = _batch.Any(b => b.Prompts.Count > 0);
+            server.Push(new Remote.EngineMessage { Kind = "detected", Detected = _batch.ToList() }, droppable: !hasPrompt);
+            _batch.Clear();
+            _lastFlushMs = now;
+        }
+        if (now - _lastStateMs >= 2000) { server.PushState(); _lastStateMs = now; }
+    }
+
     private void OnDetected(DetectionResult r, string source)
     {
         if (_fw == null) return;
+        // A connected window shows it as it happens: packet log, activity, prompts.
+        if (_server != null && _server.SessionCount > 0
+            && (r.Packet != null || r.Activity.Count > 0 || r.Prompts.Count > 0 || r.FirstSeen.Count > 0))
+        {
+            if (_batch.Count < 500) _batch.Add(r);
+        }
         foreach (var q in r.AutoAllow)
         {
             _fw.AllowApp(q.ExePath, q.ProcessName);
             DiagnosticLog.Log($"Allowed automatically: {q.ProcessName} (core Windows process, seen in the {source}, by the service).");
         }
         if (r.Prompts.Count == 0) return;
+        // A connected window was just sent them; the queue is for when none is.
+        if (_server != null && _server.SessionCount > 0) return;
         try
         {
             int added = PendingPrompts.Add(_pendingPath, r.Prompts);
@@ -155,9 +275,11 @@ public sealed class ServiceEngineSession : IEngineSession
             if (g.HasData) { c.Country = g.Country; c.Asn = g.Asn; c.AsnOwner = g.Owner; }
         }
 
-        // No window to show a notification in: the log has it.
-        foreach (var n in _upkeep.Tick(conns, procs))
+        // Logged, and shown by a connected window as a notification.
+        var notices = _upkeep.Tick(conns, procs);
+        foreach (var n in notices)
             DiagnosticLog.Log($"Service: {n.Title} - {n.Body}");
+        if (notices.Count > 0) _server?.Push(new Remote.EngineMessage { Kind = "notice", Notices = notices }, droppable: false);
     }
 
     public void Dispose()
@@ -167,6 +289,11 @@ public sealed class ServiceEngineSession : IEngineSession
         {
             _thread.Invoke(() =>
             {
+                // The engine pipe first: no window may call into an engine that is
+                // being taken apart.
+                ServingRemote = false;
+                try { _server?.Dispose(); } catch { }
+                _server = null;
                 // The DNS observer first: the window starts its own as soon as the
                 // engine is handed over (a different session name, but no reason to
                 // run both).

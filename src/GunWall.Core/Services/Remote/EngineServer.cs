@@ -126,6 +126,16 @@ public sealed class EngineServer : IDisposable
         foreach (var s in all) s.Queue(new EngineMessage { Kind = "state", State = state, StateSeq = seq });
     }
 
+    /// <summary>Sends a message to every connected window without waiting. A
+    /// droppable one (packet-log rows) is skipped for a window that has fallen
+    /// behind; anything else counts toward dropping that window.</summary>
+    public void Push(EngineMessage m, bool droppable)
+    {
+        Session[] all;
+        lock (_gate) all = _sessions.ToArray();
+        foreach (var s in all) s.Queue(m, droppable);
+    }
+
     /// <summary>On the engine context; directly when already on it (PushState from
     /// a ProtectionChanged handler).</summary>
     private Dictionary<string, JsonElement> Capture() => OnEngine(() => EngineCatalog.Instance.CaptureState(_engine));
@@ -135,7 +145,13 @@ public sealed class EngineServer : IDisposable
         if (SynchronizationContext.Current == _ctx) return work();
         T result = default!;
         Exception? error = null;
-        _ctx.Send(_ => { try { result = work(); } catch (Exception ex) { error = ex; } }, null);
+        // Checked again ON the engine thread: a call queued behind the session's
+        // shutdown must not run against an engine that is already disposed.
+        _ctx.Send(_ =>
+        {
+            try { result = _stopping ? throw new ObjectDisposedException("engine", "the service is stopping") : work(); }
+            catch (Exception ex) { error = ex; }
+        }, null);
         if (error != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
         return result;
     }
@@ -246,9 +262,10 @@ public sealed class EngineServer : IDisposable
 
         /// <summary>Never blocks. A window that has stopped reading is dropped
         /// instead of being waited for.</summary>
-        public void Queue(EngineMessage m)
+        public void Queue(EngineMessage m, bool droppable = false)
         {
             if (Volatile.Read(ref _closed) != 0) return;
+            if (droppable && _out.Count >= MaxQueued / 2) return;
             if (_out.Count >= MaxQueued) { Close(); return; }
             try { _out.Add(m); } catch (InvalidOperationException) { /* closed meanwhile */ }
         }
@@ -260,15 +277,17 @@ public sealed class EngineServer : IDisposable
                 foreach (var m in _out.GetConsumingEnumerable())
                 {
                     try { EngineWire.Write(_pipe, m); }
-                    catch (InvalidDataException) when (m.Kind == "reply")
+                    catch (InvalidDataException)
                     {
-                        // Too big for one message: say so, rather than leave the
-                        // window waiting out its timeout.
-                        EngineWire.Write(_pipe, new EngineMessage
-                        {
-                            Kind = "reply", Id = m.Id, Ok = false,
-                            Error = $"the answer is over the {EngineWire.MaxMessageBytes / 1024} KB message limit",
-                        });
+                        // Too big for one message. A reply says so, rather than leave
+                        // the window waiting out its timeout; a pushed message is
+                        // dropped, never the connection.
+                        if (m.Kind == "reply")
+                            EngineWire.Write(_pipe, new EngineMessage
+                            {
+                                Kind = "reply", Id = m.Id, Ok = false,
+                                Error = $"the answer is over the {EngineWire.MaxMessageBytes / 1024} KB message limit",
+                            });
                     }
                 }
             }

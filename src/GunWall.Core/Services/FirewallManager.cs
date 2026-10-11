@@ -78,8 +78,31 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// incapable of the mistake, which matters because there are ninety-odd
     /// setters and any of them can be reached from a designer-raised event.
     /// </summary>
+    /// <summary>
+    /// A copy of the profile the window reads but never writes (0.99.208): while
+    /// the window uses the background service, the service owns rules.json and
+    /// this manager only serves what the window does for itself (GeoIP lookups,
+    /// exports). A save here would put a stale copy over the service's.
+    /// </summary>
+    public bool ReadOnlyStore { get; set; }
+
+    /// <summary>Re-reads the profile into a read-only copy, after the service
+    /// changed it.</summary>
+    public void ReloadStoreFromDisk()
+    {
+        if (!ReadOnlyStore) return;
+        // Quietly, and keeping the copy it has if the read fails: this runs while
+        // the service may be saving, and a failed read is not a damaged profile.
+        if (!_store.TryLoadQuiet(out var fresh)) return;
+        _data = fresh;
+        _knownSet = null;
+        _settingsLoaded = true;
+        LoadVirusTotalKey("reload");   // a key saved through the service
+    }
+
     private void SaveStore()
     {
+        if (ReadOnlyStore) return;   // the background service owns the profile
         if (!_settingsLoaded)
         {
             DiagnosticLog.Log("REFUSED to save the profile before it was read. A "
@@ -476,6 +499,11 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     }
 
     /// <summary>Download the free CC0 database, then load it. Returns ranges loaded.</summary>
+    /// <summary>Loads the GeoIP tables already on disk (0.99.208): after the window
+    /// that uses the service downloaded them, so the service never waits on the
+    /// network on its engine thread.</summary>
+    public void ReloadGeoIpTables() => LoadGeoIp();
+
     public int DownloadAndLoadGeoIp()
     {
         using var _perf = PerfMonitor.Measure("DownloadAndLoadGeoIp");
@@ -2293,6 +2321,17 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// if one was downloaded. Pass an empty version to clear both.</summary>
     public void SetPendingUpdate(string version, string path)
     {
+        // Only ever an installer in GunWall's own updates folder (0.99.208): this is
+        // reachable over the engine pipe, and the old path is DELETED below - a path
+        // from a caller would be a file deletion run as SYSTEM.
+        if (path.Length > 0)
+        {
+            string full = System.IO.Path.GetFullPath(path);
+            string folder = System.IO.Path.GetFullPath(UpdateFolder).TrimEnd('\\', '/') + System.IO.Path.DirectorySeparatorChar;
+            if (!full.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("an update must be in GunWall's updates folder");
+            path = full;
+        }
         // A file for a version we are no longer offering is not a saving, it is
         // a stale installer that Update now might run. Removed here so the two
         // can never disagree.
@@ -2873,6 +2912,19 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
 
     /// <summary>Persist edits to an app's policy. If the policy became inert and
     /// empty, it is dropped and its reactive filters cleared.</summary>
+    /// <summary>Replaces an app's access policy and applies it (0.99.208). The
+    /// window edits a copy and sends it here; editing the object returned by
+    /// GetOrCreateAccessPolicy works only in the same process.</summary>
+    public void SetAccessPolicy(string exePath, AppAccessPolicy policy)
+    {
+        var target = GetOrCreateAccessPolicy(exePath);
+        target.Rules.Clear();
+        foreach (var r in policy.Rules)
+            target.Rules.Add(new AppAccessRule { Action = r.Action, EntityType = r.EntityType, Value = r.Value, Enabled = r.Enabled });
+        target.DefaultBlock = policy.DefaultBlock;
+        SaveAccessPolicy(exePath);
+    }
+
     public void SaveAccessPolicy(string exePath)
     {
         string key = exePath.ToLowerInvariant();
@@ -4011,6 +4063,15 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             : "The pause ended while GunWall was closed.";
     }
 
+    /// <summary>Records the choice only (0.99.209). The startup task belongs to the
+    /// signed-in user, so a window that uses the service registers it itself and
+    /// sends the result here; registered by the service it would be SYSTEM's.</summary>
+    public void RecordRunAtStartup(bool enabled)
+    {
+        _data.RunAtStartup = enabled;
+        SaveStore();
+    }
+
     public void SetRunAtStartup(bool enabled)
     {
         bool ok = StartupService.SetEnabled(enabled);
@@ -4580,6 +4641,18 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// the records; the live WFP filters are reconciled on next strict-mode
     /// toggle. Returns the number of rules imported.
     /// </summary>
+    /// <summary>A profile import sent as the file's text (0.99.208): the window
+    /// reads the file it was given and the service never opens a path chosen by
+    /// a caller.</summary>
+    public int ImportProfileJson(string json)
+    {
+        if (json.Length > 16 * 1024 * 1024) throw new System.IO.InvalidDataException("profile is too large");
+        string tmp = ProfilePaths.FileIn("import.tmp.json");
+        System.IO.File.WriteAllText(tmp, json);
+        try { return ImportProfile(tmp); }
+        finally { try { System.IO.File.Delete(tmp); } catch { } }
+    }
+
     public int ImportProfile(string filePath)
     {
         var imported = _store.Import(filePath);

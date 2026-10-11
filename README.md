@@ -310,6 +310,18 @@ can read.
 
 ---
 
+## Support this project
+
+GunWall is free and stays free. If it is useful to you and you would like to help,
+you can buy me a coffee:
+
+- [Ko-fi — ko-fi.com/mahabubsubhany](https://ko-fi.com/mahabubsubhany)
+- [PayPal — paypal.me/mason7gg](https://www.paypal.com/paypalme/mason7gg)
+
+The same links are in GunWall under **Settings → About**.
+
+---
+
 ## Contributing
 
 Issues and pull requests are welcome. When reporting a problem, attach a

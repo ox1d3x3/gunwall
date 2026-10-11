@@ -11,6 +11,18 @@ public partial class App : Application
     // is not finalised - and the lock released - half way through).
     private static System.IO.FileStream? _recoveryLock;
 
+    private IEngine? _remote;
+
+    /// <summary>The background service's engine, when the window uses the service
+    /// (ServiceMode, 0.99.208): connected at startup, handed to the window once.
+    /// Null: the window runs the engine itself, as before.</summary>
+    public IEngine? TakeRemoteEngine()
+    {
+        var r = _remote;
+        _remote = null;
+        return r;
+    }
+
     /// <summary>The engine lock claimed at startup, handed to the window once.</summary>
     public System.IO.FileStream? TakeEngineLock()
     {
@@ -121,13 +133,40 @@ public partial class App : Application
         // Taken here, before the window exists, so waiting for the background
         // service to hand over never shows a frozen window. The window adopts the
         // lock (TakeEngineLock) before it reads the profile.
-        try
+        // The window uses the service (experimental, 0.99.208): ask it to keep the
+        // engine and connect. Anything short of a working connection falls back to
+        // the hand-over below - the window is still elevated, so it can always run
+        // the engine itself.
+        if (ServiceMode.Requested)
         {
-            _engineLock = EngineOwnership.ClaimForWindow(
-                ProfilePaths.FileIn(EngineOwnership.LockFileName), EngineOwnership.PipeName,
-                TimeSpan.FromSeconds(45), DiagnosticLog.Log, BackgroundServiceControl.Stop);
+            try
+            {
+                DiagnosticLog.Log("Engine: this window uses the background service - asking it to keep the engine.");
+                string? answer = EngineOwnership.Ask(EngineOwnership.PipeName, "attach", TimeSpan.FromSeconds(45));
+                if (answer == "remote")
+                {
+                    _remote = GunWall.Services.Remote.RemoteEngine.Connect(UpdateService.CurrentVersion, null);
+                    DiagnosticLog.Log("Engine: connected to the background service's engine - this window does not run one.");
+                }
+                else
+                    DiagnosticLog.Log($"Engine: the service did not keep the engine (answer: {answer ?? "none"}) - this window runs it.");
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log($"Engine: could not connect to the background service ({ex.GetType().Name}: {ex.Message}) - this window runs the engine.");
+                _remote = null;
+            }
         }
-        catch (Exception ex) { DiagnosticLog.LogException("ClaimEngine", ex); }
+        if (_remote == null)
+        {
+            try
+            {
+                _engineLock = EngineOwnership.ClaimForWindow(
+                    ProfilePaths.FileIn(EngineOwnership.LockFileName), EngineOwnership.PipeName,
+                    TimeSpan.FromSeconds(45), DiagnosticLog.Log, BackgroundServiceControl.Stop);
+            }
+            catch (Exception ex) { DiagnosticLog.LogException("ClaimEngine", ex); }
+        }
 
         // Surface unhandled UI-thread exceptions instead of silently dying,
         // and record them for the diagnostics bundle.
@@ -623,6 +662,17 @@ public partial class App : Application
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        // The background service is restarting under a window that uses it
+        // (0.99.209): the window reconnects by itself and already said so once.
+        // A dialog for every repaint meanwhile is noise, not information.
+        if (e.Exception is GunWall.Services.Remote.EngineUnavailableException
+            || e.Exception.InnerException is GunWall.Services.Remote.EngineUnavailableException)
+        {
+            DiagnosticLog.NoteBenignFault("background service not connected (reconnecting)");
+            e.Handled = true;
+            return;
+        }
+
         // Counted, not shown. Nothing the reader could do about it, and an
         // "unexpected error" dialog for a known framework defect teaches people
         // to dismiss dialogs that sometimes matter.

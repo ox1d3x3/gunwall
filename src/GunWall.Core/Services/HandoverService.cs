@@ -42,13 +42,16 @@ public sealed class HandoverService : IDisposable
     // service taking over afterwards.
     private static readonly TimeSpan RecentRequest = TimeSpan.FromSeconds(3);
 
+    private readonly Func<bool> _serveRemote;
+
     public bool OwnsEngine => _owns;
     public int Sessions { get; private set; }
 
     public HandoverService(string lockPath, string pipeName, Func<IEngineSession> startSession,
                            Action<string> log, Func<string, NamedPipeServerStream>? createPipe = null,
-                           TimeSpan? backoffAfterRelease = null)
+                           TimeSpan? backoffAfterRelease = null, Func<bool>? serveRemote = null)
     {
+        _serveRemote = serveRemote ?? (() => false);
         _lockPath = lockPath;
         _pipeName = pipeName;
         _startSession = startSession;
@@ -178,6 +181,18 @@ public sealed class HandoverService : IDisposable
                 if (!_owns) return "released";
                 _releaseRequested.Set();
                 return _released.Wait(TimeSpan.FromSeconds(60)) ? "released" : "timeout";
+            case "attach":
+                // A window that uses the service (ServiceMode, 0.99.208): when the
+                // service runs the engine and offers the engine pipe, it keeps the
+                // engine and the window connects. Otherwise, exactly a release.
+                if (_owns && _serveRemote()) return "remote";
+                goto case "release";
+            case "ready":
+                // No side effects (0.99.209): a window reconnecting after the
+                // service restarted asks this until the engine pipe is open. Asking
+                // "attach" instead would count as a release request and hold the
+                // service back from starting its engine at all.
+                return _owns && _serveRemote() ? "ready" : "wait";
             case "status":
                 return _owns ? "owner=service" : "owner=none";
             default:

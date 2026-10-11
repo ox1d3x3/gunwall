@@ -100,7 +100,8 @@ internal static class ServiceShell
         {
             handover = new HandoverService(
                 ProfilePaths.FileIn(EngineOwnership.LockFileName), EngineOwnership.PipeName,
-                () => new ServiceEngineSession(), DiagnosticLog.Log);
+                () => new ServiceEngineSession(), DiagnosticLog.Log,
+                serveRemote: () => ServiceEngineSession.ServingRemote);
             handover.Start();
             Report(SERVICE_RUNNING, SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN, 0);
             DiagnosticLog.Log("Service: running - it runs the engine whenever the GunWall window is closed.");

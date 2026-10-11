@@ -150,13 +150,45 @@ public sealed class RuleStore
     /// left the profile unreadable).</summary>
     private string ReadProfileText()
     {
-        try { return File.ReadAllText(_file); }
+        try { return ReadShared(_file); }
         catch (UnauthorizedAccessException) when (OperatingSystem.IsWindows())
         {
             DiagnosticLog.Log("Profile: access denied - repairing the data folder's permissions and retrying.");
             DataFolderAccess.EnsureUsable(_dir, DiagnosticLog.Log);
-            return File.ReadAllText(_file);
+            return ReadShared(_file);
         }
+    }
+
+    /// <summary>Opened letting a writer replace the file meanwhile (0.99.208): the
+    /// window reads the profile while the background service saves it, and a
+    /// reader that denied DELETE made the service's save fail.</summary>
+    private static string ReadShared(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var r = new StreamReader(fs);
+        return r.ReadToEnd();
+    }
+
+    /// <summary>A second process's read of the profile (the window using the
+    /// service): no migration, no recovery copy, no log line on failure - and
+    /// false instead of an empty profile, so the caller keeps what it has.</summary>
+    public bool TryLoadQuiet(out StoreData data)
+    {
+        data = new StoreData();
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                if (!File.Exists(_file)) return false;
+                var d = JsonSerializer.Deserialize<StoreData>(ReadShared(_file));
+                if (d == null) return false;
+                data = d;
+                return true;
+            }
+            catch (IOException) { Thread.Sleep(50); }
+            catch (Exception) { return false; }
+        }
+        return false;
     }
 
     /// <summary>
@@ -201,8 +233,15 @@ public sealed class RuleStore
             // Write to a temp file then move, so a crash mid-write can't corrupt state.
             string tmp = _file + ".tmp";
             File.WriteAllText(tmp, json);
-            File.Copy(tmp, _file, overwrite: true);
-            File.Delete(tmp);
+            // A rename, not a copy (0.99.208): another process reading the profile
+            // sees the whole old file or the whole new one, never half of each. A
+            // reader holding it open is waited for briefly.
+            for (int attempt = 0; ; attempt++)
+            {
+                try { File.Move(tmp, _file, overwrite: true); break; }
+                catch (IOException) when (attempt < 10) { Thread.Sleep(50); }
+                catch (UnauthorizedAccessException) when (attempt < 10) { Thread.Sleep(50); }
+            }
         }
     }
 

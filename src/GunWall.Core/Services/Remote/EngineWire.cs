@@ -15,7 +15,7 @@ public static class EngineWire
 {
     /// <summary>Version 1 of the protocol. A window and a service that disagree
     /// refuse to talk ("GunWall is updating - restart the window").</summary>
-    public const int ProtocolVersion = 1;
+    public const int ProtocolVersion = 2;   // 2: detected and notice messages (0.99.208)
 
     /// <summary>The largest message either side accepts.</summary>
     public const int MaxMessageBytes = 1024 * 1024;
@@ -28,6 +28,8 @@ public static class EngineWire
     public static readonly JsonSerializerOptions Json = new()
     {
         IncludeFields = true,
+        // DetectionResult's lists are get-only; fill them instead of skipping them.
+        PreferredObjectCreationHandling = JsonObjectCreationHandling.Populate,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = false,
         NumberHandling = JsonNumberHandling.Strict,
@@ -109,6 +111,11 @@ public sealed class EngineMessage
 
     // state (also on a reply to anything that is not a read)
     public Dictionary<string, JsonElement>? State { get; set; }
+    // detected (service -> window): what detection decided since the last batch -
+    // packet-log rows, activity, prompts. notice: what enforcement wants said.
+    public List<DetectionResult>? Detected { get; set; }
+    public List<UpkeepNotice>? Notices { get; set; }
+
     /// <summary>Increases with every state the service captures. A reply's state
     /// and a pushed state arrive on different threads; the newer one wins.</summary>
     public long StateSeq { get; set; }

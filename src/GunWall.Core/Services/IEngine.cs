@@ -47,12 +47,12 @@ public interface IEngine
     [EngineAccess(Access.Read)] bool BypassesBlocklists(string exePath);
     [EngineAccess(Access.Loosen)] void CancelSnooze();
     [EngineAccess(Access.Tighten)] FirewallManager.TamperReport CheckIntegrity(bool repair);
-    [EngineAccess(Access.Local)] void CleanUpdateFolder();
+    [EngineAccess(Access.Preference)] void CleanUpdateFolder();
     [EngineAccess(Access.Loosen)] void ClearBlocklist();
     [EngineAccess(Access.Loosen)] int ClearDomainReactiveBlocks();
     [EngineAccess(Access.Loosen)] void ClearEntityReactiveBlocks();
     [EngineAccess(Access.Preference)] void ClearReviewWindowPending(string why);
-    [EngineAccess(Access.Local)] void ClearStalePendingUpdate();
+    [EngineAccess(Access.Preference)] void ClearStalePendingUpdate();
     [EngineAccess(Access.Loosen)] void ClearStore();
     [EngineAccess(Access.Read)] bool ConfirmClearLogs { get; }
     [EngineAccess(Access.Preference)] string CreateBackup();
@@ -74,7 +74,7 @@ public interface IEngine
     [EngineAccess(Access.Read)] int DnsResolverPort { get; }
     [EngineAccess(Access.Read)] string DnsResolverUpstream { get; }
     [EngineAccess(Access.Read)] List<SavedAdapterDns> DnsSavedAdapters { get; }
-    [EngineAccess(Access.Preference)] int DownloadAndLoadGeoIp();
+    [EngineAccess(Access.Local)] int DownloadAndLoadGeoIp();
     [EngineAccess(Access.Read)] AppStatus EffectiveStatus(string exePath);
     [EngineAccess(Access.Tighten)] void EndSnooze();
     [EngineAccess(Access.Preference)] void EnsureSelfConnectivity();
@@ -162,6 +162,10 @@ public interface IEngine
     [EngineAccess(Access.Read)] string RulesetFingerprint { get; }
     [EngineAccess(Access.Read)] bool RunAtStartup { get; }
     [EngineAccess(Access.Loosen)] void SaveAccessPolicy(string exePath);
+    [EngineAccess(Access.Loosen)] void SetAccessPolicy(string exePath, AppAccessPolicy policy);
+    [EngineAccess(Access.Loosen)] int ImportProfileJson(string json);
+    [EngineAccess(Access.Preference)] void ReloadGeoIpTables();
+    [EngineAccess(Access.Preference)] void RecordRunAtStartup(bool enabled);
     [EngineAccess(Access.Preference)] void SaveCategoryColors();
     [EngineAccess(Access.TightenIfTrue)] void SaveDnsCloakConfig(bool enabled);
     [EngineAccess(Access.Loosen)] void SaveDnsDohConfig(string url, bool fallback);
@@ -205,10 +209,10 @@ public interface IEngine
     [EngineAccess(Access.Preference)] void SetNotificationSound(bool v);
     [EngineAccess(Access.TightenIfTrue)] void SetP2pBlock(string exePath, bool blocked);
     [EngineAccess(Access.Preference)] void SetPacketFileLogging(bool v);
-    [EngineAccess(Access.Local)] void SetPendingUpdate(string version, string path);
+    [EngineAccess(Access.Preference)] void SetPendingUpdate(string version, string path);
     [EngineAccess(Access.TightenIfFalse)] void SetPopupDefaultAllow(bool v);
     [EngineAccess(Access.Loosen)] void SetPopupTimeoutSeconds(int v);
-    [EngineAccess(Access.Preference)] void SetRunAtStartup(bool enabled);
+    [EngineAccess(Access.Local)] void SetRunAtStartup(bool enabled);
     [EngineAccess(Access.TightenIfTrue)] void SetScopeBlock(string exePath, string scope, bool blocked);
     [EngineAccess(Access.TightenIfTrue)] bool SetServiceBlocked(string serviceName, bool blocked);
     [EngineAccess(Access.Loosen)] void SetSilent(string exePath, string displayName, bool silent);

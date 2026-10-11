@@ -2898,6 +2898,14 @@
                             </StackPanel>
                             <TextBlock x:Name="BackgroundServiceStatus" FontSize="11" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextSecondary}" Margin="24,0,0,8" />
+                            <StackPanel Orientation="Horizontal" Margin="24,0,0,2">
+                                <CheckBox x:Name="WindowUsesServiceCheck" Content="Experimental: this window uses the background service"
+                                          Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                          Click="WindowUsesServiceCheck_Click" />
+                                <gw:InfoTip Text="A step towards opening GunWall without administrator rights. With this on, the background service keeps running the firewall while this window is open, and the window asks it for everything instead of taking the firewall over. You should notice no difference except in the logs. Takes effect the next time GunWall starts. If the service cannot be reached, the window runs the firewall itself, as before." />
+                            </StackPanel>
+                            <TextBlock x:Name="WindowUsesServiceStatus" FontSize="11" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondary}" Margin="48,0,0,8" />
                             <CheckBox x:Name="EventLogCheck" Content="Send firewall events to the Windows Event Log"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
@@ -3331,6 +3339,21 @@
                                            RequestNavigate="Repo_RequestNavigate"
                                            Style="{StaticResource RepoLink}">github.com/ox1d3x3/gunwall</Hyperlink>
                             </TextBlock>
+
+                            <!-- Support. Two plain buttons that open the page in the
+                                 browser; nothing is sent from here, and nothing nags. -->
+                            <StackPanel Orientation="Horizontal" Margin="0,22,0,10">
+                                <TextBlock Text="SUPPORT THIS PROJECT" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                                <gw:InfoTip Text="GunWall is free and stays free. If it is useful to you and you would like to help, you can buy the developer a coffee. Each button opens the page in your browser; nothing is sent from GunWall." />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="SupportKofiButton" Content="Buy me a coffee (Ko-fi)"
+                                        Style="{StaticResource ActionButton}" Margin="0,0,10,0"
+                                        Click="SupportKofi_Click" />
+                                <Button x:Name="SupportPaypalButton" Content="Support via PayPal"
+                                        Style="{StaticResource ActionButton}"
+                                        Click="SupportPaypal_Click" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
