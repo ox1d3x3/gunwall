@@ -134,6 +134,7 @@ the icon cache (`Services/IconService.cs`) are in `src/GunWall`; the rest are in
 | `Services/DnsEventMonitorService.cs` | Passive ETW observer of the Windows DNS client; records answers without intercepting them. |
 | `Services/AppUsageService.cs`, `NetworkStatsService.cs` | Usage history and traffic attribution. |
 | `Services/RuleStore.cs` | JSON persistence of every rule and setting. |
+| `Services/UiPrefs.cs` | Per-user UI preferences (`%AppData%\GunWall\ui.json`): theme, zoom, tray, notifications, colours. Copied from the profile once; Local on `IEngine`, so the window answers them itself and the service never sees them. |
 | `Services/DiagnosticLog.cs` | Always-on log with a deduplicating in-memory error buffer. |
 | `Services/SignatureService.cs`, `HashService.cs` | Authenticode verification and SHA-256 tamper hashing. |
 

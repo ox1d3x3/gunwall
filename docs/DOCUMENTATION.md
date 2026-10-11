@@ -139,6 +139,13 @@ If it matches, the file is byte-for-byte what was built from the published sourc
 Your VirusTotal key is the only encrypted value in the profile; everything else is
 plain JSON.
 
+**Your own look and feel** — theme, zoom, font, icon size, tray and notification
+habits, confirmations, category colours and muted alert categories — is kept per
+Windows user in `%AppData%\GunWall\ui.json`, so two people on one PC each keep
+their own. None of it decides what may connect. Importing a profile or restoring a
+backup changes rules and settings, not these. (Portable copies keep `ui.json` in
+their data folder.)
+
 It is deliberately **outside** the application folder so that updating GunWall
 never disturbs it. To keep everything together on a USB stick instead, create an
 empty file called `portable.txt` beside `GunWall.exe`.
@@ -334,7 +341,10 @@ updated from online, and the category's description shows how many are unticked.
 ### Custom blocklist file
 
 Point GunWall at your own list of domains. Hosts-style lines (`0.0.0.0 domain`),
-plain domains and pasted URLs are all understood.
+plain domains and pasted URLs are all understood; anything that is not a plain
+domain name is skipped. GunWall reads the file when you choose it and keeps its own
+copy (`custom-blocklist.txt` in the data folder); if you edit your file, GunWall
+reads it again the next time it starts. Up to 1,000,000 domains.
 
 ### How domain blocking actually works
 
@@ -774,7 +784,9 @@ executable.
 ### Removing your data
 
 `C:\ProgramData\GunWall` holds rules and settings. It is left in place unless you
-ask for it to be deleted, so reinstalling restores your configuration.
+ask for it to be deleted, so reinstalling restores your configuration. Your UI
+preferences (`%AppData%\GunWall\ui.json`) are left too; delete that folder to
+start from the defaults.
 
 ---
 

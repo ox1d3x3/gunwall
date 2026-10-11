@@ -443,6 +443,10 @@ public sealed class StoreData
     // §5 filter-list engine: a user-pointed local domain list (one domain per line,
     // or hosts-style "0.0.0.0 domain"); GunWall watches + folds it into the block.
     public string CustomBlocklistPath { get; set; } = "";
+    /// <summary>When the window last sent the list's domains (0.99.215). The service
+    /// keeps its own copy (custom-blocklist.txt) and never opens the chosen file;
+    /// the window re-sends when that file is newer than this.</summary>
+    public DateTime? CustomBlocklistImportedUtc { get; set; }
 
     // §1 entity rule engine: GeoIP-keyed block rules (country / continent / ASN),
     // matched reactively per connection. EntityReactiveFilters holds the WFP filter

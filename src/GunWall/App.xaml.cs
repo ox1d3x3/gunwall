@@ -189,6 +189,11 @@ public partial class App : Application
             // them as errors buried real ones under dozens of duplicates.
             if (IsExpectedTeardownFault(args.Exception))
                 DiagnosticLog.NoteBenignFault("network teardown (aborted socket)");
+            // A background call to the service that failed while it was
+            // restarting (0.99.213): the window reconnects and said so once.
+            else if (args.Exception != null && args.Exception.Flatten().InnerExceptions.Count > 0
+                     && args.Exception.Flatten().InnerExceptions.All(x => x is GunWall.Services.Remote.EngineUnavailableException))
+                DiagnosticLog.NoteBenignFault("background service not connected (reconnecting)");
             else
                 DiagnosticLog.LogException("UnobservedTaskException", args.Exception);
         };

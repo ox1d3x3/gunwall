@@ -538,28 +538,111 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     public int CustomDomainCount => _customDomains.Count;
     public string CustomListPath => _data.CustomBlocklistPath ?? "";
 
-    public void SetCustomListPath(string path)
+    /// <summary>When the window last sent the list (see SetCustomListDomains).</summary>
+    public DateTime CustomListImportedUtc => _data.CustomBlocklistImportedUtc ?? DateTime.MinValue;
+
+    /// <summary>The engine's own copy of the list, in the data folder.</summary>
+    private string CustomListCopyPath => System.IO.Path.Combine(_store.ProfileFolder, CustomListCopyName);
+    public const string CustomListCopyName = "custom-blocklist.txt";
+
+    /// <summary>Upper bounds on what a window may send (0.99.215).</summary>
+    public const int CustomListMaxDomains = 1_000_000, CustomListMaxChunk = 25_000;
+
+    private List<string>? _customStaging;
+
+    /// <summary>
+    /// The window chose (or cleared) a custom list (0.99.215). It reads the file as
+    /// the signed-in user and sends the cleaned domains here in chunks: first=true
+    /// starts a new list, last=true replaces the current one with it. The engine
+    /// keeps its own copy and never opens a path the window chose - in service mode
+    /// it runs as SYSTEM. <paramref name="sourcePath"/> is only remembered and shown.
+    /// An empty source with first and last clears the list.
+    /// </summary>
+    public int SetCustomListDomains(string sourcePath, IReadOnlyList<string> domains, bool first, bool last)
     {
-        _data.CustomBlocklistPath = path ?? "";
+        if (first) _customStaging = new List<string>();
+        if (_customStaging == null)
+            throw new InvalidOperationException("custom list: a chunk arrived without its first part");
+        if (domains.Count > CustomListMaxChunk)
+            throw new ArgumentException($"custom list: at most {CustomListMaxChunk:N0} domains per part");
+        foreach (var raw in domains)
+        {
+            string d = CleanDomainLine(raw ?? "");
+            if (IsPlainDomain(d)) _customStaging.Add(d);
+            if (_customStaging.Count > CustomListMaxDomains)
+            {
+                _customStaging = null;
+                throw new ArgumentException($"custom list: more than {CustomListMaxDomains:N0} domains");
+            }
+        }
+        if (!last) return _customStaging.Count;
+
+        var list = _customStaging;
+        _customStaging = null;
+        string copy = CustomListCopyPath;
+        if (string.IsNullOrEmpty(sourcePath))
+        {
+            try { if (System.IO.File.Exists(copy)) System.IO.File.Delete(copy); } catch { }
+            _data.CustomBlocklistPath = "";
+            _data.CustomBlocklistImportedUtc = null;
+        }
+        else
+        {
+            string tmp = copy + ".tmp";
+            System.IO.File.WriteAllLines(tmp, list);
+            System.IO.File.Move(tmp, copy, overwrite: true);
+            _data.CustomBlocklistPath = sourcePath.Length > 400 ? sourcePath[..400] : sourcePath;
+            _data.CustomBlocklistImportedUtc = DateTime.UtcNow;
+        }
         SaveStore();
-        ReloadCustomList();
+        int n = ReloadCustomList();
+        DiagnosticLog.Log(string.IsNullOrEmpty(sourcePath)
+            ? "Custom blocklist: cleared."
+            : $"Custom blocklist: {n:N0} domain(s) received from the window and saved as {CustomListCopyName}.");
+        return n;
     }
 
-    /// <summary>(Re)load the user's custom domain list and rebuild its bloom index.</summary>
+    /// <summary>A domain name and nothing else: letters, digits, '-', '_', '.', and
+    /// a leading "*." wildcard; 253 characters at most.</summary>
+    public static bool IsPlainDomain(string d)
+    {
+        if (d.Length == 0 || d.Length > 253) return false;
+        int start = d.StartsWith("*.", StringComparison.Ordinal) ? 2 : 0;
+        if (start == d.Length) return false;
+        for (int i = start; i < d.Length; i++)
+        {
+            char c = d[i];
+            if (!(char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.')) return false;
+        }
+        return true;
+    }
+
+    /// <summary>(Re)load the custom domain list from the engine's own copy and
+    /// rebuild its bloom index. A profile from before 0.99.215 names only the
+    /// original file: that file is read once and the copy made.</summary>
     public int ReloadCustomList()
     {
         _customDomains.Clear();
-        string path = _data.CustomBlocklistPath ?? "";
+        string copy = CustomListCopyPath;
         try
         {
-            if (!string.IsNullOrEmpty(path) && System.IO.File.Exists(path))
-                foreach (var raw in System.IO.File.ReadAllLines(path))
+            string legacy = _data.CustomBlocklistPath ?? "";
+            if (!System.IO.File.Exists(copy) && legacy.Length > 0 && System.IO.File.Exists(legacy))
+            {
+                var moved = System.IO.File.ReadAllLines(legacy).Select(CleanDomainLine).Where(IsPlainDomain)
+                                  .Take(CustomListMaxDomains).ToList();
+                System.IO.File.WriteAllLines(copy, moved);
+                DiagnosticLog.Log($"Custom blocklist: {moved.Count:N0} domain(s) copied once into {CustomListCopyName}; "
+                                + "from now on the list is re-read by the window, not from its file.");
+            }
+            if (System.IO.File.Exists(copy))
+                foreach (var raw in System.IO.File.ReadAllLines(copy))
                 {
                     string d = CleanDomainLine(raw);
-                    if (d.Length > 0) _customDomains.Add(d);
+                    if (IsPlainDomain(d)) _customDomains.Add(d);   // it goes into the hosts file
                 }
         }
-        catch { }
+        catch (Exception ex) { DiagnosticLog.LogException("ReloadCustomList", ex); }
         _customBloom = new BloomFilter(Math.Max(1, _customDomains.Count), 0.01);
         foreach (var d in _customDomains) _customBloom.Add(d);
         return _customDomains.Count;
@@ -573,7 +656,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         return _customDomains.Contains(domain.TrimEnd('.'));
     }
 
-    private static string CleanDomainLine(string raw)
+    public static string CleanDomainLine(string raw)
     {
         string s = raw.Trim();
         if (s.Length == 0 || s[0] == '#') return "";
@@ -587,6 +670,11 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         }
         int hash = s.IndexOf('#');
         if (hash >= 0) s = s.Substring(0, hash).Trim();
+        // A pasted URL: keep the host (0.99.215 - it was kept whole and never matched).
+        int scheme = s.IndexOf("://", StringComparison.Ordinal);
+        if (scheme >= 0) s = s.Substring(scheme + 3);
+        int cut = s.IndexOfAny(new[] { '/', '?', ':' });
+        if (cut >= 0 && scheme >= 0) s = s.Substring(0, cut);
         return s.TrimEnd('.');
     }
 
@@ -1548,13 +1636,13 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     }
 
     /// <summary>Loads saved category colors into the palette (called at startup).</summary>
-    public void LoadCategoryColors() => CategoryPalette.Load(_data.CategoryColors);
+    public void LoadCategoryColors() => CategoryPalette.Load(Ui.CategoryColors);
 
-    /// <summary>Persists the current palette to the profile.</summary>
+    /// <summary>Persists the current palette to this user's UI preferences.</summary>
     public void SaveCategoryColors()
     {
-        _data.CategoryColors = CategoryPalette.ToDict();
-        SaveStore();
+        Ui.CategoryColors = CategoryPalette.ToDict();
+        SaveUi();
     }
 
     /// <summary>The note attached to an executable, or empty.</summary>
@@ -2097,16 +2185,16 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase))?.Hash ?? "";
 
     // ------------------------------------------------ settings
-    public bool StartMinimized => _data.StartMinimized;
-    public bool AlwaysOnTop => _data.AlwaysOnTop;
+    public bool StartMinimized => Ui.StartMinimized;
+    public bool AlwaysOnTop => Ui.AlwaysOnTop;
     public bool HashesEnabled => _data.HashesEnabled;
     public bool ExperimentalEvents => _data.ExperimentalEvents;
 
     /// <summary>Where the user's profile (rules + settings) is stored on disk.</summary>
     public string ProfileFolder => _store.ProfileFolder;
 
-    public void SetStartMinimized(bool v) { _data.StartMinimized = v; SaveStore(); }
-    public void SetAlwaysOnTop(bool v) { _data.AlwaysOnTop = v; SaveStore(); }
+    public void SetStartMinimized(bool v) { Ui.StartMinimized = v; SaveUi(); }
+    public void SetAlwaysOnTop(bool v) { Ui.AlwaysOnTop = v; SaveUi(); }
     public void SetHashesEnabled(bool v) { _data.HashesEnabled = v; SaveStore(); }
     public void SetExperimentalEvents(bool v) { _data.ExperimentalEvents = v; SaveStore(); }
 
@@ -2213,11 +2301,54 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
 
     // ------------------------------------------------ startup
     public bool RunAtStartup => _data.RunAtStartup;
-    public bool ThemeDark => _data.ThemeDark;
-    public void SetThemeDark(bool v) { _data.ThemeDark = v; SaveStore(); }
+    public bool ThemeDark => Ui.ThemeDark;
+    public void SetThemeDark(bool v) { Ui.ThemeDark = v; SaveUi(); }
 
-    public string UiFontFamily => _data.UiFontFamily ?? "";
-    public void SetUiFontFamily(string v) { _data.UiFontFamily = v ?? ""; SaveStore(); }
+    public string UiFontFamily => Ui.UiFontFamily ?? "";
+    public void SetUiFontFamily(string v) { Ui.UiFontFamily = v ?? ""; SaveUi(); }
+
+    // ---- Per-user UI preferences (0.99.214) ---------------------------------
+    private UiPrefsStore? _uiStore;
+
+    /// <summary>Bench and tests only: where ui.json is read and written.</summary>
+    public static string? UiPrefsPathOverride { get; set; }
+
+    /// <summary>Loaded on first use, after the profile (the first start copies the
+    /// values from it). The service never touches these - their IEngine members are
+    /// Local, so a window that uses the service answers them itself.</summary>
+    private UiPrefsData Ui
+    {
+        get
+        {
+            if (_uiStore != null) return _uiStore.Data;
+            EnsureSettingsLoaded();
+            var store = new UiPrefsStore(UiPrefsPathOverride ?? UiPrefsStore.DefaultPath);
+            try
+            {
+                string how = store.Load(_data);
+                if (how != "loaded")
+                    DiagnosticLog.Log(how == "migrated"
+                        ? $"UI preferences: copied from the profile to {store.DisplayPath} (this Windows user's own file)."
+                        : $"UI preferences: {store.DisplayPath} could not be read - kept as ui.json.bad, rebuilt from the profile.");
+            }
+            catch (Exception ex) { DiagnosticLog.LogException("UiPrefs", ex); }
+            _uiStore = store;
+            return store.Data;
+        }
+    }
+
+    /// <summary>Writes ui.json, and copies the values into the profile in memory
+    /// (an export carries them; an older build finds them) without saving it.</summary>
+    private void SaveUi()
+    {
+        if (_uiStore == null) return;
+        try { _uiStore.Save(); }
+        catch (Exception ex) { DiagnosticLog.LogException("UiPrefs.Save", ex); }
+        try { _uiStore.Data.CopyTo(_data); } catch { }
+    }
+
+    /// <summary>Where this user's UI preferences are kept (diagnostics).</summary>
+    public string UiPrefsPath => _uiStore?.DisplayPath ?? "(not loaded yet)";
 
     // ---- Update checking ----------------------------------------------------
 
@@ -2642,10 +2773,10 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         SaveStore();
         DiagnosticLog.Log($"Review window: no longer pending ({why}).");
     }
-    public bool ConfirmClearLogs => _data.ConfirmClearLogs;
-    public void SetConfirmClearLogs(bool v) { _data.ConfirmClearLogs = v; SaveStore(); }
-    public bool AlwaysConfirmExit => _data.AlwaysConfirmExit;
-    public void SetAlwaysConfirmExit(bool v) { _data.AlwaysConfirmExit = v; SaveStore(); }
+    public bool ConfirmClearLogs => Ui.ConfirmClearLogs;
+    public void SetConfirmClearLogs(bool v) { Ui.ConfirmClearLogs = v; SaveUi(); }
+    public bool AlwaysConfirmExit => Ui.AlwaysConfirmExit;
+    public void SetAlwaysConfirmExit(bool v) { Ui.AlwaysConfirmExit = v; SaveUi(); }
     public int MaxLogEntries => _data.MaxLogEntries;
     public void SetMaxLogEntries(int v) { _data.MaxLogEntries = v < 0 ? 0 : v; SaveStore(); }
     public int MaxLogFileMB => _data.MaxLogFileMB;
@@ -3579,32 +3710,32 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     public string PacketLogPath => System.IO.Path.Combine(_store.ProfileFolder, "packets.csv");
 
     // ------------------------------------------------ notification options
-    public bool NotificationSound => _data.NotificationSound;
-    public void SetNotificationSound(bool v) { _data.NotificationSound = v; SaveStore(); }
+    public bool NotificationSound => Ui.NotificationSound;
+    public void SetNotificationSound(bool v) { Ui.NotificationSound = v; SaveUi(); }
     /// <summary>Alerts-page categories the user silenced (see MainWindow.Notify).</summary>
-    public IReadOnlyList<string> MutedAlertCategories => _data.MutedAlertCategories;
+    public IReadOnlyList<string> MutedAlertCategories => Ui.MutedAlertCategories;
     public void SetAlertCategoryMuted(string cat, bool muted)
     {
-        bool has = _data.MutedAlertCategories.Contains(cat);
+        bool has = Ui.MutedAlertCategories.Contains(cat);
         if (muted == has) return;               // no change - skip the disk write
-        if (muted) _data.MutedAlertCategories.Add(cat);
-        else _data.MutedAlertCategories.Remove(cat);
-        SaveStore();
+        if (muted) Ui.MutedAlertCategories.Add(cat);
+        else Ui.MutedAlertCategories.Remove(cat);
+        SaveUi();
     }
 
-    public bool TraySingleClick => _data.TraySingleClick;
-    public void SetTraySingleClick(bool v) { _data.TraySingleClick = v; SaveStore(); }
+    public bool TraySingleClick => Ui.TraySingleClick;
+    public void SetTraySingleClick(bool v) { Ui.TraySingleClick = v; SaveUi(); }
 
-    public int UiZoomPercent => _data.UiZoomPercent;
-    public void SetUiZoomPercent(int v) { _data.UiZoomPercent = Math.Clamp(v, 50, 150); SaveStore(); }
+    public int UiZoomPercent => Math.Clamp(Ui.UiZoomPercent, 50, 150);
+    public void SetUiZoomPercent(int v) { Ui.UiZoomPercent = Math.Clamp(v, 50, 150); SaveUi(); }
 
     /// <summary>Applications-list icon size. Only the three offered sizes are
-    /// stored; anything else (a hand-edited profile) reads as medium.</summary>
-    public int AppIconSize => _data.AppIconSize is 16 or 22 or 32 ? _data.AppIconSize : 22;
-    public void SetAppIconSize(int px) { _data.AppIconSize = px is 16 or 22 or 32 ? px : 22; SaveStore(); }
+    /// stored; anything else (a hand-edited file) reads as medium.</summary>
+    public int AppIconSize => Ui.AppIconSize is 16 or 22 or 32 ? Ui.AppIconSize : 22;
+    public void SetAppIconSize(int px) { Ui.AppIconSize = px is 16 or 22 or 32 ? px : 22; SaveUi(); }
 
-    public bool TrayNotifications => _data.TrayNotifications;
-    public void SetTrayNotifications(bool v) { _data.TrayNotifications = v; SaveStore(); }
+    public bool TrayNotifications => Ui.TrayNotifications;
+    public void SetTrayNotifications(bool v) { Ui.TrayNotifications = v; SaveUi(); }
 
     public int PopupTimeoutSeconds => _data.PopupTimeoutSeconds;
     public void SetPopupTimeoutSeconds(int v) { _data.PopupTimeoutSeconds = v < 0 ? 0 : v; SaveStore(); }
@@ -4099,7 +4230,12 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
 
     // ------------------------------------------------ profile export / import
     /// <summary>Exports all rules and settings to a portable file.</summary>
-    public void ExportProfile(string filePath) => _store.Export(_data, filePath);
+    public void ExportProfile(string filePath)
+    {
+        // The export still carries this user's UI preferences (0.99.214).
+        try { _uiStore?.Data.CopyTo(_data); } catch { }
+        _store.Export(_data, filePath);
+    }
 
     // ------------------------------------------------ named profiles
     // Profiles are named snapshots of the whole rule set, stored as JSON files

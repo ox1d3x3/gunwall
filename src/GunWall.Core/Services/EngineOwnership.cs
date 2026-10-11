@@ -81,8 +81,20 @@ public static class EngineOwnership
             var left = until - DateTime.UtcNow;
             if (left <= TimeSpan.Zero) return null;
             var read = s.ReadAsync(one, 0, 1);
-            if (!read.Wait(left)) return null;
-            int n = read.Result;
+            int n;
+            try
+            {
+                if (!read.Wait(left)) return null;
+                n = read.Result;
+            }
+            catch (AggregateException ae) when (ae.InnerException != null)
+            {
+                // A pipe reset by the other side arrives wrapped (0.99.214): unwrapped,
+                // callers that handle IOException handle it - Ask returned nothing
+                // and threw instead.
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ae.InnerException).Throw();
+                throw;
+            }
             if (n == 0) break;
             if (one[0] == (byte)'\n') break;
             buf.Add(one[0]);

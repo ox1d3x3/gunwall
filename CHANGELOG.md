@@ -15,6 +15,41 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.215] — 2026-10-11
+
+### Changed — custom blocklist file
+GunWall now reads your custom blocklist file when you choose it and keeps its own
+copy in the data folder, instead of opening your file every time it starts. If you
+edit the file, GunWall reads it again at the next start. With the experimental
+service option on, choosing a file now works (it was refused before).
+
+### Fixed
+- Pasted URLs in a custom blocklist (`https://site/path`) are now understood; they
+  were kept whole and never matched.
+- Lines that are not a plain domain name are skipped instead of being written to
+  the hosts file.
+
+## [0.99.214] — 2026-10-11
+
+### Changed — your UI preferences are your own
+Theme, zoom, font, icon size, tray and notification habits, confirmations,
+category colours and muted alert categories now live per Windows user in
+`%AppData%\GunWall\ui.json` instead of the machine-wide profile. Two people on
+one PC each keep their own. The first start copies your current choices across,
+so nothing changes on screen. Importing a profile or restoring a backup changes
+rules and settings, no longer your look and feel.
+
+### Fixed
+- With the experimental service option on, changed category colours were not
+  saved.
+
+## [0.99.213] — 2026-10-11
+
+### Fixed — with the experimental service option on
+- A background request that failed while the service was restarting was recorded
+  as an error in the diagnostics log. It is now counted as expected, like the
+  other "service not connected" moments.
+
 ## [0.99.212] — 2026-10-11
 
 ### Fixed

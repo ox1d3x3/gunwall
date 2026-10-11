@@ -30,12 +30,15 @@ public static class ProfilePaths
     /// Beside the executable instead when <c>portable.txt</c> sits next to it,
     /// which is deliberate and opt-in: the cost of choosing that by accident is
     /// the user's entire configuration.</summary>
+    /// <summary>True when portable.txt sits beside the executable.</summary>
+    public static bool IsPortable => File.Exists(Path.Combine(AppContext.BaseDirectory, PortableMarker));
+
     public static string DataFolder
     {
         get
         {
             string appDir = AppContext.BaseDirectory;
-            if (File.Exists(Path.Combine(appDir, PortableMarker)))
+            if (IsPortable)
                 return Path.Combine(appDir, "GunWallData");
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),

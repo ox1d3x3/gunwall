@@ -444,6 +444,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             PopulateFontChoice();
             ApplyUiFont(_firewall.UiFontFamily);
             UpdateCustomListStatus(); // §5 reflect any saved custom blocklist file
+            RefreshCustomListIfChanged();
             RefreshEntityRules();     // §1 render saved country/continent/ASN rules + GeoIP status
             try
             {
@@ -482,7 +483,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.212 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.215 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5806,6 +5807,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Services.DiagnosticLog.Log($"Background service: {_serviceState}; "
             + (Remote ? "this window uses the service's engine (experimental)."
                       : $"window owns the engine: {(_engineLock != null ? "yes" : "NO")}."));
+        Services.DiagnosticLog.Log($"UI preferences: {_engineLocal.UiPrefsPath} (this Windows user's own; theme {(_firewall.ThemeDark ? "dark" : "light")}, zoom {_firewall.UiZoomPercent}%).");
         Services.DiagnosticLog.Log(
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +
             $"ok={_dnsResolver.DohSuccess}, failures={_dnsResolver.DohFailures}, " +
@@ -7786,7 +7788,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ===== §5 custom blocklist file =====
-    private void ChooseCustomList_Click(object sender, RoutedEventArgs e)
+    private async void ChooseCustomList_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
         {
@@ -7794,17 +7796,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Filter = "Blocklist / hosts files (*.txt;*.hosts)|*.txt;*.hosts|All files (*.*)|*.*"
         };
         if (dlg.ShowDialog() != true) return;
-        if (Remote)
-        {
-            // The service would have to open a file this window chose. Not yet.
-            ThemedMessageBox.Show("A custom blocklist file can't be chosen while the window uses the background "
-                + "service (experimental). Turn that off in Settings, restart GunWall, and choose the file then.",
-                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
         try
         {
-            _firewall.SetCustomListPath(dlg.FileName);
+            int n = await SendCustomListAsync(dlg.FileName);
+            if (n < 0) return;
             _firewall.RebuildHostsBlock(); // fold the new domains into the active hosts block
             UpdateCustomListStatus();
         }
@@ -7815,11 +7810,86 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         try
         {
-            _firewall.SetCustomListPath("");
+            _firewall.SetCustomListDomains("", Array.Empty<string>(), first: true, last: true);
             _firewall.RebuildHostsBlock(); // drop the custom domains from the hosts block
             UpdateCustomListStatus();
         }
         catch (Exception ex) { ShowError(ex); }
+    }
+
+    /// <summary>
+    /// Reads a custom blocklist file as the signed-in user and sends its domains to
+    /// the engine in parts (0.99.215). The engine - the background service in
+    /// service mode, running as SYSTEM - keeps its own copy and never opens a file
+    /// the window chose. Returns the number of domains, or -1 if the file could not
+    /// be read (already said so).
+    /// </summary>
+    private async System.Threading.Tasks.Task<int> SendCustomListAsync(string path)
+    {
+        List<string>? domains = await System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var raw in System.IO.File.ReadLines(path))
+                {
+                    string d = FirewallManager.CleanDomainLine(raw);
+                    if (FirewallManager.IsPlainDomain(d)) set.Add(d);
+                    if (set.Count > FirewallManager.CustomListMaxDomains) break;
+                }
+                return set.ToList();
+            }
+            catch (Exception ex) { Services.DiagnosticLog.LogException("CustomList.Read", ex); return null; }
+        });
+        if (domains == null)
+        {
+            ThemedMessageBox.Show("GunWall could not read that file.", "GunWall", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return -1;
+        }
+        if (domains.Count > FirewallManager.CustomListMaxDomains)
+        {
+            ThemedMessageBox.Show($"That list has more than {FirewallManager.CustomListMaxDomains:N0} domains - too many to use.",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return -1;
+        }
+        if (domains.Count == 0)
+            return _firewall.SetCustomListDomains(path, domains, first: true, last: true);
+        // Parts bounded by count AND size: the engine pipe takes 1 MB a message,
+        // and 25,000 long names would not fit.
+        const int MaxPartChars = 512 * 1024;
+        int n = 0, i = 0;
+        bool first = true;
+        while (i < domains.Count)
+        {
+            int start = i, chars = 0;
+            while (i < domains.Count && i - start < FirewallManager.CustomListMaxChunk
+                   && chars + domains[i].Length + 3 <= MaxPartChars)
+            { chars += domains[i].Length + 3; i++; }
+            var part = domains.GetRange(start, i - start);
+            n = _firewall.SetCustomListDomains(path, part, first, last: i >= domains.Count);
+            first = false;
+        }
+        return n;
+    }
+
+    /// <summary>At start: the chosen file changed since it was last sent (edited by
+    /// hand, or updated by another tool) - send it again (0.99.215). Before, the
+    /// engine re-read the file itself at every start.</summary>
+    private async void RefreshCustomListIfChanged()
+    {
+        try
+        {
+            if (!_engineReady) return;
+            string path = _firewall.CustomListPath;
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
+            if (System.IO.File.GetLastWriteTimeUtc(path) <= _firewall.CustomListImportedUtc) return;
+            int n = await SendCustomListAsync(path);
+            if (n < 0) return;
+            _firewall.RebuildHostsBlock();
+            UpdateCustomListStatus();
+            Services.DiagnosticLog.Log($"Custom blocklist: the file changed since it was last read - {n:N0} domain(s) sent again.");
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("RefreshCustomList", ex); }
     }
 
     private void UpdateCustomListStatus()
