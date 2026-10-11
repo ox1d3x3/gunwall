@@ -482,7 +482,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.210 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.212 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -658,15 +658,28 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// that, runs the firewall in the window.</summary>
     private void OnServiceLost()
     {
+        // The wait starts FIRST (0.99.211). In 0.99.209-210 the notice below threw
+        // (it read a list from the service that had just gone), and the reconnect
+        // after it never started - the window stayed "No control" until restarted.
         _engineReady = false;
-        SetEngineStatus("Engine: service stopped");
-        try { SyncFirewallToggle(); } catch { /* the last state the service sent */ }
+        _serviceLost = true;
         Services.DiagnosticLog.Log("Engine: the background service went away while this window was using it - waiting for it to come back.");
-        Notify("warn", "GunWall's background service stopped",
-               "This window was using it for the firewall. Your filters keep enforcing. GunWall reconnects by itself "
-               + "when the service is back - Windows restarts it within seconds.", "protection");
         _ = ReconnectToServiceAsync();
+        try { SetEngineStatus("Engine: service stopped - reconnecting"); } catch { }
+        try { SyncFirewallToggle(); } catch { /* the last state the service sent */ }
+        try
+        {
+            Notify("warn", "GunWall's background service stopped",
+                   "This window was using it for the firewall. Your filters keep enforcing. GunWall reconnects by itself "
+                   + "when the service is back.", "protection");
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("OnServiceLost", ex); }
     }
+
+    /// <summary>Service mode, and the service went away: the window waits for it
+    /// and says so - not "Run as administrator", which is the portable copy's
+    /// state (0.99.211).</summary>
+    private volatile bool _serviceLost;
 
     /// <summary>Wires a connection to the service's engine into this window - at
     /// start, and again after the service came back (0.99.209).</summary>
@@ -698,30 +711,47 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             var until = DateTime.UtcNow.AddMinutes(10);
+            int attempt = 0;
+            string lastOutcome = "";
             while (DateTime.UtcNow < until)
             {
                 await System.Threading.Tasks.Task.Delay(2000);
-                IEngine? next = await System.Threading.Tasks.Task.Run(() =>
+                attempt++;
+                var (next, outcome) = await System.Threading.Tasks.Task.Run<(IEngine?, string)>(() =>
                 {
                     try
                     {
-                        if (EngineOwnership.Ask(EngineOwnership.PipeName, "ready", TimeSpan.FromSeconds(3)) != "ready") return null;
-                        return Services.Remote.RemoteEngine.Connect(Services.UpdateService.CurrentVersion, null);
+                        string? answer = EngineOwnership.Ask(EngineOwnership.PipeName, "ready", TimeSpan.FromSeconds(3));
+                        if (answer != "ready") return (null, answer == null ? "service not answering" : "service answered '" + answer + "'");
+                        return (Services.Remote.RemoteEngine.Connect(Services.UpdateService.CurrentVersion, null), "connected");
                     }
-                    catch { return null; }
+                    catch (Exception ex) { return (null, $"connect failed: {ex.GetType().Name}: {ex.Message}"); }
                 });
-                if (next == null) continue;
-                var old = _remote;
-                _remote = next;
-                if (old is not null) Services.Remote.RemoteEngine.Of(old)?.Dispose();
-                AttachRemote(next);
-                _engineLocal.ReloadStoreFromDisk();
-                _engineReady = true;
-                SetEngineStatus("Engine: active");
-                OnProtectionChanged();
-                try { RebuildAppsList(); } catch { }
-                Services.DiagnosticLog.Log("Engine: reconnected to the background service.");
-                Notify("good", "Reconnected to GunWall's background service", "Everything works again.", "protection");
+                // Each change of outcome is logged, so a reconnect that never
+                // happens says why (0.99.211) - 0.99.209-210 logged nothing.
+                if (next == null)
+                {
+                    if (outcome != lastOutcome)
+                        Services.DiagnosticLog.Log($"Engine: reconnect attempt {attempt}: {outcome}.");
+                    lastOutcome = outcome;
+                    continue;
+                }
+                try
+                {
+                    var old = _remote;
+                    _remote = next;
+                    if (old is not null) Services.Remote.RemoteEngine.Of(old)?.Dispose();
+                    _serviceLost = false;
+                    _engineReady = true;
+                    AttachRemote(next);
+                    _engineLocal.ReloadStoreFromDisk();
+                    SetEngineStatus("Engine: active");
+                    OnProtectionChanged();
+                    try { RebuildAppsList(); } catch { }
+                    Services.DiagnosticLog.Log($"Engine: reconnected to the background service (attempt {attempt}).");
+                    Notify("good", "Reconnected to GunWall's background service", "Everything works again.", "protection");
+                }
+                catch (Exception ex) { Services.DiagnosticLog.LogException("ReconnectToService", ex); }
                 return;
             }
             Services.DiagnosticLog.Log("Engine: the background service did not come back within 10 minutes.");
@@ -1819,7 +1849,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void Notify(string kind, string title, string detail, string cat = "general")
     {
         // Categories the user silenced in Settings never reach the Alerts page.
-        if (_firewall.MutedAlertCategories.Contains(cat)) return;
+        // The list comes from the service in service mode: with the service gone
+        // the read throws, and a notice that throws took the reconnect down with
+        // it (0.99.211) - when it cannot be checked, the notice is shown.
+        try { if (_firewall.MutedAlertCategories.Contains(cat)) return; }
+        catch (Exception) { /* service not connected: show it */ }
 
         try
         {
@@ -7409,6 +7443,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // killed before an answer, asking again on the next launch is worse than
         // not asking at all.
         _firewall.MarkFirstRunComplete();
+        if (Remote)
+            try { _firewall.MarkVersionSeen(); }
+            catch (Exception ex) { Services.DiagnosticLog.LogException("MarkVersionSeen", ex); }
 
         // On disk, not loaded: both now load after startup, and the offer can run first.
         bool haveGeo = _firewall.GeoIpRangeCount > 0 || _firewall.GeoIpDatabaseOnDisk;
@@ -7462,6 +7499,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void ShowUpgradeScreenIfUpgraded()
     {
         string from = _firewall.UpgradedFrom;
+        // Service mode: the service keeps the profile, so it records that this
+        // version has been seen - once, not on every start (0.99.211).
+        if (Remote)
+            try { _firewall.MarkVersionSeen(); }
+            catch (Exception ex) { Services.DiagnosticLog.LogException("MarkVersionSeen", ex); }
         if (from.Length == 0) return;
         try
         {
@@ -8267,7 +8309,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             string kicker, title, body;
             System.Windows.Media.Brush tone;
 
-            if (!admin)
+            if (_serviceLost)
+            {
+                // Service mode, service gone (0.99.211): the filters it set keep
+                // enforcing in the kernel, but nothing new is decided until it is back.
+                kicker = "BACKGROUND SERVICE STOPPED"; title = "Reconnecting";
+                body = "Filters already in place keep enforcing. New connections are not decided until the service is back - this window reconnects by itself."; tone = (System.Windows.Media.Brush)FindResource("WarnText");
+            }
+            else if (!admin)
             {
                 kicker = "ENGINE NOT RUNNING"; title = "No control";
                 body = "GunWall could not open the filtering engine. Restart it as administrator to enforce anything."; tone = (System.Windows.Media.Brush)FindResource("BlockText");
@@ -8322,7 +8371,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                         : $"{d.Minutes}m {d.Seconds:00}s";
                 }
             }
-            if (MetaRuleset != null) MetaRuleset.Text = _firewall.RulesetFingerprint;
+            // Fetched from the service on demand: not while it is gone.
+            if (MetaRuleset != null && !_serviceLost) MetaRuleset.Text = _firewall.RulesetFingerprint;
             if (MetaMode != null)
                 MetaMode.Text = lockdown ? "Lockdown" : snoozed ? "Snoozed" : strict ? "Zero Trust" : "Alert";
         }
@@ -8361,6 +8411,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // The switch shows the state rather than naming the next action, so it
         // is set from the state directly instead of relabelled.
         EnableFirewallButton.IsChecked = _firewall.StrictMode;
+        // Nothing to send a change to while the service is gone (0.99.211): the
+        // switch shows the last state it reported and waits.
+        EnableFirewallButton.IsEnabled = !_serviceLost;
+        if (LockdownButton != null) LockdownButton.IsEnabled = !_serviceLost;
         // A mode change resets per-session prompt tracking, so entering Zero
         // Trust re-prompts for every undecided app.
         _detector.ResetPrompts();
@@ -8605,6 +8659,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// "Lockdown".</summary>
     private (string Title, string Role) PostureTitle()
     {
+        if (_serviceLost)                   return ("Service stopped", "Warn");
         if (!_engineReady)                  return ("Not protected",   "Block");
         if (_firewall.LockdownEngaged)      return ("Locked down",     "Block");
         if (_firewall.IsSnoozed)            return ("Paused",          "Warn");
@@ -8632,7 +8687,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var fill = (Brush)System.Windows.Application.Current.FindResource(role + "Text");
 
         // Always-visible status in the sidebar (mirrors the dashboard shield).
-        string sideSub = !_engineReady ? "Run as administrator"
+        string sideSub = _serviceLost ? "Reconnecting to the service"
+            : !_engineReady ? "Run as administrator"
             : _firewall.LockdownEngaged ? (_firewall.IsSnoozed ? "All traffic blocked, pause running"
                                                                : "All traffic blocked")
             : _firewall.IsSnoozed ? "Filtering paused"
@@ -8640,7 +8696,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             : "Watching, not blocking";
         // One word for the rail, because 92 pixels is one word wide. The full
         // title and sentence still exist - they are the tooltip.
-        string sideWord = !_engineReady ? "No admin"
+        string sideWord = _serviceLost ? "Stopped"
+            : !_engineReady ? "No admin"
             : _firewall.LockdownEngaged ? "Lockdown"
             : _firewall.IsSnoozed ? "Paused"
             : _firewall.StrictMode ? "Protected"
@@ -8663,6 +8720,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         // §13: notify on real state transitions (never on the initial paint).
         bool protNow = _engineReady && _firewall.StrictMode && !_firewall.IsSnoozed;
+        // While the service is gone, its own notice says so; "Protection off"
+        // would be wrong (the filters stay) and the reconnect must not then say
+        // "Protection active" for a state that never changed.
+        if (_serviceLost) protNow = _lastNotifiedProtection ?? protNow;
         if (_lastNotifiedProtection != null && _lastNotifiedProtection != protNow)
             Notify(protNow ? "good" : "warn",
                    protNow ? "Protection active" : "Protection off",
@@ -8835,13 +8896,73 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // bounds, and NotifyIcon limits tooltip length - an over-long value
             // fails inside this try, leaving the icon changed and the tooltip
             // describing the previous state.
+            // The icon is already Off (no engine); the tooltip says why (0.99.211).
+            if (_serviceLost) tip = "GunWall - service stopped, reconnecting";
             _tray.Text = tip.Length <= 63 ? tip : tip[..63];
         }
         catch { }
     }
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string message);
+    [DllImport("user32.dll")]
+    private static extern bool ChangeWindowMessageFilter(uint message, uint flag);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindow(string className, string? windowName);
+    private const uint MSGFLT_ADD = 1;
+
+    /// <summary>
+    /// The tray icon survives a logon race and an Explorer restart (0.99.212).
+    /// GunWall runs elevated; Explorer is not, so Windows (UIPI) dropped its
+    /// "TaskbarCreated" broadcast - the message that tells a program to put its icon
+    /// back. Started by the logon task before the taskbar was ready, the icon was
+    /// never added and never came back. The message is let through, and an early
+    /// start re-adds the icon a few times while the desktop settles.
+    /// </summary>
+    private void PrepareTrayForShell(out bool taskbarReady)
+    {
+        taskbarReady = true;
+        try
+        {
+            uint msg = RegisterWindowMessage("TaskbarCreated");
+            bool allowed = msg != 0 && ChangeWindowMessageFilter(msg, MSGFLT_ADD);
+            taskbarReady = FindWindow("Shell_TrayWnd", null) != IntPtr.Zero;
+            Services.DiagnosticLog.Log($"Tray: taskbar {(taskbarReady ? "ready" : "NOT ready yet")}; "
+                + $"Explorer's 'taskbar created' message {(allowed ? "allowed" : "could not be allowed")}; "
+                + $"uptime {Environment.TickCount64 / 1000} s.");
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("PrepareTrayForShell", ex); }
+    }
+
+    /// <summary>Re-adds the icon after 5, 15, 30, 60 and 120 s when GunWall started
+    /// before the taskbar or within ten minutes of boot (0.99.212).</summary>
+    private void ReassertTrayWhileDesktopSettles()
+    {
+        var marks = new[] { 5, 15, 30, 60, 120 };
+        int next = 0;
+        var started = DateTime.UtcNow;
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += (_, _) =>
+        {
+            if (next >= marks.Length || _tray == null) { timer.Stop(); return; }
+            if ((DateTime.UtcNow - started).TotalSeconds < marks[next]) return;
+            next++;
+            try
+            {
+                _tray.Visible = false;
+                _tray.Visible = true;
+                if (next == marks.Length)
+                    Services.DiagnosticLog.Log("Tray: icon re-added while the desktop started "
+                        + $"(taskbar {(FindWindow("Shell_TrayWnd", null) != IntPtr.Zero ? "present" : "STILL MISSING")}).");
+            }
+            catch (Exception ex) { Services.DiagnosticLog.LogException("ReassertTray", ex); }
+        };
+        timer.Start();
+    }
+
     private void SetupTray()
     {
+        PrepareTrayForShell(out bool taskbarReady);
         try
         {
             _tray = new System.Windows.Forms.NotifyIcon
@@ -8925,10 +9046,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             tray.AddSeparator();
             tray.Add("Exit", Controls.TrayMenu.Glyphs.Exit, () => Dispatcher.Invoke(ExitFromTray));
             _tray.ContextMenuStrip = menu;
+            if (!taskbarReady || Environment.TickCount64 < 10 * 60 * 1000)
+                ReassertTrayWhileDesktopSettles();
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"tray unavailable: {ex.Message}");
+            // Logged (0.99.212): a missing tray icon used to leave no trace at all.
+            Services.DiagnosticLog.LogException("SetupTray", ex);
         }
     }
 

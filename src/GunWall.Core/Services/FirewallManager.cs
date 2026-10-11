@@ -4072,6 +4072,20 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         SaveStore();
     }
 
+    /// <summary>The window has seen this version (0.99.211). In service mode the
+    /// service owns the profile and never stamps the version itself (that is what
+    /// lets the window show "Update complete"), and the window's copy is
+    /// read-only - so nothing stamped it, and every start counted as the upgrade:
+    /// the screen again and a profile snapshot on each service start.</summary>
+    public void MarkVersionSeen()
+    {
+        UpgradedFrom = "";
+        string current = UpdateService.CurrentVersion;
+        if (_data.LastRunVersion == current) return;
+        _data.LastRunVersion = current;
+        SaveStore();
+    }
+
     public void SetRunAtStartup(bool enabled)
     {
         bool ok = StartupService.SetEnabled(enabled);

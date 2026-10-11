@@ -15,12 +15,27 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
-## [0.99.210] — 2026-10-11
+## [0.99.212] — 2026-10-11
 
-### Added — support links
-**Settings → About** has a **Support this project** section with two buttons,
-Ko-fi and PayPal, that open the page in your browser. The same links are in the
-README and on the repository's Sponsor button. GunWall stays free; nothing nags.
+### Fixed
+- **The tray icon could be missing after signing in to Windows.** When GunWall
+  started with Windows before the taskbar was ready, or Explorer restarted, the
+  icon was never added back: Windows blocked the taskbar's "put your icon back"
+  message to GunWall because GunWall runs as administrator. That message is now
+  allowed, and GunWall re-adds its icon a few times while the desktop starts.
+
+## [0.99.211] — 2026-10-11
+
+### Fixed — with the experimental service option on
+- **The window really reconnects after the background service restarts.** In
+  0.99.209 and 0.99.210 it still stayed on "No control" until GunWall was
+  restarted: the notice saying the service had stopped failed before the
+  reconnect began. While it waits, the overview, sidebar and tray now say
+  **Service stopped — reconnecting** instead of "Run as administrator", and the
+  protection switch and lockdown button wait too.
+- **"Update complete" appeared on every start** after an update, and the profile
+  was copied again each time the service started. The version is now recorded
+  once.
 
 ## [0.99.209] — 2026-10-11
 
