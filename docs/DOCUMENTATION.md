@@ -540,7 +540,7 @@ notifications.
 | Start minimized to tray | GunWall starts hidden |
 | Watch for tampering with the firewall's filters | Detects and restores filters removed by other software |
 | Open GunWall with a single tray click | Double-click always works regardless |
-| UI size | 50% to 125%; 90% by default. Also **Ctrl + mouse wheel**, **Ctrl + plus / minus**, and **Ctrl + 0** for the default, anywhere in the app |
+| UI size | 50% to 150%; 100% by default (more compact than before 0.99.219, when 100% was larger). Also **Ctrl + mouse wheel**, **Ctrl + plus / minus**, and **Ctrl + 0** for the default, anywhere in the app |
 | App icon size | Small, Medium (default) or Large icons in the Applications list |
 | **Run GunWall when Windows starts** | **Recommended** — without it, nothing can prompt after a reboot |
 | **Keep protection running when GunWall is closed (background service)** | On by default in the installed version (since 0.99.205); untick it to turn it off, and later installs keep it off. A Windows service runs protection whenever the window is not open — after you exit, after sign-out, and from boot, before anyone signs in. It enforces everything the window does: your rules, direct-connection and blocked-domain blocks, access rules and the tamper watch. Programs needing a decision wait for the window and stay blocked meanwhile in Zero Trust. Below it, **Experimental: this window uses the background service** keeps the firewall in the service while the window is open (from the next start); the window then asks the service for everything. If the service cannot be reached, the window runs the firewall itself, as before. Needs the installed version |

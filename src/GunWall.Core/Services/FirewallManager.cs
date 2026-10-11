@@ -2326,7 +2326,9 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             try
             {
                 string how = store.Load(_data);
-                if (how != "loaded")
+                if (how == "rescaled")
+                    DiagnosticLog.Log($"UI preferences: UI size moved to the new scale - now {store.Data.UiZoomPercent}% (100% now draws what 80% drew).");
+                else if (how != "loaded")
                     DiagnosticLog.Log(how == "migrated"
                         ? $"UI preferences: copied from the profile to {store.DisplayPath} (this Windows user's own file)."
                         : $"UI preferences: {store.DisplayPath} could not be read - kept as ui.json.bad, rebuilt from the profile.");

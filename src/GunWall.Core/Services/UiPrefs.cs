@@ -21,10 +21,12 @@ namespace GunWall.Services;
 /// </summary>
 public sealed class UiPrefsData
 {
-    public int Version { get; set; } = 1;
+    /// <summary>2 (0.99.219): UiZoomPercent counts from the new 100%, which draws
+    /// what 80% drew before. Version 1 files are converted once on load.</summary>
+    public int Version { get; set; } = 2;
     public bool ThemeDark { get; set; } = true;
     public string UiFontFamily { get; set; } = "";
-    public int UiZoomPercent { get; set; } = 90;
+    public int UiZoomPercent { get; set; } = 100;
     public int AppIconSize { get; set; } = 22;
     public bool StartMinimized { get; set; }
     public bool AlwaysOnTop { get; set; }
@@ -36,9 +38,17 @@ public sealed class UiPrefsData
     public List<string> MutedAlertCategories { get; set; } = new();
     public Dictionary<string, string> CategoryColors { get; set; } = new();
 
-    /// <summary>The values the profile carried before 0.99.214.</summary>
+    /// <summary>Converts a size saved before 0.99.219 to the new scale, keeping how
+    /// it looks: the old default (90%) becomes the new default (100%); any other
+    /// size the one that draws the same, to the nearest 10.</summary>
+    public static int ZoomFromV1(int old) =>
+        old == 90 ? 100 : Math.Clamp((int)Math.Round(old / UiScale.BaseFactor / 10.0, MidpointRounding.AwayFromZero) * 10, 50, 150);
+
+    /// <summary>The values the profile carried before 0.99.214 (sizes still on the
+    /// old scale: Version 1).</summary>
     public static UiPrefsData From(StoreData d) => new()
     {
+        Version = 1,
         ThemeDark = d.ThemeDark,
         UiFontFamily = d.UiFontFamily ?? "",
         UiZoomPercent = d.UiZoomPercent,
@@ -60,7 +70,7 @@ public sealed class UiPrefsData
     {
         d.ThemeDark = ThemeDark;
         d.UiFontFamily = UiFontFamily;
-        d.UiZoomPercent = UiZoomPercent;
+        d.UiZoomPercent = (int)Math.Round(UiZoomPercent * UiScale.BaseFactor);   // the profile keeps the old scale
         d.AppIconSize = AppIconSize;
         d.StartMinimized = StartMinimized;
         d.AlwaysOnTop = AlwaysOnTop;
@@ -113,18 +123,30 @@ public sealed class UiPrefsStore
                     d.CategoryColors ??= new();
                     d.UiFontFamily ??= "";
                     Data = d;
+                    if (UpgradeScale()) { Save(); return "rescaled"; }
                     return "loaded";
                 }
             }
             catch (Exception ex) { DiagnosticLog.LogException("UiPrefs.Load", ex); }
             try { File.Copy(FilePath, FilePath + ".bad", overwrite: true); } catch { }
             Data = UiPrefsData.From(profile);
+            UpgradeScale();
             Save();
             return "replaced";
         }
         Data = UiPrefsData.From(profile);
+        UpgradeScale();
         Save();
         return "migrated";
+    }
+
+    /// <summary>Version 1 sizes to the 0.99.219 scale, once. True if it changed.</summary>
+    private bool UpgradeScale()
+    {
+        if (Data.Version >= 2) return false;
+        Data.UiZoomPercent = UiPrefsData.ZoomFromV1(Data.UiZoomPercent);
+        Data.Version = 2;
+        return true;
     }
 
     /// <summary>Written beside, then renamed over: never half a file.</summary>
@@ -140,4 +162,16 @@ public sealed class UiPrefsStore
             catch (IOException) when (i < 4) { Thread.Sleep(50); }
         }
     }
+}
+
+/// <summary>The UI scale (0.99.219). "100%" draws at <see cref="BaseFactor"/> of the
+/// layout's design size - what 80% drew before: at 90-100% the window looked
+/// oversized at an ordinary display scale (Mahabub chose 80% as right).</summary>
+public static class UiScale
+{
+    public const double BaseFactor = 0.8;
+    public const int DefaultPercent = 100;
+
+    /// <summary>The transform factor for a UI size in percent.</summary>
+    public static double Factor(int percent) => percent / 100.0 * BaseFactor;
 }

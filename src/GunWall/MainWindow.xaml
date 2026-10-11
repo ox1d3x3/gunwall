@@ -169,7 +169,8 @@
                 <!-- Sidebar header, SPEC.md section 1: padding 20/20/18, logo 24,
                      wordmark 14.5 at 600, kicker 10.5 uppercase and tracked. -->
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="20,20,20,18">
-                    <Grid Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,11,0">
+                    <!-- Named for the opening animation (0.99.220, PlayLogoIntro). -->
+                    <Grid x:Name="BrandMark" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,11,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
@@ -192,7 +193,7 @@
                             <Rectangle Grid.Column="1" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
                             <Rectangle Grid.Column="2" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
                             <Rectangle Grid.Column="3" Grid.Row="3" Fill="{DynamicResource TextPrimary}" Margin="0,0,1.5,1.5" />
-                        <Rectangle Grid.Column="2" Grid.Row="0"
+                        <Rectangle x:Name="BrandMarkBlocked" Grid.Column="2" Grid.Row="0"
                                    Fill="{DynamicResource BlockText}" Margin="0,0,1.5,1.5" />
                         <Rectangle Grid.Column="1" Grid.Row="2" Margin="0,0,1.5,1.5"
                                    Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.2" />
@@ -422,7 +423,8 @@
                  posture they change; what is left here is what the machine is
                  doing, which is a different question and belongs in a different
                  place. -->
-            <Border Grid.Row="0" Height="54" Background="{DynamicResource BgSecondary}"
+            <!-- 46 high since 0.99.220 (was 54): Mahabub - the bar took too much room. -->
+            <Border Grid.Row="0" Height="46" Background="{DynamicResource BgSecondary}"
                     BorderBrush="{DynamicResource Divider}" BorderThickness="0,0,0,1">
                 <Grid Margin="28,0,24,0">
                     <!-- Search. A real input, not a picture of one: 0.99.43 placed
@@ -430,7 +432,7 @@
                          yet, which is dead chrome pretending to be a control. It
                          navigates now; the fuller palette with actions is still
                          0.99.48. -->
-                    <Border x:Name="SearchBox" Width="300" Height="32" HorizontalAlignment="Left"
+                    <Border x:Name="SearchBox" Width="300" Height="30" HorizontalAlignment="Left"
                             VerticalAlignment="Center" CornerRadius="7" Padding="11,0"
                             Cursor="Hand" MouseLeftButtonUp="SearchBox_Click"
                             ToolTip="Open the command palette (Ctrl K)"
@@ -510,7 +512,9 @@
                  asymmetry is deliberate - the extra at the bottom stops the last
                  row of a long table sitting flush on the window edge, which is
                  what a uniform 24 was doing on every screen. -->
-            <Grid Grid.Row="1" Margin="36,30,36,44" x:Name="PanelHost" RenderTransformOrigin="0.5,0">
+            <!-- 0.99.220: 22 top / 30 sides / 28 bottom (was 30/36/44) - less empty
+                 band above every page, still clear of the window edge. -->
+            <Grid Grid.Row="1" Margin="30,22,30,28" x:Name="PanelHost" RenderTransformOrigin="0.5,0">
                 <Grid.RenderTransform><TranslateTransform x:Name="PanelHostShift" /></Grid.RenderTransform>
 
             <!-- ========== Dashboard ========== -->
@@ -903,34 +907,37 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0" Margin="0,0,0,16">
+                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                    <!-- The toolbar wraps under the title on a narrow window instead
+                         of pushing the table's last column off screen (0.99.220). -->
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,0,16,0">
                             <TextBlock Text="Firewall" Style="{StaticResource H1}" VerticalAlignment="Center" />
                             <CheckBox x:Name="ShowAllAppsCheck" Content="Show all running apps"
                                       Foreground="{DynamicResource TextSecondary}"
-                                      VerticalAlignment="Center" Margin="24,4,0,0"
+                                      VerticalAlignment="Center" Margin="20,4,0,0"
                                       Checked="ShowAllApps_Changed" Unchecked="ShowAllApps_Changed" />
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <WrapPanel x:Name="AppsToolbar" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                                   VerticalAlignment="Center">
                             <TextBox x:Name="AppSearch" Tag="Filter applications..." Style="{StaticResource SearchBox}"
-                                     TextChanged="AppSearch_TextChanged" Margin="0,0,8,0"
+                                     TextChanged="AppSearch_TextChanged" Margin="0,0,8,4"
                                      ToolTip="Search applications" />
                             <Button Content="Block an app" Style="{StaticResource ActionButton}"
-                                    Click="BrowseBlock_Click" Margin="0,0,8,0" />
+                                    Click="BrowseBlock_Click" Margin="0,0,8,4" />
                             <Button Content="Purge unused" Style="{StaticResource ActionButton}"
-                                    Click="PurgeUnused_Click" Margin="0,0,8,0"
+                                    Click="PurgeUnused_Click" Margin="0,0,8,4"
                                     ToolTip="Forget apps that have no allow/block rule (they'll prompt again)" />
                             <Button Content="Purge expired timers" Style="{StaticResource ActionButton}"
-                                    Click="PurgeExpiredTimers_Click" Margin="0,0,8,0"
+                                    Click="PurgeExpiredTimers_Click" Margin="0,0,8,4"
                                     ToolTip="Clear any timed blocks whose timer has already elapsed" />
                             <Button Content="Refresh" Style="{StaticResource ActionButton}"
-                                    Click="RefreshApps_Click" />
-                        </StackPanel>
+                                    Click="RefreshApps_Click" Margin="0,0,0,4" />
+                        </WrapPanel>
                     </Grid>
                     <!-- The signature legend. These four are the CATEGORY colours,
                          which SPEC section 2 calls out as user data rather than
@@ -941,7 +948,7 @@
                          the moment anyone edited a colour. Both now read
                          CategoryPalette, and RefreshSwatches repaints all three
                          places at once. -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,12,0,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,0,0">
                         <Ellipse x:Name="LegendSignedDot" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Signed" Style="{StaticResource Muted}" Margin="0,0,12,0" />
                         <Ellipse x:Name="LegendUnsignedDot" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,4,0" />
@@ -954,7 +961,7 @@
                 </StackPanel>
 
                 <Border Grid.Row="1" Padding="0">
-                    <ListView x:Name="AppsList" gw:Table.EmptyTitle="No applications yet" gw:Table.EmptyText="They appear here the first time each one tries to reach the network." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"
+                    <ListView x:Name="AppsList" SizeChanged="AppsList_SizeChanged" gw:Table.EmptyTitle="No applications yet" gw:Table.EmptyText="They appear here the first time each one tries to reach the network." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"
                               VirtualizingPanel.VirtualizationMode="Recycling"
                               PreviewMouseRightButtonDown="Row_RightClickSelect">
                         <ListView.Resources>
@@ -2867,12 +2874,14 @@
                                     <ComboBoxItem Content="50%" Tag="50" />
                                     <ComboBoxItem Content="60%" Tag="60" />
                                     <ComboBoxItem Content="70%" Tag="70" />
-                                    <ComboBoxItem Content="75%" Tag="75" />
                                     <ComboBoxItem Content="80%" Tag="80" />
-                                    <ComboBoxItem Content="90% (default)" Tag="90" />
-                                    <ComboBoxItem Content="100%" Tag="100" />
+                                    <ComboBoxItem Content="90%" Tag="90" />
+                                    <ComboBoxItem Content="100% (default)" Tag="100" />
                                     <ComboBoxItem Content="110%" Tag="110" />
-                                    <ComboBoxItem Content="125%" Tag="125" />
+                                    <ComboBoxItem Content="120%" Tag="120" />
+                                    <ComboBoxItem Content="130%" Tag="130" />
+                                    <ComboBoxItem Content="140%" Tag="140" />
+                                    <ComboBoxItem Content="150%" Tag="150" />
                                 </ComboBox>
                                 <gw:InfoTip Text="Makes everything in the window smaller or larger. Shortcuts anywhere in GunWall: Ctrl + mouse wheel, Ctrl + plus / minus, and Ctrl + 0 for the default. On a high-resolution display a smaller size shows more rows and columns at once." Margin="8,0,0,0" />
                             </StackPanel>

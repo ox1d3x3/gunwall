@@ -239,6 +239,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Loaded += OnLoaded;
         StateChanged += OnStateChanged;
         IsVisibleChanged += (_, _) => OnScreenChanged();   // tray hide / show
+        // The logo builds itself when the window appears - a fresh start or opening
+        // from the tray; not a silent start to the tray (never visible) (0.99.220).
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) PlayLogoIntro(); };
         Closing += OnClosing;
         Closed += OnClosed;
     }
@@ -483,7 +486,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.218 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.220 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4463,17 +4466,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             if (RootGrid == null) return;
             int z = _firewall.UiZoomPercent;
-            RootGrid.LayoutTransform = z == 100
+            // 100% draws at UiScale.BaseFactor of the design size (0.99.219).
+            double f = UiScale.Factor(z);
+            RootGrid.LayoutTransform = Math.Abs(f - 1.0) < 0.001
                 ? Transform.Identity
-                : new ScaleTransform(z / 100.0, z / 100.0);
+                : new ScaleTransform(f, f);
 
             // The minimum window size follows the scale (0.99.188). It was fixed
             // at 1000 x 640, which at a small UI size forced a window far larger
             // than its content and defeated the point of choosing one - on a
-            // 1080p display especially. Scaled from the 90% default, never below
+            // 1080p display especially. Scaled from the old 90% default (0.72 of the
+            // design size since 0.99.219 rescaled 100% to 0.8), never below
             // a size where the sidebar and one column still fit.
-            MinWidth = Math.Max(560, Math.Round(1000 * z / 90.0));
-            MinHeight = Math.Max(420, Math.Round(640 * z / 90.0));
+            MinWidth = Math.Max(560, Math.Round(1000 * f / 0.9));
+            MinHeight = Math.Max(420, Math.Round(640 * f / 0.9));
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("ApplyUiZoom", ex); }
     }
@@ -4484,7 +4490,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         UiZoomCombo?.Items.OfType<ComboBoxItem>()
             .Select(i => int.TryParse(i.Tag?.ToString(), out int v) ? v : 0)
             .Where(v => v > 0).OrderBy(v => v).ToList()
-        ?? new List<int> { 90 };
+        ?? new List<int> { UiScale.DefaultPercent };
 
     /// <summary>Shows a size in the Settings list without it counting as an
     /// unsaved change. A saved value that is not on the list (an older build
@@ -4511,7 +4517,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         var steps = ZoomSteps();
         int cur = _firewall.UiZoomPercent;
-        int next = direction == 0 ? 90
+        int next = direction == 0 ? UiScale.DefaultPercent
                  : direction > 0 ? steps.FirstOrDefault(v => v > cur, steps[^1])
                  : steps.LastOrDefault(v => v < cur, steps[0]);
         if (next == cur) return;
@@ -4526,6 +4532,138 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0) return;
         StepUiZoom(e.Delta > 0 ? +1 : -1);
         e.Handled = true;      // otherwise the list under the pointer scrolls too
+    }
+
+    // ===== Opening animation of the logo (0.99.220) =====
+
+    /// <summary>
+    /// The 4 x 4 mark builds itself in a diagonal wave (about 0.6 s), then the red
+    /// "blocked" cell lands with a small pulse. Never blocks input; skipped when
+    /// Windows' animation effects are off, or the window opens minimised.
+    /// </summary>
+    private void PlayLogoIntro()
+    {
+        try
+        {
+            if (BrandMark == null || WindowState == WindowState.Minimized) return;
+            if (!SystemParameters.ClientAreaAnimation) return;
+            var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            foreach (var cell in BrandMark.Children.OfType<System.Windows.Shapes.Rectangle>())
+            {
+                int row = Grid.GetRow(cell), col = Grid.GetColumn(cell);
+                bool blocked = cell == BrandMarkBlocked;
+                var begin = TimeSpan.FromMilliseconds(blocked ? 520 : (row + col) * 45);
+                var scale = new ScaleTransform(0.3, 0.3);
+                cell.RenderTransformOrigin = new Point(0.5, 0.5);
+                cell.RenderTransform = scale;
+                cell.Opacity = 0;
+
+                // Holds its end value: hidden until its turn, then fully shown.
+                var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200))
+                    { BeginTime = begin, EasingFunction = ease };
+                cell.BeginAnimation(UIElement.OpacityProperty, fade);
+
+                System.Windows.Media.Animation.AnimationTimeline grow;
+                if (blocked)
+                {
+                    var pulse = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames { BeginTime = begin };
+                    pulse.KeyFrames.Add(new System.Windows.Media.Animation.EasingDoubleKeyFrame(1.35, System.Windows.Media.Animation.KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180)), ease));
+                    pulse.KeyFrames.Add(new System.Windows.Media.Animation.EasingDoubleKeyFrame(1.0, System.Windows.Media.Animation.KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(360)), ease));
+                    grow = pulse;
+                }
+                else
+                    grow = new System.Windows.Media.Animation.DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(220)) { BeginTime = begin, EasingFunction = ease };
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+            }
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("PlayLogoIntro", ex); }
+    }
+
+    // ===== Applications table fits the window (0.99.220) =====
+
+    /// <summary>Design width, smallest width, and the order columns are hidden in
+    /// when even the smallest widths do not fit (0 = never hidden). The ACTION
+    /// column is never hidden or shrunk: Mahabub had to widen the window to reach
+    /// Block/Allow.</summary>
+    private static readonly Dictionary<string, (double Design, double Min, int HideOrder)> AppsColumnPlan = new()
+    {
+        ["APPLICATION"] = (220, 150, 0),
+        ["PUBLISHER"]   = (190, 110, 4),
+        ["VIRUSTOTAL"]  = (130, 130, 1),
+        ["PATH"]        = (300, 120, 0),
+        ["CONNS"]       = (86, 86, 0),
+        ["STATUS"]      = (90, 90, 0),
+        ["BLOCKLISTS"]  = (110, 110, 2),
+        ["ACTIVITY"]    = (106, 106, 3),
+        ["ACTION"]      = (100, 100, 0),
+    };
+    private List<GridViewColumn>? _appsColumnsAll;
+    private double _appsFitWidth = -1;
+
+    private void AppsList_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.WidthChanged) FitAppsColumns();
+    }
+
+    /// <summary>
+    /// Fits the Applications table to its width: the spare room goes to PATH; when
+    /// short, PATH, PUBLISHER and APPLICATION shrink to their minimum, then
+    /// VIRUSTOTAL, BLOCKLISTS, ACTIVITY and PUBLISHER are hidden in that order.
+    /// Hidden columns come back, in their place, when the window grows.
+    /// </summary>
+    private void FitAppsColumns()
+    {
+        try
+        {
+            if (AppsList?.View is not GridView gv) return;
+            double avail = AppsList.ActualWidth - SystemParameters.VerticalScrollBarWidth - 12;
+            if (avail <= 0 || Math.Abs(avail - _appsFitWidth) < 1) return;
+            _appsFitWidth = avail;
+            _appsColumnsAll ??= gv.Columns.ToList();
+
+            string KeyOf(GridViewColumn c) => (c.Header as string ?? "").Trim().ToUpperInvariant();
+            var plan = _appsColumnsAll.Select(c => (Col: c, Key: KeyOf(c),
+                P: AppsColumnPlan.TryGetValue(KeyOf(c), out var p) ? p : (Design: Math.Max(60, c.ActualWidth), Min: Math.Max(60, c.ActualWidth), HideOrder: 0)))
+                .ToList();
+
+            var hidden = new HashSet<string>();
+            double MinTotal() => plan.Where(x => !hidden.Contains(x.Key)).Sum(x => x.P.Min);
+            foreach (var h in plan.Where(x => x.P.HideOrder > 0).OrderBy(x => x.P.HideOrder))
+            {
+                if (MinTotal() <= avail) break;
+                hidden.Add(h.Key);
+            }
+
+            var shown = plan.Where(x => !hidden.Contains(x.Key)).ToList();
+            double designTotal = shown.Sum(x => x.P.Design);
+            var widths = shown.ToDictionary(x => x.Key, x => x.P.Design);
+            if (designTotal <= avail)
+                widths["PATH"] = widths.GetValueOrDefault("PATH") + (avail - designTotal);   // spare room to PATH
+            else
+            {
+                double over = designTotal - avail;
+                foreach (var k in new[] { "PATH", "PUBLISHER", "APPLICATION" })
+                {
+                    if (over <= 0 || !widths.ContainsKey(k)) continue;
+                    double can = widths[k] - AppsColumnPlan[k].Min;
+                    double take = Math.Min(can, over);
+                    widths[k] -= take; over -= take;
+                }
+            }
+
+            // Columns in their original order; only what changed is touched.
+            var want = shown.Select(x => x.Col).ToList();
+            if (!gv.Columns.SequenceEqual(want))
+            {
+                gv.Columns.Clear();
+                foreach (var c in want) gv.Columns.Add(c);
+            }
+            foreach (var x in shown)
+                if (widths.TryGetValue(x.Key, out var w) && widths.ContainsKey(x.Key))
+                    x.Col.Width = Math.Floor(w);
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("FitAppsColumns", ex); }
     }
 
     /// <summary>Auto-sizes every column of the list the context menu was opened

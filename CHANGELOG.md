@@ -15,6 +15,29 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.220] — 2026-10-11
+
+### Changed — a tidier window
+- **Less empty space at the top.** The top bar is lower, page titles are smaller,
+  and pages start closer to the top.
+- **Block / Allow is always in reach.** The Applications table fits the window:
+  the path and publisher columns shrink first, then VirusTotal, Blocklists,
+  Activity and Publisher step aside on a narrow window and come back when it is
+  wider. The toolbar wraps under the title instead of pushing the table off
+  screen.
+- **The GunWall logo builds itself** when the window opens - at start and when
+  opened from the tray. It is skipped when Windows' animation effects are off.
+
+## [0.99.219] — 2026-10-11
+
+### Changed — a more compact window
+The window is drawn smaller at its default size: the new **100%** looks like the
+old 80%, so text, icons and spacing no longer look oversized at an ordinary display
+scale. If you used the old default (90%) you get the new default; if you chose
+your own size, it is converted so the window looks the same as before. Sizes now
+run from 50% to 150% (**Settings → UI size**, or **Ctrl + mouse wheel**; **Ctrl + 0**
+returns to 100%).
+
 ## [0.99.218] — 2026-10-11
 
 ### Fixed — with the experimental service option on
