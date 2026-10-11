@@ -230,6 +230,21 @@ public sealed class DetectionHost : IDisposable
         catch { /* best effort */ }
     }
 
+    /// <summary>Kernel events off while detection keeps polling (0.99.216): the
+    /// setting was turned off. A clean stop - the crash marker goes too.</summary>
+    public void StopEventMonitor()
+    {
+        try
+        {
+            if (_netEvents != null) _netEvents.ConnectionEvent -= OnKernelConnectionEvent;
+            _netEvents?.Dispose();
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("StopEventMonitor", ex); }
+        _netEvents = null;
+        EventDriven = false;
+        ClearEventMarker();
+    }
+
     /// <summary>A clean stop: the poll ends, kernel events unsubscribe, and the
     /// crash-guard marker is removed - this is not a crash.</summary>
     public void Dispose()

@@ -829,8 +829,8 @@ the background service notes the program and GunWall asks about it as soon as yo
 open the window.
 
 **A new program connected (or failed to) and GunWall never asked me.**
-Check **Settings → Preferences → Experimental: kernel event detection** is ticked.
-Without it GunWall can only notice programs whose connections appear in Windows'
+Check **Settings → Preferences → Experimental: kernel event detection** is ticked
+(it takes effect a few seconds after **Apply**). Without it GunWall can only notice programs whose connections appear in Windows'
 connection list, and a new program blocked on its first attempt may never appear
 there. GunWall switches it off by itself only after crashing twice in a row soon
 after starting it, and then says so on the **Alerts** page.

@@ -3018,7 +3018,7 @@
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />
                             <StackPanel Orientation="Horizontal">
                                 <CheckBox x:Name="ExperimentalEventsCheck" Content="Experimental: kernel event detection (catches more apps, may be unstable)" Foreground="{DynamicResource TextPrimary}" Checked="Pref_Changed" Unchecked="Pref_Changed" VerticalAlignment="Center" />
-                                <gw:InfoTip Text="If GunWall becomes unstable after enabling this, turn it off and restart. Restart required to take effect." />
+                                <gw:InfoTip Text="Takes effect a few seconds after Apply. If GunWall becomes unstable after enabling this, turn it off." />
                             </StackPanel>
                         </StackPanel>
                     </Border>

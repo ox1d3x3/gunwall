@@ -483,7 +483,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.215 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.216 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -995,6 +995,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (!Remote)
                 foreach (var n in Upkeep.Tick(snap.Conns, snap.Procs))
                     Notify(n.Level, n.Title, n.Body, n.Category);
+            // The review window's grace period runs off the window's own detection
+            // loop, which a window using the service does not have (0.99.216):
+            // pending forever, an ordinary day's prompts would be grouped.
+            else ExpireReviewWindow();
         }
         catch (Exception ex) { SampleStepError("EngineUpkeep", ex); }
         try { RecordActivity(snap.Conns); } catch (Exception ex) { SampleStepError("RecordActivity", ex); }
@@ -8674,7 +8678,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _firewall.SetPopupDefaultAllow((pdi.Tag?.ToString() ?? "block") == "allow");
         _firewall.SetAutoBackup(AutoBackupCheck?.IsChecked == true);
         _firewall.SetHashesEnabled(HashesCheck?.IsChecked == true);
-        _firewall.SetExperimentalEvents(ExperimentalEventsCheck?.IsChecked == true);
+        bool eventsWant = ExperimentalEventsCheck?.IsChecked == true;
+        if (eventsWant != _firewall.ExperimentalEvents)
+        {
+            _firewall.SetExperimentalEvents(eventsWant);
+            // At once (0.99.216), not at the next start. A window that uses the
+            // service: the service follows the setting within a few seconds.
+            if (!Remote && _engineReady)
+            {
+                if (eventsWant) _detection.TryStartEventMonitor(); else _detection.StopEventMonitor();
+                Services.DiagnosticLog.Log($"Kernel event detection {(eventsWant ? (_detection.EventDriven ? "on" : "could not start") : "off")} (setting changed).");
+            }
+        }
         bool etwWant = EtwMeterCheck?.IsChecked == true;
         if (etwWant != _firewall.EtwMeterEnabled)
         {

@@ -80,6 +80,7 @@ public sealed class ServiceEngineSession : IEngineSession
                 }
 
                 _lastStrict = _fw.StrictMode;
+                _lastEventsWant = _fw.ExperimentalEvents;
                 _fw.ProtectionChanged += OnProtectionChanged;
                 _detection.Polled += FollowSettings;
                 if (ServiceMode.Requested)
@@ -157,6 +158,7 @@ public sealed class ServiceEngineSession : IEngineSession
 
     private long _lastFollowMs;
     private bool? _lastStrict;
+    private bool _lastEventsWant;
 
     /// <summary>
     /// Settings the window changes through the service while the session runs
@@ -180,6 +182,17 @@ public sealed class ServiceEngineSession : IEngineSession
                 if (!_dnsObserver.Start()) DiagnosticLog.Log($"Service: DNS observer could not start ({_dnsObserver.LastError}).");
             }
             else if (!want && _dnsObserver != null) { _dnsObserver.Stop(); _dnsObserver = null; }
+
+            // Kernel event detection switched in Settings (0.99.216). The window's
+            // "restart GunWall" does not restart the service, so it follows here;
+            // only on a change, so a start that failed is not retried every 5 s.
+            bool events = _fw.ExperimentalEvents;
+            if (events != _lastEventsWant && _detection != null)
+            {
+                _lastEventsWant = events;
+                if (events) _detection.TryStartEventMonitor(); else _detection.StopEventMonitor();
+                DiagnosticLog.Log($"Service engine: kernel event detection {(events ? (_detection.EventDriven ? "on" : "could not start") : "off")} (setting changed).");
+            }
 
             if (BlocklistKey(_fw.DnsResolverBlocklist) != _blocklistKey
                 && Interlocked.Exchange(ref _blocklistReloading, 1) == 0)

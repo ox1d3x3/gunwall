@@ -15,6 +15,20 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.216] — 2026-10-11
+
+### Changed
+- **Kernel event detection** takes effect a few seconds after **Apply**, with no
+  restart.
+
+### Fixed — with the experimental service option on
+- Turning kernel event detection on or off did nothing until Windows restarted:
+  restarting GunWall does not restart the background service. The service now
+  follows the setting.
+- The one-time review window (several new programs at once after a fresh install
+  or Remove all) never stopped waiting, so a later, ordinary burst of prompts could
+  still be grouped.
+
 ## [0.99.215] — 2026-10-11
 
 ### Changed — custom blocklist file
