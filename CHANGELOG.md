@@ -15,6 +15,16 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.223] — 2026-10-11
+
+### Fixed
+- **Smoother Overview on high-refresh displays.** The traffic graph rebuilt all of
+  its parts four times a second, which cost a frame or two each time on a 120 Hz+
+  screen - the graph and the live numbers stepped instead of gliding. It now keeps
+  its parts and only updates the curves.
+- Live numbers no longer make the text beside them shift when they gain or lose a
+  digit.
+
 ## [0.99.222] — 2026-10-11
 
 ### Changed

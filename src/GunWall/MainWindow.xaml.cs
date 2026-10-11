@@ -486,7 +486,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.222 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.223 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -4259,9 +4259,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         var canvas = GraphCanvas;
         if (canvas == null) return;
-        canvas.Children.Clear();
         double w = canvas.ActualWidth, h = canvas.ActualHeight;
         if (w <= 1 || h <= 1) { _graphStepX = 0; return; }
+        // Built once, then only the curves change (0.99.223). Clearing the canvas
+        // and creating every path, the baseline and five axis labels four times a
+        // second cost ~11.5 ms a tick on the UI thread - a dropped frame or two at
+        // 120 Hz, four times a second: the glide stepped and the numbers with it.
+        EnsureGraphVisuals(canvas);
 
         double max = 64 * 1024;
         for (int i = 0; i < GraphFinePoints; i++)
@@ -4279,7 +4283,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // trace slides between samples, so a mismatch would leave the geometry
         // creeping in one direction over time.
         _graphStepX = w / Math.Max(1, GraphFinePoints - 3);
-        DrawBaseline(canvas, w, ph); // static, not scrolled
+        LayoutGraphFrame(w, ph); // baseline and axis labels: moved only when the size changes
         // Download: blue gradient area. Upload: thin magenta line.
         // Series colours come from the theme, not from literals. They were
         // hardcoded blue and pink here, which is why changing the palette had no
@@ -4304,8 +4308,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         //
         // Stroke is 1.3 on both for the same reason: they are the same kind of
         // measurement and neither outranks the other.
-        AddSmoothSeries(canvas, _gDown, max, w, ph, Series("InboundBrush"), Series("FillDown"), _graphScroll);
-        AddSmoothSeries(canvas, _gUp,   max, w, ph, Series("OutboundBrush"), Series("FillUp"),  _graphScroll);
+        SetSmoothSeries(_gDownFillPath!, _gDownLinePath!, _gDown, max, w, ph, Series("InboundBrush"), Series("FillDown"));
+        SetSmoothSeries(_gUpFillPath!,   _gUpLinePath!,   _gUp,   max, w, ph, Series("OutboundBrush"), Series("FillUp"));
 
         var now = DateTime.UtcNow;
         if (_lastGraphSample != DateTime.MinValue)
@@ -4316,35 +4320,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _lastGraphSample = now;
         _graphScroll.X = 0; // new data appended at the right; restart the slide
 
-        // Time axis: relative labels in the reserved band BELOW the baseline.
-        // Previously h - 15, which is inside the plot: at a 230px canvas the
-        // baseline is at 229 and the label occupied 215-228, so every trace that
-        // dipped near zero crossed the text. The design puts them clear of the
-        // plot, and a label a line is drawn through is not a label.
-        var axisBrush = (Brush)System.Windows.Application.Current.FindResource("TextTertiary");
-        foreach (var (frac, label) in new[] { (0.0, "-60s"), (0.25, "-45s"), (0.5, "-30s"), (0.75, "-15s"), (1.0, "now") })
-        {
-            var tb = new TextBlock
-            {
-                Text = label, FontSize = 9.5, Foreground = axisBrush, IsHitTestVisible = false
-            };
-            canvas.Children.Add(tb);
-            Canvas.SetLeft(tb, Math.Clamp(frac * w - (frac >= 1.0 ? 24 : frac > 0 ? 11 : 0), 0, Math.Max(0, w - 26)));
-            Canvas.SetTop(tb, ph + 6);
-        }
-
         UpdateGraphHover(); // values under a resting cursor stay current
     }
 
-    private static void DrawBaseline(Canvas canvas, double w, double h)
-    {
-        canvas.Children.Add(new Line
-        {
-            X1 = 0, Y1 = h - 1, X2 = w, Y2 = h - 1,
-            Stroke = (Brush)System.Windows.Application.Current.FindResource("BorderBrush"),
-            StrokeThickness = 1
-        });
-    }
 
     // Screen points for one series, laid out so the newest point (index n-1) sits
     // one step BEYOND the right edge, ready to slide in.
@@ -4393,31 +4371,87 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         return segs;
     }
 
-    private static void AddSmoothSeries(Canvas canvas, double[] series, double max,
-                                        double w, double h, Color color, Color fill,
-                                        Transform scroll)
+    // ---- Persistent graph visuals (0.99.223) ----
+    private System.Windows.Shapes.Path? _gDownFillPath, _gDownLinePath, _gUpFillPath, _gUpLinePath;
+    private Line? _gBaseLine;
+    private TextBlock[]? _gAxisLabels;
+    private double _gFrameW = -1, _gFramePh = -1;
+    private static readonly (double Frac, string Label)[] GraphAxis =
+        { (0.0, "-60s"), (0.25, "-45s"), (0.5, "-30s"), (0.75, "-15s"), (1.0, "now") };
+    private readonly Dictionary<Color, SolidColorBrush> _graphBrushes = new();
+
+    private SolidColorBrush GraphBrush(Color c)
+    {
+        if (_graphBrushes.TryGetValue(c, out var b)) return b;
+        b = new SolidColorBrush(c); b.Freeze();
+        return _graphBrushes[c] = b;
+    }
+
+    /// <summary>The graph's elements, created once: baseline, a fill and a line per
+    /// series (download drawn first, underneath), and the time-axis labels. The
+    /// series share the per-frame scroll transform; baseline and labels do not move.
+    /// Theme colours follow by resource reference.</summary>
+    private void EnsureGraphVisuals(Canvas canvas)
+    {
+        if (_gBaseLine != null && canvas.Children.Contains(_gBaseLine)) return;
+        canvas.Children.Clear();
+        _gBaseLine = new Line { StrokeThickness = 1, IsHitTestVisible = false };
+        _gBaseLine.SetResourceReference(Shape.StrokeProperty, "BorderBrush");
+        canvas.Children.Add(_gBaseLine);
+        System.Windows.Shapes.Path NewPath(bool line) => new()
+        {
+            IsHitTestVisible = false, RenderTransform = _graphScroll,
+            StrokeThickness = line ? 1.3 : 0, StrokeLineJoin = PenLineJoin.Round,
+        };
+        _gDownFillPath = NewPath(false); _gDownLinePath = NewPath(true);
+        _gUpFillPath = NewPath(false);   _gUpLinePath = NewPath(true);
+        foreach (var p in new[] { _gDownFillPath, _gDownLinePath, _gUpFillPath, _gUpLinePath }) canvas.Children.Add(p);
+        _gAxisLabels = GraphAxis.Select(a =>
+        {
+            var tb = new TextBlock { Text = a.Label, FontSize = 9.5, IsHitTestVisible = false };
+            tb.SetResourceReference(TextBlock.ForegroundProperty, "TextTertiary");
+            canvas.Children.Add(tb);
+            return tb;
+        }).ToArray();
+        _gFrameW = _gFramePh = -1;
+    }
+
+    /// <summary>Baseline and axis labels to the current size - only when it changed.
+    /// Labels sit in the reserved band BELOW the baseline: a label a line is drawn
+    /// through is not a label.</summary>
+    private void LayoutGraphFrame(double w, double ph)
+    {
+        if (_gBaseLine == null || _gAxisLabels == null) return;
+        if (Math.Abs(w - _gFrameW) < 0.5 && Math.Abs(ph - _gFramePh) < 0.5) return;
+        _gFrameW = w; _gFramePh = ph;
+        _gBaseLine.X1 = 0; _gBaseLine.X2 = w; _gBaseLine.Y1 = _gBaseLine.Y2 = ph - 1;
+        for (int i = 0; i < GraphAxis.Length; i++)
+        {
+            double frac = GraphAxis[i].Frac;
+            Canvas.SetLeft(_gAxisLabels[i], Math.Clamp(frac * w - (frac >= 1.0 ? 24 : frac > 0 ? 11 : 0), 0, Math.Max(0, w - 26)));
+            Canvas.SetTop(_gAxisLabels[i], ph + 6);
+        }
+    }
+
+    /// <summary>New curves into the existing paths: one frozen geometry each, no
+    /// new elements, so no layout pass.</summary>
+    private void SetSmoothSeries(System.Windows.Shapes.Path fillPath, System.Windows.Shapes.Path linePath,
+                                 double[] series, double max, double w, double h, Color color, Color fill)
     {
         var pts = SeriesPoints(series, max, w, h);
 
+        var fillGeo = new StreamGeometry();
+        using (var ctx = fillGeo.Open())
         {
-            var fillGeo = new StreamGeometry();
-            using (var ctx = fillGeo.Open())
-            {
-                ctx.BeginFigure(new Point(pts[0].X, h), isFilled: true, isClosed: true);
-                ctx.LineTo(pts[0], isStroked: false, isSmoothJoin: false);
-                foreach (var (c1, c2, end) in SplineBeziers(pts))
-                    ctx.BezierTo(c1, c2, end, isStroked: false, isSmoothJoin: true);
-                ctx.LineTo(new Point(pts[^1].X, h), isStroked: false, isSmoothJoin: false);
-            }
-            fillGeo.Freeze();
-
-            // Flat, and straight from the palette - not derived from the stroke,
-            // because the light theme's fills are not simply the dark ones at a
-            // different alpha.
-            var fillBrush = new SolidColorBrush(fill);
-            fillBrush.Freeze();
-            canvas.Children.Add(new System.Windows.Shapes.Path { Data = fillGeo, Fill = fillBrush, IsHitTestVisible = false, RenderTransform = scroll });
+            ctx.BeginFigure(new Point(pts[0].X, h), isFilled: true, isClosed: true);
+            ctx.LineTo(pts[0], isStroked: false, isSmoothJoin: false);
+            foreach (var (c1, c2, end) in SplineBeziers(pts))
+                ctx.BezierTo(c1, c2, end, isStroked: false, isSmoothJoin: true);
+            ctx.LineTo(new Point(pts[^1].X, h), isStroked: false, isSmoothJoin: false);
         }
+        fillGeo.Freeze();
+        fillPath.Fill = GraphBrush(fill);
+        fillPath.Data = fillGeo;
 
         var lineGeo = new StreamGeometry();
         using (var ctx = lineGeo.Open())
@@ -4427,22 +4461,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 ctx.BezierTo(c1, c2, end, isStroked: true, isSmoothJoin: true);
         }
         lineGeo.Freeze();
-
-        // Frozen like the fill brush and both geometries above. An unfrozen brush
-        // is watched for changes for as long as it is drawn; this one never
-        // changes and is replaced four times a second.
-        var stroke = new SolidColorBrush(color);
-        stroke.Freeze();
-
-        canvas.Children.Add(new System.Windows.Shapes.Path
-        {
-            Data = lineGeo,
-            Stroke = stroke,
-            StrokeThickness = 1.3,
-            StrokeLineJoin = PenLineJoin.Round,
-            IsHitTestVisible = false,
-            RenderTransform = scroll
-        });
+        linePath.Stroke = GraphBrush(color);
+        linePath.Data = lineGeo;
     }
 
     private void GraphCanvas_SizeChanged(object sender, SizeChangedEventArgs e) => RedrawGraph();

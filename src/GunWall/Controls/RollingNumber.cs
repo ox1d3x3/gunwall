@@ -50,6 +50,7 @@ public static class RollingNumber
             r.HasValue = true;
             Moving.RemoveAll(m => m.Roll == r);
             block.Text = format(value);
+            HoldWidth(block);
             return;
         }
         r.From = r.Shown;
@@ -57,6 +58,16 @@ public static class RollingNumber
         r.StartUtc = DateTime.UtcNow;
         if (!Moving.Any(m => m.Roll == r)) Moving.Add((new WeakReference<TextBlock>(block), r));
         if (!_hooked) { CompositionTarget.Rendering += OnFrame; _hooked = true; }
+    }
+
+    /// <summary>A number never makes its row shrink back (0.99.223): when "999 B/s"
+    /// becomes "1.0 KB/s" and back, the text beside it would jiggle and the row be
+    /// laid out again on every change. Uses the text's own width, not the space
+    /// it is stretched across, so resizing the window still works.</summary>
+    private static void HoldWidth(TextBlock block)
+    {
+        double natural = block.DesiredSize.Width;
+        if (natural > block.MinWidth + 0.5) block.MinWidth = Math.Ceiling(natural);
     }
 
     private static void OnFrame(object? sender, EventArgs e)
@@ -70,7 +81,7 @@ public static class RollingNumber
             double eased = 1 - Math.Pow(1 - t, 3);               // ease out: quick start, gentle landing
             r.Shown = r.From + (r.To - r.From) * eased;
             string text = r.Format(t >= 1 ? r.To : r.Shown);
-            if (block.Text != text) block.Text = text;
+            if (block.Text != text) { block.Text = text; HoldWidth(block); }
             if (t >= 1) { r.Shown = r.To; Moving.RemoveAt(i); }
         }
         if (Moving.Count == 0 && _hooked) { CompositionTarget.Rendering -= OnFrame; _hooked = false; }
