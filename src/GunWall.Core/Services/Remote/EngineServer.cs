@@ -286,7 +286,7 @@ public sealed class EngineServer : IDisposable
                             EngineWire.Write(_pipe, new EngineMessage
                             {
                                 Kind = "reply", Id = m.Id, Ok = false,
-                                Error = $"the answer is over the {EngineWire.MaxMessageBytes / 1024} KB message limit",
+                                Error = $"the answer is over the {EngineWire.MaxAssembledBytes / (1024 * 1024)} MB message limit",
                             });
                     }
                 }

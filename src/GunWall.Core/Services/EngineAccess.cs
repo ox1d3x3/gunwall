@@ -23,6 +23,10 @@ public enum Access
     /// <summary>Makes protection looser (allow, remove, import, pause, reset).
     /// Needs an unlock while Protect settings is on.</summary>
     Loosen,
+    /// <summary>A system rule switched (key, enabled), judged by what the rule is
+    /// (0.99.218): a BLOCK rule on, or an ALLOW rule off, is stricter; a block rule
+    /// off or an allow rule on is looser. An unknown key is looser.</summary>
+    SystemRuleSwitch,
     /// <summary>Never sent to the service: an object, an event or start-up
     /// work the window does for itself.</summary>
     Local,
@@ -38,6 +42,13 @@ public sealed class EngineAccessAttribute : Attribute
     /// resolved against the last bool argument. Unknown is treated as Loosen.</summary>
     public static Access Resolve(Access declared, object?[]? args)
     {
+        if (declared == Access.SystemRuleSwitch)
+        {
+            if (args is not { Length: >= 2 } || args[0] is not string key || args[1] is not bool on) return Access.Loosen;
+            var preset = GunWall.Models.SystemRuleCatalog.All.FirstOrDefault(p => p.Key == key);
+            if (preset == null) return Access.Loosen;
+            return preset.Block == on ? Access.Tighten : Access.Loosen;
+        }
         if (declared is not (Access.TightenIfTrue or Access.TightenIfFalse)) return declared;
         bool? flag = null;
         if (args != null)

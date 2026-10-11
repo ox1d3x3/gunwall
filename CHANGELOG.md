@@ -15,6 +15,16 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.218] — 2026-10-11
+
+### Fixed — with the experimental service option on
+- Long lists (a large blocklist category, a long pasted list) could fail with
+  "over the message limit" between the window and the background service. Large
+  messages now travel in parts.
+- Opening GunWall could, rarely, start a second firewall engine in the window
+  instead of connecting to the service, when the service was answering the
+  previous question at that moment. The question is now asked again.
+
 ## [0.99.217] — 2026-10-11
 
 ### Changed — with the experimental service option on

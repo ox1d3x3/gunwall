@@ -51,22 +51,33 @@ public static class EngineOwnership
     /// null if no service is listening.</summary>
     public static string? Ask(string pipeName, string request, TimeSpan timeout)
     {
-        try
+        // Twice at most, and only when nothing came back: a connection broken while
+        // sending, or closed before a single byte of answer (0.99.218 - the other
+        // side was closing the previous conversation). The service always answers
+        // before it closes, so no answer means the request was not handled; every
+        // request here is safe to send twice anyway.
+        for (int attempt = 1; ; attempt++)
         {
-            // Identification only: whatever answers on this name may learn who is
-            // asking, never act as them.
-            using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous,
-                                                       System.Security.Principal.TokenImpersonationLevel.Identification);
-            pipe.Connect((int)Math.Min(int.MaxValue, Math.Max(100, timeout.TotalMilliseconds / 4)));
-            var bytes = Encoding.UTF8.GetBytes(request + "\n");
-            pipe.Write(bytes, 0, bytes.Length);
-            pipe.Flush();
-            return ReadLine(pipe, timeout);
+            try
+            {
+                // Identification only: whatever answers on this name may learn who is
+                // asking, never act as them.
+                using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous,
+                                                           System.Security.Principal.TokenImpersonationLevel.Identification);
+                pipe.Connect((int)Math.Min(int.MaxValue, Math.Max(100, timeout.TotalMilliseconds / 4)));
+                var bytes = Encoding.UTF8.GetBytes(request + "\n");
+                pipe.Write(bytes, 0, bytes.Length);
+                pipe.Flush();
+                string? line = ReadLine(pipe, timeout);
+                if (line is { Length: 0 } && attempt < 2) { Thread.Sleep(50); continue; }   // closed, no answer
+                return line;
+            }
+            catch (IOException) when (attempt < 2) { Thread.Sleep(50); }
+            catch (TimeoutException) { return null; }
+            catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
+            catch (InvalidOperationException) { return null; }
         }
-        catch (TimeoutException) { return null; }
-        catch (IOException) { return null; }
-        catch (UnauthorizedAccessException) { return null; }
-        catch (InvalidOperationException) { return null; }
     }
 
     /// <summary>One line, or null on timeout. Pipes have no read timeout of their

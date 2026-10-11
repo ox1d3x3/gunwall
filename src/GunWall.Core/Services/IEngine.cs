@@ -221,7 +221,7 @@ public interface IEngine
     [EngineAccess(Access.Loosen)] void SetSilent(string exePath, string displayName, bool silent);
     [EngineAccess(Access.Local)] void SetStartMinimized(bool v);
     [EngineAccess(Access.TightenIfTrue)] void SetStrictMode(bool enabled);
-    [EngineAccess(Access.Loosen)] void SetSystemRule(string key, bool enabled);
+    [EngineAccess(Access.SystemRuleSwitch)] void SetSystemRule(string key, bool enabled);
     [EngineAccess(Access.TightenIfTrue)] void SetTamperWatch(bool on);
     [EngineAccess(Access.Local)] void SetThemeDark(bool v);
     [EngineAccess(Access.Local)] void SetTrayNotifications(bool v);

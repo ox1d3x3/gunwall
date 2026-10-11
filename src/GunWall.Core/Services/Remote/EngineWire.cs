@@ -15,10 +15,18 @@ public static class EngineWire
 {
     /// <summary>Version 1 of the protocol. A window and a service that disagree
     /// refuse to talk ("GunWall is updating - restart the window").</summary>
-    public const int ProtocolVersion = 2;   // 2: detected and notice messages (0.99.208)
+    public const int ProtocolVersion = 3;   // 2: detected and notice messages (0.99.208); 3: parts (0.99.218)
 
-    /// <summary>The largest message either side accepts.</summary>
+    /// <summary>The largest single frame either side accepts. A larger message is
+    /// sent as several frames (0.99.218) - a long blocklist, a pasted list.</summary>
     public const int MaxMessageBytes = 1024 * 1024;
+
+    /// <summary>The largest message after its parts are joined. Bounds what a
+    /// misbehaving peer can make the other side hold in memory.</summary>
+    public const int MaxAssembledBytes = 16 * 1024 * 1024;
+
+    /// <summary>Set in a frame's length when more parts of the same message follow.</summary>
+    private const int MoreFlag = 0x4000_0000;
 
     /// <summary>Beside the hand-over pipe, not instead of it, until 4b.</summary>
     public const string PipeName = "GunWall.Engine.v1";
@@ -39,11 +47,18 @@ public static class EngineWire
     public static void Write(Stream s, EngineMessage m)
     {
         byte[] body = JsonSerializer.SerializeToUtf8Bytes(m, Json);
-        if (body.Length > MaxMessageBytes) throw new InvalidDataException($"message of {body.Length} bytes is over the limit");
-        var len = BitConverter.GetBytes(body.Length);
-        if (!BitConverter.IsLittleEndian) Array.Reverse(len);
-        s.Write(len, 0, 4);
-        s.Write(body, 0, body.Length);
+        if (body.Length > MaxAssembledBytes) throw new InvalidDataException($"message of {body.Length} bytes is over the limit");
+        int off = 0;
+        do
+        {
+            int n = Math.Min(MaxMessageBytes, body.Length - off);
+            bool more = off + n < body.Length;
+            var len = BitConverter.GetBytes(n | (more ? MoreFlag : 0));
+            if (!BitConverter.IsLittleEndian) Array.Reverse(len);
+            s.Write(len, 0, 4);
+            s.Write(body, off, n);
+            off += n;
+        } while (off < body.Length);
         s.Flush();
     }
 
@@ -51,12 +66,29 @@ public static class EngineWire
     public static EngineMessage? Read(Stream s)
     {
         var len = new byte[4];
-        if (!ReadExactly(s, len)) return null;
-        if (!BitConverter.IsLittleEndian) Array.Reverse(len);
-        int n = BitConverter.ToInt32(len, 0);
-        if (n <= 0 || n > MaxMessageBytes) throw new InvalidDataException($"frame length {n} is out of range");
-        var body = new byte[n];
-        if (!ReadExactly(s, body)) throw new EndOfStreamException("frame cut short");
+        byte[]? body = null;
+        using var joined = new MemoryStream();
+        bool more;
+        do
+        {
+            if (!ReadExactly(s, len))
+            {
+                if (joined.Length == 0) return null;
+                throw new EndOfStreamException("message cut short between parts");
+            }
+            var le = (byte[])len.Clone();
+            if (!BitConverter.IsLittleEndian) Array.Reverse(le);
+            int raw = BitConverter.ToInt32(le, 0);
+            more = (raw & MoreFlag) != 0;
+            int n = raw & ~MoreFlag;
+            if (raw < 0 || n <= 0 || n > MaxMessageBytes) throw new InvalidDataException($"frame length {n} is out of range");
+            if (joined.Length + n > MaxAssembledBytes) throw new InvalidDataException("message over the joined size limit");
+            var part = new byte[n];
+            if (!ReadExactly(s, part)) throw new EndOfStreamException("frame cut short");
+            if (!more && joined.Length == 0) body = part;      // the usual case: one frame
+            else joined.Write(part, 0, n);
+        } while (more);
+        body ??= joined.ToArray();
         return JsonSerializer.Deserialize<EngineMessage>(body, Json)
                ?? throw new InvalidDataException("empty message");
     }
