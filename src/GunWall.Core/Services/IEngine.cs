@@ -167,6 +167,7 @@ public interface IEngine
     [EngineAccess(Access.Preference)] void ReloadGeoIpTables();
     [EngineAccess(Access.Preference)] void RecordRunAtStartup(bool enabled);
     [EngineAccess(Access.Preference)] void MarkVersionSeen();
+    [EngineAccess(Access.Read)] string ServiceStatusReport();
     [EngineAccess(Access.Local)] void SaveCategoryColors();
     [EngineAccess(Access.TightenIfTrue)] void SaveDnsCloakConfig(bool enabled);
     [EngineAccess(Access.Loosen)] void SaveDnsDohConfig(string url, bool fallback);

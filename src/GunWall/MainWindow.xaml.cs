@@ -483,7 +483,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.216 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.217 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5811,6 +5811,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Services.DiagnosticLog.Log($"Background service: {_serviceState}; "
             + (Remote ? "this window uses the service's engine (experimental)."
                       : $"window owns the engine: {(_engineLock != null ? "yes" : "NO")}."));
+        if (Remote)
+        {
+            // What the service is running now (0.99.217) - the window's own lines
+            // above describe only the window.
+            try
+            {
+                foreach (var line in _firewall.ServiceStatusReport().Split('\n'))
+                    if (line.Trim().Length > 0) Services.DiagnosticLog.Log(line.TrimEnd('\r'));
+            }
+            catch (Exception ex) { Services.DiagnosticLog.Log($"Service status: not available ({ex.GetType().Name}: {ex.Message})."); }
+        }
         Services.DiagnosticLog.Log($"UI preferences: {_engineLocal.UiPrefsPath} (this Windows user's own; theme {(_firewall.ThemeDark ? "dark" : "light")}, zoom {_firewall.UiZoomPercent}%).");
         Services.DiagnosticLog.Log(
             $"Secure DNS: url=[{_dnsResolver.DohUrl}], active={_dnsResolver.SecureDns}, " +

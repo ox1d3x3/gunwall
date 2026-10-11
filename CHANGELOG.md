@@ -15,6 +15,13 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.217] — 2026-10-11
+
+### Changed — with the experimental service option on
+- **Settings → Diagnostics → Export** now includes what the background service is
+  running at that moment: protection, kernel event detection, DNS watching, the
+  DNS blocklist and the custom list, and how many windows are connected.
+
 ## [0.99.216] — 2026-10-11
 
 ### Changed

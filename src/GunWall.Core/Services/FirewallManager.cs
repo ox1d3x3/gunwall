@@ -3373,6 +3373,18 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// first FirewallManager is created there.</summary>
     public static bool ServiceHost { get; set; }
 
+    /// <summary>Set by the background service's session (0.99.217): what it is
+    /// running right now, for a window's diagnostics bundle. Empty elsewhere.</summary>
+    public static Func<string>? ServiceStatusProvider { get; set; }
+
+    /// <summary>The background service's live state, one line per item; empty when
+    /// this engine is not the service's.</summary>
+    public string ServiceStatusReport()
+    {
+        try { return ServiceStatusProvider?.Invoke() ?? ""; }
+        catch (Exception ex) { return "Service status: could not be read (" + ex.GetType().Name + ")."; }
+    }
+
     public int PruneDeadRules()
     {
         if (!ReconcileReady) return 0;

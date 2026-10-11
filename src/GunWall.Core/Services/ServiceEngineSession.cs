@@ -81,6 +81,7 @@ public sealed class ServiceEngineSession : IEngineSession
 
                 _lastStrict = _fw.StrictMode;
                 _lastEventsWant = _fw.ExperimentalEvents;
+                FirewallManager.ServiceStatusProvider = StatusReport;   // runs on this thread, via the pipe
                 _fw.ProtectionChanged += OnProtectionChanged;
                 _detection.Polled += FollowSettings;
                 if (ServiceMode.Requested)
@@ -158,6 +159,28 @@ public sealed class ServiceEngineSession : IEngineSession
 
     private long _lastFollowMs;
     private bool? _lastStrict;
+    private readonly DateTime _startedUtc = DateTime.UtcNow;
+
+    /// <summary>The service's live state for a window's diagnostics bundle
+    /// (0.99.217) - before, the bundle only said "in the background service".</summary>
+    private string StatusReport()
+    {
+        var sb = new System.Text.StringBuilder();
+        var up = DateTime.UtcNow - _startedUtc;
+        sb.AppendLine($"Service session: engine up since {_startedUtc.ToLocalTime():HH:mm:ss} ({(int)up.TotalHours}h {up.Minutes:00}m), "
+                    + $"{_server?.SessionCount ?? 0} window(s) connected, protection {(_fw?.StrictMode == true ? "ON" : "off")}, "
+                    + $"lockdown {_fw?.LockdownEngaged == true}, {(_fw?.IsSnoozed == true ? $"paused until {_fw.SnoozeUntil:HH:mm:ss}" : "not paused")}.");
+        sb.AppendLine($"Service detection: kernel events {(_detection?.EventDriven == true ? "on" : "off")} "
+                    + $"(setting {(_fw?.ExperimentalEvents == true ? "on" : "off")}{(_detection?.EventsRecovered == true ? ", switched off after repeated crashes" : "")}), "
+                    + $"detect errors {_detection?.DetectErrors ?? 0}, tamper watch {(_fw?.TamperWatchEnabled == true ? "on" : "off")}.");
+        sb.AppendLine(_dnsObserver == null
+            ? $"Service DNS watching: off (setting {(_fw?.DnsObserveSystemLookups == true ? "on" : "off")})."
+            : $"Service DNS watching: {(_dnsObserver.SessionActive ? "active" : "NOT active")}, {_dnsObserver.EventsSeen:N0} events, "
+              + $"{_dnsObserver.AnswersRecorded:N0} answers, {_dnsObserver.ParseFailures} parse failures, lastError=[{_dnsObserver.LastError}].");
+        sb.AppendLine($"Service DNS blocklist: {_blocklist?.BlockedDomainCount ?? 0:N0} name(s) enforced by address; "
+                    + $"custom list {_fw?.CustomDomainCount ?? 0:N0} domain(s).");
+        return sb.ToString().TrimEnd();
+    }
     private bool _lastEventsWant;
 
     /// <summary>
@@ -302,6 +325,7 @@ public sealed class ServiceEngineSession : IEngineSession
         {
             _thread.Invoke(() =>
             {
+                FirewallManager.ServiceStatusProvider = null;
                 // The engine pipe first: no window may call into an engine that is
                 // being taken apart.
                 ServingRemote = false;
