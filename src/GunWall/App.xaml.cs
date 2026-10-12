@@ -48,6 +48,41 @@ public partial class App : Application
         Environment.Exit(code);
     }
 
+    /// <summary>
+    /// The service did not answer the window's first question (0.99.225). If it is
+    /// starting - typically right after Windows starts, when the window can be
+    /// launched at sign-in before the service is up - wait for it rather than take
+    /// the engine and keep it for the whole session. Asks "ready" while waiting:
+    /// "attach" counts as a request to hand over and would hold a starting service
+    /// back. Returns the answer to the final "attach", or null to run the engine here.
+    /// </summary>
+    private static string? WaitForStartingService()
+    {
+        try
+        {
+            var (state, _) = BackgroundServiceControl.Query();
+            long uptime = Environment.TickCount64;
+            var (wait, startIt) = ServiceMode.ShouldWaitForService(state, uptime);
+            if (!wait) return null;
+            DiagnosticLog.Log($"Engine: the background service is not answering yet (state {state}, Windows started {uptime / 1000} s ago) - "
+                            + $"{(startIt ? "starting it and " : "")}waiting up to {ServiceMode.StartWait.TotalSeconds:0} s for it.");
+            if (startIt) BackgroundServiceControl.Sc($"start {BackgroundServiceControl.ServiceName}");
+            var started = DateTime.UtcNow;
+            while (DateTime.UtcNow - started < ServiceMode.StartWait)
+            {
+                if (EngineOwnership.Ask(EngineOwnership.PipeName, "ready", TimeSpan.FromSeconds(3)) == "ready")
+                {
+                    DiagnosticLog.Log($"Engine: the background service is up after {(DateTime.UtcNow - started).TotalSeconds:0} s.");
+                    return EngineOwnership.Ask(EngineOwnership.PipeName, "attach", TimeSpan.FromSeconds(15));
+                }
+                System.Threading.Thread.Sleep(1000);
+            }
+            DiagnosticLog.Log($"Engine: the background service did not come up within {ServiceMode.StartWait.TotalSeconds:0} s.");
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("WaitForStartingService", ex); }
+        return null;
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -133,19 +168,31 @@ public partial class App : Application
         // Taken here, before the window exists, so waiting for the background
         // service to hand over never shows a frozen window. The window adopts the
         // lock (TakeEngineLock) before it reads the profile.
-        // The window uses the service (experimental, 0.99.208): ask it to keep the
-        // engine and connect. Anything short of a working connection falls back to
-        // the hand-over below - the window is still elevated, so it can always run
-        // the engine itself.
+        // The window uses the service (0.99.208; the default since 0.99.224 wherever
+        // the service is installed and on): ask it to keep the engine and connect.
+        // Anything short of a working connection falls back to the hand-over below -
+        // the window is still elevated, so it can always run the engine itself.
+        ServiceMode.RemoveLegacyMarker();
         if (ServiceMode.Requested)
         {
             try
             {
                 DiagnosticLog.Log("Engine: this window uses the background service - asking it to keep the engine.");
                 string? answer = EngineOwnership.Ask(EngineOwnership.PipeName, "attach", TimeSpan.FromSeconds(45));
+                if (answer == null) answer = WaitForStartingService();
                 if (answer == "remote")
                 {
-                    _remote = GunWall.Services.Remote.RemoteEngine.Connect(UpdateService.CurrentVersion, null);
+                    // The service said yes: a connection that fails now is worth two
+                    // more tries before the window takes the engine away from it.
+                    for (int attempt = 1; ; attempt++)
+                    {
+                        try { _remote = GunWall.Services.Remote.RemoteEngine.Connect(UpdateService.CurrentVersion, null); break; }
+                        catch (Exception ex) when (attempt < 3)
+                        {
+                            DiagnosticLog.Log($"Engine: connecting to the service failed (attempt {attempt}: {ex.GetType().Name}: {ex.Message}) - trying again.");
+                            System.Threading.Thread.Sleep(500);
+                        }
+                    }
                     DiagnosticLog.Log("Engine: connected to the background service's engine - this window does not run one.");
                 }
                 else

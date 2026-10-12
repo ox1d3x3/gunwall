@@ -26,7 +26,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private readonly FirewallManager _engineLocal = new();
 
     // The background service's engine, when this window uses the service
-    // (Settings, experimental - stage 4b, 0.99.208). Then the service keeps the
+    // (stage 4b, 0.99.208; the default since 0.99.224). Then the service keeps the
     // engine while the window is open, every call goes over the engine pipe, and
     // _engineLocal is only a read-only copy of the profile for what the window
     // does itself (GeoIP lookups, exports). Null: the window runs the engine.
@@ -486,7 +486,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.223 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.226 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -625,15 +625,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             BackgroundServiceCheck.IsChecked = installed && enabled;
             if (WindowUsesServiceCheck != null)
             {
+                // On by default (0.99.224); it can only apply while the service is on.
                 WindowUsesServiceCheck.IsEnabled = installed && enabled;
-                WindowUsesServiceCheck.IsChecked = ServiceMode.Requested;
+                WindowUsesServiceCheck.IsChecked = installed && enabled && ServiceMode.Preferred;
             }
             if (WindowUsesServiceStatus != null)
                 WindowUsesServiceStatus.Text = Remote
                     ? "On - this window is using the service's firewall."
-                    : ServiceMode.Requested
-                        ? "On from the next start of GunWall."
-                        : "";
+                    : !(installed && enabled)
+                        ? ""
+                        : ServiceMode.Preferred
+                            ? "On from the next start of GunWall."
+                            : "Off - this window runs the firewall itself.";
             if (BackgroundServiceStatus != null)
                 BackgroundServiceStatus.Text = !installed
                     ? "Not available in this copy - install GunWall with the installer to use it."
@@ -649,7 +652,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (WindowUsesServiceCheck == null) return;
         bool want = WindowUsesServiceCheck.IsChecked == true;
         ServiceMode.Set(want);
-        Services.DiagnosticLog.Log($"Window uses the background service: turned {(want ? "on" : "off")} in Settings (from the next start).");
+        Services.DiagnosticLog.Log($"Window uses the background service: turned {(want ? "on (the default)" : "off - the window will run the firewall itself")} in Settings (from the next start).");
         if (WindowUsesServiceStatus != null)
             WindowUsesServiceStatus.Text = want == Remote
                 ? (Remote ? "On - this window is using the service's firewall." : "")
@@ -5026,12 +5029,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         try
         {
-            if (TopDown == null) return;
-            // Roll to the new value rather than snap (0.99.222).
-            Controls.RollingNumber.Set(TopDown, downRate, FormatRate);
-            Controls.RollingNumber.Set(TopUp, upRate, FormatRate);
-            TopDown.ToolTip = $"Downloaded {AppUsageService.FormatBytes((long)_sessionDownBytes)} this session";
-            TopUp.ToolTip = $"Uploaded {AppUsageService.FormatBytes((long)_sessionUpBytes)} this session";
+            // The top-bar rates were removed in 0.99.224; the Overview shows them.
 
             // Metering mode. Estimated numbers are a caveat on how a figure
             // should be read, so it is surfaced on Traffic, where the figures
@@ -5952,7 +5950,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             $"prompts queued={_promptsQueued}, shown={_promptsShown}, waiting={_alertQueue.Count}, " +
             $"popup open={_alertOpen}");
         Services.DiagnosticLog.Log($"Background service: {_serviceState}; "
-            + (Remote ? "this window uses the service's engine (experimental)."
+            + (Remote ? "this window uses the service's engine (the default)."
                       : $"window owns the engine: {(_engineLock != null ? "yes" : "NO")}."));
         if (Remote)
         {
@@ -9022,7 +9020,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// next to text that says another is worse than either alone.</summary>
     private void SetEngineStatus(string text)
     {
-        if (EngineStatus != null) EngineStatus.Text = text;
+        // Shown beside the "Engine" label on the Overview (0.99.224): the value only.
+        if (EngineStatus != null)
+            EngineStatus.Text = text.StartsWith("Engine: ", StringComparison.Ordinal) ? text[8..] : text;
         if (EngineDot == null) return;
         string token = text.Contains("lockdown", StringComparison.OrdinalIgnoreCase) ? "BlockText"
             : text.Contains("active", StringComparison.OrdinalIgnoreCase) ? "AllowText"

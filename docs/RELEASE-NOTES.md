@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.223 — public beta
+# GunWall 0.99.226 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.223-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.226-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -50,6 +50,9 @@ afterwards cannot read it and needs the key entered again.
 - A background service, on by default in the installed version, keeps protection
   running while the window is closed and from boot, enforcing everything the window
   does. Untick it in Settings to turn it off; updates keep your choice.
+- The window uses that service: the firewall stays in the service while GunWall is
+  open too, so protection never changes hands as the window opens and closes. If
+  the service stops, the window says so and reconnects by itself when it is back.
 - GunWall finds its own filters by asking the Windows filter engine directly,
   rather than running `netsh` - faster, and complete.
 - Microsoft Store apps keep their rule when they update.

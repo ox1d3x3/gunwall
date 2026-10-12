@@ -104,9 +104,17 @@ public class RemoteEngine : DispatchProxy, IDisposable
         self._pipe = stream;
         self._eventContext = eventContext;
         EngineWire.Write(stream, new EngineMessage { Kind = "hello", Protocol = EngineWire.ProtocolVersion, AppVersion = appVersion });
-        var hello = EngineWire.Read(stream) ?? throw new IOException("the service closed the pipe during the handshake");
-        if (hello.Kind != "hello" || !hello.Ok)
-            throw new InvalidOperationException(hello.Error.Length > 0 ? hello.Error : "the service refused the handshake");
+        // The first "hello" is the answer; anything before it is skipped (0.99.226) -
+        // a service that pushed a state or detection batch ahead of the reply made this
+        // read the handshake as refused. Bounded, so a confused peer cannot hold us.
+        EngineMessage? hello = null;
+        for (int skipped = 0; skipped < 64; skipped++)
+        {
+            hello = EngineWire.Read(stream) ?? throw new IOException("the service closed the pipe during the handshake");
+            if (hello.Kind == "hello") break;
+        }
+        if (hello == null || hello.Kind != "hello" || !hello.Ok)
+            throw new InvalidOperationException(hello?.Error is { Length: > 0 } why ? why : "the service refused the handshake");
         self.ServiceVersion = hello.AppVersion;
         if (hello.State != null) { self._state = hello.State; self._stateSeq = hello.StateSeq; }
         self._reader = new Thread(self.ReadLoop) { IsBackground = true, Name = "GunWall engine client" };

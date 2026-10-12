@@ -15,6 +15,41 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.226] — 2026-10-12
+
+### Fixed
+- **After a restart, the window could still end up running the firewall itself**
+  (seen on the domain laptop). Right after boot the background service sends many
+  updates; one could reach a window that was still connecting, ahead of the
+  service's greeting, and the window took that as a refusal. The service now sends
+  nothing to a window until it has greeted it, and the window ignores anything
+  that arrives before the greeting. It also tries the connection again twice before
+  giving up. Protection was not affected - the firewall was always running.
+
+## [0.99.225] — 2026-10-12
+
+### Fixed
+- **After a restart, the window could run the firewall itself instead of using the
+  background service** - when GunWall opened at sign-in before Windows had started
+  the service (seen on a domain laptop: the service started a minute after boot).
+  The window now waits for a service that is starting, and starts it if Windows
+  has not, for up to 90 seconds in the first minutes after boot. Protection is
+  unchanged either way: the firewall was always running.
+
+## [0.99.224] — 2026-10-12
+
+### Changed — the window uses the background service by default
+In the installed version, with the background service on, the service now keeps
+running the firewall while the window is open as well, and the window asks it for
+everything. Protection no longer changes hands each time you open or close
+GunWall. Untick **Settings → This window uses the background service** to have the
+window run the firewall itself, as before. A portable copy, or one with the
+background service turned off, is unchanged.
+
+### Changed
+- The engine status moved from the top bar to the Overview, above **Since**; the
+  top-bar transfer rates were removed (the Overview shows them).
+
 ## [0.99.223] — 2026-10-11
 
 ### Fixed

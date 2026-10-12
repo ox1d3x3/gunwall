@@ -123,7 +123,8 @@ public sealed class EngineServer : IDisposable
         try { state = Capture(); }
         catch (Exception ex) { DiagnosticLog.LogException("EngineServer.PushState", ex); return; }
         long seq = Interlocked.Increment(ref _stateSeq);
-        foreach (var s in all) s.Queue(new EngineMessage { Kind = "state", State = state, StateSeq = seq });
+        foreach (var s in all)
+            if (s.Open) s.Queue(new EngineMessage { Kind = "state", State = state, StateSeq = seq });
     }
 
     /// <summary>Sends a message to every connected window without waiting. A
@@ -133,7 +134,10 @@ public sealed class EngineServer : IDisposable
     {
         Session[] all;
         lock (_gate) all = _sessions.ToArray();
-        foreach (var s in all) s.Queue(m, droppable);
+        // Only to windows past the handshake (0.99.226): a push queued before the hello
+        // reply reached the window first and it read the handshake as refused - at
+        // boot, when the service pushes the most, the window then ran the engine itself.
+        foreach (var s in all) if (s.Open) s.Queue(m, droppable);
     }
 
     /// <summary>On the engine context; directly when already on it (PushState from
@@ -246,6 +250,9 @@ public sealed class EngineServer : IDisposable
         private readonly BlockingCollection<EngineMessage> _out = new();
         private int _closed;
         private volatile bool _greeted;
+        /// <summary>The hello reply is queued: pushes may follow it (0.99.226).</summary>
+        public bool Open => _open;
+        private volatile bool _open;
 
         public Session(EngineServer server, NamedPipeServerStream pipe, int pid)
         {
@@ -317,6 +324,7 @@ public sealed class EngineServer : IDisposable
                     Kind = "hello", Ok = true, Protocol = EngineWire.ProtocolVersion, AppVersion = _server._appVersion,
                     State = _server.Capture(), StateSeq = Interlocked.Increment(ref _server._stateSeq),
                 });
+                _open = true;   // after the hello is queued: nothing can overtake it
                 while (!_server._stopping && Volatile.Read(ref _closed) == 0)
                 {
                     var m = EngineWire.Read(_pipe);
