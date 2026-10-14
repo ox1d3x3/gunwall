@@ -1536,7 +1536,14 @@
                                                 </DataTemplate>
                                             </GridViewColumn.CellTemplate>
                                         </GridViewColumn>
-                                        <GridViewColumn Header="DESTINATIONS" Width="120" DisplayMemberBinding="{Binding Count}" />
+                                        <GridViewColumn Header="DESTINATIONS" Width="120">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock gw:RollText.Scope="country" gw:RollText.KeyPath="Code" gw:RollText.ValuePath="Count"
+                                                               gw:RollText.Item="{Binding}" />
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
                                     </GridView>
                                 </ListView.View>
                             </ListView>
@@ -1574,8 +1581,22 @@
                                 <ListView.View>
                                     <GridView>
                                         <GridViewColumn Header="APPLICATION" Width="210" DisplayMemberBinding="{Binding Name}" />
-                                        <GridViewColumn Header="DESTINATIONS" Width="124" DisplayMemberBinding="{Binding Count}" />
-                                        <GridViewColumn Header="COUNTRIES" Width="100" DisplayMemberBinding="{Binding Countries}" />
+                                        <GridViewColumn Header="DESTINATIONS" Width="124">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock gw:RollText.Scope="app" gw:RollText.KeyPath="Name" gw:RollText.ValuePath="Count"
+                                                               gw:RollText.Item="{Binding}" />
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                        <GridViewColumn Header="COUNTRIES" Width="100">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock gw:RollText.Scope="app" gw:RollText.KeyPath="Name" gw:RollText.ValuePath="Countries"
+                                                               gw:RollText.Item="{Binding}" />
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
                                     </GridView>
                                 </ListView.View>
                             </ListView>
@@ -1655,9 +1676,30 @@
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="APPLICATION" Width="280" DisplayMemberBinding="{Binding App}" />
-                                    <GridViewColumn Header="DOWN" Width="110" DisplayMemberBinding="{Binding DownText}" />
-                                    <GridViewColumn Header="UP" Width="110" DisplayMemberBinding="{Binding UpText}" />
-                                    <GridViewColumn Header="TOTAL" Width="120" DisplayMemberBinding="{Binding TotalText}" />
+                                    <GridViewColumn Header="DOWN" Width="110">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock gw:RollText.Scope="usage" gw:RollText.KeyPath="App" gw:RollText.ValuePath="DownBytes" gw:RollText.Format="bytes"
+                                                               gw:RollText.Item="{Binding}" />
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                    <GridViewColumn Header="UP" Width="110">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock gw:RollText.Scope="usage" gw:RollText.KeyPath="App" gw:RollText.ValuePath="UpBytes" gw:RollText.Format="bytes"
+                                                               gw:RollText.Item="{Binding}" />
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                    <GridViewColumn Header="TOTAL" Width="120">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock gw:RollText.Scope="usage" gw:RollText.KeyPath="App" gw:RollText.ValuePath="TotalBytes" gw:RollText.Format="bytes"
+                                                               gw:RollText.Item="{Binding}" />
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
                                 </GridView>
                             </ListView.View>
                         </ListView>
@@ -1684,7 +1726,9 @@
                                 <DataTemplate x:Key="BreakRowTemplate">
                                     <StackPanel Margin="0,0,16,9" ToolTip="{Binding Tip}">
                                         <DockPanel LastChildFill="True">
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Value}" FontSize="11"
+                                            <TextBlock DockPanel.Dock="Right" FontSize="11"
+                                                       gw:RollText.Scope="break" gw:RollText.KeyPath="Name" gw:RollText.ValuePath="Bytes"
+                                                       gw:RollText.Format="bytes" gw:RollText.Item="{Binding}"
                                                        Foreground="{DynamicResource TextSecondary}" Margin="8,0,0,0" />
                                             <TextBlock Text="{Binding Name}" FontSize="11.5"
                                                        Foreground="{DynamicResource TextPrimary}"

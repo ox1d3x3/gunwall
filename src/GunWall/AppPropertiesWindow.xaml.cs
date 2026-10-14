@@ -18,6 +18,7 @@ public partial class AppPropertiesWindow : Window
     public AppPropertiesWindow(AppInfo app, IEngine firewall)
     {
         InitializeComponent();
+        UiZoom.Apply(this);   // popups follow the UI size (0.99.227)
         WindowTheme.Attach(this);
         _app = app;
         _firewall = firewall;

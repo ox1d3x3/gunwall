@@ -47,6 +47,7 @@ public sealed class BlocklistDomainsWindow : Window
 
     public BlocklistDomainsWindow(string categoryName, IReadOnlyList<string> domains, ISet<string> excluded)
     {
+        UiZoom.Apply(this);   // popups follow the UI size (0.99.227)
         WindowTheme.Attach(this);
         Title = "Domains - " + categoryName;
         Width = 520;

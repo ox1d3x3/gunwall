@@ -17,6 +17,10 @@ public interface IDetectionPolicy
     bool IsAllowed(string exePath);
     bool IsSilent(string exePath);
     bool MarkKnown(string exePath);
+    /// <summary>A newer version of a program the user already decided on, in a
+    /// version-named folder (0.99.227): gives it the same rule and returns true, so
+    /// it is not asked about again. See FirewallManager.AdoptUpdatedVersion.</summary>
+    bool AdoptUpdatedVersion(string exePath);
     void SeedKnownApps(IEnumerable<string> exePaths);
     string? ApplyEntityBlocks(string appPath, string remoteIp);
     string ExplainVerdict(string exePath, string remoteAddress, int remotePort,
@@ -83,6 +87,11 @@ public sealed class ConnectionDetector
     /// an automatic allow. Called once per app per session.</summary>
     private void Ask(DetectionResult r, PromptRequest q)
     {
+        if (_fw.AdoptUpdatedVersion(q.ExePath))
+        {
+            r.Activity.Add(new NetActivityEvent { ProcessName = q.ProcessName, Detail = "updated - kept the rule for its previous version" });
+            return;
+        }
         if (_fw.AutoAllowCoreWindows && CoreWindowsProcesses.IsCore(q.ExePath, _system32))
             r.AutoAllow.Add(q);
         else

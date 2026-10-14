@@ -15,6 +15,34 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.228] — 2026-10-14
+
+### Fixed
+- **Traffic page numbers were blank in 0.99.227** - the new rolling cells could
+  receive their row before knowing which figure to show, and then never showed one.
+
+## [0.99.227] — 2026-10-14
+
+### Fixed
+- **Programs that update into a new version folder were asked about again** -
+  Edge WebView2, OneDrive and similar install each update beside the old one
+  (`...\Application\141.0.3537.71\`), so your rule stopped matching, the new
+  version prompted, and the old rule was later removed as "program gone". The new
+  version now keeps your decision: a block always carries over; an allow carries
+  over only when the new version is validly signed by the same publisher, so a
+  file dropped into a look-alike folder is still asked about. The startup clean-up
+  moves such rules to the new version instead of deleting them.
+- **Small countries were missing from the connection map** - Singapore, Hong Kong,
+  Bahrain, Malta's neighbours and island states showed in TOP COUNTRIES but had no
+  dot or line on the map. Seventy small countries and territories now have a place.
+
+### Changed
+- **Popups follow the UI size** - the connection prompt, Review apps, dialogs and
+  message boxes are drawn at the same size as the main window instead of always at
+  full size.
+- **Traffic page numbers roll** - destination counts, data usage and the breakdown
+  figures count to their new value like the Overview's, instead of jumping.
+
 ## [0.99.226] — 2026-10-12
 
 ### Fixed
@@ -5372,7 +5400,7 @@ Skeleton and error states, and the letter-spacing decision. Section 10 has now b
 ### Added
 - **`docs/TESTING.md`** — what to check on each build and what to send back.
 
-  This is written down for the same reason the checks moved into `tools/checks/`: the code is authored somewhere that cannot compile WPF or render a pixel of it, so every pre-release check is a proxy and the build on X1 is the only place the software actually exists. The screenshots are not a courtesy, they are the test suite — and asking for them ad hoc, differently each time, has meant the wrong thing got checked more than once.
+  This is written down for the same reason the checks moved into `tools/checks/`: the code is authored somewhere that cannot compile WPF or render a pixel of it, so every pre-release check is a proxy and the Windows build is the only place the software actually exists. The screenshots are not a courtesy, they are the test suite — and asking for them ad hoc, differently each time, has meant the wrong thing got checked more than once.
 
   It includes a table of what can be verified here versus what only the build can show, stated plainly so that "this should work" is read as exactly that.
 

@@ -21,6 +21,7 @@ public sealed class NoteWindow : Window
 
     public NoteWindow(string prompt, string existing)
     {
+        UiZoom.Apply(this);   // popups follow the UI size (0.99.227)
         Title = "Name this device";
         WindowTheme.Attach(this);
         SizeToContent = SizeToContent.WidthAndHeight;

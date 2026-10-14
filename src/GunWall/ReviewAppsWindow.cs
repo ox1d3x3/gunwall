@@ -26,6 +26,7 @@ public sealed class ReviewAppsWindow : Window
     public ReviewAppsWindow(IReadOnlyList<AlertWindow.AlertInfo> apps, bool strictMode,
                             Action<AlertWindow.AlertInfo> onAllow, Action<AlertWindow.AlertInfo> onBlock)
     {
+        UiZoom.Apply(this);   // popups follow the UI size (0.99.227)
         _onAllow = onAllow;
         _onBlock = onBlock;
 

@@ -881,9 +881,84 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             DisplayName = displayName,
             Status = AppStatus.Allowed,
             FilterIds = ids,
-            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : "",
+            Signer = SignerOf(exePath)
         });
         SaveStore();
+    }
+
+    /// <summary>The publisher to record on a new rule (0.99.227). Verify is cached, and
+    /// only versioned-folder programs ever use it, so others are not verified here.</summary>
+    private static string SignerOf(string exePath) =>
+        VersionedPaths.Split(exePath) == null ? "" : VersionedPaths.UsableSigner(SignatureService.Verify(exePath));
+
+    /// <summary>
+    /// A program that updates into a new version folder (Edge WebView2, OneDrive,
+    /// GitHub Desktop...) asked about again although the user already decided on the
+    /// previous version (0.99.227). If a rule names an older version of exactly this
+    /// program, the new version gets the same decision - same direction, silent and
+    /// bypass settings - instead of a prompt. A block always follows. An allow follows
+    /// only with a valid signature from the same publisher (MayInheritAllow). The old
+    /// rule stays: the old version can still be running until it is restarted, and the
+    /// startup prune removes the rule once its folder is gone.
+    /// True when the new version was given a rule.
+    /// </summary>
+    public bool AdoptUpdatedVersion(string exePath)
+    {
+        if (string.IsNullOrEmpty(exePath) || VersionedPaths.Split(exePath) == null) return false;
+        if (IsOwnExecutable(exePath)) return false;
+        FirewallRule? prior;
+        lock (_dataLock)
+        {
+            if (_data.Rules.Any(r => string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase)))
+                return false;
+            prior = _data.Rules
+                .Where(r => VersionedPaths.IsNewerVersionOf(exePath, r.ExecutablePath))
+                .OrderByDescending(r => VersionedPaths.Split(r.ExecutablePath)!.Version)
+                .FirstOrDefault();
+        }
+        if (prior == null) return false;
+
+        var newSig = SignatureService.Verify(exePath);
+        if (prior.Status == AppStatus.Allowed
+            && !VersionedPaths.MayInheritAllow(prior.Signer, newSig, SignatureService.Verify(prior.ExecutablePath)))
+        {
+            DiagnosticLog.Log($"Updated version of {prior.DisplayName} not given the old allow rule: "
+                            + "it is not signed by the same publisher. Asking instead.");
+            return false;
+        }
+
+        var rule = new FirewallRule
+        {
+            ExecutablePath = exePath,
+            DisplayName = prior.DisplayName,
+            Status = prior.Status,
+            Silent = prior.Silent,
+            BypassBlocklists = prior.BypassBlocklists,
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : "",
+            Signer = VersionedPaths.UsableSigner(newSig),
+        };
+        try
+        {
+            rule.FilterIds = !_data.StrictMode ? new List<ulong>()
+                : rule.Status == AppStatus.Allowed ? _engine.PermitApplication(exePath) : InstallBlock(rule);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException($"AdoptUpdatedVersion/{prior.DisplayName}", ex);
+            return false;
+        }
+        lock (_dataLock)
+        {
+            _data.Rules.Add(rule);
+            if (KnownSet.Add(exePath)) _data.KnownApps.Add(exePath);
+            SaveStore();
+        }
+        var from = VersionedPaths.Split(prior.ExecutablePath)!; var to = VersionedPaths.Split(exePath)!;
+        DiagnosticLog.Log($"{prior.DisplayName} updated ({from.Version} -> {to.Version}): the "
+                        + $"{(rule.Status == AppStatus.Allowed ? "allow" : "block")} rule followed it, no prompt.");
+        EventLog($"{prior.DisplayName} updated to {to.Version}: kept your {(rule.Status == AppStatus.Allowed ? "allow" : "block")} rule");
+        return true;
     }
 
     private void RemoveAllowRule(string exePath)
@@ -928,7 +1003,8 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             DisplayName = displayName,
             Status = AppStatus.Blocked,
             FilterIds = ids,
-            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : "",
+            Signer = SignerOf(exePath)
         });
         SaveStore();
     }
@@ -953,7 +1029,8 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             DisplayName = displayName + (outbound ? " (outbound blocked)" : " (inbound blocked)"),
             Status = AppStatus.Blocked,
             FilterIds = ids,
-            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : ""
+            Hash = _data.HashesEnabled ? HashService.Compute(exePath) : "",
+            Signer = SignerOf(exePath)
         });
         EventLog($"Blocked {(outbound ? "outbound" : "inbound")}: {displayName}");
         SaveStore();
@@ -3302,7 +3379,8 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// <summary>
     /// Moves rules whose Store app updated to the new version's path, reinstalling their
     /// filters if protection is on, and takes them out of <paramref name="dead"/>.
-    /// See StorePackagePaths. The hash is left alone: a Store update is a changed
+    /// See StorePackagePaths, and VersionedPaths for programs in version-named folders
+    /// (0.99.227; an allow rule only to the same signed publisher). The hash is left alone: a Store update is a changed
     /// binary, treated like any application that updates in place.
     /// </summary>
     private int FollowStoreUpdates(List<FirewallRule> dead)
@@ -3310,12 +3388,26 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         int followed = 0;
         foreach (var r in dead.ToList())
         {
+            bool store = true;
             string? next = StorePackagePaths.FindUpdated(r.ExecutablePath);
+            if (next == null) { next = VersionedPaths.FindUpdated(r.ExecutablePath); store = false; }
             if (next == null) continue;
+            // Already has its own rule (adopted when it first connected): the dead
+            // one is simply pruned below, not moved on top of it.
+            bool taken;
+            lock (_dataLock)
+                taken = _data.Rules.Any(o => o != r && string.Equals(o.ExecutablePath, next, StringComparison.OrdinalIgnoreCase));
+            if (taken) continue;
+            // An allow follows a version folder only to the same publisher (0.99.227).
+            // The old file is gone, so the signer recorded on the rule is the proof.
+            if (!store && r.Status == AppStatus.Allowed
+                && !VersionedPaths.MayInheritAllow(r.Signer, SignatureService.Verify(next), SignatureInfo.Unknown))
+                continue;
             if (r.FilterIds.Count > 0) { try { _engine.RemoveFilters(r.FilterIds); } catch { } }
             lock (_dataLock)
             {
                 r.ExecutablePath = next;
+                if (!store && r.Status == AppStatus.Allowed) r.Signer = VersionedPaths.UsableSigner(SignatureService.Verify(next));
                 try
                 {
                     r.FilterIds = !_data.StrictMode ? new List<ulong>()
@@ -3328,7 +3420,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                 }
                 SaveStore();
             }
-            DiagnosticLog.Log($"Store app updated: the rule for {r.DisplayName} followed it to "
+            DiagnosticLog.Log($"{(store ? "Store app" : "Program")} updated: the rule for {r.DisplayName} followed it to "
                             + $"{System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(next))} instead of being removed.");
             dead.Remove(r);
             followed++;
@@ -3386,6 +3478,27 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// running right now, for a window's diagnostics bundle. Empty elsewhere.</summary>
     public static Func<string>? ServiceStatusProvider { get; set; }
 
+    /// <summary>Rules made before 0.99.227 carry no signer. For allow rules on a
+    /// version-named folder whose program is still there, it is read now, while the
+    /// file exists - once the update removes it, the rule could not follow it.</summary>
+    private void RecordMissingSigners()
+    {
+        List<FirewallRule> todo;
+        lock (_dataLock)
+            todo = _data.Rules.Where(r => r.Status == AppStatus.Allowed && r.Signer.Length == 0
+                                          && VersionedPaths.Split(r.ExecutablePath) != null).ToList();
+        int n = 0;
+        foreach (var r in todo)
+        {
+            if (!System.IO.File.Exists(r.ExecutablePath)) continue;
+            string signer = VersionedPaths.UsableSigner(SignatureService.Verify(r.ExecutablePath));
+            if (signer.Length == 0) continue;
+            lock (_dataLock) r.Signer = signer;
+            n++;
+        }
+        if (n > 0) { lock (_dataLock) SaveStore(); DiagnosticLog.Log($"Recorded the publisher on {n} rule(s) for programs in version folders."); }
+    }
+
     /// <summary>The background service's live state, one line per item; empty when
     /// this engine is not the service's.</summary>
     public string ServiceStatusReport()
@@ -3414,6 +3527,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             // thread while the UI thread can be adding rules from an approval
             // prompt; enumerating _data.Rules while that happens throws, and the
             // caller sees an empty prune rather than a broken one.
+            RecordMissingSigners();
             List<FirewallRule> dead;
             lock (_dataLock)
                 dead = _data.Rules

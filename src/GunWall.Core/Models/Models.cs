@@ -305,6 +305,12 @@ public sealed class FirewallRule
     /// exactly as it did.</summary>
     public bool BypassBlocklists { get; set; }
 
+    /// <summary>The publisher whose valid signature the program carried when the rule
+    /// was made (0.99.227), or "". A program that updates into a new version folder
+    /// keeps an ALLOW rule only if the new version is signed by the same publisher
+    /// (VersionedPaths.MayInheritAllow).</summary>
+    public string Signer { get; set; } = "";
+
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 

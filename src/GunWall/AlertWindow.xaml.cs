@@ -45,6 +45,7 @@ public partial class AlertWindow : Window
     {
         _firewallGeo = geo;
         InitializeComponent();
+        UiZoom.Apply(this);   // popups follow the UI size (0.99.227)
         _info = info;
         _onBlock = onBlock;
         _onAllow = onAllow;
@@ -452,8 +453,10 @@ public partial class AlertWindow : Window
         double h = ActualHeight > 0 ? ActualHeight : (Height > 0 ? Height : 220);
         double w = ActualWidth > 0 ? ActualWidth : Width;
 
-        Left = area.Right - w + ShadowMargin - EdgeGap;
-        Top = area.Bottom - h + ShadowMargin - EdgeGap;
+        // The card's shadow margin is scaled with the content (UiZoom, 0.99.227).
+        double shadow = ShadowMargin * UiZoom.Factor;
+        Left = area.Right - w + shadow - EdgeGap;
+        Top = area.Bottom - h + shadow - EdgeGap;
 
         // Never let it leave the work area, however small the screen.
         if (Left < area.Left) Left = area.Left;

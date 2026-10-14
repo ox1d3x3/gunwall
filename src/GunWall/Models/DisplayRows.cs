@@ -8,7 +8,8 @@ namespace GunWall.Models;
 /// Dominant follows the same 60%-of-largest rule as the dashboard's top
 /// talkers, so the accent marks the outlier in whatever is actually happening
 /// rather than decorating every row.</summary>
-public sealed record BreakRow(string Name, string Value, double BarWidth, string Tip, bool Dominant = false)
+public sealed record BreakRow(string Name, string Value, double BarWidth, string Tip, bool Dominant = false,
+                             long Bytes = 0)   // raw, for the rolling figure (0.99.227)
 {
     public System.Windows.Media.Brush BarBrush =>
         (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource(

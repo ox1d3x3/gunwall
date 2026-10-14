@@ -486,7 +486,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.226 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.228 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -2191,6 +2191,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         };
         win.SetResourceReference(BackgroundProperty, "BgPrimary");
         WindowTheme.Attach(win);
+        UiZoom.Apply(win);
         cancel.Click += (_, _) => win.Close();
         save.Click += (_, _) =>
         {
@@ -2286,7 +2287,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     rows.Add(new GunWall.Models.BreakRow(
                         r.Name, AppUsageService.FormatBytes(r.Bytes),
                         Math.Max(2, maxBar * r.Bytes / max), r.Tip,
-                        r.Bytes >= max * 0.6));
+                        r.Bytes >= max * 0.6, r.Bytes));
                 return rows;
             }
 
@@ -4494,6 +4495,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             int z = _firewall.UiZoomPercent;
             // 100% draws at UiScale.BaseFactor of the design size (0.99.219).
             double f = UiScale.Factor(z);
+            UiZoom.Set(z);   // windows opened from now on follow it (0.99.227)
             RootGrid.LayoutTransform = Math.Abs(f - 1.0) < 0.001
                 ? Transform.Identity
                 : new ScaleTransform(f, f);
@@ -4928,6 +4930,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             };
             win.SetResourceReference(BackgroundProperty, "BgPrimary");
             WindowTheme.Attach(win);
+            UiZoom.Apply(win);
             copyBtn.Click += (_, _) =>
             {
                 try
@@ -5015,6 +5018,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             };
             win.SetResourceReference(BackgroundProperty, "BgPrimary");
             WindowTheme.Attach(win);
+            UiZoom.Apply(win);
             win.ShowDialog();
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("ErrorLog", ex); ShowError(ex); }

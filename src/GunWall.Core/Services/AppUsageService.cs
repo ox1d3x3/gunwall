@@ -5,7 +5,8 @@ using System.Linq;
 namespace GunWall.Services;
 
 /// <summary>One row for the usage table (strings pre-formatted for binding).</summary>
-public sealed record UsageRow(string App, string DownText, string UpText, string TotalText, long TotalBytes);
+public sealed record UsageRow(string App, string DownText, string UpText, string TotalText, long TotalBytes,
+                              long DownBytes = 0, long UpBytes = 0);   // raw, for the rolling cells (0.99.227)
 
 /// <summary>
 /// Approximate per-app data usage. Windows doesn't hand out per-process byte
@@ -114,7 +115,8 @@ public sealed class AppUsageService
                 FormatBytes(kv.Value.Down),
                 FormatBytes(kv.Value.Up),
                 FormatBytes(kv.Value.Down + kv.Value.Up),
-                kv.Value.Down + kv.Value.Up))
+                kv.Value.Down + kv.Value.Up,
+                kv.Value.Down, kv.Value.Up))
             .OrderByDescending(r => r.TotalBytes)
             .Take(maxRows)
             .ToList();
@@ -145,7 +147,8 @@ public sealed class AppUsageService
                 FormatBytes(kv.Value.Down),
                 FormatBytes(kv.Value.Up),
                 FormatBytes(kv.Value.Down + kv.Value.Up),
-                kv.Value.Down + kv.Value.Up))
+                kv.Value.Down + kv.Value.Up,
+                kv.Value.Down, kv.Value.Up))
             .OrderByDescending(r => r.TotalBytes)
             .Take(maxRows)
             .ToList();

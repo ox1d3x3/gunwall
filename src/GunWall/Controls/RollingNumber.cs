@@ -28,6 +28,37 @@ public static class RollingNumber
         public bool HasValue;
         public DateTime StartUtc;
         public Func<double, string> Format = v => v.ToString("0");
+        /// <summary>The table row this block shows (keyed rolls only).</summary>
+        public string? Key;
+        public bool Hold = true;
+    }
+
+    /// <summary>What each table row last showed, by key (0.99.227). A table rebuilt
+    /// on every refresh gets new or recycled cells, so a cell cannot remember its
+    /// own previous value - the row's key can.</summary>
+    private static readonly Dictionary<string, double> LastByKey = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// A number in a table row (0.99.227, Traffic page): rolls from what the row with
+    /// this <paramref name="key"/> showed last, whichever cell showed it. A cell reused
+    /// for another row takes that row's last value first - it never rolls one
+    /// country's count into another's. Cells keep their column's width (no HoldWidth).
+    /// </summary>
+    public static void SetKeyed(TextBlock? block, string key, double value, Func<double, string> format)
+    {
+        if (block == null) return;
+        var r = Rolls.GetValue(block, _ => new Roll());
+        r.Hold = false;
+        if (r.Key != key)
+        {
+            r.Key = key;
+            Moving.RemoveAll(m => m.Roll == r);
+            if (LastByKey.TryGetValue(key, out var prev)) { r.HasValue = true; r.Shown = r.To = prev; block.Text = format(prev); }
+            else r.HasValue = false;
+        }
+        if (LastByKey.Count > 4000) LastByKey.Clear();   // keys of rows long gone
+        Set(block, value, format, cellBeingCreated: !block.IsLoaded);
+        LastByKey[key] = value;
     }
 
     private static readonly ConditionalWeakTable<TextBlock, Roll> Rolls = new();
@@ -36,12 +67,17 @@ public static class RollingNumber
 
     /// <summary>Shows <paramref name="value"/> in <paramref name="block"/>, rolling
     /// from what it shows now. Call on the UI thread.</summary>
-    public static void Set(TextBlock? block, double value, Func<double, string> format)
+    public static void Set(TextBlock? block, double value, Func<double, string> format) =>
+        Set(block, value, format, cellBeingCreated: false);
+
+    // cellBeingCreated: a table cell made for this refresh is not on screen YET, but
+    // will be within the frame - it rolls too (the table refreshes only while shown).
+    private static void Set(TextBlock? block, double value, Func<double, string> format, bool cellBeingCreated)
     {
         if (block == null) return;
         var r = Rolls.GetValue(block, _ => new Roll());
         r.Format = format;
-        bool animate = r.HasValue && SystemParameters.ClientAreaAnimation && block.IsVisible
+        bool animate = r.HasValue && SystemParameters.ClientAreaAnimation && (block.IsVisible || cellBeingCreated)
                        && !double.IsNaN(value) && !double.IsInfinity(value)
                        && format(value) != format(r.Shown);
         if (!animate)
@@ -50,7 +86,7 @@ public static class RollingNumber
             r.HasValue = true;
             Moving.RemoveAll(m => m.Roll == r);
             block.Text = format(value);
-            HoldWidth(block);
+            if (r.Hold) HoldWidth(block);
             return;
         }
         r.From = r.Shown;
@@ -81,7 +117,7 @@ public static class RollingNumber
             double eased = 1 - Math.Pow(1 - t, 3);               // ease out: quick start, gentle landing
             r.Shown = r.From + (r.To - r.From) * eased;
             string text = r.Format(t >= 1 ? r.To : r.Shown);
-            if (block.Text != text) { block.Text = text; HoldWidth(block); }
+            if (block.Text != text) { block.Text = text; if (r.Hold) HoldWidth(block); }
             if (t >= 1) { r.Shown = r.To; Moving.RemoveAt(i); }
         }
         if (Moving.Count == 0 && _hooked) { CompositionTarget.Rendering -= OnFrame; _hooked = false; }

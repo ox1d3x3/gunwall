@@ -76,6 +76,7 @@ public sealed class ThemedMessageBox : Window
     private ThemedMessageBox(string text, string caption, MessageBoxButton button,
                              MessageBoxImage icon, MessageBoxResult? defaultResult, string[] labels)
     {
+        UiZoom.Apply(this);   // popups follow the UI size (0.99.227)
         Title = caption;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
