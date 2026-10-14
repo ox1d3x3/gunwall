@@ -15,6 +15,35 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.229] — 2026-10-15
+
+### Changed
+- **GunWall opens without a UAC prompt.** The installed GunWall's background service
+  runs the firewall, and the window now runs as you, without administrator rights.
+  Windows asks for approval only when something really needs it: starting the
+  service, switching it in Settings, the portable copy (which runs the firewall in
+  its own window), and the recovery commands.
+- **Only GunWall itself can change the firewall.** The service checks every
+  program that talks to it: only the installed GunWall at this PC's screen may
+  change settings or rules; anything else can only read.
+- **Run GunWall when Windows starts** uses your own startup entry instead of an
+  administrator task, so GunWall starts at sign-in without a prompt. The old task is
+  removed.
+- **Right-click menus and hover tips follow the UI size.**
+- The service now fetches the GeoIP data, the DNS blocklist preset and updates
+  into GunWall's data folder, closes connections and measures per-app traffic for
+  the window.
+
+### Added
+- **Protect settings** (Settings, Preferences). With it on, any change that makes
+  protection looser — allowing an app, turning protection off, pausing, removing a
+  rule — asks for administrator approval once, then allows such changes for five
+  minutes or until you close GunWall. Changes that make protection stricter never
+  ask.
+- **"Protection service is stopped" banner** with **Start it**, when the service
+  stops while GunWall is open. If it is not running when GunWall opens, GunWall
+  offers to start it.
+
 ## [0.99.228] — 2026-10-14
 
 ### Fixed

@@ -170,6 +170,16 @@ public sealed class HandoverService : IDisposable
 
     private string Handle(string? request)
     {
+        // Protect settings' unlock (stage 4c, 0.99.229), from "GunWall.exe --authorize".
+        // This pipe admits only SYSTEM and elevated administrators, so a request that
+        // got here passed UAC; the nonce says which window asked for it.
+        if (request != null && request.StartsWith("authorize ", StringComparison.Ordinal))
+        {
+            bool ok = Remote.SettingsGate.Service.Authorize(request.Substring("authorize ".Length).Trim(), out int pid);
+            _log(ok ? $"Protect settings: unlocked for {Remote.SettingsGate.UnlockFor.TotalMinutes:0} minutes for the window (process {pid})."
+                    : "Protect settings: an unlock was refused (unknown, used or expired nonce).");
+            return ok ? "unlocked" : "refused";
+        }
         switch (request)
         {
             case "release":

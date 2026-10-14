@@ -189,7 +189,9 @@ public static class DiagnosticLog
         {
             // One decision, made in ProfilePaths. This used to be a second copy of
             // that logic and drifted from it once already.
-            string dir = ProfilePaths.DataFolder;
+            // The window's own folder (0.99.229): the data folder, unless this is a
+            // window running as the signed-in user, which cannot write there.
+            string dir = ProfilePaths.WindowFolder;
             Directory.CreateDirectory(dir);
             _path = Path.Combine(dir, "diagnostics.log");
         }

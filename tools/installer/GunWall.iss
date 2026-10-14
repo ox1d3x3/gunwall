@@ -164,8 +164,10 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
+; runasoriginaluser (0.99.229): GunWall opens as the signed-in user now - started
+; from the elevated installer it would otherwise inherit administrator rights.
 Filename: "{app}\{#AppExe}"; Description: "Start GunWall now"; \
-    Flags: nowait postinstall skipifsilent runascurrentuser
+    Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Code]
 const

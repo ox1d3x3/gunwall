@@ -86,7 +86,13 @@ public sealed class ServiceEngineSession : IEngineSession
                 _detection.Polled += FollowSettings;
                 if (ServiceMode.Requested)
                 {
-                    _server = new Remote.EngineServer(_fw, _thread, (caller, access) => true, UpdateService.CurrentVersion);
+                    // Stage 4c (0.99.229): changes only from the installed GunWall.exe at
+                    // the console; with Protect settings on, loosening needs the unlock.
+                    var policyEngine = _fw;
+                    _server = new Remote.EngineServer(_fw, _thread,
+                        (caller, access) => Remote.CallerPolicy.Decide(caller, access, policyEngine.ProtectSettings,
+                                                                       Remote.SettingsGate.Service.IsUnlocked(caller.ProcessId)),
+                        UpdateService.CurrentVersion) { Gate = Remote.SettingsGate.Service };
                     _server.Start();
                     _detection.Polled += FlushToWindows;
                     ServingRemote = true;
@@ -242,6 +248,9 @@ public sealed class ServiceEngineSession : IEngineSession
     {
         var server = _server;
         if (server == null) return;
+        // No window to read the byte meter (0.99.229): its trace is stopped rather
+        // than left counting for nobody. The next window starts it again.
+        if (server.SessionCount == 0) _fw?.StopByteMeter();
         long now = Environment.TickCount64;
         if (_batch.Count > 0 && now - _lastFlushMs >= 250)
         {

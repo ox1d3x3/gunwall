@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="0.99.228.0" name="GunWall.app"/>
+  <assemblyIdentity version="0.99.229.0" name="GunWall.app"/>
 
-  <!-- WFP (Windows Filtering Platform) requires administrator rights to add/remove filters. -->
+  <!-- asInvoker since 0.99.229 (stage 4c): the installed window uses the background
+       service, which runs the firewall, and opens as the signed-in user - no UAC to
+       open GunWall. What needs an administrator asks Windows at that moment
+       (Elevation.RunSelfElevated): running the firewall in the window (portable copy,
+       service off), the recovery commands, starting the service, Protect settings. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

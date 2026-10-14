@@ -3451,7 +3451,9 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         try
         {
             string file = _store.FilePath;
-            if (System.IO.File.Exists(file))
+            // A window that uses the service only reads the profile (and since 4c
+            // cannot write the folder): the service takes the snapshot.
+            if (System.IO.File.Exists(file) && !ReadOnlyStore)
             {
                 string from = last.Length > 0 ? last : "unknown";
                 string dir = System.IO.Path.GetDirectoryName(file)!;
@@ -4952,6 +4954,143 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         return _data.Rules.Count;
     }
 
+    // ================================================================ stage 4c (0.99.229)
+    // The installed window runs as the signed-in user. These are what it can no
+    // longer do itself, and Protect settings.
+
+    public bool ProtectSettings => _data.ProtectSettings;
+
+    public void SetProtectSettings(bool on)
+    {
+        if (_data.ProtectSettings == on) return;
+        _data.ProtectSettings = on;
+        SaveStore();
+        EventLog(on ? "Protect settings turned on - loosening changes need an administrator unlock"
+                    : "Protect settings turned off");
+        DiagnosticLog.Log($"Protect settings: {(on ? "ON" : "off")}.");
+    }
+
+    // In this process nothing is locked: a window running the engine itself is
+    // already an administrator. The service's EngineServer answers these three for
+    // a window that uses it, from its gate.
+    public string BeginSettingsUnlock() => "";
+    public int SettingsUnlockSecondsLeft() => -1;
+    public void LockSettingsNow() { }
+
+    /// <summary>The GeoIP tables, downloaded into the data folder by the service and
+    /// loaded there; the window then reloads its own copy from the same files.</summary>
+    public async System.Threading.Tasks.Task<int> DownloadGeoIpInServiceAsync() =>
+        await System.Threading.Tasks.Task.Run(DownloadAndLoadGeoIp);
+
+    /// <summary>
+    /// The installer of the newest release, fetched and verified by the service into
+    /// the updates folder (the window cannot write there any more). The release is
+    /// looked up here, not taken from the window: the service downloads only what the
+    /// project's own release names, and keeps it only when its published checksum
+    /// matches. "" when it is downloaded and verified; otherwise why not.
+    /// </summary>
+    public async System.Threading.Tasks.Task<string> DownloadUpdateInServiceAsync()
+    {
+        var r = await UpdateService.CheckAsync();
+        if (!r.Ok) return "the release could not be checked: " + r.Message;
+        if (!r.UpdateAvailable) { SetPendingUpdate("", ""); return "no newer version"; }
+        var dl = await UpdateService.DownloadInstallerAsync(r, null);
+        if (!dl.Ok || !dl.Verified)
+        {
+            try { if (dl.Path.Length > 0 && System.IO.File.Exists(dl.Path)) System.IO.File.Delete(dl.Path); } catch { }
+            SetPendingUpdate(r.Latest, "");
+            return "the download was not kept: " + dl.Message;
+        }
+        System.IO.Directory.CreateDirectory(UpdateFolder);
+        string dest = System.IO.Path.Combine(UpdateFolder, System.IO.Path.GetFileName(dl.Path));
+        try
+        {
+            if (!string.Equals(dl.Path, dest, StringComparison.OrdinalIgnoreCase))
+                System.IO.File.Move(dl.Path, dest, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException("DownloadUpdateInService/move", ex);
+            try { System.IO.File.Delete(dl.Path); } catch { }
+            SetPendingUpdate(r.Latest, "");
+            return "the download could not be moved into GunWall's updates folder";
+        }
+        SetPendingUpdate(r.Latest, dest);
+        DiagnosticLog.Log($"Update {r.Latest}: downloaded and verified by the service.");
+        return "";
+    }
+
+    /// <summary>The DNS blocklist preset, from its one fixed address, into the data
+    /// folder (the window's resolver and the service both read it). The number of
+    /// lines, or throws.</summary>
+    public async System.Threading.Tasks.Task<int> DownloadDnsPresetInServiceAsync()
+    {
+        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+        string body = await http.GetStringAsync(DnsResolver.PresetUrl);
+        if (body.Length < 10000) throw new System.IO.InvalidDataException("the preset was too small - unexpected content");
+        string dest = ProfilePaths.FileIn(DnsResolver.PresetFileName);
+        System.IO.File.WriteAllText(dest + ".tmp", body);
+        System.IO.File.Move(dest + ".tmp", dest, overwrite: true);   // never half a list
+        int lines = body.Count(c => c == '\n');
+        DiagnosticLog.Log($"DNS preset: downloaded by the service ({lines:N0} lines).");
+        return lines;
+    }
+
+    /// <summary>The prompts the service queued while no window was open: the window
+    /// has read them and asks for the file to be removed (it cannot remove it).</summary>
+    public void ClearPendingPrompts()
+    {
+        try
+        {
+            string path = ProfilePaths.FileIn(PendingPrompts.FileName);
+            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("ClearPendingPrompts", ex); }
+    }
+
+    /// <summary>The installer's "this machine has run GunWall before" marker, consumed:
+    /// the first-run database offer is not shown, and the marker removed.</summary>
+    public void ConsumeUpgradeMarker()
+    {
+        string marker = ProfilePaths.FileIn("upgraded.marker");
+        if (!System.IO.File.Exists(marker)) return;
+        MarkFirstRunComplete(freshInstall: false);
+        try { System.IO.File.Delete(marker); } catch (Exception ex) { DiagnosticLog.LogException("ConsumeUpgradeMarker", ex); }
+        DiagnosticLog.Log("Upgrade marker consumed; the first-run database offer will not be shown.");
+    }
+
+    // The window's byte meter, in this process (the service, for a window that uses it).
+    private EtwByteMeterService? _byteMeter;
+
+    public bool StartByteMeter()
+    {
+        _byteMeter ??= new EtwByteMeterService();
+        return _byteMeter.SessionActive || _byteMeter.Start();
+    }
+
+    public void StopByteMeter()
+    {
+        if (_byteMeter is { SessionActive: true } m) m.Stop();
+    }
+
+    public ByteMeterReading DrainByteMeter()
+    {
+        var m = _byteMeter;
+        if (m == null) return new ByteMeterReading(false, 0, 0, "not started", new List<PidBytes>());
+        var bytes = new List<PidBytes>();
+        foreach (var (pid, v) in m.Drain()) bytes.Add(new PidBytes(pid, v.Down, v.Up));
+        return new ByteMeterReading(m.SessionActive, m.EventsTotal, m.ParseFailures, m.LastError, bytes);
+    }
+
+    public bool CloseTcpConnection(string localAddress, int localPort, string remoteAddress, int remotePort) =>
+        ConnectionService.CloseTcpConnection(localAddress, localPort, remoteAddress, remotePort);
+
+    public void RemoveStartupTask()
+    {
+        bool ok = StartupService.RemoveTask();
+        DiagnosticLog.Log($"Startup: the old elevated sign-in task {(ok ? "was removed" : "was not there or could not be removed")}.");
+    }
+
     /// <summary>
     /// Closes the WFP session; filters stay in the kernel. The timers go too
     /// (0.99.203): the background service builds a new manager for every session,
@@ -4965,6 +5104,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         _tempTimers.Clear();
         _snoozeTimer?.Dispose();
         _snoozeTimer = null;
+        try { _byteMeter?.Stop(); } catch { }
         _engine.Dispose();
     }
 }

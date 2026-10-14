@@ -412,6 +412,7 @@
         <Grid Grid.Column="1" Background="{DynamicResource BgContent}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -488,7 +489,32 @@
                  what a uniform 24 was doing on every screen. -->
             <!-- 0.99.220: 22 top / 30 sides / 28 bottom (was 30/36/44) - less empty
                  band above every page, still clear of the window edge. -->
-            <Grid Grid.Row="1" Margin="30,22,30,28" x:Name="PanelHost" RenderTransformOrigin="0.5,0">
+            <!-- The background service is not running (stage 4c, 0.99.229). The window
+                 no longer runs as administrator, so it cannot run the firewall itself:
+                 it says so, shows the last state the service sent, and offers to start
+                 it (one UAC). Mahabub, Q5 = A. -->
+            <Border x:Name="ServiceStoppedBanner" Grid.Row="1" Visibility="Collapsed"
+                    Margin="30,14,30,0" CornerRadius="8" Padding="14,10"
+                    Background="{DynamicResource WarnFill}"
+                    BorderBrush="{DynamicResource WarnText}" BorderThickness="1">
+                <DockPanel LastChildFill="True">
+                    <Button x:Name="ServiceStartBtn" DockPanel.Dock="Right" Content="Start it"
+                            Style="{StaticResource PrimaryButton}" Height="30" Padding="16,0" Margin="12,0,0,0"
+                            VerticalAlignment="Center" Click="ServiceStart_Click"
+                            ToolTip="Start GunWall's protection service. Windows asks for administrator approval." />
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,10,0"
+                             Fill="{DynamicResource WarnText}" />
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="GunWall's protection service is stopped" FontWeight="SemiBold" FontSize="12.5"
+                                   Foreground="{DynamicResource TextPrimary}" />
+                        <TextBlock x:Name="ServiceStoppedText" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   Text="Your filters keep enforcing, but nothing watches for new programs and no setting can change until it runs again. This page shows the last state it sent." />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <Grid Grid.Row="2" Margin="30,22,30,28" x:Name="PanelHost" RenderTransformOrigin="0.5,0">
                 <Grid.RenderTransform><TranslateTransform x:Name="PanelHostShift" /></Grid.RenderTransform>
 
             <!-- ========== Dashboard ========== -->
@@ -2937,10 +2963,24 @@
                                 <CheckBox x:Name="WindowUsesServiceCheck" Content="This window uses the background service (recommended)"
                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
                                           Click="WindowUsesServiceCheck_Click" />
-                                <gw:InfoTip Text="On by default. The background service keeps running the firewall while this window is open, and the window asks it for everything instead of taking the firewall over - so protection never changes hands when you open or close GunWall. Turn it off only to have this window run the firewall itself, as older versions did. Takes effect the next time GunWall starts. If the service cannot be reached, the window runs the firewall itself." />
+                                <gw:InfoTip Text="On by default. The background service keeps running the firewall while this window is open, and the window asks it for everything instead of taking the firewall over - so protection never changes hands when you open or close GunWall. Turn it off only to have this window run the firewall itself, as older versions did. Takes effect the next time GunWall starts, and then GunWall asks for administrator approval each time it opens. While it is on and the service is stopped, GunWall shows a banner with Start it." />
                             </StackPanel>
                             <TextBlock x:Name="WindowUsesServiceStatus" FontSize="11" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextSecondary}" Margin="48,0,0,8" />
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                                <CheckBox x:Name="ProtectSettingsCheck" Content="Protect settings"
+                                          Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                          Click="ProtectSettingsCheck_Click" />
+                                <gw:InfoTip Text="GunWall opens without administrator rights. With this on, any change that makes protection looser - allowing an app, turning protection off, pausing, removing a rule or a block, importing a profile - first asks Windows for administrator approval, once, and then allows such changes for 5 minutes or until you close GunWall. Changes that make protection stricter (blocking, lockdown, protection on) never ask. Use it so that someone else at this PC, or a program running as you, cannot quietly open the firewall. Turning it off asks for approval too. Only applies while this window uses the background service." />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="24,0,0,8">
+                                <TextBlock x:Name="ProtectSettingsStatus" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                                <Button x:Name="LockSettingsNowBtn" Content="Lock now" Style="{StaticResource ActionButton}"
+                                        Padding="10,2" Margin="10,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"
+                                        Click="LockSettingsNow_Click"
+                                        ToolTip="End the unlock now: the next loosening change asks for approval again." />
+                            </StackPanel>
                             <CheckBox x:Name="EventLogCheck" Content="Send firewall events to the Windows Event Log"
                                       Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"
                                       Checked="Pref_Changed" Unchecked="Pref_Changed" />

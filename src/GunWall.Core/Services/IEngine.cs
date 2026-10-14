@@ -253,4 +253,38 @@ public interface IEngine
     [EngineAccess(Access.Read)] FirewallManager.VtKeyState VirusTotalKeyState { get; }
     [EngineAccess(Access.Read)] int VtCacheCount { get; }
     [EngineAccess(Access.Local)] void WarmBlocklistDomains();
+
+    // ---- stage 4c (0.99.229): the window no longer runs as administrator ----
+
+    /// <summary>Protect settings: changes that loosen protection need an
+    /// administrator unlock (STAGE-4 §2.6). Turning it on is stricter; off, looser.</summary>
+    [EngineAccess(Access.Read)] bool ProtectSettings { get; }
+    [EngineAccess(Access.TightenIfTrue)] void SetProtectSettings(bool on);
+    /// <summary>A nonce for "GunWall.exe --authorize". Answered by the service's
+    /// gate for the calling window (EngineServer); "" in-process - nothing to unlock.</summary>
+    [EngineAccess(Access.Read)] string BeginSettingsUnlock();
+    /// <summary>Seconds of unlock left for the calling window; -1 when nothing is
+    /// locked here (in-process).</summary>
+    [EngineAccess(Access.Read)] int SettingsUnlockSecondsLeft();
+    [EngineAccess(Access.Preference)] void LockSettingsNow();
+
+    /// <summary>Work that writes GunWall's data folder, which the window can no
+    /// longer write: done by the service. Each fetches from a fixed address - nothing
+    /// the window sends names a file or a URL.</summary>
+    [EngineAccess(Access.Preference)] System.Threading.Tasks.Task<int> DownloadGeoIpInServiceAsync();
+    [EngineAccess(Access.Preference)] System.Threading.Tasks.Task<string> DownloadUpdateInServiceAsync();
+    [EngineAccess(Access.Tighten)] System.Threading.Tasks.Task<int> DownloadDnsPresetInServiceAsync();
+    [EngineAccess(Access.Preference)] void ClearPendingPrompts();
+    [EngineAccess(Access.Preference)] void ConsumeUpgradeMarker();
+    /// <summary>The scheduled task older builds used to start elevated at sign-in;
+    /// the installed window starts from the Run key now.</summary>
+    [EngineAccess(Access.Preference)] void RemoveStartupTask();
+    /// <summary>The ETW byte meter, run by the service for a window that may not
+    /// start a kernel trace (RemoteByteMeter). Drain consumes, so it is not a Read.</summary>
+    [EngineAccess(Access.Preference)] bool StartByteMeter();
+    [EngineAccess(Access.Preference)] void StopByteMeter();
+    [EngineAccess(Access.Preference)] ByteMeterReading DrainByteMeter();
+    /// <summary>Closes one TCP connection (SetTcpEntry needs an administrator).
+    /// Closing only ever cuts something off.</summary>
+    [EngineAccess(Access.Tighten)] bool CloseTcpConnection(string localAddress, int localPort, string remoteAddress, int remotePort);
 }

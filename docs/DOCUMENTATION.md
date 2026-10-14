@@ -55,7 +55,9 @@ For an overview of what GunWall is, see the [README](../README.md).
 **What you need**
 
 - Windows 10 (version 2004 or later) or Windows 11, 64-bit
-- Administrator rights — GunWall cannot add or remove kernel filters without them
+- Administrator rights to install it. The installed GunWall then opens without a UAC
+  prompt: its background service runs the firewall. The portable copy asks for
+  administrator approval each time it opens.
 
 **What to expect**
 
@@ -107,7 +109,7 @@ kernel filters before deleting anything. See [Chapter 17](#17-uninstalling).
 ### Portable
 
 1. Download `GunWall.exe` from the same release.
-2. Right-click → **Run as administrator**.
+2. Open it and choose **Yes** when Windows asks for administrator approval.
 
 Nothing is written outside your data folder. **But read
 [Chapter 17](#17-uninstalling) before you ever delete the folder** — the filters
@@ -543,7 +545,8 @@ notifications.
 | UI size | 50% to 150%; 100% by default (more compact than before 0.99.219, when 100% was larger). Also **Ctrl + mouse wheel**, **Ctrl + plus / minus**, and **Ctrl + 0** for the default, anywhere in the app |
 | App icon size | Small, Medium (default) or Large icons in the Applications list |
 | **Run GunWall when Windows starts** | **Recommended** — without it, nothing can prompt after a reboot |
-| **Keep protection running when GunWall is closed (background service)** | On by default in the installed version (since 0.99.205); untick it to turn it off, and later installs keep it off. A Windows service runs protection whenever the window is not open — after you exit, after sign-out, and from boot, before anyone signs in. It enforces everything the window does: your rules, direct-connection and blocked-domain blocks, access rules and the tamper watch. Programs needing a decision wait for the window and stay blocked meanwhile in Zero Trust. Below it, **This window uses the background service** (on by default since 0.99.224) keeps the firewall in the service while the window is open too, so protection never changes hands when you open or close GunWall; the window asks the service for everything. Untick it to have the window run the firewall itself (from the next start). If the service cannot be reached, the window runs the firewall itself. Needs the installed version with the background service on |
+| **Keep protection running when GunWall is closed (background service)** | On by default in the installed version (since 0.99.205); untick it to turn it off, and later installs keep it off. A Windows service runs protection whenever the window is not open — after you exit, after sign-out, and from boot, before anyone signs in. It enforces everything the window does: your rules, direct-connection and blocked-domain blocks, access rules and the tamper watch. Programs needing a decision wait for the window and stay blocked meanwhile in Zero Trust. Below it, **This window uses the background service** (on by default since 0.99.224) keeps the firewall in the service while the window is open too, so protection never changes hands when you open or close GunWall; the window asks the service for everything. Untick it to have the window run the firewall itself (from the next start); GunWall then asks for administrator approval each time it opens. If the service is stopped, a banner at the top of the window says so, with **Start it** (one administrator approval). Needs the installed version with the background service on |
+| **Protect settings** | Off by default. GunWall opens without administrator rights; with this on, any change that makes protection looser — allowing an app, turning protection off, pausing, removing a rule or a block, importing a profile — first asks Windows for administrator approval, once, and then allows such changes for 5 minutes or until you close GunWall (**Lock now** ends it sooner). Changes that make protection stricter never ask. Turning it off asks too. Applies while the window uses the background service |
 | Send firewall events to the Windows Event Log | For central log collection |
 | Play a sound on notification popups | |
 | Show a tray notification when a new app is detected | |
@@ -730,8 +733,8 @@ Use this before uninstalling a portable copy.
 
 ### Emergency unblock
 
-If GunWall will not start at all, from an **elevated** command prompt in its
-folder:
+If GunWall will not start at all, from a command prompt in its folder (Windows
+asks for administrator approval if the prompt is not already elevated):
 
 ```
 GunWall.exe --unblock

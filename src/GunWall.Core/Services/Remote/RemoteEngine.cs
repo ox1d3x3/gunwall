@@ -20,6 +20,13 @@ public sealed class EngineDeniedException : InvalidOperationException
     public EngineDeniedException(string message) : base(message) { }
 }
 
+/// <summary>The call loosens protection and Protect settings is on: it needs the
+/// administrator unlock, which was not given (stage 4c).</summary>
+public sealed class SettingsLockedException : InvalidOperationException
+{
+    public SettingsLockedException(string message) : base(message) { }
+}
+
 /// <summary>
 /// The window's end of the engine pipe (stage 4a: built and bench-tested; 4b
 /// switches the installed window to it). An <see cref="IEngine"/> made at run time
@@ -77,24 +84,52 @@ public class RemoteEngine : DispatchProxy, IDisposable
     public Action? ReloadLocal { get; set; }
     private int _localStale;
 
+    /// <summary>
+    /// A call was refused because Protect settings is locked (stage 4c). The window
+    /// asks for the unlock here - one UAC - and returns true when it was given; the
+    /// call is then sent once more. Called on the calling thread; the member name is
+    /// for the log. Null or false: the call throws <see cref="SettingsLockedException"/>.
+    /// </summary>
+    public Func<string, bool>? UnlockRequested { get; set; }
+
     /// <summary>The pipe is gone (or never fully opened).</summary>
     public bool IsClosed => _closed;
 
     /// <summary>Connects and completes the handshake, or throws. Events
     /// (ProtectionChanged, Disconnected) are raised on <paramref name="eventContext"/>
     /// - the window's UI thread - or on the reader thread when it is null.</summary>
+    /// <param name="verifyServer">Given the process id of the pipe's server, true when
+    /// it is the GunWall service (stage 4c: the pipe is open to the signed-in user,
+    /// so another program could create one of the same name). Null: not checked.</param>
     public static IEngine Connect(string appVersion, SynchronizationContext? eventContext,
-                                  string pipeName = EngineWire.PipeName, int timeoutMs = 3000)
+                                  string pipeName = EngineWire.PipeName, int timeoutMs = 3000,
+                                  Func<int, bool>? verifyServer = null)
     {
         var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous,
                                                System.Security.Principal.TokenImpersonationLevel.Identification);
         try
         {
             client.Connect(timeoutMs);
+            if (verifyServer != null)
+            {
+                int server = ServerProcessId(client);
+                if (!verifyServer(server))
+                    throw new IOException($"the engine pipe is served by process {server}, not the GunWall service - not connecting");
+            }
             return Attach(client, appVersion, eventContext);
         }
         catch { client.Dispose(); throw; }
     }
+
+    private static int ServerProcessId(NamedPipeClientStream pipe)
+    {
+        if (!OperatingSystem.IsWindows()) return 0;
+        try { return GetNamedPipeServerProcessId(pipe.SafePipeHandle, out uint pid) ? (int)pid : 0; }
+        catch { return 0; }
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetNamedPipeServerProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint serverProcessId);
 
     /// <summary>Over an already-open stream (the bench).</summary>
     public static IEngine Attach(Stream stream, string appVersion, SynchronizationContext? eventContext)
@@ -170,6 +205,19 @@ public class RemoteEngine : DispatchProxy, IDisposable
 
     private object? Call(string member, MethodInfo m, object?[] args)
     {
+        try { return CallOnce(member, m, args); }
+        catch (SettingsLockedException) when (UnlockRequested is { } unlock)
+        {
+            // One unlock, one retry: a second refusal is final.
+            bool given;
+            try { given = unlock(member); } catch (Exception ex) { DiagnosticLog.LogException("UnlockRequested", ex); given = false; }
+            if (!given) throw;
+            return CallOnce(member, m, args);
+        }
+    }
+
+    private object? CallOnce(string member, MethodInfo m, object?[] args)
+    {
         if (_closed) throw new EngineUnavailableException("the GunWall service is not connected");
         var ps = m.IsSpecialName ? Array.Empty<ParameterInfo>() : m.GetParameters();
         var msg = new EngineMessage { Kind = "call", Id = Interlocked.Increment(ref _nextId), Member = member };
@@ -199,6 +247,7 @@ public class RemoteEngine : DispatchProxy, IDisposable
         if (reply.State != null) { ApplyState(reply.State, reply.StateSeq); Volatile.Write(ref _localStale, 1); }
         if (!reply.Ok)
         {
+            if (reply.ErrorKind == "locked") throw new SettingsLockedException(reply.Error);
             if (reply.ErrorKind == "denied") throw new EngineDeniedException(reply.Error);
             throw new InvalidOperationException(reply.Error);
         }

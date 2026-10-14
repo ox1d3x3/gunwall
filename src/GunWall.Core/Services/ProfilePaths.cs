@@ -46,6 +46,38 @@ public static class ProfilePaths
         }
     }
 
+    /// <summary>
+    /// Where THIS process keeps what is its own: its diagnostics log, the usage
+    /// history, caches (stage 4c, 0.99.229). The data folder for the service, a
+    /// portable copy and a window running as administrator. A window running as the
+    /// signed-in user can only read the data folder (Users: read), so its own files
+    /// go to %LocalAppData%\GunWall - per user, as the window now is.
+    /// </summary>
+    public static string WindowFolder =>
+        IsPortable || Elevation.IsElevated || !OperatingSystem.IsWindows()
+            ? DataFolder
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GunWall");
+
+    /// <summary>A file in <see cref="WindowFolder"/>, creating the folder if needed.
+    /// On first use there, a copy of the same file from the data folder is taken, so
+    /// the usage history and caches carry over from when the window ran elevated.</summary>
+    public static string WindowFileIn(string name)
+    {
+        string dir = WindowFolder;
+        try { Directory.CreateDirectory(dir); } catch { }
+        string path = Path.Combine(dir, name);
+        if (!string.Equals(dir, DataFolder, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                string old = Path.Combine(DataFolder, name);
+                if (!File.Exists(path) && File.Exists(old)) File.Copy(old, path);
+            }
+            catch { }
+        }
+        return path;
+    }
+
     /// <summary>A file inside the data folder, creating the folder if needed.
     ///
     /// Named FileIn rather than File: a static method called File in a class that

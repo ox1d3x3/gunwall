@@ -34,7 +34,7 @@ namespace GunWall.Services;
 //    https://learn.microsoft.com/windows/win32/etw/event-trace-properties
 // =============================================================================
 
-public sealed class EtwByteMeterService : IDisposable
+public sealed class EtwByteMeterService : IDisposable, IByteMeter
 {
     private const string SessionName = "GunWallByteMeter";
 

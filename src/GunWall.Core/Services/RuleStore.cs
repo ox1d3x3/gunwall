@@ -506,6 +506,11 @@ public sealed class StoreData
     /// <summary>Periodically confirm GunWall's filters are still in the kernel,
     /// and re-apply them if something removed them (default: on).</summary>
     public bool TamperWatchEnabled { get; set; } = true;
+
+    /// <summary>Protect settings (stage 4c, 0.99.229): changes from the window that
+    /// loosen protection need an administrator unlock. Off by default: the window
+    /// already can only be the installed GunWall at the console.</summary>
+    public bool ProtectSettings { get; set; }
     /// <summary>The version that last ran with this profile - an upgrade is a change of it.</summary>
     public string LastRunVersion { get; set; } = "";
 

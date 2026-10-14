@@ -159,6 +159,9 @@ public sealed class DnsResolver : IDisposable
     /// <summary>The downloaded preset list in the data folder. Read by the window
     /// and by the background service, which enforces the same blocklist.</summary>
     public const string PresetFileName = "dns-blocklist-preset.txt";
+    /// <summary>Where the preset comes from - the one address the service fetches it
+    /// from for a window (0.99.229).</summary>
+    public const string PresetUrl = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
 
     /// <summary>The blocklist as the window builds it: the preset file, then the
     /// user's own lines (0.99.203: shared with the background service).</summary>

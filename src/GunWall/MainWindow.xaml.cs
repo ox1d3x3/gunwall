@@ -47,8 +47,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // In the data folder, not beside the executable. This is the user's traffic
     // history: written there it was destroyed by every upgrade that replaced the
     // application, and left behind by every uninstall.
+    // 0.99.229: the window's own folder - %LocalAppData%\GunWall when it runs as the
+    // signed-in user (it cannot write the data folder), else the data folder.
     private static string UsageHistoryPath =>
-        Services.ProfilePaths.FileIn("usage-history.json");
+        Services.ProfilePaths.WindowFileIn("usage-history.json");
     private readonly RangeObservableCollection<CountryStat> _trafficCountries = new();
     private readonly RangeObservableCollection<AppStat> _trafficApps = new();
 
@@ -180,7 +182,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private Dictionary<int, (string Name, string Path)> _lastProcs = new();
 
     // ---- ETW per-app byte meter (experimental; approximation is the fallback)
-    private EtwByteMeterService? _etwMeter;
+    // The ETW byte meter: in this process when it runs the firewall, in the service
+    // when it uses it (0.99.229 - a kernel trace needs administrator rights).
+    private IByteMeter? _etwMeter;
     private bool _etwDegraded;      // watchdog tripped: session up but no events
     private int _etwIdleTicks;      // consecutive ticks with NIC bytes but no events
     private long _etwLastEvents;    // watchdog comparison point
@@ -380,7 +384,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             });
             _firewall.LoadCategoryColors();      // apply any customised category dot colors
             if (!Remote) EngineStartup.AfterInitialize(_engineLocal); // timed blocks, launch backup, blocklist migration - shared with the service
-            Services.DiagnosticLog.Init(_firewall.ProfileFolder); // point the log at the real data folder
+            // The window's own folder (0.99.229): the data folder as administrator,
+            // %LocalAppData%\GunWall as the signed-in user - it cannot write the other.
+            Services.DiagnosticLog.Init(Services.ProfilePaths.WindowFolder);
+            Services.DiagnosticLog.Log($"Window: running {(Services.Elevation.IsElevated ? "as administrator" : "as the signed-in user (no administrator rights)")}; its log is in {Services.ProfilePaths.WindowFolder}.");
             Services.DiagnosticLog.Log($"GunWall {Services.UpdateService.CurrentVersion} loaded. Engine started: {(Remote ? "in the background service (this window uses it)" : (_engineLocal.EngineHandle != IntPtr.Zero).ToString())}.");
 
             // Auto-refresh views when the network changes (Wi-Fi switch, VPN up/down).
@@ -393,7 +400,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _suppressModeEvent = true;
             AlertsCheck.IsChecked = _firewall.AlertsEnabled;
             StartMinimizedCheck.IsChecked = _firewall.StartMinimized;
-            RunAtStartupCheck.IsChecked = _firewall.RunAtStartup;
+            // Moving from the elevated task to this user's Run key (0.99.229): once,
+            // when run-at-startup is on and the key is not there yet.
+            if (Remote && _firewall.RunAtStartup && !StartupService.IsRunKeySet())
+            {
+                bool moved = StartupService.SetRunKey(true);
+                Services.DiagnosticLog.Log($"Startup: run at sign-in moved to this user's Run key ({(moved ? "done" : "FAILED")}) - GunWall opens without administrator rights now.");
+                if (moved) RemoveOldStartupTaskOnce();
+            }
+            RunAtStartupCheck.IsChecked = Remote ? StartupService.IsRunKeySet() || _firewall.RunAtStartup : _firewall.RunAtStartup;
             if (EventLogCheck != null) EventLogCheck.IsChecked = _firewall.EventLogEnabled;
             if (NotifSoundCheck != null) NotifSoundCheck.IsChecked = _firewall.NotificationSound;
             if (TrayNotifCheck != null) TrayNotifCheck.IsChecked = _firewall.TrayNotifications;
@@ -427,6 +442,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _firewall.CleanUpdateFolder();
             RefreshUpdatesUi();
             RefreshBackgroundServiceUi();
+            RefreshProtectSettingsUi();
             AlwaysOnTopCheck.IsChecked = _firewall.AlwaysOnTop;
             HashesCheck.IsChecked = _firewall.HashesEnabled;
             ExperimentalEventsCheck.IsChecked = _firewall.ExperimentalEvents;
@@ -486,7 +502,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.228 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.229 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -605,6 +621,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         });
     }
 
+    private bool _startupTaskRemoved;
+
+    /// <summary>The elevated sign-in task older versions created: the service removes
+    /// it (the window cannot), once a session.</summary>
+    private void RemoveOldStartupTaskOnce()
+    {
+        if (_startupTaskRemoved || !Remote) return;
+        _startupTaskRemoved = true;
+        try { _firewall.RemoveStartupTask(); } catch (Exception ex) { Services.DiagnosticLog.LogException("RemoveStartupTask", ex); }
+    }
+
     /// <summary>What Windows says about the background service, last time asked -
     /// for the Settings box and the diagnostics summary.</summary>
     private string _serviceState = "not checked";
@@ -651,12 +678,146 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         if (WindowUsesServiceCheck == null) return;
         bool want = WindowUsesServiceCheck.IsChecked == true;
-        ServiceMode.Set(want);
+        if (Services.Elevation.IsElevated) ServiceMode.Set(want);
+        else
+        {
+            // The choice is a file in the data folder: written as administrator (0.99.229).
+            int code = Services.Elevation.RunSelfElevated(want ? "--elevated uses-service-on" : "--elevated uses-service-off", TimeSpan.FromSeconds(60));
+            if (code != 0)
+            {
+                WindowUsesServiceCheck.IsChecked = !want;
+                if (WindowUsesServiceStatus != null)
+                    WindowUsesServiceStatus.Text = code == Services.Elevation.Cancelled
+                        ? "Not changed - administrator approval was declined."
+                        : $"Not changed (code {code}).";
+                return;
+            }
+        }
         Services.DiagnosticLog.Log($"Window uses the background service: turned {(want ? "on (the default)" : "off - the window will run the firewall itself")} in Settings (from the next start).");
         if (WindowUsesServiceStatus != null)
             WindowUsesServiceStatus.Text = want == Remote
                 ? (Remote ? "On - this window is using the service's firewall." : "")
                 : "Restart GunWall to apply (Exit from the tray, then open it again).";
+    }
+
+    // ================================================================ stage 4c (0.99.229)
+
+    /// <summary>The banner at the top of every page while the service is stopped.</summary>
+    private void ShowServiceStoppedBanner(bool show)
+    {
+        if (ServiceStoppedBanner == null) return;
+        ServiceStoppedBanner.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show && ServiceStartBtn != null) { ServiceStartBtn.IsEnabled = true; ServiceStartBtn.Content = "Start it"; }
+    }
+
+    /// <summary>"Start it": the service started as administrator (one UAC); the
+    /// reconnect loop - started again if it had given up - connects when it is up.</summary>
+    private async void ServiceStart_Click(object sender, RoutedEventArgs e)
+    {
+        if (ServiceStartBtn == null) return;
+        ServiceStartBtn.IsEnabled = false;
+        ServiceStartBtn.Content = "Starting...";
+        int code = await System.Threading.Tasks.Task.Run(() =>
+            Services.Elevation.RunSelfElevated("--elevated start-service", TimeSpan.FromSeconds(90)));
+        Services.DiagnosticLog.Log($"Engine: Start it pressed - start-service finished with code {code}.");
+        if (code == Services.Elevation.Cancelled || code != 0)
+        {
+            ServiceStartBtn.IsEnabled = true;
+            ServiceStartBtn.Content = "Start it";
+            if (ServiceStoppedText != null)
+                ServiceStoppedText.Text = code == Services.Elevation.Cancelled
+                    ? "Not started - administrator approval was declined. Your filters keep enforcing; press Start it to try again."
+                    : $"The service did not start (code {code}). Your filters keep enforcing. Try again, or restart Windows.";
+            return;
+        }
+        ServiceStartBtn.Content = "Connecting...";
+        _ = ReconnectToServiceAsync();   // no-op when the loop is still running
+    }
+
+    private bool _unlocking;
+
+    /// <summary>
+    /// A change was refused: Protect settings is on and it loosens protection. Asks
+    /// Windows for administrator approval through "GunWall.exe --authorize" (one UAC);
+    /// the service then allows such changes from this window for 5 minutes, and
+    /// RemoteEngine sends the change again. On the UI thread; from elsewhere it waits
+    /// for it, at most two minutes, so a busy UI can never deadlock the caller.
+    /// </summary>
+    private bool RequestSettingsUnlock(string member)
+    {
+        if (!Dispatcher.CheckAccess())
+            return Dispatcher.Invoke(() => RequestSettingsUnlock(member), System.Windows.Threading.DispatcherPriority.Send,
+                                     System.Threading.CancellationToken.None, TimeSpan.FromMinutes(2));
+        if (_unlocking) return false;   // one approval at a time
+        _unlocking = true;
+        try
+        {
+            Services.DiagnosticLog.Log($"Protect settings: {member} loosens protection - asking Windows for administrator approval.");
+            string nonce = _firewall.BeginSettingsUnlock();
+            if (nonce.Length == 0) return false;
+            int code = Services.Elevation.RunSelfElevated("--authorize " + nonce, TimeSpan.FromSeconds(120));
+            bool ok = code == 0;
+            Services.DiagnosticLog.Log(ok ? "Protect settings: unlocked for 5 minutes."
+                                          : $"Protect settings: not unlocked ({(code == Services.Elevation.Cancelled ? "approval declined" : "code " + code)}).");
+            if (ok) Notify("info", "Settings unlocked for 5 minutes",
+                           "Changes that loosen protection are allowed until then, or until you close GunWall.", "protection");
+            RefreshProtectSettingsUi();
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            Services.DiagnosticLog.LogException("RequestSettingsUnlock", ex);
+            return false;
+        }
+        finally { _unlocking = false; }
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _unlockTimer;
+
+    /// <summary>Settings: the switch, "Locked" / "Unlocked - 4 min left", Lock now.
+    /// Only meaningful while this window uses the service.</summary>
+    private void RefreshProtectSettingsUi()
+    {
+        if (ProtectSettingsCheck == null || ProtectSettingsStatus == null) return;
+        try
+        {
+            bool on = _firewall.ProtectSettings;
+            ProtectSettingsCheck.IsChecked = on;
+            ProtectSettingsCheck.IsEnabled = Remote && !_serviceLost;
+            int left = Remote && !_serviceLost ? _firewall.SettingsUnlockSecondsLeft() : -1;
+            ProtectSettingsStatus.Text = !Remote
+                ? "Applies when this window uses the background service (it runs as administrator now)."
+                : !on ? "Off - GunWall's window can change everything without asking."
+                : left > 0 ? $"Unlocked - {Math.Max(1, (left + 59) / 60)} min left, or until you close GunWall."
+                : "On - loosening changes ask for administrator approval first.";
+            if (LockSettingsNowBtn != null)
+                LockSettingsNowBtn.Visibility = on && left > 0 ? Visibility.Visible : Visibility.Collapsed;
+            // While unlocked, the minutes count down on the page.
+            if (on && left > 0 && _unlockTimer == null)
+            {
+                _unlockTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+                _unlockTimer.Tick += (_, _) => RefreshProtectSettingsUi();
+                _unlockTimer.Start();
+            }
+            else if (!(on && left > 0) && _unlockTimer != null) { _unlockTimer.Stop(); _unlockTimer = null; }
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("RefreshProtectSettingsUi", ex); }
+    }
+
+    private void ProtectSettingsCheck_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProtectSettingsCheck == null) return;
+        bool want = ProtectSettingsCheck.IsChecked == true;
+        try { _firewall.SetProtectSettings(want); }   // off loosens: asks for approval (RequestSettingsUnlock)
+        catch (Services.Remote.SettingsLockedException) { Services.DiagnosticLog.Log("Protect settings: not turned off - approval not given."); }
+        catch (Exception ex) { ShowError(ex); }
+        RefreshProtectSettingsUi();
+    }
+
+    private void LockSettingsNow_Click(object sender, RoutedEventArgs e)
+    {
+        try { _firewall.LockSettingsNow(); } catch (Exception ex) { ShowError(ex); }
+        RefreshProtectSettingsUi();
     }
 
     /// <summary>The service went away while this window was using it (stopped,
@@ -672,6 +833,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _serviceLost = true;
         Services.DiagnosticLog.Log("Engine: the background service went away while this window was using it - waiting for it to come back.");
         _ = ReconnectToServiceAsync();
+        try { ShowServiceStoppedBanner(true); } catch { }
         try { SetEngineStatus("Engine: service stopped - reconnecting"); } catch { }
         try { SyncFirewallToggle(); } catch { /* the last state the service sent */ }
         try
@@ -699,6 +861,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         remote.Detected += r => ShowDetection(r, "background service");
         remote.Notice += n => Notify(n.Level, n.Title, n.Body, n.Category);
         remote.Disconnected += OnServiceLost;
+        remote.UnlockRequested = RequestSettingsUnlock;   // Protect settings (0.99.229)
         engine.ProtectionChanged += OnProtectionChanged;
         // Lost between connecting and here: the event has already gone by.
         if (remote.IsClosed) Dispatcher.BeginInvoke(new Action(OnServiceLost));
@@ -728,6 +891,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 {
                     try
                     {
+                        // As the signed-in user (0.99.229) the hand-over pipe is out of
+                        // reach (administrators only): try the engine pipe itself,
+                        // checking that the service serves it.
+                        if (!Services.Elevation.IsElevated)
+                        {
+                            var direct = App.TryConnectService(out string why);
+                            return (direct, direct != null ? "connected" : why);
+                        }
                         string? answer = EngineOwnership.Ask(EngineOwnership.PipeName, "ready", TimeSpan.FromSeconds(3));
                         if (answer != "ready") return (null, answer == null ? "service not answering" : "service answered '" + answer + "'");
                         return (Services.Remote.RemoteEngine.Connect(Services.UpdateService.CurrentVersion, null), "connected");
@@ -750,6 +921,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     if (old is not null) Services.Remote.RemoteEngine.Of(old)?.Dispose();
                     _serviceLost = false;
                     _engineReady = true;
+                    ShowServiceStoppedBanner(false);
                     AttachRemote(next);
                     _engineLocal.ReloadStoreFromDisk();
                     SetEngineStatus("Engine: active");
@@ -763,7 +935,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
             Services.DiagnosticLog.Log("Engine: the background service did not come back within 10 minutes.");
             Notify("warn", "GunWall's background service is still stopped",
-                   "Restart GunWall (Exit from the tray, then open it) - it will run the firewall itself if the service is not there.",
+                   "Use Start it at the top of the window to start it again.",
                    "protection");
         }
         finally { System.Threading.Interlocked.Exchange(ref _reconnecting, 0); }
@@ -794,6 +966,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         });
         Services.DiagnosticLog.Log($"Background service turned {(want ? "on" : "off")} from Settings: {result}.");
         RefreshBackgroundServiceUi();
+        RefreshProtectSettingsUi();
     }
 
     /// <summary>Applications the service saw while the window was closed: asked
@@ -803,6 +976,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             var waiting = PendingPrompts.TakeAll(Services.ProfilePaths.FileIn(PendingPrompts.FileName));
+            // Read; the service removes the file - the window cannot (0.99.229).
+            if (Remote && waiting.Count > 0)
+                try { _firewall.ClearPendingPrompts(); } catch (Exception ex) { Services.DiagnosticLog.LogException("ClearPendingPrompts", ex); }
             int asked = 0;
             foreach (var q in waiting)
             {
@@ -1760,8 +1936,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Curated list for GunWall's own resolver: StevenBlack unified hosts (ads +
     // malware; credited data source). Kept in a plain file beside the app so the
     // JSON config stays small; the user's manual lines remain separate.
-    private const string DnsPresetUrl =
-        "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
+    private const string DnsPresetUrl = DnsResolver.PresetUrl;   // one address, shared with the service (0.99.229)
     // Same reasoning: a 99,000-domain list the user chose to download should not
     // have to be fetched again after every update.
     private static string DnsPresetPath =>
@@ -1814,9 +1989,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         DnsPresetStatus.Text = "Downloading preset… (a few MB)";
         try
         {
-            string body = await _dnsPresetHttp.GetStringAsync(DnsPresetUrl);
-            if (body.Length < 10000) throw new Exception("Response too small - unexpected content.");
-            System.IO.File.WriteAllText(DnsPresetPath, body);
+            if (Remote)
+            {
+                // The service fetches it into the data folder (0.99.229): the window
+                // cannot write there. Same address, same size check.
+                await _firewall.DownloadDnsPresetInServiceAsync();
+            }
+            else
+            {
+                string body = await _dnsPresetHttp.GetStringAsync(DnsPresetUrl);
+                if (body.Length < 10000) throw new Exception("Response too small - unexpected content.");
+                System.IO.File.WriteAllText(DnsPresetPath, body);
+            }
             ApplyDnsBlocklists();
             RefreshDnsPresetStatus();
             Notify("good", "DNS preset loaded",
@@ -2670,7 +2854,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         try
         {
-            _etwMeter ??= new EtwByteMeterService();
+            _etwMeter ??= Remote ? new RemoteByteMeter(() => _firewall) : new EtwByteMeterService();
             _etwDegraded = false;
             _etwIdleTicks = 0;
             _etwLastEvents = 0;
@@ -3741,10 +3925,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         GeoStatus.Text = "Downloading GeoIP data\u2026";
         try
         {
-            int n = await System.Threading.Tasks.Task.Run(() => _firewall.DownloadAndLoadGeoIp());
-            // Downloaded here, by the window (the service never waits on the
-            // network on its engine thread); the service loads the same files.
-            if (Remote) await System.Threading.Tasks.Task.Run(() => _firewall.ReloadGeoIpTables());
+            int n = await DownloadGeoIpAsync();
             GeoStatus.Text = $"GeoIP: {n:N0} ranges loaded";
         }
         catch (Exception ex)
@@ -3858,7 +4039,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        bool ok = ConnectionService.CloseTcpConnection(c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort);
+        // Through the engine (0.99.229): closing needs an administrator, which the
+        // service is and this window, using it, no longer is.
+        bool ok;
+        try { ok = _firewall.CloseTcpConnection(c.LocalAddress, c.LocalPort, c.RemoteAddress, c.RemotePort); }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("CloseConn", ex); ok = false; }
         if (ok)
         {
             _firewall.EventLog($"Closed connection {c.RemoteEndpoint} ({c.ProcessName})");
@@ -3918,7 +4103,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             foreach (var other in _lastConns.Where(x => x.ProcessId == c.ProcessId &&
                                                         x.Protocol.StartsWith("TCP", StringComparison.OrdinalIgnoreCase)))
             {
-                if (ConnectionService.CloseTcpConnection(other.LocalAddress, other.LocalPort,
+                if (_firewall.CloseTcpConnection(other.LocalAddress, other.LocalPort,
                         other.RemoteAddress, other.RemotePort)) closed++;
             }
             _firewall.EventLog($"Blocked {c.ProcessName} and closed {closed} connection(s)");
@@ -6942,7 +7127,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("OuiLoad", ex); }
     }
-    private string OuiCachePath => Services.ProfilePaths.FileIn("oui.csv");
+    private string OuiCachePath => Services.ProfilePaths.WindowFileIn("oui.csv");   // the window's own (0.99.229)
 
     // ================= Additional data: GeoIP and vendor databases =========
     //
@@ -7210,6 +7395,28 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private async System.Threading.Tasks.Task<bool> DownloadPendingUpdateAsync(
         UpdateService.Result release)
     {
+        if (Remote)
+        {
+            // The service downloads and verifies it into the updates folder
+            // (0.99.229) - the window cannot write there. It looks the release up
+            // itself rather than trusting what this window found.
+            try
+            {
+                string why = await _firewall.DownloadUpdateInServiceAsync();
+                _firewall.NoteUpdateCheck(why.Length == 0
+                    ? $"Version {ShortVersion(_firewall.PendingUpdateVersion)} is downloaded and verified."
+                    : $"Version {ShortVersion(release.Latest)} is available, but {why}.", succeeded: true);
+                RefreshUpdatesUi();
+                return why.Length == 0;
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.LogException("UpdateDownload/service", ex);
+                _firewall.NoteUpdateCheck("The download failed: " + ex.Message, succeeded: true);
+                RefreshUpdatesUi();
+                return false;
+            }
+        }
         try
         {
             System.IO.Directory.CreateDirectory(_firewall.UpdateFolder);
@@ -7437,6 +7644,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// <summary>Downloads and loads the GeoIP database. Returns whether it is now
     /// loaded and a one-line detail, for the first-run screen (0.99.184); with
     /// <paramref name="manual"/> it also reports the failure in a dialog.</summary>
+    /// <summary>
+    /// The GeoIP tables. Using the service (0.99.229), the SERVICE downloads them -
+    /// the window can no longer write the data folder - off its engine thread, and
+    /// loads them; the window then loads its own copy from the same files. Running the
+    /// engine itself, the window downloads and loads as before.
+    /// </summary>
+    private async System.Threading.Tasks.Task<int> DownloadGeoIpAsync()
+    {
+        if (!Remote) return await System.Threading.Tasks.Task.Run(() => _firewall.DownloadAndLoadGeoIp());
+        int n = await _firewall.DownloadGeoIpInServiceAsync();
+        await System.Threading.Tasks.Task.Run(() => _engineLocal.LoadGeoIp());
+        return n;
+    }
+
     private async System.Threading.Tasks.Task<(bool Ok, string Detail)> RefreshGeoIpAsync(bool manual)
     {
         if (_dbBusyGeo) return (false, "a download is already running");
@@ -7444,10 +7665,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (DbGeoBtn != null) { DbGeoBtn.IsEnabled = false; DbGeoBtn.Content = "Downloading..."; }
         try
         {
-            int n = await System.Threading.Tasks.Task.Run(() => _firewall.DownloadAndLoadGeoIp());
-            // Downloaded here, by the window (the service never waits on the
-            // network on its engine thread); the service loads the same files.
-            if (Remote) await System.Threading.Tasks.Task.Run(() => _firewall.ReloadGeoIpTables());
+            int n = await DownloadGeoIpAsync();
             _firewall.NoteDbRefresh(geo: true, success: true, $"{n:N0} ranges loaded.");
             return (true, $"{n:N0} address ranges loaded");
         }
@@ -7586,10 +7804,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             string marker = Services.ProfilePaths.FileIn("upgraded.marker");
             if (System.IO.File.Exists(marker))
             {
-                _firewall.MarkFirstRunComplete(freshInstall: false);
-                System.IO.File.Delete(marker);
-                Services.DiagnosticLog.Log("Upgrade marker consumed; the first-run "
-                                         + "database offer will not be shown.");
+                if (Remote) _firewall.ConsumeUpgradeMarker();   // the service deletes it (0.99.229)
+                else
+                {
+                    _firewall.MarkFirstRunComplete(freshInstall: false);
+                    System.IO.File.Delete(marker);
+                    Services.DiagnosticLog.Log("Upgrade marker consumed; the first-run "
+                                             + "database offer will not be shown.");
+                }
             }
         }
         catch (Exception ex)
@@ -8778,13 +9000,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             bool run = RunAtStartupCheck?.IsChecked == true;
             if (Remote)
             {
-                // The startup task is this user's, so this window registers it; the
-                // service only records the choice. Registered by the service it
-                // would belong to SYSTEM - "Could not register" (0.99.208).
-                bool ok = StartupService.SetEnabled(run);
-                _firewall.RecordRunAtStartup(run && ok);
-                if (!ok && run)
-                    throw new InvalidOperationException("Could not register the startup task. Make sure GunWall is running as administrator.");
+                // This user's Run key (0.99.229): the window opens without
+                // administrator rights, so it needs no elevated task - and cannot
+                // create one. The service only records the choice, and removes the
+                // task older versions made.
+                if (run != StartupService.IsRunKeySet())
+                {
+                    bool ok = StartupService.SetRunKey(run);
+                    _firewall.RecordRunAtStartup(run && ok);
+                    RemoveOldStartupTaskOnce();
+                    if (!ok && run)
+                        throw new InvalidOperationException("Could not add GunWall to this user's startup programs.");
+                }
+                else if (_firewall.RunAtStartup != run) _firewall.RecordRunAtStartup(run);
             }
             else _firewall.SetRunAtStartup(run);
         }

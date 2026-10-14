@@ -83,8 +83,13 @@ asked about when it opens. The rest of the enforcement on live connections -
 direct-connection blocks, blocked domains, per-app access rules and the tamper
 watch - is `EngineUpkeep`, which the window runs on every snapshot and the service
 on its poll (0.99.203). A pause of protection is saved and finished by whichever
-runs next. The window itself still runs elevated; running it without
-administrator rights is a later step.
+runs next. Since 0.99.229 the installed window runs as the signed-in user, without
+administrator rights: the service runs the firewall and the window asks it for
+every change over the engine pipe. Only the installed GunWall.exe at the console
+may change anything, and with **Protect settings** on a change that loosens
+protection needs an administrator unlock (one UAC, five minutes). A copy that runs
+the firewall in its own window (portable, or the service turned off) still starts
+elevated.
 
 The code is already divided for that split. Everything below the window — the
 firewall engine, rule store, DNS, metering, GeoIP, scanning — is a separate
@@ -460,12 +465,12 @@ the interface, and the interface's own colours are never used for them.
 
 ## 10. What is intentionally not here yet
 
-- **No privilege split yet.** The optional background service keeps protection
-  running while the window is closed, but the window itself is still elevated: a
-  compromise of the UI is a compromise of the firewall, and filters cannot be
-  protected from other administrator processes. Removal is detected and undone
-  instead (see §4). Running the window without administrator rights is tracked
-  for 1.0.
+- **Filters cannot be protected from other administrator processes.** The
+  installed window no longer runs elevated (0.99.229) - the background service
+  does, and checks who asks it for a change - but anything running as an
+  administrator can still remove WFP filters. Removal is detected and undone
+  instead (see §4). The portable copy runs the firewall in its own window, so it
+  still runs elevated.
 - **No code signing.** Builds are unsigned, which is also why
   behavioural antivirus sometimes flags them.
 - **No kernel-mode callout driver.** Mature user-mode WFP firewalls do not use

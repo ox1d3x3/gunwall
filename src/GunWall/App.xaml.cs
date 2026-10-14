@@ -48,6 +48,192 @@ public partial class App : Application
         Environment.Exit(code);
     }
 
+    // ================================================================ stage 4c (0.99.229)
+
+    /// <summary>The window runs as the signed-in user and uses the service: connect
+    /// (waiting for it right after Windows starts), or offer to start it. Returns
+    /// connected, or ends the process when the person chooses Exit.</summary>
+    private void ConnectAsSignedInUser()
+    {
+        DiagnosticLog.Log("Engine: this window runs as the signed-in user (no administrator rights) and uses the background service.");
+        _remote = TryConnectService(out string why);
+        if (_remote == null)
+        {
+            var (state, _) = BackgroundServiceControl.Query();
+            var (wait, _) = ServiceMode.ShouldWaitForService(state, Environment.TickCount64);
+            if (wait)
+            {
+                DiagnosticLog.Log($"Engine: the background service is not answering yet (state {state}, Windows started "
+                                + $"{Environment.TickCount64 / 1000} s ago) - waiting up to {ServiceMode.StartWait.TotalSeconds:0} s for it.");
+                _remote = WaitForService(ServiceMode.StartWait, ref why);
+            }
+        }
+        // The question is a window of its own, before the main one: closing it must
+        // not count as "the last window closed" and end GunWall.
+        var mode = ShutdownMode;
+        if (_remote == null) ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        while (_remote == null)
+        {
+            DiagnosticLog.Log($"Engine: the background service is not available ({why}) - asking whether to start it.");
+            var answer = ThemedMessageBox.Show(
+                "GunWall's protection service is not running.\n\n"
+                + "Your filters keep enforcing, but nothing watches for new programs, and GunWall cannot "
+                + "change anything until the service runs.\n\n"
+                + "Start it now? Windows will ask for administrator approval.",
+                "GunWall", MessageBoxButton.YesNo, MessageBoxImage.Warning, "Start it", "Exit");
+            if (answer != MessageBoxResult.Yes)
+            {
+                DiagnosticLog.Log("Engine: the service is not running and the person chose Exit.");
+                Environment.Exit(0);
+            }
+            int code = Elevation.RunSelfElevated("--elevated start-service", TimeSpan.FromSeconds(90));
+            if (code == Elevation.Cancelled) { why = "administrator approval was declined"; continue; }
+            DiagnosticLog.Log($"Engine: start-service finished (code {code}) - connecting.");
+            _remote = WaitForService(TimeSpan.FromSeconds(45), ref why);
+        }
+        ShutdownMode = mode;
+        DiagnosticLog.Log("Engine: connected to the background service's engine - this window does not run one.");
+    }
+
+    /// <summary>One attempt at the engine pipe, refusing a pipe that the GunWall
+    /// service's own process does not serve (the pipe is open to the signed-in user,
+    /// so another program could create one of the same name).</summary>
+    internal static IEngine? TryConnectService(out string why)
+    {
+        try
+        {
+            var engine = GunWall.Services.Remote.RemoteEngine.Connect(UpdateService.CurrentVersion, null,
+                timeoutMs: 1500, verifyServer: IsServiceProcess);
+            why = "connected";
+            return engine;
+        }
+        catch (Exception ex)
+        {
+            why = $"{ex.GetType().Name}: {ex.Message}";
+            return null;
+        }
+    }
+
+    /// <summary>The process id is the GunWall service's (from the service manager).</summary>
+    internal static bool IsServiceProcess(int pid)
+    {
+        if (pid <= 0) return false;
+        try { return BackgroundServiceControl.Query().Pid == pid; } catch { return false; }
+    }
+
+    private static IEngine? WaitForService(TimeSpan max, ref string why)
+    {
+        var until = DateTime.UtcNow + max;
+        string last = "";
+        while (DateTime.UtcNow < until)
+        {
+            var engine = TryConnectService(out why);
+            if (engine != null) return engine;
+            if (why != last) { DiagnosticLog.Log($"Engine: waiting for the service - {why}"); last = why; }
+            System.Threading.Thread.Sleep(1000);
+        }
+        return null;
+    }
+
+    /// <summary>A GunWall that is already open, seen without being able to open its
+    /// mutex: an elevated one's objects are out of a standard user's reach.</summary>
+    private static bool InstanceAlreadyRunning()
+    {
+        try { using var m = System.Threading.Mutex.OpenExisting(InstanceMutexName); return true; }
+        catch (System.Threading.WaitHandleCannotBeOpenedException) { return false; }
+        catch (UnauthorizedAccessException) { return true; }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// This window must run the firewall itself (portable copy, or the background
+    /// service off or not installed), which takes administrator rights: GunWall
+    /// starts again elevated (one UAC) and this copy exits. Declined: says why, exits.
+    /// </summary>
+    private static void RelaunchWindowElevated(string[] args)
+    {
+        string why = ProfilePaths.IsPortable ? "this portable copy runs the firewall in its window"
+                   : !BackgroundServiceControl.IsInstalled() ? "the background service is not installed"
+                   : !ServiceMode.Preferred ? "Settings has \"This window uses the background service\" off"
+                   : "the background service is turned off";
+        if (InstanceAlreadyRunning())
+        {
+            SignalRunningInstance();
+            Environment.Exit(0);
+        }
+        bool again = args.Any(a => a.Trim().TrimStart('-', '/').Equals("relaunched", StringComparison.OrdinalIgnoreCase));
+        DiagnosticLog.Log($"Start: {why} - the firewall runs in this window, which needs administrator rights; asking Windows.");
+        if (!again)
+        {
+            int code = Elevation.RunSelfElevated(string.Join(" ", args.Select(Elevation.Quote).Append("--relaunched")), wait: null);
+            if (code == 0) Environment.Exit(0);
+            DiagnosticLog.Log(code == Elevation.Cancelled ? "Start: administrator approval was declined." : $"Start: could not start as administrator (code {code}).");
+        }
+        ThemedMessageBox.Show(
+            $"GunWall needs administrator rights to run its firewall in this window: {why}.\n\n"
+            + "Open GunWall again and choose Yes when Windows asks.",
+            "GunWall", MessageBoxButton.OK, MessageBoxImage.Warning);
+        Environment.Exit(0);
+    }
+
+    /// <summary>A recovery command started without administrator rights: run it
+    /// again elevated and return its exit code (2 when declined).</summary>
+    private static int RelaunchElevatedAndWait(string[] args)
+    {
+        AttachConsole(-1);
+        void Say(string line) { try { Console.WriteLine(line); } catch { } }
+        Say("GunWall needs administrator rights for this - Windows will ask.");
+        int code = Elevation.RunSelfElevated(string.Join(" ", args.Select(Elevation.Quote)), TimeSpan.FromMinutes(10));
+        if (code == Elevation.Cancelled) { Say("Not run: administrator approval was declined."); return 2; }
+        Say(code == 0 ? "Done (it ran in its own window as administrator)." : $"Finished with code {code} - see diagnostics.log.");
+        return code;
+    }
+
+    /// <summary>"GunWall.exe --authorize &lt;nonce&gt;", run as administrator by the
+    /// window: hands the nonce to the service over the hand-over pipe, which admits
+    /// only elevated administrators. 0 unlocked, 1 refused, 2 not elevated or no answer.</summary>
+    private static int RunAuthorize(string nonce)
+    {
+        if (!Elevation.IsElevated || nonce.Length == 0) return 2;
+        string? answer = EngineOwnership.Ask(EngineOwnership.PipeName, "authorize " + nonce, TimeSpan.FromSeconds(10));
+        DiagnosticLog.Log($"Protect settings: unlock {(answer == "unlocked" ? "given" : "not given (" + (answer ?? "no answer") + ")")}.");
+        return answer == "unlocked" ? 0 : answer == null ? 2 : 1;
+    }
+
+    /// <summary>"GunWall.exe --elevated &lt;task&gt;": one of a fixed list (Elevation.Tasks),
+    /// as administrator. 0 done, 1 failed, 2 not elevated or unknown.</summary>
+    private static int RunElevatedTask(string task)
+    {
+        if (!Elevation.IsElevated || Array.IndexOf(Elevation.Tasks, task) < 0) return 2;
+        try
+        {
+            string r;
+            switch (task)
+            {
+                case "start-service":
+                    r = BackgroundServiceControl.IsEnabled() ? BackgroundServiceControl.Sc($"start {BackgroundServiceControl.ServiceName}").Code.ToString()
+                                                            : BackgroundServiceControl.Enable();
+                    for (int i = 0; i < 30 && !BackgroundServiceControl.IsRunning(); i++) System.Threading.Thread.Sleep(1000);
+                    DiagnosticLog.Log($"Elevated task: start the background service ({r}) - {(BackgroundServiceControl.IsRunning() ? "running" : "NOT running")}.");
+                    return BackgroundServiceControl.IsRunning() ? 0 : 1;
+                case "service-on":
+                case "service-off":
+                    bool on = task == "service-on";
+                    r = on ? BackgroundServiceControl.Enable() : BackgroundServiceControl.Disable();
+                    BackgroundServiceControl.RecordUserChoice(on);
+                    DiagnosticLog.Log($"Elevated task: background service turned {(on ? "on" : "off")}: {r}.");
+                    return r == (on ? "on" : "off") ? 0 : 1;
+                case "uses-service-on":
+                case "uses-service-off":
+                    ServiceMode.Set(task == "uses-service-on");
+                    DiagnosticLog.Log($"Elevated task: window uses the background service - {(task == "uses-service-on" ? "on" : "off")}.");
+                    return 0;
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("ElevatedTask/" + task, ex); return 1; }
+        return 2;
+    }
+
     /// <summary>
     /// The service did not answer the window's first question (0.99.225). If it is
     /// starting - typically right after Windows starts, when the window can be
@@ -100,9 +286,23 @@ public partial class App : Application
             }
         }
 
+        // ------------------------------------------------ elevated helpers (stage 4c, 0.99.229)
+        // GunWall.exe started again as administrator by a window that runs as the
+        // signed-in user, for one task: --authorize <nonce> (Protect settings) or
+        // --elevated <task> (start the service, switch it). Headless, like --service.
+        for (int i = 0; i < e.Args.Length; i++)
+        {
+            string a = e.Args[i].Trim().TrimStart('-', '/').ToLowerInvariant();
+            if (a is not ("authorize" or "elevated")) continue;
+            string arg = i + 1 < e.Args.Length ? e.Args[i + 1].Trim() : "";
+            ExitHeadless(a == "authorize" ? RunAuthorize(arg) : RunElevatedTask(arg));
+            return;
+        }
+
         Services.PerfMonitor.MarkStartup("app");
         Services.PerfMonitor.RegisterUiThread();   // before anything is timed
         WindowTheme.Register();   // every standard title bar in the app's theme (0.99.182)
+        UiZoom.RegisterPopups();  // right-click menus and hover tips follow the UI size (0.99.229)
 
         DiagnosticLog.Log("App starting (OnStartup).");
 
@@ -131,6 +331,14 @@ public partial class App : Application
         foreach (string arg in e.Args)
         {
             string a = arg.Trim().TrimStart('-', '/').ToLowerInvariant();
+            if (a is "purge-sublayer" or "purgesublayer" or "unblock" or "panic" or "reset" && !Elevation.IsElevated)
+            {
+                // GunWall.exe no longer starts as administrator by itself (0.99.229):
+                // the recovery commands ask Windows, run elevated, and pass the
+                // result on - the uninstaller already runs them elevated.
+                ExitHeadless(RelaunchElevatedAndWait(e.Args));
+                return;
+            }
             if (a is "purge-sublayer" or "purgesublayer")
             {
                 int pcode = RunPurgeSublayer();
@@ -142,6 +350,20 @@ public partial class App : Application
 
             int code = RunEmergencyUnblock();
             ExitHeadless(code);
+            return;
+        }
+
+        // ------------------------------------------------ administrator, or not (stage 4c)
+        // The installed window uses the background service and runs as the
+        // signed-in user - no UAC to open GunWall. A window that runs the firewall
+        // itself (portable copy, or the service turned off) needs administrator
+        // rights: it asks Windows, here, before it claims the single instance - the
+        // elevated copy it starts must be able to claim it.
+        bool elevated = Elevation.IsElevated;
+        bool useService = ServiceMode.Requested;
+        if (!elevated && !useService)
+        {
+            RelaunchWindowElevated(e.Args);
             return;
         }
 
@@ -161,8 +383,13 @@ public partial class App : Application
         // ------------------------------------------------ data folder access (0.99.200)
         // Before anything opens a file there: 0.99.199's installer could leave the
         // files unreadable even to administrators. Repaired here if so.
-        try { DataFolderAccess.EnsureUsable(ProfilePaths.DataFolder, DiagnosticLog.Log); }
-        catch (Exception ex) { DiagnosticLog.LogException("DataFolderAccess", ex); }
+        // Only as administrator: the signed-in user reads the folder and never
+        // writes it (0.99.229), and could not repair it anyway.
+        if (elevated)
+        {
+            try { DataFolderAccess.EnsureUsable(ProfilePaths.DataFolder, DiagnosticLog.Log); }
+            catch (Exception ex) { DiagnosticLog.LogException("DataFolderAccess", ex); }
+        }
 
         // ------------------------------------------------ engine ownership (0.99.199)
         // Taken here, before the window exists, so waiting for the background
@@ -172,8 +399,15 @@ public partial class App : Application
         // the service is installed and on): ask it to keep the engine and connect.
         // Anything short of a working connection falls back to the hand-over below -
         // the window is still elevated, so it can always run the engine itself.
-        ServiceMode.RemoveLegacyMarker();
-        if (ServiceMode.Requested)
+        if (elevated) ServiceMode.RemoveLegacyMarker();
+        if (useService && !elevated)
+        {
+            // Stage 4c: no hand-over (its pipe admits administrators only) and no
+            // fallback - this window cannot run the firewall. Connected, or the person
+            // chooses to start the service or exit (Q5 = A).
+            ConnectAsSignedInUser();
+        }
+        else if (useService)
         {
             try
             {
@@ -204,7 +438,7 @@ public partial class App : Application
                 _remote = null;
             }
         }
-        if (_remote == null)
+        if (_remote == null && elevated)
         {
             try
             {
@@ -241,6 +475,9 @@ public partial class App : Application
             else if (args.Exception != null && args.Exception.Flatten().InnerExceptions.Count > 0
                      && args.Exception.Flatten().InnerExceptions.All(x => x is GunWall.Services.Remote.EngineUnavailableException))
                 DiagnosticLog.NoteBenignFault("background service not connected (reconnecting)");
+            else if (args.Exception != null && args.Exception.Flatten().InnerExceptions.Count > 0
+                     && args.Exception.Flatten().InnerExceptions.All(x => x is GunWall.Services.Remote.SettingsLockedException))
+                DiagnosticLog.NoteBenignFault("change not made - Protect settings approval not given");
             else
                 DiagnosticLog.LogException("UnobservedTaskException", args.Exception);
         };
@@ -721,6 +958,17 @@ public partial class App : Application
             || e.Exception.InnerException is GunWall.Services.Remote.EngineUnavailableException)
         {
             DiagnosticLog.NoteBenignFault("background service not connected (reconnecting)");
+            e.Handled = true;
+            return;
+        }
+
+        // Protect settings (0.99.229): a loosening change whose administrator approval
+        // was declined. The person just said No - not an error to report, and the
+        // change simply did not happen.
+        if (e.Exception is GunWall.Services.Remote.SettingsLockedException
+            || e.Exception.InnerException is GunWall.Services.Remote.SettingsLockedException)
+        {
+            DiagnosticLog.Log("Protect settings: a change was not made - administrator approval was not given.");
             e.Handled = true;
             return;
         }

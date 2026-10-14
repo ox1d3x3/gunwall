@@ -204,7 +204,7 @@ to. All four are signed; GunWall is not.
 | File | For |
 |---|---|
 | `GunWall-<version>-setup.exe` | **Recommended.** Its uninstaller removes GunWall's kernel filters before deleting anything. |
-| `GunWall.exe` | Portable. Right-click → Run as administrator. |
+| `GunWall.exe` | Portable. Windows asks for administrator approval when it opens. |
 
 ### 2. Run it
 
@@ -229,7 +229,8 @@ minutes and open **Connections**. Most people are surprised by what is already
 there. When you are ready, turn protection on — the switch in the bottom-left — and
 start approving.
 
-> **Requires** Windows 10 (2004+) or Windows 11, 64-bit, with administrator rights.
+> **Requires** Windows 10 (2004+) or Windows 11, 64-bit. An administrator installs it;
+> after that the installed GunWall opens without a UAC prompt.
 >
 > **Expect prompts for the first ten minutes.** Default-deny means every program
 > asks once.

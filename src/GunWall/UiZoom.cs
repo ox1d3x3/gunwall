@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using GunWall.Services;
 
@@ -24,6 +26,49 @@ public static class UiZoom
     public static void Set(int percent) => Factor = UiScale.Factor(percent);
 
     private static readonly ConditionalWeakTable<Window, object> Done = new();
+
+    /// <summary>
+    /// Right-click menus, their submenus and hover tips follow the UI size too
+    /// (0.99.229, Mahabub Q2 = A). Each is a popup with a visual tree of its own, so
+    /// the window's transform never reached it. Registered once for the whole app;
+    /// scaled as each opens, so a size changed in Settings applies to the next one.
+    /// </summary>
+    public static void RegisterPopups()
+    {
+        EventManager.RegisterClassHandler(typeof(ContextMenu), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnPopupShown));
+        EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.OpenedEvent, new RoutedEventHandler(OnPopupShown));
+        EventManager.RegisterClassHandler(typeof(ToolTip), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnPopupShown));
+        EventManager.RegisterClassHandler(typeof(ToolTip), ToolTip.OpenedEvent, new RoutedEventHandler(OnPopupShown));
+        EventManager.RegisterClassHandler(typeof(MenuItem), MenuItem.SubmenuOpenedEvent, new RoutedEventHandler(OnSubmenuOpened));
+    }
+
+    private static void OnPopupShown(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe) ScaleElement(fe);
+    }
+
+    private static void OnSubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (sender is MenuItem mi && mi.Template?.FindName("PART_Popup", mi) is Popup p && p.Child is FrameworkElement c)
+                ScaleElement(c);
+        }
+        catch { /* a template without the part: the submenu keeps its size */ }
+    }
+
+    /// <summary>The current factor on one element; nothing changed when it has it.</summary>
+    private static void ScaleElement(FrameworkElement fe)
+    {
+        double f = Factor;
+        var cur = fe.LayoutTransform as ScaleTransform;
+        if (Math.Abs(f - 1.0) < 0.001)
+        {
+            if (cur != null) fe.LayoutTransform = Transform.Identity;
+        }
+        else if (cur == null || Math.Abs(cur.ScaleX - f) > 0.001)
+            fe.LayoutTransform = new ScaleTransform(f, f);
+    }
 
     /// <summary>Scales <paramref name="w"/> to the UI size when its window is created
     /// (content is set by then, also for windows built in code).</summary>

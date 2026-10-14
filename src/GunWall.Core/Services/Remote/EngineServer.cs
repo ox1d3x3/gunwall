@@ -7,11 +7,6 @@ using System.Text.Json;
 
 namespace GunWall.Services.Remote;
 
-/// <summary>Who is on the other end of one engine-pipe connection. 4a records the
-/// process id; 4c adds the verified image path and the console session, and the
-/// permission decision uses them (STAGE-4 §2.6).</summary>
-public sealed record EngineCaller(int ProcessId);
-
 /// <summary>
 /// The service end of the engine pipe (stage 4a: built and bench-tested, not yet
 /// started by the service - 4b switches it on).
@@ -39,7 +34,12 @@ public sealed class EngineServer : IDisposable
 
     private readonly IEngine _engine;
     private readonly SynchronizationContext _ctx;
-    private readonly Func<EngineCaller, Access, bool> _permitted;
+    private readonly Func<EngineCaller, Access, CallVerdict> _permitted;
+    private readonly Func<int, EngineCaller> _identify;
+
+    /// <summary>Protect settings' unlock (stage 4c). Null: the engine itself answers
+    /// the unlock members ("" / -1: nothing is locked here).</summary>
+    public SettingsGate? Gate { get; set; }
     private readonly Func<string, NamedPipeServerStream> _createPipe;
     private readonly string _pipeName;
     private readonly string _appVersion;
@@ -57,10 +57,21 @@ public sealed class EngineServer : IDisposable
     public EngineServer(IEngine engine, SynchronizationContext engineContext, Func<EngineCaller, Access, bool> permitted,
                         string appVersion, string pipeName = EngineWire.PipeName,
                         Func<string, NamedPipeServerStream>? createPipe = null)
+        : this(engine, engineContext, (c, a) => permitted(c, a) ? CallVerdict.Allow : CallVerdict.Denied,
+               appVersion, pipeName, createPipe) { }
+
+    /// <param name="identify">Who a process id is (stage 4c). Default: read from
+    /// Windows and checked against this program's own file.</param>
+    public EngineServer(IEngine engine, SynchronizationContext engineContext, Func<EngineCaller, Access, CallVerdict> permitted,
+                        string appVersion, string pipeName = EngineWire.PipeName,
+                        Func<string, NamedPipeServerStream>? createPipe = null,
+                        Func<int, EngineCaller>? identify = null)
     {
         _engine = engine;
         _ctx = engineContext;
         _permitted = permitted;
+        string? self = Environment.ProcessPath;
+        _identify = identify ?? (pid => CallerIdentity.Of(pid, self));
         _appVersion = appVersion;
         _pipeName = pipeName;
         _createPipe = createPipe ?? DefaultPipe;
@@ -96,7 +107,7 @@ public sealed class EngineServer : IDisposable
                         pipe = null;
                         continue;
                     }
-                    var s = new Session(this, pipe, ClientProcessId(pipe));
+                    var s = new Session(this, pipe, _identify(ClientProcessId(pipe)));
                     _sessions.Add(s);
                     s.Begin();
                 }
@@ -164,6 +175,7 @@ public sealed class EngineServer : IDisposable
     public EngineMessage Handle(EngineMessage call, EngineCaller caller)
     {
         var reply = new EngineMessage { Kind = "reply", Id = call.Id };
+        if (TryGateMember(call, caller, reply)) return reply;
         if (!EngineCatalog.Instance.TryGet(call.Member, out var entry) || entry.Access == Access.Local
             || (entry.Method == null && entry.Property == null))
             return Deny(reply, $"'{call.Member}' cannot be called over the engine pipe");
@@ -173,7 +185,7 @@ public sealed class EngineServer : IDisposable
             if (entry.Property != null)
             {
                 if (call.Args.Count != 0) return Deny(reply, "a property takes no arguments");
-                if (!_permitted(caller, Access.Read)) return Deny(reply, "not permitted");
+                if (_permitted(caller, Access.Read) != CallVerdict.Allow) return Deny(reply, "not permitted");
                 var p = entry.Property;
                 object? v = OnEngine(() => p.GetValue(_engine));
                 reply.Result = EngineWire.ToElement(v, p.PropertyType);
@@ -193,8 +205,20 @@ public sealed class EngineServer : IDisposable
             }
 
             var access = EngineAccessAttribute.Resolve(entry.Access, args);
-            if (!_permitted(caller, access))
-                return Deny(reply, $"{m.Name} needs Protect settings to be unlocked");
+            if (access == Access.Loosen && SetsCurrentValue(entry, args)) access = Access.Preference;
+            switch (_permitted(caller, access))
+            {
+                case CallVerdict.Locked:
+                    reply.Ok = false;
+                    reply.ErrorKind = "locked";
+                    reply.Error = $"{m.Name} loosens protection - Protect settings is on, so it needs an administrator unlock";
+                    return reply;
+                case CallVerdict.Denied:
+                    DiagnosticLog.Log($"Engine pipe: refused {m.Name} from process {caller.ProcessId} "
+                                    + $"({(caller.Verified ? "GunWall.exe" : "not the installed GunWall.exe")}, "
+                                    + $"{(caller.InConsoleSession ? "console session" : "not the console session")}).");
+                    return Deny(reply, $"{m.Name}: only the installed GunWall window at this PC's screen may change settings");
+            }
 
             object? raw = OnEngine(() => m.Invoke(_engine, args));
 
@@ -232,6 +256,53 @@ public sealed class EngineServer : IDisposable
         }
     }
 
+    /// <summary>
+    /// "SetX(value)" where value is what X already is (stage 4c). Settings saves every
+    /// switch on the page at once, so changing the notification sound also sent
+    /// SetTamperWatch(false) with the tamper watch already off - a "loosening" that
+    /// loosens nothing, and with Protect settings on it asked for administrator
+    /// approval. Only for a one-flag setter with a bool property of the same name.
+    /// </summary>
+    private bool SetsCurrentValue(EngineCatalog.Entry entry, object?[] args)
+    {
+        if (entry.Access is not (Access.TightenIfTrue or Access.TightenIfFalse)) return false;
+        if (args.Length != 1 || args[0] is not bool wanted || !entry.Name.StartsWith("Set", StringComparison.Ordinal)) return false;
+        string x = entry.Name[3..];
+        foreach (var name in new[] { x, x + "Enabled", x + "Engaged" })   // SetTamperWatch -> TamperWatchEnabled, SetLockdown -> LockdownEngaged
+        {
+            if (!EngineCatalog.Instance.TryGet(name, out var prop) || prop.Property is not { } pi || pi.PropertyType != typeof(bool)
+                || prop.Access is not (Access.Read or Access.ReadProfile)) continue;
+            try { return OnEngine(() => (bool)pi.GetValue(_engine)!) == wanted; }
+            catch { return false; }
+        }
+        return false;
+    }
+
+    /// <summary>The three unlock members (stage 4c) are about THIS caller, which no
+    /// IEngine implementation knows - answered here, by the gate.</summary>
+    private bool TryGateMember(EngineMessage call, EngineCaller caller, EngineMessage reply)
+    {
+        if (Gate == null) return false;   // no gate: the engine answers ("" / -1 - nothing locked)
+        switch (call.Member)
+        {
+            case nameof(IEngine.BeginSettingsUnlock):
+                if (!caller.Verified || !caller.InConsoleSession) { Deny(reply, "only the GunWall window at this PC's screen may unlock"); return true; }
+                reply.Result = EngineWire.ToElement(Gate.Begin(caller.ProcessId), typeof(string));
+                reply.Ok = true;
+                return true;
+            case nameof(IEngine.SettingsUnlockSecondsLeft):
+                reply.Result = EngineWire.ToElement(Gate.SecondsLeft(caller.ProcessId), typeof(int));
+                reply.Ok = true;
+                return true;
+            case nameof(IEngine.LockSettingsNow):
+                Gate.Lock(caller.ProcessId);
+                reply.Ok = true;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private static EngineMessage Deny(EngineMessage reply, string why)
     {
         reply.Ok = false;
@@ -254,11 +325,11 @@ public sealed class EngineServer : IDisposable
         public bool Open => _open;
         private volatile bool _open;
 
-        public Session(EngineServer server, NamedPipeServerStream pipe, int pid)
+        public Session(EngineServer server, NamedPipeServerStream pipe, EngineCaller caller)
         {
             _server = server;
             _pipe = pipe;
-            _caller = new EngineCaller(pid);
+            _caller = caller;
         }
 
         public void Begin()
@@ -353,6 +424,8 @@ public sealed class EngineServer : IDisposable
             if (Interlocked.Exchange(ref _closed, 1) != 0) return;
             try { _out.CompleteAdding(); } catch { }
             try { _pipe.Dispose(); } catch { }
+            // Q3 = A: an unlock ends with its window.
+            try { _server.Gate?.Lock(_caller.ProcessId); } catch { }
             _server.Remove(this);
         }
     }
@@ -368,13 +441,26 @@ public sealed class EngineServer : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetNamedPipeClientProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint clientProcessId);
 
-    /// <summary>4a: SYSTEM and Administrators, like the hand-over pipe. 4c opens
-    /// it to the interactive user, with the caller checked on every connection.</summary>
+    /// <summary>SYSTEM and Administrators, and since 4c (0.99.229) the signed-in
+    /// (interactive) user, whose window no longer runs elevated. Every caller is
+    /// identified on connect (CallerIdentity) and only the installed GunWall.exe at
+    /// the console may change anything. Never over the network: a deny entry for
+    /// network logons, which Windows checks before any allow.</summary>
     private static NamedPipeServerStream DefaultPipe(string name)
     {
         if (OperatingSystem.IsWindows())
         {
             var sec = new PipeSecurity();
+            sec.AddAccessRule(new PipeAccessRule(
+                new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.NetworkSid, null),
+                PipeAccessRights.FullControl, System.Security.AccessControl.AccessControlType.Deny));
+            sec.AddAccessRule(new PipeAccessRule(
+                new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.InteractiveSid, null),
+                // CreateNewInstance: a client opening InOut asks for GENERIC_WRITE,
+                // which includes it (see HandoverService). The window checks that the
+                // server it reached is the service's process (RemoteEngine.Connect).
+                PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance,
+                System.Security.AccessControl.AccessControlType.Allow));
             sec.AddAccessRule(new PipeAccessRule(
                 new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalSystemSid, null),
                 PipeAccessRights.FullControl, System.Security.AccessControl.AccessControlType.Allow));
