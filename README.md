@@ -5,10 +5,8 @@
   <img src="branding/png/banner-hero-light.png" alt="GunWall — Guard Your Net Firewall" width="100%">
 </picture>
 
-### Know what your PC talks to. Decide who gets through.
-
-A free, open-source **zero-trust firewall for Windows**, built directly on the
-Windows Filtering Platform.
+A free, open-source application firewall for Windows, built on the Windows
+Filtering Platform.
 
 [![Latest release](https://img.shields.io/github/v/release/ox1d3x3/gunwall?style=for-the-badge&color=E8331C&include_prereleases&label=DOWNLOAD)](https://github.com/ox1d3x3/gunwall/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/ox1d3x3/gunwall/total?style=for-the-badge&color=2B2B2B&label=INSTALLS)](https://github.com/ox1d3x3/gunwall/releases)
@@ -16,7 +14,7 @@ Windows Filtering Platform.
 
 [![Platform](https://img.shields.io/badge/Windows%2010%20%7C%2011-64--bit-0078D6?style=flat-square)](https://www.microsoft.com/windows)
 [![Framework](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
-[![No telemetry](https://img.shields.io/badge/telemetry-none-3FB868?style=flat-square)](#what-gunwall-will-never-do)
+[![No telemetry](https://img.shields.io/badge/telemetry-none-3FB868?style=flat-square)](#privacy)
 [![Status](https://img.shields.io/badge/release-beta-E0A53F?style=flat-square)](#project-status)
 
 **[Download](https://github.com/ox1d3x3/gunwall/releases/latest)** ·
@@ -27,32 +25,23 @@ Windows Filtering Platform.
 
 ---
 
-## The problem
+## About
 
-Your computer talks to hundreds of servers a day. Some of that is you. Much of it
-is not — telemetry, analytics, update checks, software you installed years ago and
-forgot about.
+Windows lets almost every program connect to the internet and shows you very
+little of it. GunWall works the other way round: in protection mode a program is
+blocked until you allow it. The first time something new tries to connect, GunWall
+asks, and shows you the program, its signature, the destination, and the country
+and network that destination belongs to. Your answer is kept as a rule.
 
-Windows allows nearly all of it outbound by default, and shows you almost none of
-it.
-
-## What GunWall does
-
-**Nothing reaches the network until you say so.**
-
-Every program is denied by default. When something new tries to connect, GunWall
-asks — showing who is asking, where they are going, whether the file is signed, and
-which country and company own the other end. You answer once; it remembers.
-
-Then it shows you everything else: live connections, per-application bandwidth, a
-world map of where your traffic actually goes, and a searchable log of every
-decision with the reason attached.
+It also shows what is happening on the network: live connections, data usage per
+application, a map of where traffic goes, and a packet log that records why each
+connection was allowed or blocked.
 
 <div align="center">
 
 <img src="docs/screenshots/demo.gif" alt="GunWall in use: Firefox is blocked, GunWall asks, it is allowed and the page loads, then it is blocked again from the Applications list" width="100%">
 
-<sub>Firefox tries to connect and is held back. GunWall asks, you allow it, the page loads — and one click on <b>Applications</b> blocks it again.</sub>
+<sub>Firefox is held back, GunWall asks, the page loads once it is allowed, and it is blocked again from <b>Applications</b>.</sub>
 
 <br><br>
 
@@ -61,76 +50,75 @@ decision with the reason attached.
   <img src="docs/screenshots/overview-light.png" alt="GunWall Overview showing protection status, live throughput, top talkers and recent decisions" width="100%">
 </picture>
 
-<sub>The Overview — protection state, live throughput, and what is talking right now.</sub>
+<sub>The Overview: protection state, live throughput and the busiest applications.</sub>
 
 </div>
 
----
+### How it works
 
-## Why GunWall
-
-|  |  |
-|---|---|
-| **Kernel-level** | Filters run in the Windows Filtering Platform — the same layer Windows Firewall uses. No proxy, no driver of our own. |
-| **Genuinely free** | MIT licensed. No paid tier, no upsell, no features held back for a "pro" version. |
-| **Nothing leaves your machine** | No accounts, no telemetry, no analytics. The only outbound requests are ones you ask for. |
-| **Readable end to end** | One MIT interface library. Everything that inspects or blocks traffic is the .NET base library plus Win32. |
-| **Reversible, provably** | Every way of turning GunWall off returns the machine to Windows defaults — verifiable with Windows' own tools rather than on our word. |
-| **Coexists with Windows Firewall** | It does not replace or modify your existing rules. Both apply. |
+- Filtering happens in the Windows Filtering Platform, the same kernel layer
+  Windows Firewall uses. There is no proxy and no driver of GunWall's own.
+- In the installed version a Windows service runs the firewall, from boot and while
+  the window is closed. The window opens without administrator rights and asks the
+  service for every change.
+- It works alongside Windows Firewall and does not touch its rules.
+- Turning GunWall off, uninstalling it, or running `GunWall.exe --unblock` returns
+  the machine to Windows defaults.
 
 ---
 
 ## Features
 
-### 🛡️ Control
+### Control
 
-- **Zero-trust by default** — every application is approved once, and the choice persists
-- **Per-application rules** by direction, with timed and silent variants
-- **Custom rules** on address, port, protocol and direction — in your order, first match wins
-- **Block by country, continent or network operator**
-- **Per-service rules** — stop one Windows service without disturbing others sharing its process
-- **Lockdown** to cut everything instantly — from the window or the tray menu — and **snooze** to pause enforcement for a set period
-- **Rule profiles** for home, work and travel
-- **Decisions that stay made** — approvals and blocks are rules: kept across restarts and when protection is switched off and on, and a Microsoft Store app keeps its rule when it updates
+- Every application is blocked until you allow it, and the decision is saved as a rule
+- Per-application rules by direction, including temporary and silent rules
+- Custom rules on address, port, protocol and direction, applied in your order
+- Blocking by country, continent or network operator (ASN)
+- Per-service rules, so one Windows service can be stopped without affecting others in the same process
+- Lockdown blocks everything at once; a pause turns protection off for a set time
+- Rule profiles, for example home, work and travel
+- Rules follow Microsoft Store apps and programs that install each version in a new folder
+- **Protect settings**: changes that loosen protection ask for administrator approval first
 
-### 👁️ Visibility
+### Visibility
 
-- **Live connections** with process, destination, country and network operator
-- **Per-application bandwidth**, measured from the kernel when precise metering is on
-- **World map** of where your traffic goes
-- **Packet log** with the reason for every verdict — including when something *other* than GunWall did the blocking
-- **Network scanner** identifying devices by the name they announce (mDNS / Bonjour, e.g. *Living Room TV*), host name, manufacturer, likely operating system and gateway role, with your own note per device
-- **Traffic breakdown** by application, host, protocol and country
+- Live connections with process, destination, country and network operator
+- Data usage per application, measured by the kernel
+- A world map of destinations
+- A packet log with the reason for each verdict, including blocks made by other software
+- A network scanner that names devices (mDNS / Bonjour names such as *Living Room TV*, host names, manufacturer, likely operating system) and lets you add your own notes
+- A traffic breakdown by application, host, protocol and country
 
-### 🔒 Privacy
+### Privacy and DNS
 
-- **Encrypted DNS** over HTTPS, failing closed rather than silently downgrading
-- **Domain blocklists** — Windows telemetry and update categories (with any single domain unticked if you need it), an ads and malware preset for the built-in DNS resolver, or your own list — with `@@` to allow an entry and `!!` to block one everywhere
-- **CNAME-cloaking defence**, following alias chains so trackers cannot hide behind a first-party name
-- **Per-application domain blocking**, so blocking a tracker cannot disconnect something unrelated on the same server
+- An optional local DNS resolver with encrypted DNS over HTTPS, which does not fall back to plain DNS without your permission
+- Domain blocklists: Windows telemetry and update categories (individual domains can be excluded), an ads and malware preset, or your own list. `@@` allows an entry and `!!` blocks it everywhere
+- CNAME cloaking protection, which follows alias chains to the real tracker
+- Domain blocking per application, so blocking a tracker does not cut off other sites on the same server
 
-### ✅ Trust
+### Trust
 
-- **Signature verification** — valid, unsigned and *invalid* are three different things, and GunWall distinguishes them
-- **Tamper detection** on applications and on its own filters
-- **VirusTotal lookups** — only a file's hash is sent, never the file itself; your API key is stored encrypted, readable only on this PC
-- **Safe upgrades** — the profile is snapshotted before a new version first writes to it, with automatic backups on request
-- **Update checking** — off by default; a found update is verified again before it runs and never installs itself
+- Signature verification that tells valid, unsigned and invalid signatures apart
+- Tamper detection for applications and for GunWall's own filters
+- VirusTotal lookups that send only the file's hash; the API key is stored encrypted
+- The profile is saved before every upgrade, with optional automatic backups
+- Update checks are off by default; an update is verified before it runs and never installs itself
 
-### ✨ Experience
+### Interface
 
-- **A welcome on first launch** that offers the optional country and manufacturer databases and waits until they are loaded — and an **Update complete** screen after each update, with **See what's new**
-- **Light and dark themes** carried through everything: prompts, title bars and the tray menu
-- **UI size from 50% to 125%** — or **Ctrl + mouse wheel** anywhere — so a 4K or a 1080p screen both fit
-- **Explanations a hover away** — an **ⓘ** beside each heading and option instead of paragraphs of text
+- A first-run screen that offers the optional country and manufacturer databases
+- Light and dark themes, including prompts, title bars and the tray menu
+- UI size from 50% to 150%, also with Ctrl + mouse wheel
+- Explanations behind an **ⓘ** beside each heading and option
 
-<div align="right"><sub><a href="docs/DOCUMENTATION.md">Every feature explained in the User Guide →</a></sub></div>
+[Every feature is explained in the User Guide.](docs/DOCUMENTATION.md)
 
 ---
 
 ## Screenshots
 
-<sub>Each picture follows your GitHub theme — switch between light and dark to see both.</sub>
+<sub>The pictures follow your GitHub theme (light or dark).</sub>
 
 <table>
 <tr>
@@ -138,162 +126,129 @@ decision with the reason attached.
 <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/traffic-dark.png"><img src="docs/screenshots/traffic-light.png" alt="Traffic map showing destination countries and the most active apps"/></picture></td>
 </tr>
 <tr>
-<td><sub><b>Applications</b> — every program, its signature and its verdict, one click to change.</sub></td>
-<td><sub><b>Traffic</b> — where your connections actually go, by country and application.</sub></td>
+<td><sub><b>Applications</b>: every program with its signature and its rule.</sub></td>
+<td><sub><b>Traffic</b>: destinations by country and application.</sub></td>
 </tr>
 <tr>
 <td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/security-dark.png"><img src="docs/screenshots/security-light.png" alt="Security and privacy: blocklists, GeoIP source and country blocking"/></picture></td>
 <td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/rules-dark.png"><img src="docs/screenshots/rules-light.png" alt="Custom rules, IP blocklist and system rules"/></picture></td>
 </tr>
 <tr>
-<td><sub><b>Security</b> — telemetry and update blocklists, and blocking by country or network owner.</sub></td>
-<td><sub><b>Rules</b> — your own rules, an IP blocklist, and one-click system policies.</sub></td>
+<td><sub><b>Security</b>: blocklists, and blocking by country or network owner.</sub></td>
+<td><sub><b>Rules</b>: custom rules, an IP blocklist and system rules.</sub></td>
 </tr>
 <tr>
 <td><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dns-dark.png"><img src="docs/screenshots/dns-light.png" alt="Built-in DNS resolver with encrypted upstream and blocklist"/></picture></td>
 <td><img src="docs/screenshots/packet-log-light.png" alt="Packet log with the reason for every verdict"/></td>
 </tr>
 <tr>
-<td><sub><b>DNS resolver</b> — optional, encrypted upstream, with its own blocklist.</sub></td>
-<td><sub><b>Packet log</b> — every verdict from the kernel, with the rule that made it.</sub></td>
+<td><sub><b>DNS resolver</b>: optional, with encrypted upstream and its own blocklist.</sub></td>
+<td><sub><b>Packet log</b>: each kernel verdict and the rule behind it.</sub></td>
 </tr>
 </table>
 
 ---
 
-## How it compares
+## Compared with other firewalls
 
-Windows has several good firewalls, and some will suit you better than this one.
-
-| If you want… | Use |
-|---|---|
-| The smallest possible footprint | **simplewall** — under 1 MB, does one thing well |
-| No prompts, ever | **TinyWall** — whitelist-based, deliberately silent |
-| Cross-platform, with a company behind it | **Portmaster** — Windows and Linux |
-| The most polished monitoring | **GlassWire** — commercial, and it shows |
-| Deep visibility with per-application domain blocking, free | **GunWall** |
+There are several good free firewalls for Windows, and one of them may suit you
+better.
 
 |  | **GunWall** | simplewall | TinyWall | Portmaster | GlassWire |
 |---|---|---|---|---|---|
 | Licence | MIT | GPLv3 | Open source | Open source | Proprietary |
 | Cost | Free | Free | Free | Free + Pro tier | Freemium |
-| Approach | Own WFP layer | Own WFP layer | Wraps Windows Firewall | Own kernel layer | Wraps Windows Firewall |
-| Size | ~190 MB | < 1 MB | ~2 MB | Moderate | Moderate |
+| Approach | Own WFP layer | Own WFP layer | Uses Windows Firewall | Own kernel layer | Uses Windows Firewall |
+| Size on disk | ~190 MB | < 1 MB | ~2 MB | Moderate | Moderate |
 | Country / ASN rules | Yes | No | No | Yes | No |
 | Built-in DNS resolver | Yes, with DoH | No | No | Yes | No |
 | Per-app domain blocking | Yes | No | No | Per-app profiles | No |
 | Signed binaries | No | GPG | Yes | Yes | Yes |
-| Uninstall removes filters | Yes | **No — manual step** | N/A | Yes | N/A |
+| Uninstall removes filters | Yes | No, manual step | N/A | Yes | N/A |
 
-**Where the others win.** simplewall is a fraction of the size and has been
-maintained since 2016. TinyWall never interrupts you, which for many people is the
-better design. Portmaster runs on Linux too and has a company behind it. GlassWire's
-monitoring is more refined, and it carries security features GunWall has no answer
-to. All four are signed; GunWall is not.
+simplewall is far smaller and has been maintained since 2016. TinyWall never shows
+prompts. Portmaster also runs on Linux and is backed by a company. GlassWire's
+monitoring is more polished. All four are signed; GunWall is not.
 
-**[Full comparison, including when *not* to choose GunWall →](docs/COMPARISON.md)**
+[Full comparison](docs/COMPARISON.md)
 
 ---
 
 ## Install
 
-**[Download the latest release](https://github.com/ox1d3x3/gunwall/releases/latest)**
+[Download the latest release](https://github.com/ox1d3x3/gunwall/releases/latest)
 
-### 1. Choose your download
-
-| File | For |
+| File | Notes |
 |---|---|
-| `GunWall-<version>-setup.exe` | **Recommended.** Its uninstaller removes GunWall's kernel filters before deleting anything. |
-| `GunWall.exe` | Portable. Windows asks for administrator approval when it opens. |
+| `GunWall-<version>-setup.exe` | Recommended. Includes the background service, and the uninstaller removes GunWall's filters before deleting anything. |
+| `GunWall.exe` | Portable. No background service; Windows asks for administrator approval each time it opens. |
 
-### 2. Run it
+1. **Run the download.** GunWall is not code-signed, so SmartScreen will warn you.
+   Choose **More info → Run anyway**, or check the published SHA-256 first:
 
-Windows SmartScreen will warn you — GunWall is not code-signed, by choice. Choose
-**More info → Run anyway**, or verify the published SHA-256 first:
+   ```
+   certutil -hashfile GunWall.exe SHA256
+   ```
 
-```
-certutil -hashfile GunWall.exe SHA256
-```
+2. **First start.** A welcome screen offers two optional databases: country and
+   network owner for connections, and device manufacturers for the network scanner.
+   You can skip them and download them later from **Settings → Additional data**.
 
-### 3. Say hello
+3. **Turn on protection when you are ready.** GunWall starts in **Monitoring only**,
+   so nothing is blocked yet. Have a look at **Connections** first, then use the
+   switch in the bottom-left corner. Expect a prompt for each program that connects
+   during the first few minutes.
 
-The first launch opens a short welcome. It offers two optional databases —
-country and network owner for each connection, and device manufacturers for the
-network scanner — and waits until they are ready. **Not now** skips them; they are
-one click away in **Settings → Additional data**.
+**Requirements:** Windows 10 (2004 or later) or Windows 11, 64-bit. Installing needs
+an administrator; the installed GunWall then opens without a UAC prompt.
 
-### 4. Watch before you enforce
-
-GunWall starts in **Monitoring only**: nothing is blocked yet. Leave it a few
-minutes and open **Connections**. Most people are surprised by what is already
-there. When you are ready, turn protection on — the switch in the bottom-left — and
-start approving.
-
-> **Requires** Windows 10 (2004+) or Windows 11, 64-bit. An administrator installs it;
-> after that the installed GunWall opens without a UAC prompt.
->
-> **Expect prompts for the first ten minutes.** Default-deny means every program
-> asks once.
-
-**[Full installation and first-run guide →](docs/DOCUMENTATION.md#2-installing)**
+[Full installation guide](docs/DOCUMENTATION.md#2-installing)
 
 ---
 
-## What GunWall will never do
+## Privacy
 
-- **No telemetry, analytics, accounts or phoning home.** The only outbound
-  requests are ones you ask for: reverse DNS for host names, blocklist downloads,
-  and VirusTotal checks if you supply a key. A network scan also asks devices on
-  your own network for their names (NetBIOS, mDNS); nothing leaves your network.
-- **No ads.** Not now, not in a later version.
-- **No silent changes.** Every filter corresponds to a button you pressed. A fresh
-  install changes nothing until you enable protection.
-- **Nothing you cannot undo.** Rules and settings are plain JSON in
-  `%ProgramData%\GunWall` — readable, backed up, deletable. The one exception to
-  plain text is your VirusTotal key, which is encrypted so the profile is safe to
-  share.
+- No telemetry, analytics or accounts. GunWall only goes online for things you
+  ask for: reverse DNS for host names, blocklist and database downloads, update
+  checks if enabled, and VirusTotal lookups if you add a key. A network scan asks
+  devices on your own network for their names (NetBIOS, mDNS).
+- No ads.
+- Nothing changes until you turn protection on, and every filter comes from a
+  setting or rule you made.
+- Rules and settings are plain JSON in `%ProgramData%\GunWall`. The VirusTotal key is
+  the only encrypted value, so a profile can be shared safely.
 
 ---
 
 ## Project status
 
-**GunWall is in public beta and in daily use as a primary firewall.** The filtering
-engine, rule evaluation, monitoring, DNS and blocklist subsystems are complete.
+GunWall is in public beta and in daily use as a primary firewall. It has been
+tested on a small number of machines, so your combination of Windows build, VPN
+and security software may not have been tried yet. Reports are welcome.
 
-Two things to know before relying on it:
+Worth knowing:
 
-- **Filters do not survive a reboot.** Closing GunWall or a crash leaves them
-  enforcing, so an unapproved program stays denied while the machine is up. A
-  restart clears them, and nothing is enforced until GunWall starts again —
-  enable *Run at startup* to narrow that window.
+- Filters are not kept by Windows across a reboot. In the installed version the
+  background service puts them back at startup, before anyone signs in. The
+  portable copy enforces nothing after a reboot until it is started again. This is
+  deliberate: a reboot is always a way back to a working network.
+- Other software running as administrator can remove WFP filters. GunWall detects
+  this and restores them, but cannot prevent it.
 
-  They were persistent until 0.99.143. That made a filter whose id GunWall had
-  lost unremovable and permanent, and one such filter left a machine with no
-  network at all. A reboot is now a guaranteed way back, which
-  [ROADMAP.md](ROADMAP.md) requires before boot-time filtering is built.
-- **It runs as a single elevated process.** Service isolation is the last
-  architectural item before 1.0.
-
-It has been soak-tested in 24-hour runs, but on a small number of machines. Your Windows build, VPN and security software are
-combinations nobody has tried — which is what a beta is for.
-
-**[Recovery, if anything goes wrong →](docs/DOCUMENTATION.md#16-recovery)**
+[Recovery, if something goes wrong](docs/DOCUMENTATION.md#16-recovery)
 
 ---
 
 ## Roadmap
 
-**In progress** — attributing a kernel drop to the specific filter responsible
+Planned: identifying WSL and other subsystem processes, verifying enforcement on
+networks with routable IPv6, attributing a kernel drop to the filter that caused
+it, and a multi-language interface.
 
-**Planned** — a privileged Windows service, for protection from boot and tamper
-*prevention* · WSL and subsystem process identification · verifying enforcement on
-networks with routable IPv6 · multi-language interface
+Not planned: code signing. A certificate is a recurring cost; the published
+checksums and the source code are the integrity check.
 
-**Not planned** — code signing. A certificate is a recurring cost this project will
-not pass on or ask for; the published checksum proves more, against source anyone
-can read.
-
-**[Full roadmap →](ROADMAP.md)**
+[Full roadmap](ROADMAP.md)
 
 ---
 
@@ -301,23 +256,22 @@ can read.
 
 |  |  |
 |---|---|
-| **[User Guide](docs/DOCUMENTATION.md)** | Installing, configuring, every screen, troubleshooting |
-| [How GunWall compares](docs/COMPARISON.md) | Honest comparison with simplewall, TinyWall, Portmaster and GlassWire |
-| [Release notes](docs/RELEASE-NOTES.md) | What is in the current release |
-| [Changelog](CHANGELOG.md) | Every change, every version |
+| [User Guide](docs/DOCUMENTATION.md) | Installing, configuring, every screen, troubleshooting |
+| [Comparison](docs/COMPARISON.md) | GunWall next to simplewall, TinyWall, Portmaster and GlassWire |
+| [Release notes](docs/RELEASE-NOTES.md) | The current release |
+| [Changelog](CHANGELOG.md) | Every change in every version |
 | [Architecture](docs/ARCHITECTURE.md) | How the engine works, for developers |
-| [Contributing](CONTRIBUTING.md) | Building from source and conventions |
+| [Contributing](CONTRIBUTING.md) | Building from source |
 | [Security policy](SECURITY.md) | Reporting a vulnerability |
 
 ---
 
-## Support this project
+## Support
 
-GunWall is free and stays free. If it is useful to you and you would like to help,
-you can buy me a coffee:
+GunWall is free. If you find it useful and want to support it:
 
-- [Ko-fi — ko-fi.com/mahabubsubhany](https://ko-fi.com/mahabubsubhany)
-- [PayPal — paypal.me/mason7gg](https://www.paypal.com/paypalme/mason7gg)
+- [Ko-fi](https://ko-fi.com/mahabubsubhany)
+- [PayPal](https://www.paypal.com/paypalme/mason7gg)
 
 The same links are in GunWall under **Settings → About**.
 
@@ -325,41 +279,32 @@ The same links are in GunWall under **Settings → About**.
 
 ## Contributing
 
-Issues and pull requests are welcome. When reporting a problem, attach a
-diagnostics export — **Settings → Diagnostics → Export diagnostics (.zip)** — and describe what
-you saw rather than what you think caused it.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+Issues and pull requests are welcome. When reporting a problem, please attach a
+diagnostics export (**Settings → Diagnostics → Export diagnostics**) and describe
+what happened. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ---
 
-## License
+## License and credits
 
-[MIT](LICENSE) — use it, fork it, ship it.
+[MIT](LICENSE).
 
-**Credits.** GeoIP data from the public-domain [iptoasn](https://iptoasn.com)
-dataset, served via
-[`jedisct1/iptoasn-webservice`](https://github.com/jedisct1/iptoasn-webservice)
+GeoIP data from the public-domain [iptoasn](https://iptoasn.com) dataset, served
+via [jedisct1/iptoasn-webservice](https://github.com/jedisct1/iptoasn-webservice)
 (BSD-2-Clause). Windows telemetry and update lists from
-[WindowsSpyBlocker](https://github.com/crazy-max/WindowsSpyBlocker) (MIT); the DNS
+[WindowsSpyBlocker](https://github.com/crazy-max/WindowsSpyBlocker) (MIT). The DNS
 resolver's ads and malware preset from
 [StevenBlack/hosts](https://github.com/StevenBlack/hosts) (MIT). Device
-manufacturers from the public [IEEE registry](https://standards-oui.ieee.org/). Country flags
-from [FlagKit](https://github.com/madebybowtie/FlagKit) (MIT). Interface controls
-from [WPF-UI](https://github.com/lepoco/wpfui) (MIT).
-
----
+manufacturers from the [IEEE registry](https://standards-oui.ieee.org/). Country
+flags from [FlagKit](https://github.com/madebybowtie/FlagKit) (MIT). Interface
+controls from [WPF-UI](https://github.com/lepoco/wpfui) (MIT).
 
 <div align="center">
 
+<br>
+
 <img src="branding/png/app-icon-192.png" alt="" width="44"/>
 
-**GUNWALL**
-
-<sub>A wall of sixteen stones with three that are not ordinary: one missing, one
-stopped in red, one drawn as an outline — a barrier, a block, and something under
-watch. Red means blocked, in the mark and in the application.</sub>
-
-<sub>Guard your network. Bismillah.</sub>
+<sub>GunWall · Guard Your Net</sub>
 
 </div>
