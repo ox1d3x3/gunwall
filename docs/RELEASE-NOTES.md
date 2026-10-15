@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.229 — public beta
+# GunWall 0.99.232 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.229-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.232-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -56,6 +56,26 @@ afterwards cannot read it and needs the key entered again.
 - GunWall finds its own filters by asking the Windows filter engine directly,
   rather than running `netsh` - faster, and complete.
 - Microsoft Store apps keep their rule when they update.
+
+**No administrator rights to open GunWall**
+- The installed GunWall opens without a UAC prompt: its background service runs the
+  firewall and the window asks it for every change. Windows asks for approval only
+  when something needs it - starting the service, the portable copy, the recovery
+  commands.
+- Only the installed GunWall at this PC's screen can change the firewall; any other
+  program that talks to the service can only read.
+- **Protect settings** (Settings → Preferences, off by default): changes that make
+  protection looser ask for administrator approval once, then are allowed for five
+  minutes or until GunWall closes. Stricter changes never ask.
+- If the service stops, a banner says so with **Start it**; if it is not running
+  when GunWall opens, GunWall offers to start it.
+- Run at startup uses your own startup entry instead of an administrator task.
+
+**Smaller things in this release**
+- Programs that update into a new version folder (Edge WebView2, OneDrive) keep
+  their rule; an allow carries over only to the same signed publisher.
+- Traffic page numbers roll; small countries such as Singapore appear on the map.
+- Popups, right-click menus and hover tips follow the UI size.
 
 **Updates and upkeep**
 - Update checking — off by default, Daily, Weekly or Monthly — with optional

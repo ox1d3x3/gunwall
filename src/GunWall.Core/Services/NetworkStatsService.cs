@@ -34,6 +34,7 @@ public sealed class NetworkStatsService
     /// _countryIps so they can be reported without being mistaken for a country:
     /// they have no flag, no coordinate, and no name.</summary>
     private readonly HashSet<string> _unresolvedIps = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _resolvedIps = new(StringComparer.OrdinalIgnoreCase);
 
     // §Phase 5: byte-attributed breakdown (estimated or ETW-split, caller's choice)
     private readonly Dictionary<string, long> _appBytes = new(StringComparer.OrdinalIgnoreCase);
@@ -62,8 +63,15 @@ public sealed class NetworkStatsService
             {
                 AddTo(_countryIps, country, remoteIp);
                 AddTo(_appCountries, app, country);
+                // Placed now: no longer "could not be matched" (0.99.230). The window
+                // records connections from its first second, before its GeoIP tables
+                // finish loading, and every address seen then stayed "unmatched" for
+                // the session - "23 destinations, 23 could not be matched" beside a
+                // table listing all 23 in three countries.
+                _resolvedIps.Add(remoteIp);
+                _unresolvedIps.Remove(remoteIp);
             }
-            else
+            else if (!_resolvedIps.Contains(remoteIp))
             {
                 // Counted, not discarded.
                 //

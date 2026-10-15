@@ -406,8 +406,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 bool moved = StartupService.SetRunKey(true);
                 Services.DiagnosticLog.Log($"Startup: run at sign-in moved to this user's Run key ({(moved ? "done" : "FAILED")}) - GunWall opens without administrator rights now.");
-                if (moved) RemoveOldStartupTaskOnce();
             }
+            // The elevated sign-in task older versions made goes, every time this window
+            // uses the service (0.99.231). 0.99.229-230 removed it only when the Run key
+            // had to be created - on a PC where the key was already there, the task
+            // stayed and started the window as administrator after a reboot.
+            if (Remote) RemoveOldStartupTaskOnce();
             RunAtStartupCheck.IsChecked = Remote ? StartupService.IsRunKeySet() || _firewall.RunAtStartup : _firewall.RunAtStartup;
             if (EventLogCheck != null) EventLogCheck.IsChecked = _firewall.EventLogEnabled;
             if (NotifSoundCheck != null) NotifSoundCheck.IsChecked = _firewall.NotificationSound;
@@ -502,7 +506,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.229 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.232 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -629,7 +633,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         if (_startupTaskRemoved || !Remote) return;
         _startupTaskRemoved = true;
-        try { _firewall.RemoveStartupTask(); } catch (Exception ex) { Services.DiagnosticLog.LogException("RemoveStartupTask", ex); }
+        var engine = _firewall;
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            try { engine.RemoveStartupTask(); }   // schtasks in the service: off the UI thread
+            catch (Exception ex) { Services.DiagnosticLog.LogException("RemoveStartupTask", ex); }
+        });
     }
 
     /// <summary>What Windows says about the background service, last time asked -
@@ -1775,6 +1784,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         try
         {
+            // Using the service, the service watches DNS (its domain rules and
+            // direct-connection blocks are what use the names). The window has no
+            // administrator rights for a kernel trace (0.99.232: "StartTrace failed
+            // 0x00000005" twice at every start) and nothing of its own that needs it.
+            if (Remote)
+            {
+                if (_dnsObserver.SessionActive) _dnsObserver.Stop();
+                return;
+            }
             if (_firewall.DnsObserveSystemLookups)
             {
                 // Not during a headless recovery run. Start() returns false there by
@@ -1960,8 +1978,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         // Filters installed for previously blocked domains must go when the list
         // changes, or removing a domain would leave its addresses blocked with
-        // nothing in the interface explaining why.
-        try
+        // nothing in the interface explaining why. Using the service, the SERVICE
+        // does this when its list changes (0.99.230): from here it ran at every
+        // start, counted as loosening, and with Protect settings on asked for
+        // administrator approval just for opening GunWall.
+        if (!Remote) try
         {
             int cleared = _firewall.ClearDomainReactiveBlocks();
             Upkeep.ResetDomainMemory();
@@ -2805,7 +2826,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 : "GeoIP: NO DATA \u2014 country, continent and ASN rules are inactive. "
                   + "Download the database in Security \u2192 GeoIP.";
 
-        HealthDnsObserver.Text = _dnsObserver.SessionActive
+        HealthDnsObserver.Text = Remote
+            ? (_firewall.DnsObserveSystemLookups ? "DNS watch: in the background service" : "DNS watch: off")
+            : _dnsObserver.SessionActive
             ? $"DNS watch: active \u00B7 {Services.DnsObservations.Count:N0} names known"
             : Services.DnsObservations.Count > 0
                 ? $"DNS watch: off \u00B7 {Services.DnsObservations.Count:N0} names known from GunWall's resolver"
@@ -8265,6 +8288,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             string path = _firewall.CustomListPath;
             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
             if (System.IO.File.GetLastWriteTimeUtc(path) <= _firewall.CustomListImportedUtc) return;
+            // Replacing the list can remove domains - a loosening change. Not asked
+            // for without the person (0.99.230): with Protect settings locked it would
+            // be an administrator prompt out of nowhere. Said once; reloaded from the
+            // Security page, or here on a later start once unlocked.
+            if (Remote && _firewall.ProtectSettings && _firewall.SettingsUnlockSecondsLeft() <= 0)
+            {
+                Services.DiagnosticLog.Log("Custom blocklist: the file changed, but Protect settings is locked - not re-read automatically.");
+                Notify("info", "Your custom blocklist file changed",
+                       "Protect settings is on, so GunWall did not re-read it by itself. Load it again on the Security page.", "rules");
+                return;
+            }
             int n = await SendCustomListAsync(path);
             if (n < 0) return;
             _firewall.RebuildHostsBlock();

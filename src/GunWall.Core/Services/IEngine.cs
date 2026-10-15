@@ -175,7 +175,7 @@ public interface IEngine
     [EngineAccess(Access.Loosen)] void SaveDnsResolverConfig(int port, string upstream, IEnumerable<string> blocklist);
     [EngineAccess(Access.Preference)] void SaveProfile(string name);
     [EngineAccess(Access.Preference)] void SaveRuleProfile(string name);
-    [EngineAccess(Access.Loosen)] void SaveVtResult(string sha256, bool found, int flagged, int total);
+    [EngineAccess(Access.Preference)] void SaveVtResult(string sha256, bool found, int flagged, int total);
     [EngineAccess(Access.Local)] void SetAlertCategoryMuted(string cat, bool muted);
     [EngineAccess(Access.Preference)] void SetAlertsEnabled(bool enabled);
     [EngineAccess(Access.Local)] void SetAlwaysConfirmExit(bool v);

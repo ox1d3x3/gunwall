@@ -5087,8 +5087,10 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
 
     public void RemoveStartupTask()
     {
+        // Asked at every window start (0.99.231): logged only when there was one.
+        if (!StartupService.TaskExists()) return;
         bool ok = StartupService.RemoveTask();
-        DiagnosticLog.Log($"Startup: the old elevated sign-in task {(ok ? "was removed" : "was not there or could not be removed")}.");
+        DiagnosticLog.Log($"Startup: the old elevated sign-in task {(ok ? "was removed - GunWall starts from the Run key, without administrator rights" : "could NOT be removed")}.");
     }
 
     /// <summary>

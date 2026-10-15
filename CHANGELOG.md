@@ -15,6 +15,34 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.232] — 2026-10-15
+
+### Fixed
+- **"DNS observer could not start" at every start.** The window tried to start its
+  own DNS watch, which needs administrator rights it no longer has. The background
+  service already watches DNS for the rules that use it; the window now leaves it
+  to the service, and the Diagnostics health line says so.
+
+## [0.99.231] — 2026-10-15
+
+### Fixed
+- **After a restart GunWall could still start as administrator.** The sign-in task
+  from older versions was removed only when GunWall had to create its new startup
+  entry; where that entry already existed, the old task stayed and started GunWall
+  elevated. It is now removed whenever GunWall uses the background service.
+
+## [0.99.230] — 2026-10-15
+
+### Fixed
+- **With Protect settings on, opening GunWall asked for administrator approval.**
+  The window tidied up blocked-domain filters at every start, which counts as a
+  loosening change. The background service now does that itself when the blocklist
+  changes. GunWall also no longer asks on its own for a changed custom blocklist file
+  or a background VirusTotal result.
+- **Traffic said every destination "could not be matched to a country"** right
+  after GunWall opened, even while listing them by country. Addresses seen before
+  the country data had finished loading stayed counted as unmatched.
+
 ## [0.99.229] — 2026-10-15
 
 ### Changed

@@ -107,6 +107,9 @@ public static class StartupService
     /// service does it for the window, 0.99.229).</summary>
     public static bool RemoveTask() { try { return Remove(); } catch { return false; } }
 
+    /// <summary>The scheduled task is there (the service can always see it).</summary>
+    public static bool TaskExists() => IsEnabled();
+
     private static bool RunSchtasks(string args)
     {
         var psi = new ProcessStartInfo("schtasks.exe", args)

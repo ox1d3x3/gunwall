@@ -225,7 +225,26 @@ public sealed class ServiceEngineSession : IEngineSession
 
             if (BlocklistKey(_fw.DnsResolverBlocklist) != _blocklistKey
                 && Interlocked.Exchange(ref _blocklistReloading, 1) == 0)
-                _ = Task.Run(() => { try { LoadBlocklist(); } finally { Volatile.Write(ref _blocklistReloading, 0); } });
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        LoadBlocklist();
+                        // The list changed: filters made for domains on the old list go,
+                        // and blocked domains re-form as their connections are next seen
+                        // (0.99.230 - the window did this, at every start, as a change
+                        // that loosens; the service owns the enforcement).
+                        if (!_thread.IsDisposed)
+                            _thread.Invoke(() =>
+                            {
+                                int cleared = _fw?.ClearDomainReactiveBlocks() ?? 0;
+                                _upkeep?.ResetDomainMemory();
+                                if (cleared > 0) DiagnosticLog.Log($"Service engine: blocklist changed - removed {cleared} blocked-domain filter(s).");
+                            });
+                    }
+                    catch (Exception ex) { DiagnosticLog.LogException("ServiceBlocklistReload", ex); }
+                    finally { Volatile.Write(ref _blocklistReloading, 0); }
+                });
         }
         catch (Exception ex) { DiagnosticLog.LogException("Service.FollowSettings", ex); }
     }
