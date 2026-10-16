@@ -15,6 +15,29 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.234] — 2026-10-16
+
+### Changed
+- **The Overview fits the window.** The network activity meter is shorter, so Top
+  talkers and Recent decisions are visible without resizing.
+
+### Added
+- **Top countries on the Overview**, beside Top talkers: where this session's
+  destinations are, with flags. Click the heading to open Traffic.
+
+### Fixed
+- Clicking **Blocklisted** on the Overview did nothing; it opens the DNS resolver page.
+
+## [0.99.233] — 2026-10-16
+
+### Changed
+- **Less memory.** The GunWall window no longer keeps its own copy of the country
+  and network database - the background service, which has it already, answers the
+  window's lookups. The device manufacturer database is loaded the first time you
+  scan the network instead of at every start. While GunWall sits in the tray or is
+  minimised, it gives memory it is not using back to Windows; the background service
+  does the same after starting and every 30 minutes.
+
 ## [0.99.232] — 2026-10-15
 
 ### Fixed

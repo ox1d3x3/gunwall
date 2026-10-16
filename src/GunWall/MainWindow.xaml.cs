@@ -375,11 +375,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 // the old table or the new, never a mix.
                 try
                 {
-                    _firewall.LoadGeoIp();
+                    if (Remote) UseGeoFromService();   // no tables of its own (0.99.233)
+                    else _firewall.LoadGeoIp();
                     Dispatcher.BeginInvoke(new Action(() => { try { RefreshAdditionalDataUi(); } catch { } }));
                 }
                 catch (Exception ex) { Services.DiagnosticLog.LogException("StartupGeoIp", ex); }
-                LoadVendorDatabase();   // after the restore: at boot the disk goes to protection first
+                // The vendor database is loaded when a network scan needs it (0.99.233):
+                // only the scanner uses it, and it held ~7 MB all session for nothing.
                 try { _firewall.WarmBlocklistDomains(); } catch { }   // the Security tab draws without parsing
             });
             _firewall.LoadCategoryColors();      // apply any customised category dot colors
@@ -506,7 +508,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.232 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.234 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1278,6 +1280,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void EnrichGeo(List<ConnectionInfo> conns)
     {
         bool active = _firewall.GeoIpActive;
+        // One call to the service for every address not seen yet (0.99.233).
+        if (active) _firewall.GeoIp.Prefetch(conns.Where(c => c.Country.Length == 0).Select(c => c.RemoteAddress));
         Dictionary<string, GunWall.Services.GeoIpService.GeoInfo> memo = new(StringComparer.OrdinalIgnoreCase);
         foreach (var c in conns)
         {
@@ -3684,6 +3688,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // each distinct address once instead of once per row.
             Dictionary<string, GunWall.Services.GeoIpService.GeoInfo>? geoMemo =
                 geo ? new(StringComparer.OrdinalIgnoreCase) : null;
+            if (geo) _firewall.GeoIp.Prefetch(view.Where(c => c.Country.Length == 0).Select(c => c.RemoteAddress));
             foreach (var c in view.OrderBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
             {
                 if (c.Country.Length == 0)
@@ -3979,9 +3984,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _firewall.SetGeoIpSource(mode, url);
         if (Remote)
         {
-            // The window's own copy looks addresses up for the tables: same source.
+            // The service answers lookups under its new source; forget the old answers.
             _engineLocal.ReloadStoreFromDisk();
-            try { _engineLocal.LoadGeoIp(); } catch (Exception ex) { Services.DiagnosticLog.LogException("LocalGeoIp", ex); }
+            UseGeoFromService();
         }
         if (GeoSourceStatus != null) GeoSourceStatus.Text = GeoSourceSummary();
         RebuildConnList();     // re-enrich under the new source
@@ -4244,6 +4249,39 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _probeWanted = OnScreen;   // the freeze probe sleeps while nothing is shown
         UpdateGraphFrameHook();
         if (OnScreen && IsLoaded) RefreshVisiblePanel();
+        UpdateHiddenTrim();
+    }
+
+    // In the tray or minimised (0.99.233): the window gives back the memory it is not
+    // using - 15 s after it goes, then every 10 minutes while it stays away. Mahabub:
+    // ~205 MB for a window in the tray, beside the service's ~80 MB.
+    private System.Windows.Threading.DispatcherTimer? _trimTimer;
+    private bool _trimLogged;
+
+    private void UpdateHiddenTrim()
+    {
+        if (OnScreen)
+        {
+            _trimTimer?.Stop();
+            return;
+        }
+        if (_trimTimer == null)
+        {
+            _trimTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background);
+            _trimTimer.Tick += (_, _) =>
+            {
+                if (OnScreen) { _trimTimer!.Stop(); return; }
+                _trimTimer!.Interval = TimeSpan.FromMinutes(10);
+                var (before, after) = MemoryTrim.Trim();
+                if (!_trimLogged)
+                {
+                    _trimLogged = true;
+                    Services.DiagnosticLog.Log($"Memory: window hidden - working set {before:F0} -> {after:F0} MB (memory not in use given back to Windows; repeated every 10 min while hidden).");
+                }
+            };
+        }
+        _trimTimer.Interval = TimeSpan.FromSeconds(15);
+        _trimTimer.Start();
     }
 
     /// <summary>
@@ -6011,6 +6049,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // at the old element this would have thrown on click.
             "System" => NavRules,
             "Connections" => NavConnections,
+            "Traffic" => NavTraffic,   // Top countries (0.99.234)
+            // BLOCKLISTED: its Tag was "Dns" with no case here, so the click did
+            // nothing (found 0.99.234).
+            "Dns" => NavDns,
             _ => null
         };
         if (nav != null) nav.IsChecked = true; // fires Nav_Checked -> switches panel
@@ -7181,7 +7223,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             string when = Stamp(_firewall.OuiLastRefresh);
             DbOuiStatus.Text = _oui.Loaded
                 ? $"Vendor database: {_oui.Count:N0} prefixes. {when}"
-                : "Vendor database: not downloaded. Devices will show no manufacturer.";
+                : System.IO.File.Exists(OuiCachePath)
+                    ? $"Vendor database: downloaded - loaded when you scan the network. {when}"
+                    : "Vendor database: not downloaded. Devices will show no manufacturer.";
         }
         if (DbAutoRefreshCheck != null) DbAutoRefreshCheck.IsChecked = _firewall.DbAutoRefresh;
         if (DbIntervalCombo != null)
@@ -7677,8 +7721,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         if (!Remote) return await System.Threading.Tasks.Task.Run(() => _firewall.DownloadAndLoadGeoIp());
         int n = await _firewall.DownloadGeoIpInServiceAsync();
-        await System.Threading.Tasks.Task.Run(() => _engineLocal.LoadGeoIp());
+        UseGeoFromService();   // new tables in the service: ask again
         return n;
+    }
+
+    /// <summary>
+    /// Using the service, the window keeps no GeoIP tables (0.99.233): ~30 MB of its
+    /// memory and half a second at every start, a second copy of the service's. The
+    /// service answers, one call per refresh for addresses not seen yet.
+    /// </summary>
+    private void UseGeoFromService()
+    {
+        _engineLocal.GeoIp.UseRemote(ips =>
+        {
+            var answers = _firewall.LookupGeo(ips.ToList());
+            return answers.Select(a => new GunWall.Services.GeoIpService.GeoInfo(a.Country, a.Asn, a.Owner)).ToList();
+        });
     }
 
     private async System.Threading.Tasks.Task<(bool Ok, string Detail)> RefreshGeoIpAsync(bool manual)
@@ -7932,7 +7990,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (OuiStatus == null) return;
         OuiStatus.Text = _oui.Loaded
             ? $"{_oui.Count:N0} vendor prefixes"
-            : "No vendor data";
+            : System.IO.File.Exists(OuiCachePath) ? "Vendor data ready" : "No vendor data";
     }
 
     /// <summary>Edits the note attached to the selected device.
@@ -8106,6 +8164,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // flicker and describe nothing.
             GunWall.Controls.Table.SetPhase(DevicesList, GunWall.Controls.TablePhase.Loading);
             if (NetworkSubtitle != null) NetworkSubtitle.Text = "Scanning your local network...";
+            if (!_oui.Loaded && System.IO.File.Exists(OuiCachePath))
+                await System.Threading.Tasks.Task.Run(LoadVendorDatabase);   // first scan: loaded now (0.99.233)
 
             // Progress arrives through BeginInvoke, so the final "100%" can be
             // queued just before the scan returns and drawn just AFTER the "Found"
@@ -8760,6 +8820,25 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 TopTalkersList.ItemsSource = rows;
                 if (TopTalkersEmpty != null)
                     TopTalkersEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (TopCountriesList != null)
+            {
+                var top = _stats.TopCountries(5);
+                int max = top.Count > 0 ? top.Max(t => t.Count) : 0;
+                var rows = new List<Models.TopCountryRow>();
+                foreach (var (code, count) in top)
+                    rows.Add(new Models.TopCountryRow
+                    {
+                        Code = code,
+                        Name = GunWall.Services.GeoData.CountryName(code),
+                        Count = count,
+                        BarWidth = max > 0 ? Math.Max(2, 300.0 * count / max) : 0,
+                        Dominant = max > 0 && count >= max * 0.6
+                    });
+                TopCountriesList.ItemsSource = rows;
+                if (TopCountriesEmpty != null)
+                    TopCountriesEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             }
 
             if (RecentDecisionsList != null)

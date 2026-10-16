@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Linq;
 
 namespace GunWall.Services;
 
@@ -115,6 +116,70 @@ public sealed class GeoIpService
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _apiInflight = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _apiRetryAt = new();
     private readonly System.Threading.SemaphoreSlim _apiGate = new(6); // cap concurrent requests
+
+    // ---- answered by the background service (0.99.233) ----
+    // A window that uses the service holds no tables of its own: they are ~30 MB of
+    // its heap and half a second at every start, a copy of what the service already
+    // has. It asks the service, in one call per refresh for the addresses it has not
+    // seen (Prefetch), and keeps the answers. An address with no answer is asked
+    // again after a while - the service may still have been loading its tables.
+    private Func<IReadOnlyList<string>, IReadOnlyList<GeoInfo>>? _remote;
+    private readonly Dictionary<string, GeoInfo> _remoteCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> _remoteMissAt = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _remoteGate = new();
+    private const int RemoteCacheMax = 50_000;
+    private const long RemoteMissRetryMs = 30_000;
+
+    /// <summary>Answer lookups through <paramref name="resolver"/> (the service),
+    /// one batch at a time; null goes back to the local tables.</summary>
+    public void UseRemote(Func<IReadOnlyList<string>, IReadOnlyList<GeoInfo>>? resolver)
+    {
+        lock (_remoteGate) { _remote = resolver; _remoteCache.Clear(); _remoteMissAt.Clear(); }
+    }
+
+    public bool RemoteEnabled => _remote != null;
+
+    /// <summary>Asks the service, in one call, for every address here it has no
+    /// answer for yet. No-op without a remote resolver.</summary>
+    public void Prefetch(IEnumerable<string> ips)
+    {
+        var resolver = _remote;
+        if (resolver == null) return;
+        var ask = new List<string>();
+        long now = Environment.TickCount64;
+        lock (_remoteGate)
+        {
+            foreach (var ip in ips)
+            {
+                if (string.IsNullOrEmpty(ip) || IsPrivateOrReserved(ip) || _remoteCache.ContainsKey(ip)) continue;
+                if (_remoteMissAt.TryGetValue(ip, out long at) && now - at < RemoteMissRetryMs) continue;
+                if (!ask.Contains(ip, StringComparer.OrdinalIgnoreCase)) ask.Add(ip);
+                if (ask.Count >= 1000) break;
+            }
+        }
+        if (ask.Count == 0) return;
+        IReadOnlyList<GeoInfo> got;
+        try { got = resolver(ask); }
+        catch { return; }   // the service is away: asked again next time
+        lock (_remoteGate)
+        {
+            if (_remoteCache.Count > RemoteCacheMax) { _remoteCache.Clear(); _remoteMissAt.Clear(); }
+            for (int i = 0; i < ask.Count && i < got.Count; i++)
+            {
+                if (got[i].HasData) { _remoteCache[ask[i]] = got[i]; _remoteMissAt.Remove(ask[i]); }
+                else _remoteMissAt[ask[i]] = now;
+            }
+        }
+    }
+
+    private GeoInfo LookupRemote(string ip)
+    {
+        lock (_remoteGate)
+            if (_remoteCache.TryGetValue(ip, out var hit)) return hit;
+        Prefetch(new[] { ip });   // one address not prefetched (a prompt): asked now
+        lock (_remoteGate)
+            return _remoteCache.TryGetValue(ip, out var hit2) ? hit2 : new GeoInfo("", 0, "");
+    }
 
     public bool ApiEnabled => _apiBase.Length > 0;
     public int ApiCacheCount => _apiCache.Count;
@@ -266,6 +331,7 @@ public sealed class GeoIpService
     {
         if (string.IsNullOrEmpty(ip)) return new GeoInfo("", 0, "");
         if (IsPrivateOrReserved(ip)) return new GeoInfo("", 0, ""); // LAN/loopback/reserved: no public answer
+        if (_remote != null) return LookupRemote(ip);   // the service answers (0.99.233)
         if (_apiBase.Length > 0) return LookupApi(ip);  // self-hosted API mode (async + cached)
         // v6 FIRST, and independently of the v4 table's state. Written the other
         // way round at first, which gated every v6 answer behind `Loaded` - a v4

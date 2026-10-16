@@ -55,6 +55,21 @@ public sealed class PacketLogEntry
 /// quiet machine nothing is red, and on a busy one only the genuinely dominant
 /// application is. A fixed threshold would either shout constantly or never.
 /// </summary>
+/// <summary>One row of the Overview's Top countries (0.99.234).</summary>
+public sealed class TopCountryRow
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public int Count { get; set; }
+    public double BarWidth { get; set; }
+    public bool Dominant { get; set; }
+    public string CountText => Count == 1 ? "1 destination" : $"{Count:N0} destinations";
+
+    public System.Windows.Media.Brush BarBrush =>
+        (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource(
+            Dominant ? "BlockText" : "TextTertiary");
+}
+
 public sealed class TopTalker
 {
     public string Name { get; set; } = "";

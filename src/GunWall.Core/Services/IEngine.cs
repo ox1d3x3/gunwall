@@ -286,5 +286,8 @@ public interface IEngine
     [EngineAccess(Access.Preference)] ByteMeterReading DrainByteMeter();
     /// <summary>Closes one TCP connection (SetTcpEntry needs an administrator).
     /// Closing only ever cuts something off.</summary>
+    /// <summary>Country / network for a batch of addresses, from the service's
+    /// tables (0.99.233): the window keeps none of its own. In order; at most 1000.</summary>
+    [EngineAccess(Access.Read)] List<GeoAnswer> LookupGeo(List<string> addresses);
     [EngineAccess(Access.Tighten)] bool CloseTcpConnection(string localAddress, int localPort, string remoteAddress, int remotePort);
 }

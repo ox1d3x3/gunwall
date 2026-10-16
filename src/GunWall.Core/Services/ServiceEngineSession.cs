@@ -113,6 +113,8 @@ public sealed class ServiceEngineSession : IEngineSession
                 try { fw?.LoadGeoIp(); }
                 catch (Exception ex) { DiagnosticLog.LogException("ServiceGeoIp", ex); }
                 LoadBlocklist();
+                var (before, after) = MemoryTrim.Trim();   // the load's leftovers back to Windows (0.99.233)
+                DiagnosticLog.Log($"Memory: service after startup loads - working set {before:F0} -> {after:F0} MB.");
             });
         }
         catch
@@ -164,6 +166,7 @@ public sealed class ServiceEngineSession : IEngineSession
     }
 
     private long _lastFollowMs;
+    private long _lastTrimMs = Environment.TickCount64;
     private bool? _lastStrict;
     private readonly DateTime _startedUtc = DateTime.UtcNow;
 
@@ -202,6 +205,13 @@ public sealed class ServiceEngineSession : IEngineSession
         long now = Environment.TickCount64;
         if (now - _lastFollowMs < 5000) return;
         _lastFollowMs = now;
+        // Every 30 minutes the service gives back memory it is not using (0.99.233);
+        // the GeoIP tables it reads are paged back in by the lookups that need them.
+        if (now - _lastTrimMs >= 30 * 60_000)
+        {
+            _lastTrimMs = now;
+            _ = Task.Run(() => MemoryTrim.Trim());
+        }
         try
         {
             bool want = _fw.DnsObserveSystemLookups;

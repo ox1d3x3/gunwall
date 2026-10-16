@@ -5082,6 +5082,18 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         return new ByteMeterReading(m.SessionActive, m.EventsTotal, m.ParseFailures, m.LastError, bytes);
     }
 
+    public List<GeoAnswer> LookupGeo(List<string> addresses)
+    {
+        var list = new List<GeoAnswer>(Math.Min(addresses?.Count ?? 0, 1000));
+        if (addresses == null) return list;
+        foreach (var ip in addresses.Take(1000))
+        {
+            var g = _geo.Lookup(ip ?? "");
+            list.Add(new GeoAnswer(g.Country, g.Asn, g.Owner));
+        }
+        return list;
+    }
+
     public bool CloseTcpConnection(string localAddress, int localPort, string remoteAddress, int remotePort) =>
         ConnectionService.CloseTcpConnection(localAddress, localPort, remoteAddress, remotePort);
 

@@ -710,10 +710,11 @@
                                 <TextBlock Text="Up" Style="{StaticResource Muted}" Margin="6,0,0,0" />
                             </StackPanel>
                         </StackPanel>
-                        <!-- 230 for the plot area, which puts the card at roughly the
-                             310 the design draws. Fixed rather than star-sized: see the
-                             row definitions above. -->
-                        <Grid Grid.Row="1" Height="230">
+                        <!-- 140 for the plot area (0.99.234, was 230 - Mahabub: the
+                             meter pushed Top talkers and Recent decisions below the
+                             window at its usual size). Fixed rather than star-sized:
+                             see the row definitions above. -->
+                        <Grid Grid.Row="1" Height="140">
                             <Canvas x:Name="GraphCanvas" ClipToBounds="True" Background="Transparent"
                                     SizeChanged="GraphCanvas_SizeChanged"
                                     MouseMove="GraphCanvas_MouseMove" MouseLeave="GraphCanvas_MouseLeave" />
@@ -824,6 +825,8 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="24" />
                         <ColumnDefinition Width="1.35*" />
                     </Grid.ColumnDefinitions>
 
@@ -862,7 +865,50 @@
                                    Style="{StaticResource Muted}" Visibility="Collapsed" />
                     </StackPanel>
 
+                    <!-- Top countries (0.99.234, Mahabub): where this session's
+                         destinations are, the Traffic page's table in brief. Clicking
+                         the heading opens Traffic. -->
                     <StackPanel Grid.Column="2">
+                        <TextBlock Text="TOP COUNTRIES" Style="{StaticResource SectionLabel}"
+                                   Margin="0,0,0,14" Cursor="Hand" Background="Transparent"
+                                   MouseLeftButtonUp="Stat_Click" Tag="Traffic"
+                                   ToolTip="Destinations this session by country - open Traffic for the map" />
+                        <ItemsControl x:Name="TopCountriesList" Focusable="False" FocusVisualStyle="{x:Null}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,15">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Image Grid.Row="0" Grid.Column="0" Width="18" Height="12" Margin="0,0,8,0"
+                                               VerticalAlignment="Center" Stretch="Uniform" SnapsToDevicePixels="True"
+                                               Source="{Binding Code, Converter={StaticResource CountryFlag}}" />
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Name}" FontSize="12.5"
+                                                   Foreground="{DynamicResource TextPrimary}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding CountText}"
+                                                   Style="{StaticResource DataCell}" Margin="8,0,0,0" />
+                                        <Grid Grid.Row="1" Grid.ColumnSpan="3" Height="3" Margin="0,7,0,0">
+                                            <Rectangle Fill="{DynamicResource BorderBrush}" />
+                                            <Rectangle Fill="{Binding BarBrush}"
+                                                       HorizontalAlignment="Left"
+                                                       Width="{Binding BarWidth}" />
+                                        </Grid>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="TopCountriesEmpty" Text="No countries yet - GeoIP data places them."
+                                   Style="{StaticResource Muted}" TextWrapping="Wrap" Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="4">
                         <DockPanel Margin="0,0,0,14" LastChildFill="False">
                             <TextBlock Text="RECENT DECISIONS" Style="{StaticResource SectionLabel}"
                                        DockPanel.Dock="Left" />

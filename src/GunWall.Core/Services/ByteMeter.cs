@@ -98,3 +98,6 @@ public sealed class RemoteByteMeter : IByteMeter
         LastError = r.LastError ?? "";
     }
 }
+
+/// <summary>One address's GeoIP answer, as it crosses the engine pipe (0.99.233).</summary>
+public sealed record GeoAnswer(string Country, int Asn, string Owner);

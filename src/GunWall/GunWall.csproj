@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>GunWall</AssemblyName>
     <RootNamespace>GunWall</RootNamespace>
-    <Version>0.99.232</Version>
+    <Version>0.99.234</Version>
     <Company>Ox1d3x3</Company>
     <Authors>Ox1d3x3</Authors>
     <Product>GunWall Firewall</Product>
@@ -25,6 +25,13 @@
     <SelfContained>false</SelfContained>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!-- Memory (0.99.233): the collector compacts the long-lived heap rather than
+       letting it grow fragmented (0 = off, 9 = most aggressive; 5 is the documented
+       middle). Applies to the window and the service - one executable. -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+  </ItemGroup>
 
   <!-- No external NuGet packages by design: keeps the first build dependency-free. -->
 
