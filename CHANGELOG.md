@@ -15,6 +15,17 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.235] — 2026-10-17
+
+### Fixed
+- **Network shares and other local traffic stopped working after a restart.** The
+  allow rule for **System** - the Windows kernel, which makes SMB file-share and
+  NetBIOS connections on your behalf - was skipped every time the background
+  service restored the rules at boot, because System has no program file. Its
+  traffic then fell to the default block until protection was switched off and on
+  again. The rule is now restored with the others, and any rule that cannot be
+  restored is named in the log.
+
 ## [0.99.234] — 2026-10-16
 
 ### Changed

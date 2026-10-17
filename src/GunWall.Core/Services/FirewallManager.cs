@@ -1965,6 +1965,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                 _data.SelfFilterIds = _engine.PermitApplication(Environment.ProcessPath ?? "");
                 made += _data.SelfFilterIds.Count;
 
+                var skippedNoFile = new List<string>();
                 // Blocked rules too. They were skipped, so after a reboot a
                 // Blocked rule's ids named filters that no longer existed and
                 // nothing would ever recreate. That is the permanently "missing"
@@ -1974,9 +1975,19 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                     try
                     {
                         // A missing file cannot be given a filter (Windows needs it to
-                        // exist), so skip quietly instead of logging an error: a Store
+                        // exist), so skip it instead of logging an error: a Store
                         // update leaves exactly this until PruneDeadRules follows it.
-                        if (!System.IO.File.Exists(rule.ExecutablePath)) { rule.FilterIds = new List<ulong>(); continue; }
+                        // IsApplicablePath, not File.Exists: "System" has no file, and
+                        // File.Exists dropped its allow at every boot - everything the
+                        // kernel sends for you (SMB shares, NetBIOS, ping replies) was
+                        // then refused by the block-all until protection was switched
+                        // OFF and ON, whose path never had the check (0.99.235).
+                        if (!IsApplicablePath(rule.ExecutablePath))
+                        {
+                            rule.FilterIds = new List<ulong>();
+                            skippedNoFile.Add(rule.DisplayName);
+                            continue;
+                        }
                         rule.FilterIds = rule.Status == AppStatus.Allowed
                             ? _engine.PermitApplication(rule.ExecutablePath)
                             : InstallBlock(rule);
@@ -2020,6 +2031,9 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                 DiagnosticLog.Log($"Filtering re-applied: {made} filter(s) installed, "
                                 + $"{superseded} superseded filter(s) removed"
                                 + (failed > 0 ? $", {failed} would not delete" : "") + ".");
+                if (skippedNoFile.Count > 0)
+                    DiagnosticLog.Log($"Filtering re-applied: {skippedNoFile.Count} rule(s) not installed - program file not found: "
+                                    + string.Join(", ", skippedNoFile.Take(10)) + (skippedNoFile.Count > 10 ? ", ..." : "") + ".");
             }
         }
         catch (Exception ex) { DiagnosticLog.LogException("RepairFiltering", ex); }

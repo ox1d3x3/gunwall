@@ -213,17 +213,18 @@ the first-run experience.*
 
 ### Kernel hardening
 
-- ☐ **Privileged service** — enforcement in a Windows service, with the window as a
-  client. It is what makes protection from boot (before anyone signs in) and tamper
-  *prevention* possible, and lets the window close with no question about what
-  keeps running. The main architectural item before 1.0; designed before built.
+- ✅ **Privileged service** *(0.99.199–0.99.232)* — a Windows service runs the
+  firewall from boot, before anyone signs in; the window is a client that opens
+  without administrator rights. Only the installed GunWall at the console may change
+  anything, and **Protect settings** puts loosening changes behind an administrator
+  unlock.
 *Touches the WFP filter set. Every item here needs hardware verification and a removal path before it ships.*
 - ◐ **Kernel verdict visibility** — ✅ the packet log records what the kernel did, not only what GunWall would have decided, and names a drop caused by other software on the machine. Remaining: attributing that drop to the specific filter responsible.
 - ◐ **Expanded WFP layers** — **16 layers wired and verified on hardware**: outbound connect, inbound accept, listen, **resource assignment** (bind, TCP *and* UDP), inbound/outbound transport, outbound ICMP error, and **IP forwarding** — each v4 and v6. Shipped as opt-in, removable rules through the fault-tolerant filter path.
   - ✅ **Kernel layer self-test** — probes every layer *and condition* the kernel accepts, using a permit filter at weight 0 that is non-persistent and deleted immediately. This surfaced three incorrect WFP identifiers that had been failing silently, including one that had disabled IPv4 stealth-mode ICMP suppression entirely.
   - Remaining: ALE_CONNECT_REDIRECT and the matching *_DISCARD* layers (v4/v6).
 - ✅ **Quick rule toggles** — *Windows Update* (Delivery Optimization 7680 TCP/UDP, WSUS 8530/8531), *Teredo* (UDP 3544) and *6to4 / ISATAP* (IP protocol 41) as one-tap entries in the system-rule library. Adding 6to4 required the engine to express raw IP protocol numbers: it previously mapped only TCP and UDP and dropped anything else, which would have turned protocol 41 into a permit for every protocol.
-- ◐ **Filter tamper resistance** — ✅ detection and self-healing have shipped. Remaining: true prevention via an access-control list, which needs the privilege split first (an elevated-user process cannot lock out other administrators without locking out itself). *Carries a lockout risk; needs a guaranteed recovery path before shipping.* The sublayer-delete-by-key removal path is now proven, which is a prerequisite.
+- ◐ **Filter tamper resistance** — ✅ detection and self-healing have shipped. Remaining: true prevention via an access-control list, now possible with the service in place. *Carries a lockout risk; needs a guaranteed recovery path before shipping.* The sublayer-delete-by-key removal path is now proven, which is a prerequisite.
 
 ### Advanced and dangerous
 *Opt-in, heavily warned, and each one needs a guaranteed recovery path. These are last for a reason, not for a release date.*

@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.234 — public beta
+# GunWall 0.99.235 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.234-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.235-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -76,6 +76,11 @@ afterwards cannot read it and needs the key entered again.
   their rule; an allow carries over only to the same signed publisher.
 - Traffic page numbers roll; small countries such as Singapore appear on the map.
 - Popups, right-click menus and hover tips follow the UI size.
+- The Overview is more compact and shows **Top countries** beside Top talkers.
+- Much less memory: about 60 MB for GunWall and its service while it sits in the
+  tray. The window no longer keeps its own copy of the country database, loads the
+  device-manufacturer database only when you scan, and returns unused memory to
+  Windows while hidden.
 
 **Updates and upkeep**
 - Update checking — off by default, Daily, Weekly or Monthly — with optional
@@ -127,7 +132,7 @@ afterwards cannot read it and needs the key entered again.
 - The Location column says why an address has no country.
 
 **Performance**
-- Idle memory about 150–190 MB (from about 350 MB) and idle CPU about 0.2%.
+- Idle CPU about 0.2%; about 60 MB in the tray, window and service together.
 - No redrawing while the window is hidden or behind other windows.
 
 **Removed**
