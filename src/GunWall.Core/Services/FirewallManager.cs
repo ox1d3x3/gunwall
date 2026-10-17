@@ -1981,7 +1981,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                         // File.Exists dropped its allow at every boot - everything the
                         // kernel sends for you (SMB shares, NetBIOS, ping replies) was
                         // then refused by the block-all until protection was switched
-                        // OFF and ON, whose path never had the check (0.99.235).
+                        // OFF and ON, whose path never had the check (0.99.234.1).
                         if (!IsApplicablePath(rule.ExecutablePath))
                         {
                             rule.FilterIds = new List<ulong>();

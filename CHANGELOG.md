@@ -15,7 +15,7 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
-## [0.99.235] — 2026-10-17
+## [0.99.234.1] — 2026-10-17
 
 ### Fixed
 - **Network shares and other local traffic stopped working after a restart.** The
