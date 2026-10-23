@@ -133,6 +133,10 @@
                                            TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource TextSecondary}" />
                             </Grid>
+                            <!-- Shared runtime (0.99.234.2): what blocking this program also blocks. -->
+                            <TextBlock x:Name="SharedNote" Visibility="Collapsed" Margin="0,10,0,0"
+                                       FontSize="11.5" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource WarnText}" />
                         </StackPanel>
                     </Grid>
 

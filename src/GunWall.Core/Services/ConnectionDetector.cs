@@ -27,6 +27,9 @@ public interface IDetectionPolicy
                           string protocol, bool outbound, out bool blocked);
     void LogPacketToFile(DateTime time, bool blocked, string app, string protocol,
                          string direction, string remote, string exePath);
+    /// <summary>The display name of an allowed rule whose program file is named
+    /// <paramref name="fileName"/> (any folder), or null (0.99.234.2).</summary>
+    string? AllowedAppNamed(string fileName);
 }
 
 /// <summary>An undecided application to ask the user about.</summary>
@@ -53,6 +56,9 @@ public sealed class DetectionResult
     /// added (event path), or the poll reached its prompting pass. Same points at
     /// which the window called ShowNextAlert before this moved.</summary>
     public bool ShowQueued { get; set; }
+    /// <summary>Things to tell the user (0.99.234.2): an allowed app that cannot
+    /// connect because Microsoft Edge WebView2, which it connects through, is blocked.</summary>
+    public List<UpkeepNotice> Notices { get; } = new();
 }
 
 /// <summary>
@@ -75,12 +81,46 @@ public sealed class ConnectionDetector
     private readonly string? _system32;
     private readonly HashSet<string> _prompted = new(StringComparer.OrdinalIgnoreCase);
     private bool _knownSeeded;
+    private readonly Func<IReadOnlyList<string>> _webViewHosts;
+    /// <summary>Hosts already told about this session: once each, not per packet.</summary>
+    private readonly HashSet<string> _webViewWarned = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>When the WebView2 hosts were last read (DateTime ticks). Reading them
+    /// opens every WebView2 process, so a burst of drops reads them once.</summary>
+    private long? _webViewCheckedTicks;
+    public static readonly TimeSpan WebViewCheckEvery = TimeSpan.FromSeconds(10);
 
-    public ConnectionDetector(IDetectionPolicy firewall, string? selfPath, string? system32Dir = null)
+    /// <param name="webViewHosts">The programs running WebView2 now (file names);
+    /// SharedRuntimes.WebView2Hosts unless a bench passes its own.</param>
+    public ConnectionDetector(IDetectionPolicy firewall, string? selfPath, string? system32Dir = null,
+                              Func<IReadOnlyList<string>>? webViewHosts = null)
     {
         _fw = firewall;
         _self = selfPath ?? "";
         _system32 = system32Dir;
+        _webViewHosts = webViewHosts ?? SharedRuntimes.WebView2Hosts;
+    }
+
+    /// <summary>A blocked WebView2 connection: names each ALLOWED app it was working
+    /// for, once per session. The user allowed that app and sees it fail; the block
+    /// that causes it is on a program they may not connect with the app at all.</summary>
+    private void WarnBlockedWebView(DetectionResult r, DateTime now)
+    {
+        if (_webViewCheckedTicks is long last && now.Ticks - last < WebViewCheckEvery.Ticks) return;
+        _webViewCheckedTicks = now.Ticks;
+        IReadOnlyList<string> hosts;
+        try { hosts = _webViewHosts(); } catch { return; }
+        foreach (var host in hosts)
+        {
+            string? name = _fw.AllowedAppNamed(host);
+            if (name == null || !_webViewWarned.Add(host)) continue;
+            r.Notices.Add(new UpkeepNotice("warn",
+                $"{name} cannot connect: Microsoft Edge WebView2 is blocked",
+                $"{name} is allowed, but it connects through Microsoft Edge WebView2 (msedgewebview2.exe), "
+                + "which is blocked. Every app built on WebView2 shares that one program, so "
+                + $"{name} stays offline until it is allowed: Applications, msedgewebview2, Allow.",
+                "rules"));
+            r.Activity.Add(new NetActivityEvent { ProcessName = name, Detail = "cannot connect - Microsoft Edge WebView2 is blocked" });
+        }
     }
 
     /// <summary>Either a popup or, for a Windows core process with the setting on,
@@ -153,6 +193,10 @@ public sealed class ConnectionDetector
         string? entReason = _fw.ApplyEntityBlocks(appPath, remote);
         if (entReason != null)
             r.Activity.Add(new NetActivityEvent { ProcessName = appName, Detail = $"blocked {remote} ({entReason})" });
+
+        // WebView2 blocked while an allowed app depends on it (0.99.234.2).
+        if (dropped && SharedRuntimes.IsWebView2(appPath) && _fw.IsBlocked(appPath))
+            WarnBlockedWebView(r, now);
 
         // Approval: prompt once for an undecided app, and only when protection is
         // on - monitoring mode observes silently.

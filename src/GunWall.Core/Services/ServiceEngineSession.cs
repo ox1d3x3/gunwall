@@ -286,7 +286,8 @@ public sealed class ServiceEngineSession : IEngineSession
             // Core Windows processes were already allowed here (OnDetected); the
             // window must not allow them a second time.
             foreach (var b in _batch) b.AutoAllow.Clear();
-            bool hasPrompt = _batch.Any(b => b.Prompts.Count > 0);
+            // A notice is said once per session, so it must not be the part dropped.
+            bool hasPrompt = _batch.Any(b => b.Prompts.Count > 0 || b.Notices.Count > 0);
             server.Push(new Remote.EngineMessage { Kind = "detected", Detected = _batch.ToList() }, droppable: !hasPrompt);
             _batch.Clear();
             _lastFlushMs = now;
@@ -299,7 +300,8 @@ public sealed class ServiceEngineSession : IEngineSession
         if (_fw == null) return;
         // A connected window shows it as it happens: packet log, activity, prompts.
         if (_server != null && _server.SessionCount > 0
-            && (r.Packet != null || r.Activity.Count > 0 || r.Prompts.Count > 0 || r.FirstSeen.Count > 0))
+            && (r.Packet != null || r.Activity.Count > 0 || r.Prompts.Count > 0 || r.FirstSeen.Count > 0
+                || r.Notices.Count > 0))
         {
             if (_batch.Count < 500) _batch.Add(r);
         }
@@ -308,6 +310,8 @@ public sealed class ServiceEngineSession : IEngineSession
             _fw.AllowApp(q.ExePath, q.ProcessName);
             DiagnosticLog.Log($"Allowed automatically: {q.ProcessName} (core Windows process, seen in the {source}, by the service).");
         }
+        foreach (var n in r.Notices)
+            DiagnosticLog.Log($"Service: {n.Title} - {n.Body}");
         if (r.Prompts.Count == 0) return;
         // A connected window was just sent them; the queue is for when none is.
         if (_server != null && _server.SessionCount > 0) return;

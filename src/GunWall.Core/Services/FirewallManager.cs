@@ -838,6 +838,21 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase) &&
             r.Status == AppStatus.Allowed);
 
+    /// <summary>The display name of an allowed rule for a program file named
+    /// <paramref name="fileName"/>, in any folder, or null (0.99.234.2). WebView2
+    /// names its host by file name only ("WhatsApp.Root.exe").</summary>
+    public string? AllowedAppNamed(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName)) return null;
+        lock (_dataLock)
+        {
+            var r = _data.Rules.FirstOrDefault(x => x.Status == AppStatus.Allowed
+                && string.Equals(System.IO.Path.GetFileName(x.ExecutablePath), fileName, StringComparison.OrdinalIgnoreCase));
+            return r == null ? null : (string.IsNullOrWhiteSpace(r.DisplayName)
+                ? System.IO.Path.GetFileNameWithoutExtension(r.ExecutablePath) : r.DisplayName);
+        }
+    }
+
     /// <summary>
     /// The user-facing status of an app under the current mode:
     /// explicit block always wins; in strict mode anything not allowed is blocked.

@@ -508,7 +508,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.234.1 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.234.2 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1053,6 +1053,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Services.DiagnosticLog.Log($"Allowed automatically: {q.ProcessName} (core Windows process, seen in the {source}).");
         }
         if (r.AutoAllow.Count > 0) RebuildAppsList();
+        // An allowed app offline because WebView2 is blocked (0.99.234.2).
+        foreach (var n in r.Notices)
+        {
+            Notify(n.Level, n.Title, n.Body, n.Category);
+            Services.DiagnosticLog.Log($"Notice: {n.Title} (seen in the {source}).");
+        }
         foreach (var q in r.Prompts)
         {
             _alertQueue.Enqueue(new AlertWindow.AlertInfo(
@@ -5601,6 +5607,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         string path = app.ExecutablePath;
         if (_appActionsPending.Contains(path)) return;     // a second click while the first applies
         bool block = _firewall.EffectiveStatus(path) != AppStatus.Blocked;
+        if (block && SharedRuntimes.IsWebView2(path))
+        {
+            var ask = ThemedMessageBox.Show(
+                SharedRuntimes.WebView2Note + "\n\nBlock Microsoft Edge WebView2 anyway?",
+                "Caution: shared by many apps", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (ask != MessageBoxResult.Yes) return;
+        }
         if (block && FirewallManager.IsCriticalProcess(path))
         {
             var ask = ThemedMessageBox.Show(

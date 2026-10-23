@@ -15,6 +15,24 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.234.2] — 2026-10-23
+
+### Fixed
+- **An allowed app could stay offline with no explanation when Microsoft Edge
+  WebView2 was blocked.** WhatsApp (since 2025), new Outlook, Teams, Widgets and
+  other apps are built on WebView2: their connections are made by
+  `msedgewebview2.exe`, not by the app itself, and Windows identifies a connection
+  only by the program that made it. One block on WebView2 therefore cuts off every
+  one of those apps, even ones shown as Allowed - WhatsApp showed "reconnecting"
+  whenever GunWall was on. GunWall now notices this: when a blocked WebView2
+  connection is working for an app you allowed, the Alerts page names that app,
+  once per session, and says how to fix it.
+
+### Changed
+- **Blocking WebView2 says what else it blocks.** The connection prompt, the review
+  window and **Block** on the Applications page now explain that WebView2 is shared
+  by many apps; **Block** asks for confirmation first.
+
 ## [0.99.234.1] — 2026-10-17
 
 ### Fixed

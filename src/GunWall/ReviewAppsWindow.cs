@@ -133,6 +133,16 @@ public sealed class ReviewAppsWindow : Window
             TextTrimming = TextTrimming.CharacterEllipsis,
             ToolTip = info.ExePath,
         });
+        // Shared runtime (0.99.234.2): blocking it also blocks the apps built on it.
+        if (Services.SharedRuntimes.IsWebView2(info.ExePath))
+            text.Children.Add(new TextBlock
+            {
+                Text = Services.SharedRuntimes.WebView2Note,
+                FontSize = 11,
+                Margin = new Thickness(0, 3, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Res("WarnText", Brushes.DarkGoldenrod),
+            });
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
 

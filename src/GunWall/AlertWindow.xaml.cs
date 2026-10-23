@@ -69,6 +69,11 @@ public partial class AlertWindow : Window
         SignatureText.Text = "Checking...";
         SignatureText.ToolTip = "Checking the digital signature...";
         HostText.Text = "Resolving...";
+        if (Services.SharedRuntimes.IsWebView2(info.ExePath))
+        {
+            SharedNote.Text = Services.SharedRuntimes.WebView2Note;
+            SharedNote.Visibility = Visibility.Visible;
+        }
 
         // Country flag beside the destination. Deliberately best-effort: the
         // lookup is local and instant when the database is loaded, empty for a
