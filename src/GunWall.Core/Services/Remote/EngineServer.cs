@@ -171,6 +171,16 @@ public sealed class EngineServer : IDisposable
         return result;
     }
 
+    /// <summary>True for a call to an async member (a download): its reply may take
+    /// many seconds, so the session must not wait for it before reading the next call
+    /// (0.99.234.3). The 24-hour GeoIP refresh took 13.6 s in the service, and the
+    /// window's per-second country lookups queued behind it on the same pipe - its
+    /// snapshot stopped for 13 s.</summary>
+    public static bool IsLongCall(EngineMessage call) =>
+        call.Kind == "call" && call.Member != null
+        && EngineCatalog.Instance.TryGet(call.Member, out var e) && e.Method != null
+        && typeof(Task).IsAssignableFrom(e.Method.ReturnType);
+
     /// <summary>One call, checked and run. Public for the bench.</summary>
     public EngineMessage Handle(EngineMessage call, EngineCaller caller)
     {
@@ -321,6 +331,9 @@ public sealed class EngineServer : IDisposable
         private readonly BlockingCollection<EngineMessage> _out = new();
         private int _closed;
         private volatile bool _greeted;
+        /// <summary>Async calls of this session running beside the read loop.</summary>
+        private int _longCalls;
+        private const int MaxLongCalls = 4;
         /// <summary>The hello reply is queued: pushes may follow it (0.99.226).</summary>
         public bool Open => _open;
         private volatile bool _open;
@@ -401,6 +414,19 @@ public sealed class EngineServer : IDisposable
                     var m = EngineWire.Read(_pipe);
                     if (m == null) break;
                     if (m.Kind != "call") break;   // anything else is a confused or hostile client
+                    // A download runs beside the session's other calls (0.99.234.3); a
+                    // few at most, so a client cannot fan out the thread pool.
+                    if (IsLongCall(m) && Interlocked.Increment(ref _longCalls) <= MaxLongCalls)
+                    {
+                        var call = m;
+                        _ = Task.Run(() =>
+                        {
+                            try { Queue(_server.Handle(call, _caller)); }
+                            finally { Interlocked.Decrement(ref _longCalls); }
+                        });
+                        continue;
+                    }
+                    if (IsLongCall(m)) Interlocked.Decrement(ref _longCalls);
                     Queue(_server.Handle(m, _caller));
                 }
                 Close();

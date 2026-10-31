@@ -15,6 +15,21 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.234.3] — 2026-10-29
+
+### Fixed
+- **Store apps asked for permission again after updating.** When a Microsoft Store
+  app updates, it moves to a new folder, and GunWall moves your rule with it. Since
+  the background service took over (0.99.224) it could no longer see apps installed
+  for your Windows account - only those installed for every user - so WhatsApp,
+  Xbox Game Bar and the Microsoft Store lost their rules at the next restart and
+  asked again. The service now reads every user's list of installed apps, and a new
+  version of a Store app that connects before the next restart keeps the rule
+  straight away.
+- **The window could stop updating for about 13 seconds once a day,** while the
+  background service downloaded the daily GeoIP update. The window's other requests
+  waited behind the download. Downloads now run alongside them.
+
 ## [0.99.234.2] — 2026-10-23
 
 ### Fixed

@@ -920,22 +920,31 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// </summary>
     public bool AdoptUpdatedVersion(string exePath)
     {
-        if (string.IsNullOrEmpty(exePath) || VersionedPaths.Split(exePath) == null) return false;
+        if (string.IsNullOrEmpty(exePath)) return false;
+        // A Store app's update is a new package folder (0.99.234.3): matched by package
+        // identity, which Windows' installer has already verified.
+        bool store = StorePackagePaths.Split(exePath) != null;
+        if (!store && VersionedPaths.Split(exePath) == null) return false;
         if (IsOwnExecutable(exePath)) return false;
         FirewallRule? prior;
         lock (_dataLock)
         {
             if (_data.Rules.Any(r => string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase)))
                 return false;
-            prior = _data.Rules
-                .Where(r => VersionedPaths.IsNewerVersionOf(exePath, r.ExecutablePath))
-                .OrderByDescending(r => VersionedPaths.Split(r.ExecutablePath)!.Version)
-                .FirstOrDefault();
+            prior = store
+                ? _data.Rules
+                    .Where(r => StorePackagePaths.IsNewerVersionOf(exePath, r.ExecutablePath))
+                    .OrderByDescending(r => StorePackagePaths.Split(r.ExecutablePath)!.Version)
+                    .FirstOrDefault()
+                : _data.Rules
+                    .Where(r => VersionedPaths.IsNewerVersionOf(exePath, r.ExecutablePath))
+                    .OrderByDescending(r => VersionedPaths.Split(r.ExecutablePath)!.Version)
+                    .FirstOrDefault();
         }
         if (prior == null) return false;
 
         var newSig = SignatureService.Verify(exePath);
-        if (prior.Status == AppStatus.Allowed
+        if (!store && prior.Status == AppStatus.Allowed
             && !VersionedPaths.MayInheritAllow(prior.Signer, newSig, SignatureService.Verify(prior.ExecutablePath)))
         {
             DiagnosticLog.Log($"Updated version of {prior.DisplayName} not given the old allow rule: "
@@ -969,10 +978,11 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             if (KnownSet.Add(exePath)) _data.KnownApps.Add(exePath);
             SaveStore();
         }
-        var from = VersionedPaths.Split(prior.ExecutablePath)!; var to = VersionedPaths.Split(exePath)!;
-        DiagnosticLog.Log($"{prior.DisplayName} updated ({from.Version} -> {to.Version}): the "
+        Version fromV = store ? StorePackagePaths.Split(prior.ExecutablePath)!.Version : VersionedPaths.Split(prior.ExecutablePath)!.Version;
+        Version toV = store ? StorePackagePaths.Split(exePath)!.Version : VersionedPaths.Split(exePath)!.Version;
+        DiagnosticLog.Log($"{prior.DisplayName} updated ({fromV} -> {toV}{(store ? ", Store app" : "")}): the "
                         + $"{(rule.Status == AppStatus.Allowed ? "allow" : "block")} rule followed it, no prompt.");
-        EventLog($"{prior.DisplayName} updated to {to.Version}: kept your {(rule.Status == AppStatus.Allowed ? "allow" : "block")} rule");
+        EventLog($"{prior.DisplayName} updated to {toV}: kept your {(rule.Status == AppStatus.Allowed ? "allow" : "block")} rule");
         return true;
     }
 
