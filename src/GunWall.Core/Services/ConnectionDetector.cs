@@ -21,6 +21,9 @@ public interface IDetectionPolicy
     /// version-named folder (0.99.227): gives it the same rule and returns true, so
     /// it is not asked about again. See FirewallManager.AdoptUpdatedVersion.</summary>
     bool AdoptUpdatedVersion(string exePath);
+    /// <summary>True when <paramref name="exePath"/> is the same file as a blocked
+    /// program in another folder and was blocked too (0.99.235).</summary>
+    bool AdoptIdenticalBlocked(string exePath);
     void SeedKnownApps(IEnumerable<string> exePaths);
     string? ApplyEntityBlocks(string appPath, string remoteIp);
     string ExplainVerdict(string exePath, string remoteAddress, int remotePort,
@@ -130,6 +133,11 @@ public sealed class ConnectionDetector
         if (_fw.AdoptUpdatedVersion(q.ExePath))
         {
             r.Activity.Add(new NetActivityEvent { ProcessName = q.ProcessName, Detail = "updated - kept the rule for its previous version" });
+            return;
+        }
+        if (_fw.AdoptIdenticalBlocked(q.ExePath))
+        {
+            r.Activity.Add(new NetActivityEvent { ProcessName = q.ProcessName, Detail = "same file in a new folder - kept your block rule" });
             return;
         }
         if (_fw.AutoAllowCoreWindows && CoreWindowsProcesses.IsCore(q.ExePath, _system32))

@@ -114,7 +114,7 @@ public sealed class ServiceEngineSession : IEngineSession
                 catch (Exception ex) { DiagnosticLog.LogException("ServiceGeoIp", ex); }
                 LoadBlocklist();
                 var (before, after) = MemoryTrim.Trim();   // the load's leftovers back to Windows (0.99.233)
-                DiagnosticLog.Log($"Memory: service after startup loads - working set {before:F0} -> {after:F0} MB.");
+                DiagnosticLog.Log($"Memory: service after startup loads - {before:F0} MB of working set given back to Windows; what is used is read back in.");
             });
         }
         catch
@@ -167,6 +167,11 @@ public sealed class ServiceEngineSession : IEngineSession
 
     private long _lastFollowMs;
     private long _lastTrimMs = Environment.TickCount64;
+    private long _lastPruneMs = Environment.TickCount64;
+    /// <summary>Rules for programs that are gone are cleaned up once a day, not only
+    /// at a restart (0.99.235): installers run from Downloads left rules pointing at
+    /// deleted files until the next boot.</summary>
+    public static readonly TimeSpan PruneEvery = TimeSpan.FromHours(24);
     private bool? _lastStrict;
     private readonly DateTime _startedUtc = DateTime.UtcNow;
 
@@ -187,7 +192,7 @@ public sealed class ServiceEngineSession : IEngineSession
             : $"Service DNS watching: {(_dnsObserver.SessionActive ? "active" : "NOT active")}, {_dnsObserver.EventsSeen:N0} events, "
               + $"{_dnsObserver.AnswersRecorded:N0} answers, {_dnsObserver.ParseFailures} parse failures, lastError=[{_dnsObserver.LastError}].");
         sb.AppendLine($"Service DNS blocklist: {_blocklist?.BlockedDomainCount ?? 0:N0} name(s) enforced by address; "
-                    + $"custom list {_fw?.CustomDomainCount ?? 0:N0} domain(s).");
+                    + $"custom list {_fw?.CustomDomainCount ?? 0:N0} domain(s), {_fw?.CustomDomainsEnforced() ?? 0:N0} of them in the hosts file (blocked).");
         return sb.ToString().TrimEnd();
     }
     private bool _lastEventsWant;
@@ -210,7 +215,18 @@ public sealed class ServiceEngineSession : IEngineSession
         if (now - _lastTrimMs >= 30 * 60_000)
         {
             _lastTrimMs = now;
-            _ = Task.Run(() => MemoryTrim.Trim());
+            // Only when it has grown (0.99.235): a routine trim took back pages the
+            // next lookups needed.
+            _ = Task.Run(() =>
+            {
+                if (MemoryTrim.WorthTrimming(MemoryTrim.WorkingSetMb(), MemoryTrim.ServiceRepeatAboveMb)) MemoryTrim.Trim();
+            });
+        }
+        if (now - _lastPruneMs >= (long)PruneEvery.TotalMilliseconds)
+        {
+            _lastPruneMs = now;
+            try { if (_fw.PruneDeadRules() > 0) _server?.PushState(); }
+            catch (Exception ex) { DiagnosticLog.LogException("DailyPrune", ex); }
         }
         try
         {

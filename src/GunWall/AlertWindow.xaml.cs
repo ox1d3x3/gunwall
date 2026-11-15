@@ -39,12 +39,33 @@ public partial class AlertWindow : Window
 
     private readonly GunWall.Services.GeoIpService? _firewallGeo;
 
+    private readonly Action? _onAllowOnce;
+    private bool _once;                      // "Allow until restart" was chosen
+    private DateTime _shownUtc = DateTime.UtcNow;
+
+    /// <summary>A prompt that has just appeared ignores the keyboard for this long:
+    /// it takes the focus when it opens, and a shortcut already on its way to another
+    /// program must not answer a question nobody has read yet.</summary>
+    public static readonly TimeSpan KeyGuard = TimeSpan.FromMilliseconds(700);
+
+    /// <param name="onAllowOnce">Allow until the next restart; the link is hidden without it.</param>
+    /// <param name="waiting">How many more applications are queued behind this one.</param>
     public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null, bool strictMode = false,
                        int timeoutSeconds = 0, bool defaultAllow = false,
-                       GunWall.Services.GeoIpService? geo = null)
+                       GunWall.Services.GeoIpService? geo = null,
+                       Action? onAllowOnce = null, int waiting = 0)
     {
         _firewallGeo = geo;
+        _onAllowOnce = onAllowOnce;
         InitializeComponent();
+        // "Allow until restart" only where an allow is a rule at all (Zero Trust).
+        OnceButton.Visibility = onAllowOnce != null && strictMode ? Visibility.Visible : Visibility.Collapsed;
+        if (waiting > 0)
+        {
+            QueueText.Text = QueueLabel(waiting);
+            QueueText.Visibility = Visibility.Visible;
+        }
+        PreviewKeyDown += OnPreviewKeyDown;
         UiZoom.Apply(this);   // popups follow the UI size (0.99.227)
         _info = info;
         _onBlock = onBlock;
@@ -122,6 +143,8 @@ public partial class AlertWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         TryEnableDarkTitleBar();
+        _shownUtc = DateTime.UtcNow;
+        PlayEntrance();
         StartCountdown();
 
         // Enrich asynchronously so the popup appears instantly.
@@ -203,7 +226,7 @@ public partial class AlertWindow : Window
             return;
         }
 
-        try { _onAllow?.Invoke(); }
+        try { (_once && _onAllowOnce != null ? _onAllowOnce : _onAllow)?.Invoke(); }
         catch (Exception ex)
         {
             // LOGGED, not only shown. This dialog appeared on a machine whose
@@ -235,6 +258,68 @@ public partial class AlertWindow : Window
                  + "find the entry with the old path, and remove it - then allow the "
                  + "current one.";
         return $"Could not {verb}: {ex.Message}";
+    }
+
+    /// <summary>"Allow until restart" (0.99.235): the same path as Allow, with the
+    /// rule marked to end at the next restart.</summary>
+    private void Once_Click(object sender, RoutedEventArgs e)
+    {
+        if (_decided) return;
+        _once = true;
+        Allow_Click(sender, e);
+    }
+
+    /// <summary>"2 more waiting" under the buttons.</summary>
+    public static string QueueLabel(int waiting) =>
+        waiting <= 0 ? "" : waiting == 1 ? "1 more waiting" : $"{waiting} more waiting";
+
+    /// <summary>Which answer a key press means, or "" (0.99.235). Alt is required: the
+    /// prompt takes the focus when it opens, and a bare A or B typed into another
+    /// program a moment later must never allow or block anything. Esc is not a
+    /// shortcut either - closing a prompt blocks, and that should be deliberate.</summary>
+    public static string ShortcutFor(Key key, bool alt, TimeSpan sinceShown)
+    {
+        if (!alt || sinceShown < KeyGuard) return "";
+        return key switch
+        {
+            Key.A => "allow",
+            Key.B => "block",
+            Key.O => "once",
+            Key.D => "details",
+            _ => "",
+        };
+    }
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        Key key = e.Key == Key.System ? e.SystemKey : e.Key;   // with Alt held, WPF reports Key.System
+        bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
+        switch (ShortcutFor(key, alt, DateTime.UtcNow - _shownUtc))
+        {
+            case "allow": e.Handled = true; Allow_Click(this, new RoutedEventArgs()); break;
+            case "block": e.Handled = true; Block_Click(this, new RoutedEventArgs()); break;
+            case "once":
+                if (OnceButton.Visibility == Visibility.Visible) { e.Handled = true; Once_Click(this, new RoutedEventArgs()); }
+                break;
+            case "details": e.Handled = true; Details_Click(this, new RoutedEventArgs()); break;
+        }
+    }
+
+    /// <summary>Fades in and rises 14 px into the corner (0.99.235). It used to appear
+    /// in one frame, the only window in GunWall that did. Skipped when Windows'
+    /// animation effects are off.</summary>
+    private void PlayEntrance()
+    {
+        if (!SystemParameters.ClientAreaAnimation) return;
+        try
+        {
+            var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            RootGrid.BeginAnimation(OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(170)) { EasingFunction = ease });
+            RootShift.BeginAnimation(TranslateTransform.YProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(14, 0, TimeSpan.FromMilliseconds(210)) { EasingFunction = ease });
+        }
+        catch { /* an animation is never a reason to fail a prompt */ }
     }
 
     private void Block_Click(object sender, RoutedEventArgs e)

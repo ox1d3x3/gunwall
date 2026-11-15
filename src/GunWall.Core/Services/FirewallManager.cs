@@ -511,21 +511,46 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// network on its engine thread.</summary>
     public void ReloadGeoIpTables() => LoadGeoIp();
 
+    /// <summary>SHA-256 of a file as hex, "" when it cannot be read.</summary>
+    private static string FileDigest(string path)
+    {
+        try
+        {
+            if (!System.IO.File.Exists(path)) return "";
+            using var f = System.IO.File.OpenRead(path);
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(f));
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>Whether a downloaded table must be loaded (0.99.235): not when the file
+    /// is byte-for-byte what is already in memory. The dataset was identical on ten
+    /// consecutive days, and each reload parsed 540,000 ranges and took the service
+    /// from ~130 MB to over 300 MB for nothing.</summary>
+    public static bool GeoNeedsReload(string digestBefore, string digestAfter, int rangesLoaded) =>
+        rangesLoaded == 0 || digestAfter.Length == 0 || !string.Equals(digestBefore, digestAfter, StringComparison.Ordinal);
+
     public int DownloadAndLoadGeoIp()
     {
         using var _perf = PerfMonitor.Measure("DownloadAndLoadGeoIp");
+        string before4 = FileDigest(GeoIpCachePath);
         GeoIpService.DownloadDatabase(GeoIpCachePath);
-        _geo.LoadFromFile(GeoIpCachePath);
+        bool reload4 = GeoNeedsReload(before4, FileDigest(GeoIpCachePath), _geo.RangeCount);
+        if (reload4) _geo.LoadFromFile(GeoIpCachePath);
 
         // v6 after v4, and failing softly. Every IPv6 destination resolved to
         // nothing before 0.99.106 because there was no v6 table at all; if this
         // half cannot be fetched the user is no worse off than they were.
+        bool reload6 = false;
         try
         {
+            string before6 = FileDigest(GeoIpCachePathV6);
             GeoIpService.DownloadDatabaseV6(GeoIpCachePathV6);
-            _geo.LoadV6FromFile(GeoIpCachePathV6);
-            DiagnosticLog.Log($"GeoIP: {_geo.RangeCount:N0} IPv4 ranges, "
-                            + $"{_geo.RangeCountV6:N0} IPv6 ranges loaded.");
+            reload6 = GeoNeedsReload(before6, FileDigest(GeoIpCachePathV6), _geo.RangeCountV6);
+            if (reload6) _geo.LoadV6FromFile(GeoIpCachePathV6);
+            DiagnosticLog.Log(reload4 || reload6
+                ? $"GeoIP: {_geo.RangeCount:N0} IPv4 ranges, {_geo.RangeCountV6:N0} IPv6 ranges loaded."
+                : $"GeoIP: the downloaded data is unchanged - kept the {_geo.RangeCount:N0} IPv4 and {_geo.RangeCountV6:N0} IPv6 ranges already loaded.");
         }
         catch (Exception ex)
         {
@@ -533,9 +558,12 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                             + $"downloaded ({ex.GetType().Name}). IPv6 destinations will show no "
                             + "country until it is retried.");
         }
-        var freed = GeoIpService.ReturnFreedMemory();   // once, after both tables
-        DiagnosticLog.Log($"Perf: GeoIP tables loaded; returning freed memory took the working "
-                        + $"set from {freed.BeforeMb:F0} to {freed.AfterMb:F0} MB in {freed.Ms} ms.");
+        if (reload4 || reload6)
+        {
+            var freed = GeoIpService.ReturnFreedMemory();   // once, after both tables
+            DiagnosticLog.Log($"Perf: GeoIP tables loaded; returning freed memory took the working "
+                            + $"set from {freed.BeforeMb:F0} to {freed.AfterMb:F0} MB in {freed.Ms} ms.");
+        }
         return _geo.RangeCount;
     }
 
@@ -887,6 +915,13 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     public void AllowApp(string exePath, string displayName)
     {
         UnblockApp(exePath);
+        // Allowing for good an app that was allowed once keeps it past the restart.
+        lock (_dataLock)
+        {
+            var once = _data.Rules.FirstOrDefault(r => r.UntilRestart && r.Status == AppStatus.Allowed
+                && string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+            if (once != null) { once.UntilRestart = false; SaveStore(); }
+        }
         if (!_data.StrictMode || IsAllowed(exePath)) return;
 
         var ids = _engine.PermitApplication(exePath);
@@ -900,6 +935,106 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             Signer = SignerOf(exePath)
         });
         SaveStore();
+    }
+
+    /// <summary>
+    /// "Allow once" (0.99.235): allows the program until the next restart. The rule is
+    /// marked and dropped when filtering is rebuilt at start-up (DropAllowOnceRules),
+    /// so a one-off installer does not leave a permanent rule. An app that is already
+    /// allowed for good stays that way.
+    /// </summary>
+    public void AllowAppOnce(string exePath, string displayName)
+    {
+        bool already = IsAllowed(exePath);
+        AllowApp(exePath, displayName);
+        if (already) return;
+        lock (_dataLock)
+        {
+            var rule = _data.Rules.FirstOrDefault(r => r.Status == AppStatus.Allowed
+                && string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+            if (rule == null) return;   // not Zero Trust: nothing is blocked, so nothing to time-limit
+            rule.UntilRestart = true;
+            SaveStore();
+        }
+        DiagnosticLog.Log($"{displayName} allowed until the next restart.");
+        EventLog($"{displayName}: allowed until the next restart");
+    }
+
+    /// <summary>Drops the "allow once" rules. Called when filtering is rebuilt after a
+    /// restart: the kernel holds none of their filters by then, so only the rules go.</summary>
+    private int DropAllowOnceRules()
+    {
+        List<FirewallRule> once;
+        lock (_dataLock)
+        {
+            once = _data.Rules.Where(r => r.UntilRestart).ToList();
+            if (once.Count == 0) return 0;
+            foreach (var r in once) _data.Rules.Remove(r);
+            SaveStore();
+        }
+        // Whatever filters survive (a rebuild without a restart) go with the rule.
+        foreach (var r in once)
+            if (r.FilterIds.Count > 0)
+                try { _engine.RemoveFilters(r.FilterIds); } catch { }
+        DiagnosticLog.Log($"Startup: {once.Count} program(s) allowed until this restart will be asked about again - "
+                        + string.Join(", ", once.Select(r => r.DisplayName).Take(10)) + (once.Count > 10 ? ", ..." : "") + ".");
+        return once.Count;
+    }
+
+    /// <summary>
+    /// The same file in another folder (0.99.235). Visual Studio's backgrounddownload.exe
+    /// runs from a new random temp folder each day; it asked 9 times in 11 days and left
+    /// 9 block rules for one file. If a BLOCKED rule names a file with the same name and
+    /// the same SHA-256, the new copy is blocked too, without a prompt. Block only
+    /// (Mahabub, 2026-11-15, Q2 = B): an allowed file in a new place still asks. Earlier
+    /// copies whose file is gone are removed, so one rule remains.
+    /// True when the new copy was given the block.
+    /// </summary>
+    public bool AdoptIdenticalBlocked(string exePath)
+    {
+        if (string.IsNullOrEmpty(exePath) || !_data.StrictMode || IsOwnExecutable(exePath)) return false;
+        List<FirewallRule> rules;
+        lock (_dataLock) rules = _data.Rules.ToList();
+        if (!IdenticalFile.HasCandidate(rules, exePath)) return false;   // no hashing unless a name matches
+        string hash;
+        try { hash = HashService.Compute(exePath); } catch { return false; }
+        var twins = IdenticalFile.BlockedTwins(rules, exePath, hash);
+        if (twins.Count == 0) return false;
+        var prior = twins[0];
+
+        var rule = new FirewallRule
+        {
+            ExecutablePath = exePath,
+            DisplayName = prior.DisplayName,
+            Status = AppStatus.Blocked,
+            Silent = prior.Silent,
+            Hash = hash,
+            Signer = SignerOf(exePath),
+        };
+        try { rule.FilterIds = _engine.BlockApplication(exePath); }
+        catch (Exception ex)
+        {
+            DiagnosticLog.LogException($"AdoptIdenticalBlocked/{prior.DisplayName}", ex);
+            return false;
+        }
+        int removed = 0;
+        lock (_dataLock)
+        {
+            _data.Rules.Add(rule);
+            if (KnownSet.Add(exePath)) _data.KnownApps.Add(exePath);
+            foreach (var old in twins.Where(t => !IsApplicablePath(t.ExecutablePath)))
+            {
+                if (old.FilterIds.Count > 0)
+                    try { _engine.RemoveFilters(old.FilterIds); } catch { }
+                _data.Rules.Remove(old);
+                removed++;
+            }
+            SaveStore();
+        }
+        DiagnosticLog.Log($"{prior.DisplayName} is the same file as a blocked program, in a new folder: blocked too, no prompt"
+                        + (removed > 0 ? $"; {removed} earlier copy rule(s) whose file is gone removed." : "."));
+        EventLog($"{prior.DisplayName}: same file in a new folder, kept your block rule");
+        return true;
     }
 
     /// <summary>The publisher to record on a new rule (0.99.227). Verify is cached, and
@@ -958,6 +1093,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             DisplayName = prior.DisplayName,
             Status = prior.Status,
             Silent = prior.Silent,
+            UntilRestart = prior.UntilRestart,   // an allow-once stays one across an update
             BypassBlocklists = prior.BypassBlocklists,
             Hash = _data.HashesEnabled ? HashService.Compute(exePath) : "",
             Signer = VersionedPaths.UsableSigner(newSig),
@@ -1945,6 +2081,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         DiagnosticLog.Log($"Startup: {report.Missing} of {report.Expected} filter(s) are "
                         + "absent from the kernel - filters do not survive a restart. "
                         + "Re-installing from the saved rules.");
+        DropAllowOnceRules();   // "allow once" ends here (0.99.235)
         int made = RepairFiltering();
         DiagnosticLog.Log($"Startup: filtering restored, {made} filter(s) installed.");
         return made;
@@ -2057,7 +2194,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                                 + $"{superseded} superseded filter(s) removed"
                                 + (failed > 0 ? $", {failed} would not delete" : "") + ".");
                 if (skippedNoFile.Count > 0)
-                    DiagnosticLog.Log($"Filtering re-applied: {skippedNoFile.Count} rule(s) not installed - program file not found: "
+                    DiagnosticLog.Log($"Filtering re-applied: {skippedNoFile.Count} rule(s) left without filters - their program file is gone (updated or removed); the clean-up that follows removes or moves them: "
                                     + string.Join(", ", skippedNoFile.Take(10)) + (skippedNoFile.Count > 10 ? ", ..." : "") + ".");
             }
         }
@@ -3459,8 +3596,12 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                 }
                 SaveStore();
             }
+            // Names the version it moved to. It used to print the last folder name,
+            // which for a file inside the package read "followed it to resources".
+            string movedTo = (store ? StorePackagePaths.Split(next)?.Version : VersionedPaths.Split(next)?.Version)?.ToString()
+                             ?? "its new folder";
             DiagnosticLog.Log($"{(store ? "Store app" : "Program")} updated: the rule for {r.DisplayName} followed it to "
-                            + $"{System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(next))} instead of being removed.");
+                            + $"version {movedTo} instead of being removed.");
             dead.Remove(r);
             followed++;
         }
@@ -3594,7 +3735,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             }
 
             lock (_dataLock) SaveStore();
-            DiagnosticLog.Log($"Startup reconcile: removed {dead.Count} rule(s) whose program is "
+            DiagnosticLog.Log($"Rule clean-up: removed {dead.Count} rule(s) whose program is "
                             + $"gone from a mounted local disk, and {filters} filter(s) they held - "
                             + string.Join(", ", dead.Select(r => r.DisplayName)));
             return dead.Count + followed;
@@ -4639,7 +4780,28 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             if (_data.EnabledBlocklists.Contains(cat.Key) && !_data.BlocklistWfpFilters.ContainsKey(cat.Key))
                 foreach (var d in ActiveDomainsFor(cat)) all.Add(d);
         foreach (var d in _customDomains) all.Add(d); // §5 user custom list
-        return HostsFileService.SetBlockedDomains(all, _store.ProfileFolder);
+        bool ok = HostsFileService.SetBlockedDomains(all, _store.ProfileFolder);
+        // Said, not swallowed (0.99.235): a custom list of 6 domains sat "loaded" for
+        // three weeks with none of them in the hosts file, and nothing reported it.
+        if (!ok && all.Count > 0 && !_hostsFailureLogged)
+        {
+            _hostsFailureLogged = true;
+            DiagnosticLog.Log($"Hosts file: {all.Count:N0} domain(s) could not be written to Windows' hosts file - "
+                            + "it is locked or was put back, which security software often does. They are NOT blocked this way.");
+        }
+        if (ok) _hostsFailureLogged = false;
+        return ok;
+    }
+    private bool _hostsFailureLogged;
+
+    /// <summary>How many of the custom list's domains are in Windows' hosts file now -
+    /// that is, actually blocked (0.99.235). Reads the file; call it when the Security
+    /// page shows, not per tick.</summary>
+    public int CustomDomainsEnforced()
+    {
+        if (_customDomains.Count == 0) return 0;
+        try { return HostsFileService.GetBlockedDomains().Count(d => _customDomains.Contains(d)); }
+        catch { return 0; }
     }
 
     /// <summary>

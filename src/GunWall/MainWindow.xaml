@@ -1183,13 +1183,25 @@
                                 <GridViewColumn Header="STATUS" Width="90">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Border CornerRadius="6" Padding="10,3"
+                                            <Border x:Name="StatusPill" CornerRadius="6" Padding="10,3"
                                                     HorizontalAlignment="Left"
                                                     Background="{Binding Status, Converter={StaticResource StatusToFill}}">
-                                                <TextBlock Text="{Binding Status, Converter={StaticResource StatusToText}}"
-                                                           Foreground="{Binding Status, Converter={StaticResource StatusToBrush}}"
-                                                           FontSize="11.5" FontWeight="SemiBold" />
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Status, Converter={StaticResource StatusToText}}"
+                                                               Foreground="{Binding Status, Converter={StaticResource StatusToBrush}}"
+                                                               FontSize="11.5" FontWeight="SemiBold" />
+                                                    <!-- The star marks an allow that ends at the next restart (0.99.235). -->
+                                                    <TextBlock x:Name="OnceMark" Text=" *" Visibility="Collapsed"
+                                                               Foreground="{Binding Status, Converter={StaticResource StatusToBrush}}"
+                                                               FontSize="11.5" FontWeight="SemiBold" />
+                                                </StackPanel>
                                             </Border>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding UntilRestart}" Value="True">
+                                                    <Setter TargetName="OnceMark" Property="Visibility" Value="Visible" />
+                                                    <Setter TargetName="StatusPill" Property="ToolTip" Value="Allowed until the next restart. Click Allow to keep it for good." />
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>

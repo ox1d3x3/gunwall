@@ -33,6 +33,24 @@ public static class MemoryTrim
         catch { return (0, 0); }   // housekeeping never fails anything
     }
 
+    /// <summary>Whether a repeat trim is worth it (0.99.235). Emptying the working set
+    /// every 10 minutes took back pages the next snapshot needed straight away; on a PC
+    /// short of memory reading them in again stalled the hidden window for up to 3.5 s
+    /// (2026-11-14). After the first trim, only when memory has grown past
+    /// <paramref name="thresholdMb"/> again.</summary>
+    public static bool WorthTrimming(double workingSetMb, double thresholdMb) => workingSetMb > thresholdMb;
+
+    /// <summary>The working set now, in MB (0 when it cannot be read).</summary>
+    public static double WorkingSetMb()
+    {
+        try { using var p = System.Diagnostics.Process.GetCurrentProcess(); return p.WorkingSet64 / 1048576.0; }
+        catch { return 0; }
+    }
+
+    /// <summary>Repeat trims: the window above this, the service above the next.</summary>
+    public const double WindowRepeatAboveMb = 120;
+    public const double ServiceRepeatAboveMb = 220;
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr minimumWorkingSetSize, IntPtr maximumWorkingSetSize);
 }

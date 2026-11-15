@@ -249,6 +249,14 @@ public sealed class AppInfo : System.ComponentModel.INotifyPropertyChanged
     }
     private string _vtLevel = "";
 
+    /// <summary>Allowed until the next restart ("Allow once", 0.99.235).</summary>
+    public bool UntilRestart
+    {
+        get => _untilRestart;
+        set { if (_untilRestart != value) { _untilRestart = value; Changed(nameof(UntilRestart)); } }
+    }
+    private bool _untilRestart;
+
     /// <summary>Allowed but not notified about.</summary>
     public bool Silent
     {
@@ -283,6 +291,11 @@ public sealed class FirewallRule
 
     /// <summary>Allowed but suppressed from raising notification popups.</summary>
     public bool Silent { get; set; }
+
+    /// <summary>"Allow once" (0.99.235): an allow that lasts until the next restart.
+    /// The rule is dropped when filtering is rebuilt at start-up, so the program is
+    /// asked about again. For installers and other one-off programs.</summary>
+    public bool UntilRestart { get; set; }
 
     /// <summary>Exempt this application from KERNEL-level domain blocking.
     ///

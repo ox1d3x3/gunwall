@@ -15,6 +15,53 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.235] — 2026-11-15
+
+### Added
+- **Allow until restart.** The connection popup has a third answer for installers
+  and other one-off programs: **Allow until restart**. The program is allowed now,
+  marked with a star on the Applications page, and asked about again after the next
+  restart instead of keeping a permanent rule. Clicking **Allow** on it later keeps
+  it for good.
+- **GunWall's own notifications.** "GunWall is still running", "First network
+  activity", "New applications" and VirusTotal alerts were Windows balloons, drawn
+  in Windows' style. They are now GunWall's own cards in the corner of the screen,
+  in the app's theme, font and size, and they never take the keyboard. Minimising
+  the window shows the notice too, once per session.
+- **Keyboard shortcuts on the popup:** Alt+A allows, Alt+B blocks, Alt+O allows
+  until restart, Alt+D shows the details. Alt is required and the first 0.7 seconds
+  are ignored, so a key typed into another program can never answer a prompt.
+- **"N more waiting"** on the popup when other applications are queued behind it.
+
+### Changed
+- **The connection popup fades in and rises into place** instead of appearing in
+  one frame. Off when Windows' animation effects are off.
+- **A blocked program is recognised in a new folder.** Visual Studio's background
+  downloader runs from a new temporary folder each day and asked 9 times in 11 days.
+  When a program has the same file name and the same SHA-256 as one you blocked, it
+  is blocked too, without a prompt, and earlier copies whose file is gone are
+  removed. Only blocks carry over; an allowed program in a new place still asks.
+- **Rules for programs that are gone are cleaned up once a day,** not only at a
+  restart.
+- **The country database is not reloaded when it has not changed.** It was the same
+  data on ten consecutive days; each reload took about 5 seconds and briefly doubled
+  the background service's memory.
+- **Memory is handed back to Windows once when the window goes to the tray,** then
+  again only if it grows. Doing it every 10 minutes could stall the hidden window
+  for a few seconds on a PC short of memory.
+- **Start-up reads program signatures at background disk priority,** so it no
+  longer competes with everything else starting at sign-in.
+
+### Fixed
+- **A custom blocklist could be "loaded" without blocking anything.** The list works
+  through Windows' hosts file, which security software often locks or puts back.
+  GunWall said nothing when that happened. The Security page now says whether the
+  list is blocking, the Alerts page warns once when it is not, and the diagnostics
+  report how many of its domains are in the hosts file.
+- **Misleading log lines:** a rule whose program had updated was logged as "not
+  installed - program file not found"; a Store app's rule was said to follow it "to
+  resources"; the service reported its memory as "121 -> 1 MB".
+
 ## [0.99.234.3] — 2026-10-29
 
 ### Fixed

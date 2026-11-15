@@ -228,7 +228,20 @@ corner.
 
 - **Allow** — a permanent rule; the program is never asked about again
 - **Block** — a permanent rule denying it
+- **Allow until restart** — allows the program now and asks again after the next
+  restart. For installers and other one-off programs. The Applications page marks
+  it with a star; click **Allow** there to keep it for good
 - **Chevron (⌄)** — expands full detail: reverse DNS, exact time, full path
+
+**From the keyboard:** Alt+A allows, Alt+B blocks, Alt+O allows until restart and
+Alt+D opens the detail. Alt is required, and a prompt ignores the keyboard for its
+first 0.7 seconds, so a key meant for another program cannot answer it. When other
+programs are waiting, the prompt says how many.
+
+**A blocked program in a new folder stays blocked.** Some programs run from a new
+temporary folder every time. If a program has the same file name and the same
+SHA-256 as one you blocked, GunWall blocks it without asking. An allowed program in
+a new place still asks.
 
 **If you do nothing,** the prompt stays open by default. You can change that under
 *Settings → Popup stays open for* — but be careful: with a timeout set, anything

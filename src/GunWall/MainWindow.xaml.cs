@@ -283,19 +283,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // the first time.
         e.Cancel = true;
         Hide();
-        if (_tray != null && !_trayHintShown)
-        {
-            _trayHintShown = true;
-            try
-            {
-                _tray.BalloonTipTitle = "GunWall is still running";
-                _tray.BalloonTipText = _firewall.StrictMode
-                    ? "The firewall stays active here. Right-click the tray icon to open or exit."
-                    : "GunWall keeps running in the tray. Right-click to open or exit.";
-                _tray.ShowBalloonTip(3000);
-            }
-            catch { /* balloon is best-effort */ }
-        }
+        ShowTrayHint();
+    }
+
+    /// <summary>Once per session, when the window first goes to the tray (closed or
+    /// minimised): GunWall's own notice, not a Windows balloon (0.99.235).</summary>
+    private bool _startMinimising;
+
+    private void ShowTrayHint()
+    {
+        if (_tray == null || _trayHintShown || _reallyExit) return;
+        _trayHintShown = true;
+        ToastWindow.Show("GunWall is still running",
+            _firewall.StrictMode
+                ? "The firewall stays active here. Right-click the tray icon to open or exit."
+                : "GunWall keeps running in the tray. Right-click to open or exit.",
+            "info", 4000, RestoreFromTray);
     }
 
     private bool _trayHintShown;
@@ -498,7 +501,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
             // Apply window prefs immediately.
             Topmost = _firewall.AlwaysOnTop;
-            if (_firewall.StartMinimized) WindowState = WindowState.Minimized;
+            // The start-up minimise is not someone sending the window away: no tray notice.
+            if (_firewall.StartMinimized) { _startMinimising = true; WindowState = WindowState.Minimized; _startMinimising = false; }
 
             // After the settings block above, so the card reads correct state,
             // and after Initialize() so the store is loaded. The loop waits two
@@ -508,7 +512,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.234.3 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.235 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3204,13 +3208,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             try { System.Media.SystemSounds.Asterisk.Play(); } catch { }
         if (_firewall.TrayNotifications && _tray != null)
         {
-            try
-            {
-                _tray.BalloonTipTitle = "New applications";
-                _tray.BalloonTipText = $"{batch.Count} applications are waiting for a decision.";
-                _tray.ShowBalloonTip(5000);
-            }
-            catch { }
+            ToastWindow.Show("New applications", $"{batch.Count} applications are waiting for a decision.", "info", 5000);
         }
 
         var win = new ReviewAppsWindow(batch, _firewall.StrictMode,
@@ -3264,11 +3262,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 // "trying to connect" tells the reader nothing they can judge.
                 string where = info.RemoteAddress ?? "";
                 if (info.RemotePort > 0 && where.Length > 0) where += ":" + info.RemotePort;
-                _tray.BalloonTipTitle = "First network activity";
-                _tray.BalloonTipText = where.Length > 0
-                    ? $"{info.ProcessName}  \u2192  {where}"
-                    : $"{info.ProcessName} is connecting for the first time.";
-                _tray.ShowBalloonTip(5000);
+                ToastWindow.Show("First network activity",
+                    where.Length > 0
+                        ? $"{info.ProcessName}  \u2192  {where}"
+                        : $"{info.ProcessName} is connecting for the first time.",
+                    "info", 5000);
             }
             catch { }
         }
@@ -3287,7 +3285,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             strictMode: _firewall.StrictMode,
             timeoutSeconds: _firewall.PopupTimeoutSeconds,
             defaultAllow: _firewall.PopupDefaultAllow,
-            geo: _firewall.GeoIp);
+            geo: _firewall.GeoIp,
+            onAllowOnce: () =>
+            {
+                _firewall.AllowAppOnce(info.ExePath, info.ProcessName);   // ends at the next restart (0.99.235)
+                Services.DiagnosticLog.Log($"Prompt: {info.ProcessName} allowed until the next restart.");
+                RebuildAppsList();
+            },
+            waiting: _alertQueue.Count);
         // Owned only while this window is on screen. An owned window is hidden
         // with its owner, so a popup raised while GunWall was starting minimised -
         // the prompts the background service queued - flashed and vanished until
@@ -3334,8 +3339,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var known = new Dictionary<string, AppInfo>(StringComparer.OrdinalIgnoreCase);
         foreach (var a in source) known[a.ExecutablePath] = a;
 
+        var untilRestart = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var rule in _firewall.GetRules())
         {
+            if (rule.UntilRestart) untilRestart.Add(rule.ExecutablePath);
             if (!known.TryGetValue(rule.ExecutablePath, out var app))
             {
                 app = new AppInfo { Name = rule.DisplayName, ExecutablePath = rule.ExecutablePath };
@@ -3346,6 +3353,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         foreach (var a in known.Values)
         {
             a.Status = _firewall.EffectiveStatus(a.ExecutablePath);
+            a.UntilRestart = untilRestart.Contains(a.ExecutablePath);
             a.Silent = _firewall.IsSilent(a.ExecutablePath);
             a.Hash = _firewall.GetHash(a.ExecutablePath);
             a.Category = ComputeCategory(a.ExecutablePath);
@@ -4277,12 +4285,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _trimTimer.Tick += (_, _) =>
             {
                 if (OnScreen) { _trimTimer!.Stop(); return; }
+                // The first trim after hiding always runs; later ones only when memory
+                // has grown again (0.99.235) - a routine trim every 10 minutes took back
+                // pages the next snapshot needed and stalled it.
+                bool first = _trimTimer!.Interval < TimeSpan.FromMinutes(1);
                 _trimTimer!.Interval = TimeSpan.FromMinutes(10);
+                if (!first && !MemoryTrim.WorthTrimming(MemoryTrim.WorkingSetMb(), MemoryTrim.WindowRepeatAboveMb)) return;
                 var (before, after) = MemoryTrim.Trim();
                 if (!_trimLogged)
                 {
                     _trimLogged = true;
-                    Services.DiagnosticLog.Log($"Memory: window hidden - working set {before:F0} -> {after:F0} MB (memory not in use given back to Windows; repeated every 10 min while hidden).");
+                    Services.DiagnosticLog.Log($"Memory: window hidden - working set {before:F0} -> {after:F0} MB (memory not in use given back to Windows; again only if it grows past {MemoryTrim.WindowRepeatAboveMb:F0} MB).");
                 }
             };
         }
@@ -4357,12 +4370,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         })));
     }
 
+    private const int THREAD_MODE_BACKGROUND_BEGIN = 0x00010000;
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentThread();
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetThreadPriority(IntPtr thread, int priority);
+
     private static void WarmAppCaches(List<string> paths, Action? done = null)
     {
         if (paths.Count == 0) return;
         string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         var t = new System.Threading.Thread(() =>
         {
+            // Background mode (0.99.235): low disk and memory priority as well as low
+            // CPU priority. At sign-in this read ~100 program files for 4-10 s while
+            // everything else was starting; now it yields the disk to them.
+            try { SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN); } catch { }
             using (PerfMonitor.Measure("WarmAppCaches"))
             {
                 foreach (string path in paths)
@@ -6560,18 +6583,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                         });
                         Notify("warn", $"VirusTotal flagged {name}",
                                $"{result.Malicious}/{result.Total} engines flagged this file.", "security");
-                        try
-                        {
-                            if (_tray != null)
-                            {
-                                _tray.BalloonTipTitle = "VirusTotal alert";
-                                _tray.BalloonTipText =
-                                    $"{name}: {result.Malicious}/{result.Total} engines flagged this file.";
-                                _tray.BalloonTipIcon = System.Windows.Forms.ToolTipIcon.Warning;
-                                _tray.ShowBalloonTip(4000);
-                            }
-                        }
-                        catch { /* notification is best-effort */ }
+                        ToastWindow.Show("VirusTotal alert",
+                            $"{name}: {result.Malicious}/{result.Total} engines flagged this file.",
+                            "warn", 6000, RestoreFromTray);
                     }
                 }
                 else if (result.Message.Contains("Not found", StringComparison.OrdinalIgnoreCase))
@@ -8381,6 +8395,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex) { Services.DiagnosticLog.LogException("RefreshCustomList", ex); }
     }
 
+    private bool _customListWarned;
+
     private void UpdateCustomListStatus()
     {
         if (CustomListStatus == null) return;
@@ -8392,7 +8408,22 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         else
         {
             int n = _firewall.CustomDomainCount;
-            CustomListStatus.Text = $"{n:N0} domain(s) loaded from {System.IO.Path.GetFileName(path)}  -  {path}";
+            // Loaded is not blocked (0.99.235): the list works through Windows' hosts
+            // file, which security software often locks or puts back.
+            int enforced = 0;
+            try { enforced = _firewall.CustomDomainsEnforced(); } catch { }
+            string state = n == 0 ? "" : enforced >= n ? "  -  blocking"
+                : enforced == 0 ? "  -  NOT blocking: Windows' hosts file could not be changed (security software often protects it)"
+                : $"  -  blocking {enforced:N0} of {n:N0}";
+            CustomListStatus.Text = $"{n:N0} domain(s) loaded from {System.IO.Path.GetFileName(path)}{state}  -  {path}";
+            if (n > 0 && enforced == 0 && !_customListWarned)
+            {
+                _customListWarned = true;
+                Notify("warn", "Your custom blocklist is not blocking anything",
+                       $"GunWall could not add its {n:N0} domain(s) to Windows' hosts file - it is locked or was put back, "
+                       + "which antivirus software often does. Allow GunWall to change the hosts file in that software, then load the list again.",
+                       "rules");
+            }
         }
     }
 
@@ -9657,7 +9688,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         // Minimize hides to tray (filters keep enforcing - they live in the OS).
         if (WindowState == WindowState.Minimized && _tray != null)
+        {
             Hide();
+            // Not at start-up: "start minimised" goes to the tray before anyone looked.
+            if (_engineReady && IsLoaded && !_startMinimising) ShowTrayHint();
+        }
         OnScreenChanged();
     }
 

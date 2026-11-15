@@ -26,6 +26,8 @@ public interface IEngine
     [EngineAccess(Access.Tighten)] int AddToBlocklist(IEnumerable<string> addresses);
     [EngineAccess(Access.Read)] bool AlertsEnabled { get; }
     [EngineAccess(Access.Loosen)] void AllowApp(string exePath, string displayName);
+    /// <summary>Allows until the next restart (0.99.235).</summary>
+    [EngineAccess(Access.Loosen)] void AllowAppOnce(string exePath, string displayName);
     [EngineAccess(Access.Local)] bool AlwaysConfirmExit { get; }
     [EngineAccess(Access.Local)] bool AlwaysOnTop { get; }
     [EngineAccess(Access.Local)] int AppIconSize { get; }
@@ -58,6 +60,8 @@ public interface IEngine
     [EngineAccess(Access.Preference)] string CreateBackup();
     [EngineAccess(Access.Read)] string CurrentDnsProvider { get; }
     [EngineAccess(Access.Read)] int CustomDomainCount { get; }
+    /// <summary>Custom-list domains present in Windows' hosts file (0.99.235).</summary>
+    [EngineAccess(Access.Read)] int CustomDomainsEnforced();
     [EngineAccess(Access.Read)] string CustomListPath { get; }
     [EngineAccess(Access.Read)] int CustomRuleCount { get; }
     [EngineAccess(Access.ReadProfile)] IReadOnlyList<CustomRule> CustomRules { get; }

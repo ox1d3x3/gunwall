@@ -36,7 +36,11 @@
          Machine values are JetBrains Mono, prose is Instrument Sans.
          ============================================================ -->
 
-    <Grid Margin="14">
+    <Grid x:Name="RootGrid" Margin="14">
+        <!-- Rises into place as it fades in (0.99.235); see PlayEntrance. -->
+        <Grid.RenderTransform>
+            <TranslateTransform x:Name="RootShift" />
+        </Grid.RenderTransform>
         <!-- The shadow is drawn by this empty layer, not by the card. An Effect is a pixel shader, and one on an element is recomputed whenever anything inside it changes - here, every hover over Block or Allow re-shaded the whole card. Nothing inside this layer ever changes, so its shadow renders once. -->
         <Border CornerRadius="12" Background="{DynamicResource BgElevated}" IsHitTestVisible="False">
             <Border.Effect>
@@ -241,7 +245,7 @@
                                  base style's TextPrimary, 13px and Medium apply:
                                  Allow's label went near-black on red in the light
                                  theme, and the width check measured the wrong size. -->
-                            <Button x:Name="BlockButton" Click="Block_Click"
+                            <Button x:Name="BlockButton" Click="Block_Click" ToolTip="Block (Alt+B)"
                                     Style="{StaticResource PromptSecondary}" Margin="0,0,8,0"
                                     AutomationProperties.Name="Block">
                                 <StackPanel Orientation="Horizontal">
@@ -254,7 +258,7 @@
                                     <TextBlock Text="Block" VerticalAlignment="Center" Style="{x:Null}" />
                                 </StackPanel>
                             </Button>
-                            <Button x:Name="AllowButton" Click="Allow_Click"
+                            <Button x:Name="AllowButton" Click="Allow_Click" ToolTip="Allow (Alt+A)"
                                     Style="{StaticResource PromptPrimary}"
                                     AutomationProperties.Name="Allow">
                                 <StackPanel Orientation="Horizontal">
@@ -268,6 +272,41 @@
                                 </StackPanel>
                             </Button>
                         </StackPanel>
+                    </Grid>
+
+                    <!-- Second row (0.99.235): how many more are waiting, and the
+                         allow that ends at the next restart. Its own row so the
+                         17-character hint column above keeps its width. -->
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="QueueText" Grid.Column="0" FontSize="11.5"
+                                   VerticalAlignment="Center" Visibility="Collapsed"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextTertiary}" />
+                        <Button x:Name="OnceButton" Grid.Column="1" Click="Once_Click"
+                                Cursor="Hand" Focusable="True"
+                                AutomationProperties.Name="Allow until restart"
+                                ToolTip="Allow it now and ask again after the next restart. For installers and other one-off programs. (Alt+O)">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <TextBlock x:Name="OnceLabel" Text="Allow until restart" FontSize="11.5"
+                                               Style="{x:Null}" Background="Transparent" Padding="4,2,0,2"
+                                               Foreground="{DynamicResource TextSecondary}" />
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="OnceLabel" Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                                            <Setter TargetName="OnceLabel" Property="TextDecorations" Value="Underline" />
+                                        </Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter TargetName="OnceLabel" Property="TextDecorations" Value="Underline" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
                     </Grid>
                 </StackPanel>
             </StackPanel>
