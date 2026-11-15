@@ -150,7 +150,7 @@ public sealed class ToastWindow : Window
         ContentRendered += (_, _) => Place();
         SizeChanged += (_, _) => Place();
         Loaded += (_, _) => { Place(); Enter(); _life.Start(); };
-        Closed += (_, _) => { _life.Stop(); if (ReferenceEquals(_current, this)) _current = null; };
+        Closed += (_, _) => { _life.Stop(); if (_current == this) _current = null; };
     }
 
     /// <summary>The corner of the screen the pointer is on, above the taskbar - and

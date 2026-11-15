@@ -512,7 +512,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.235 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.236 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -3472,6 +3472,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         cur.ServicesSummary = next.ServicesSummary;
         cur.ServicesDetail = next.ServicesDetail;
         cur.Silent = next.Silent;
+        cur.UntilRestart = next.UntilRestart;
         if (!SamePoints(cur.Spark as PointCollection, next.Spark as PointCollection)) cur.Spark = next.Spark;
         cur.SparkTip = next.SparkTip;
     }
@@ -8412,16 +8413,21 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // file, which security software often locks or puts back.
             int enforced = 0;
             try { enforced = _firewall.CustomDomainsEnforced(); } catch { }
+            // With the background service the list is also enforced by server address
+            // (0.99.236), which needs no hosts file - as long as DNS watching is on.
+            bool byAddress = Remote && _firewall.DnsObserveSystemLookups;
             string state = n == 0 ? "" : enforced >= n ? "  -  blocking"
+                : byAddress ? "  -  blocking by server address (Windows' hosts file could not be changed; a site on a server shared with unblocked sites is skipped and listed on Alerts)"
                 : enforced == 0 ? "  -  NOT blocking: Windows' hosts file could not be changed (security software often protects it)"
                 : $"  -  blocking {enforced:N0} of {n:N0}";
             CustomListStatus.Text = $"{n:N0} domain(s) loaded from {System.IO.Path.GetFileName(path)}{state}  -  {path}";
-            if (n > 0 && enforced == 0 && !_customListWarned)
+            if (n > 0 && enforced == 0 && !byAddress && !_customListWarned)
             {
                 _customListWarned = true;
                 Notify("warn", "Your custom blocklist is not blocking anything",
                        $"GunWall could not add its {n:N0} domain(s) to Windows' hosts file - it is locked or was put back, "
-                       + "which antivirus software often does. Allow GunWall to change the hosts file in that software, then load the list again.",
+                       + "which antivirus software often does. Turn on the background service and DNS watching so the list is "
+                       + "enforced by server address instead, or allow GunWall to change the hosts file in that software.",
                        "rules");
             }
         }

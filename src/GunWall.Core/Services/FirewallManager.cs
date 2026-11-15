@@ -4794,6 +4794,11 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     }
     private bool _hostsFailureLogged;
 
+    /// <summary>The custom list's domains, copied (0.99.236). The background service
+    /// adds them to the names it enforces by server address, so the list works when
+    /// Windows' hosts file cannot be changed. Engine thread.</summary>
+    public List<string> CustomDomainSnapshot() => _customDomains.ToList();
+
     /// <summary>How many of the custom list's domains are in Windows' hosts file now -
     /// that is, actually blocked (0.99.235). Reads the file; call it when the Security
     /// page shows, not per tick.</summary>

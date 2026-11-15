@@ -361,6 +361,14 @@ domain name is skipped. GunWall reads the file when you choose it and keeps its 
 copy (`custom-blocklist.txt` in the data folder); if you edit your file, GunWall
 reads it again the next time it starts. Up to 1,000,000 domains.
 
+The list is enforced in two ways. GunWall adds its domains to Windows' hosts file,
+and, when the background service is running with *Watch system DNS lookups* on, the
+service also blocks the server addresses those domains resolve to. The second way
+does not need the hosts file, which security software often locks or puts back. The
+card says which is in effect: **blocking**, **blocking by server address**, or
+**NOT blocking**. By address, a site whose server is shared with sites you have not
+blocked is left alone and listed on the Alerts page.
+
 ### How domain blocking actually works
 
 Two mechanisms, and it is worth knowing which is doing what:

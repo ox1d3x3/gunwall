@@ -15,6 +15,17 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.236] — 2026-11-16
+
+### Changed
+- **A custom blocklist no longer depends on Windows' hosts file.** With the
+  background service running and DNS watching on, the service now enforces the
+  custom list the way it enforces the other DNS blocklist names: by blocking the
+  server addresses those names resolve to. Security software that locks or restores
+  the hosts file can no longer switch the list off. An address shared with a site
+  you have not blocked is left alone and listed on the Alerts page, as for any
+  other name. The Security page says which way the list is being enforced.
+
 ## [0.99.235] — 2026-11-15
 
 ### Added

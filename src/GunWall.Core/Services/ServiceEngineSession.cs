@@ -133,13 +133,26 @@ public sealed class ServiceEngineSession : IEngineSession
     {
         try
         {
-            List<string> user = new();
+            List<string> user = new(), custom = new();
+            string key = "";
             if (_thread.IsDisposed) return;
-            _thread.Invoke(() => { if (_fw != null) user = _fw.DnsResolverBlocklist.ToList(); });
+            _thread.Invoke(() =>
+            {
+                if (_fw == null) return;
+                user = _fw.DnsResolverBlocklist.ToList();
+                custom = _fw.CustomDomainSnapshot();
+                key = CurrentBlocklistKey();
+            });
             var r = new DnsResolver();
-            r.SetBlocklist(DnsResolver.MergedBlocklist(user));
+            // The custom list too (0.99.236): it reached only Windows' hosts file,
+            // which security software locks or puts back - 6 domains sat "loaded" and
+            // unblocked for three weeks. Here they are enforced by server address, with
+            // the same care as every other name: an address shared with a site that is
+            // not blocked is left alone, and the Alerts page says so.
+            r.SetBlocklist(DnsResolver.MergedBlocklist(user.Concat(custom)));
             _blocklist = r;
-            _blocklistKey = BlocklistKey(user);
+            _blocklistKey = key;
+            _customEnforced = custom.Count;
             if (r.BlockedDomainCount > 0)
                 DiagnosticLog.Log($"Service engine: DNS blocklist loaded, {r.BlockedDomainCount:N0} name(s) enforced by address.");
         }
@@ -148,6 +161,12 @@ public sealed class ServiceEngineSession : IEngineSession
     }
 
     private volatile string _blocklistKey = "";
+    private volatile int _customEnforced;
+
+    /// <summary>The list as it stands now: the user's lines, the preset file and the
+    /// custom list (0.99.236). Engine thread.</summary>
+    private string CurrentBlocklistKey() =>
+        _fw == null ? "" : BlocklistKey(_fw.DnsResolverBlocklist) + $":{_fw.CustomDomainCount}:{_fw.CustomListImportedUtc.Ticks}";
     private int _blocklistReloading;
 
     /// <summary>Changes when the user's lines or the preset file change.</summary>
@@ -192,7 +211,7 @@ public sealed class ServiceEngineSession : IEngineSession
             : $"Service DNS watching: {(_dnsObserver.SessionActive ? "active" : "NOT active")}, {_dnsObserver.EventsSeen:N0} events, "
               + $"{_dnsObserver.AnswersRecorded:N0} answers, {_dnsObserver.ParseFailures} parse failures, lastError=[{_dnsObserver.LastError}].");
         sb.AppendLine($"Service DNS blocklist: {_blocklist?.BlockedDomainCount ?? 0:N0} name(s) enforced by address; "
-                    + $"custom list {_fw?.CustomDomainCount ?? 0:N0} domain(s), {_fw?.CustomDomainsEnforced() ?? 0:N0} of them in the hosts file (blocked).");
+                    + $"custom list {_fw?.CustomDomainCount ?? 0:N0} domain(s) - {_customEnforced:N0} enforced by address, {_fw?.CustomDomainsEnforced() ?? 0:N0} in the hosts file.");
         return sb.ToString().TrimEnd();
     }
     private bool _lastEventsWant;
@@ -249,7 +268,7 @@ public sealed class ServiceEngineSession : IEngineSession
                 DiagnosticLog.Log($"Service engine: kernel event detection {(events ? (_detection.EventDriven ? "on" : "could not start") : "off")} (setting changed).");
             }
 
-            if (BlocklistKey(_fw.DnsResolverBlocklist) != _blocklistKey
+            if (CurrentBlocklistKey() != _blocklistKey
                 && Interlocked.Exchange(ref _blocklistReloading, 1) == 0)
                 _ = Task.Run(() =>
                 {
