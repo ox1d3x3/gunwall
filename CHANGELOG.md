@@ -15,6 +15,31 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.237] — 2026-11-16
+
+### Fixed
+- **Blocking one site could cut an application off from another site on the same
+  server.** With `www.example.com` on a blocklist, an application reaching a
+  different, unblocked name on the same shared address was blocked from that
+  address too. A password manager lost its own vault this way. An address that has
+  also served a name you have not blocked is now left alone for single applications
+  as well, and the Alerts page says so once. `!!name` still blocks it regardless.
+- **A blocked name could be missed** when another name had been seen on the same
+  address more recently. Every name seen on an address is now considered.
+- **A hosts-file write that fails now records why** (access denied, or written and
+  then restored) in the diagnostics log.
+
+### Changed
+- **The custom blocklist status is stated as it is.** Enforcement by server address
+  (0.99.236) blocks small sites on their own servers but cannot keep a large site
+  out: such a site uses many addresses and each is only blocked after the first
+  connection to it. The Security page now says **PARTLY blocking** in that case.
+
+### Removed
+- **Keyboard shortcuts on the connection popup** (added in 0.99.235, never
+  released). The popup takes the focus when it opens, so a shortcut is a way to
+  answer it by accident.
+
 ## [0.99.236] — 2026-11-16
 
 ### Changed
@@ -39,9 +64,6 @@ All notable changes to GunWall are recorded here. Format follows
   in Windows' style. They are now GunWall's own cards in the corner of the screen,
   in the app's theme, font and size, and they never take the keyboard. Minimising
   the window shows the notice too, once per session.
-- **Keyboard shortcuts on the popup:** Alt+A allows, Alt+B blocks, Alt+O allows
-  until restart, Alt+D shows the details. Alt is required and the first 0.7 seconds
-  are ignored, so a key typed into another program can never answer a prompt.
 - **"N more waiting"** on the popup when other applications are queued behind it.
 
 ### Changed

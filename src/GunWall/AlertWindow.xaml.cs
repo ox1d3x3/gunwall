@@ -41,13 +41,6 @@ public partial class AlertWindow : Window
 
     private readonly Action? _onAllowOnce;
     private bool _once;                      // "Allow until restart" was chosen
-    private DateTime _shownUtc = DateTime.UtcNow;
-
-    /// <summary>A prompt that has just appeared ignores the keyboard for this long:
-    /// it takes the focus when it opens, and a shortcut already on its way to another
-    /// program must not answer a question nobody has read yet.</summary>
-    public static readonly TimeSpan KeyGuard = TimeSpan.FromMilliseconds(700);
-
     /// <param name="onAllowOnce">Allow until the next restart; the link is hidden without it.</param>
     /// <param name="waiting">How many more applications are queued behind this one.</param>
     public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null, bool strictMode = false,
@@ -65,7 +58,7 @@ public partial class AlertWindow : Window
             QueueText.Text = QueueLabel(waiting);
             QueueText.Visibility = Visibility.Visible;
         }
-        PreviewKeyDown += OnPreviewKeyDown;
+
         UiZoom.Apply(this);   // popups follow the UI size (0.99.227)
         _info = info;
         _onBlock = onBlock;
@@ -143,7 +136,6 @@ public partial class AlertWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         TryEnableDarkTitleBar();
-        _shownUtc = DateTime.UtcNow;
         PlayEntrance();
         StartCountdown();
 
@@ -273,37 +265,9 @@ public partial class AlertWindow : Window
     public static string QueueLabel(int waiting) =>
         waiting <= 0 ? "" : waiting == 1 ? "1 more waiting" : $"{waiting} more waiting";
 
-    /// <summary>Which answer a key press means, or "" (0.99.235). Alt is required: the
-    /// prompt takes the focus when it opens, and a bare A or B typed into another
-    /// program a moment later must never allow or block anything. Esc is not a
-    /// shortcut either - closing a prompt blocks, and that should be deliberate.</summary>
-    public static string ShortcutFor(Key key, bool alt, TimeSpan sinceShown)
-    {
-        if (!alt || sinceShown < KeyGuard) return "";
-        return key switch
-        {
-            Key.A => "allow",
-            Key.B => "block",
-            Key.O => "once",
-            Key.D => "details",
-            _ => "",
-        };
-    }
-
-    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        Key key = e.Key == Key.System ? e.SystemKey : e.Key;   // with Alt held, WPF reports Key.System
-        bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
-        switch (ShortcutFor(key, alt, DateTime.UtcNow - _shownUtc))
-        {
-            case "allow": e.Handled = true; Allow_Click(this, new RoutedEventArgs()); break;
-            case "block": e.Handled = true; Block_Click(this, new RoutedEventArgs()); break;
-            case "once":
-                if (OnceButton.Visibility == Visibility.Visible) { e.Handled = true; Once_Click(this, new RoutedEventArgs()); }
-                break;
-            case "details": e.Handled = true; Details_Click(this, new RoutedEventArgs()); break;
-        }
-    }
+    // No keyboard shortcuts (removed in 0.99.237, Mahabub 2026-11-16): the prompt
+    // takes the focus when it opens, so any shortcut is a way to answer it by
+    // accident, and nobody asked for one.
 
     /// <summary>Fades in and rises 14 px into the corner (0.99.235). It used to appear
     /// in one frame, the only window in GunWall that did. Skipped when Windows'

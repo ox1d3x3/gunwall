@@ -245,7 +245,7 @@
                                  base style's TextPrimary, 13px and Medium apply:
                                  Allow's label went near-black on red in the light
                                  theme, and the width check measured the wrong size. -->
-                            <Button x:Name="BlockButton" Click="Block_Click" ToolTip="Block (Alt+B)"
+                            <Button x:Name="BlockButton" Click="Block_Click"
                                     Style="{StaticResource PromptSecondary}" Margin="0,0,8,0"
                                     AutomationProperties.Name="Block">
                                 <StackPanel Orientation="Horizontal">
@@ -258,7 +258,7 @@
                                     <TextBlock Text="Block" VerticalAlignment="Center" Style="{x:Null}" />
                                 </StackPanel>
                             </Button>
-                            <Button x:Name="AllowButton" Click="Allow_Click" ToolTip="Allow (Alt+A)"
+                            <Button x:Name="AllowButton" Click="Allow_Click"
                                     Style="{StaticResource PromptPrimary}"
                                     AutomationProperties.Name="Allow">
                                 <StackPanel Orientation="Horizontal">
@@ -289,7 +289,7 @@
                         <Button x:Name="OnceButton" Grid.Column="1" Click="Once_Click"
                                 Cursor="Hand" Focusable="True"
                                 AutomationProperties.Name="Allow until restart"
-                                ToolTip="Allow it now and ask again after the next restart. For installers and other one-off programs. (Alt+O)">
+                                ToolTip="Allow it now and ask again after the next restart. For installers and other one-off programs.">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
                                     <TextBlock x:Name="OnceLabel" Text="Allow until restart" FontSize="11.5"

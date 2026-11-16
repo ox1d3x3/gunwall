@@ -7,7 +7,7 @@
 
 </div>
 
-# GunWall 0.99.236 — public beta
+# GunWall 0.99.237 — public beta
 
 A zero-trust application firewall for Windows 11, built on the Windows Filtering
 Platform. Free, MIT-licensed, no telemetry.
@@ -16,7 +16,7 @@ Platform. Free, MIT-licensed, no telemetry.
 
 | File | Use |
 |---|---|
-| `GunWall-0.99.236-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
+| `GunWall-0.99.237-setup.exe` | **Recommended.** Installs, upgrades in place keeping your rules, and its uninstaller removes every GunWall filter before deleting anything |
 | `GunWall.exe` | Portable. Create `portable.txt` beside it to keep the data next to the executable |
 
 Each release lists the SHA-256 of every file. Check yours with
@@ -30,17 +30,17 @@ this version first writes to them it saves the profile as
 saved by an earlier version is encrypted on first start; an older build started
 afterwards cannot read it and needs the key entered again.
 
-## New in 0.99.235 and 0.99.236
+## New in 0.99.235 to 0.99.237
 
 - **Allow until restart** on the connection popup, for installers and one-off
   programs.
 - GunWall's notifications are its own themed cards instead of Windows balloons.
-- The popup fades in, has keyboard shortcuts (Alt+A, Alt+B, Alt+O, Alt+D) and says
-  how many other programs are waiting.
+- The popup fades in and says how many other programs are waiting.
 - A program you blocked is recognised when it runs from a new folder.
-- A custom blocklist is enforced by the background service by server address, so it
-  works when security software protects Windows' hosts file. The Security page says
-  how the list is being enforced, or that it is not.
+- A custom blocklist that cannot be written to Windows' hosts file is now reported,
+  with the reason, instead of looking loaded. The background service also blocks
+  those sites by server address where that is safe; this is partial and does not
+  replace the hosts file for large sites.
 - Less work in the background: the country database is not reloaded when unchanged,
   and rules for removed programs are cleaned up daily.
 

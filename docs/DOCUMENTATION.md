@@ -233,10 +233,7 @@ corner.
   it with a star; click **Allow** there to keep it for good
 - **Chevron (⌄)** — expands full detail: reverse DNS, exact time, full path
 
-**From the keyboard:** Alt+A allows, Alt+B blocks, Alt+O allows until restart and
-Alt+D opens the detail. Alt is required, and a prompt ignores the keyboard for its
-first 0.7 seconds, so a key meant for another program cannot answer it. When other
-programs are waiting, the prompt says how many.
+When other programs are waiting, the prompt says how many.
 
 **A blocked program in a new folder stays blocked.** Some programs run from a new
 temporary folder every time. If a program has the same file name and the same
@@ -361,13 +358,15 @@ domain name is skipped. GunWall reads the file when you choose it and keeps its 
 copy (`custom-blocklist.txt` in the data folder); if you edit your file, GunWall
 reads it again the next time it starts. Up to 1,000,000 domains.
 
-The list is enforced in two ways. GunWall adds its domains to Windows' hosts file,
-and, when the background service is running with *Watch system DNS lookups* on, the
-service also blocks the server addresses those domains resolve to. The second way
-does not need the hosts file, which security software often locks or puts back. The
-card says which is in effect: **blocking**, **blocking by server address**, or
-**NOT blocking**. By address, a site whose server is shared with sites you have not
-blocked is left alone and listed on the Alerts page.
+The list works through Windows' hosts file. Security software often locks that
+file or puts it back; when that happens the card says so, and the diagnostics log
+records the reason. With the background service running and *Watch system DNS
+lookups* on, the service also blocks the server addresses of listed sites, one
+application at a time. That is a partial fallback, not a replacement: a large site
+uses many addresses and is mostly not stopped, and an address that also serves a
+site you have not blocked is always left alone (write `!!name` in the DNS blocklist
+to block it regardless). The card shows **blocking**, **PARTLY blocking** or
+**NOT blocking**.
 
 ### How domain blocking actually works
 

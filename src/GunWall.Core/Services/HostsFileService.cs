@@ -18,6 +18,9 @@ public static class HostsFileService
     public static string HostsPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "drivers", "etc", "hosts");
 
+    /// <summary>Why the last write did not hold, "" when it did (0.99.237).</summary>
+    public static string LastFailure { get; private set; } = "";
+
     private static string BackupPath(string dataFolder) => Path.Combine(dataFolder, "hosts.backup");
 
     /// <summary>Domains currently in the GunWall block.</summary>
@@ -102,10 +105,17 @@ public static class HostsFileService
             if (sorted.Count == 0 ? onDisk == 0 : onDisk > 0)
             {
                 FlushDns();
+                LastFailure = "";
                 return true;
             }
+            LastFailure = "the file was written, but GunWall's lines were gone when it was read back - something restored it";
         }
-        catch { /* locked or access-denied */ }
+        catch (Exception ex)
+        {
+            // Which of the two it is decides what to tell the user (0.99.237):
+            // access denied is a lock, a vanished write is a restore.
+            LastFailure = $"{ex.GetType().Name}: {ex.Message}";
+        }
 
         return false;
     }

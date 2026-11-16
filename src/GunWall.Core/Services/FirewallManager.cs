@@ -3843,6 +3843,8 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         return removed;
     }
 
+    public bool IsDomainForced(string domain) => _isDomainForced?.Invoke(domain) ?? false;
+
     public bool AddAppDomainBlock(string exePath, string domain, string remoteIp)
     {
         if (string.IsNullOrWhiteSpace(exePath) || !IsApplicablePath(exePath)) return false;
@@ -4787,7 +4789,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         {
             _hostsFailureLogged = true;
             DiagnosticLog.Log($"Hosts file: {all.Count:N0} domain(s) could not be written to Windows' hosts file - "
-                            + "it is locked or was put back, which security software often does. They are NOT blocked this way.");
+                            + $"they are NOT blocked this way. Reason: {HostsFileService.LastFailure}.");
         }
         if (ok) _hostsFailureLogged = false;
         return ok;

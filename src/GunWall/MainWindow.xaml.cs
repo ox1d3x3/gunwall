@@ -512,7 +512,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.236 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.237 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -8417,7 +8417,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // (0.99.236), which needs no hosts file - as long as DNS watching is on.
             bool byAddress = Remote && _firewall.DnsObserveSystemLookups;
             string state = n == 0 ? "" : enforced >= n ? "  -  blocking"
-                : byAddress ? "  -  blocking by server address (Windows' hosts file could not be changed; a site on a server shared with unblocked sites is skipped and listed on Alerts)"
+                : byAddress ? "  -  PARTLY blocking, by server address: Windows' hosts file could not be changed. Small sites on their own servers are blocked; large or shared sites mostly are not"
                 : enforced == 0 ? "  -  NOT blocking: Windows' hosts file could not be changed (security software often protects it)"
                 : $"  -  blocking {enforced:N0} of {n:N0}";
             CustomListStatus.Text = $"{n:N0} domain(s) loaded from {System.IO.Path.GetFileName(path)}{state}  -  {path}";

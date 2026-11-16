@@ -13,6 +13,8 @@ public interface IUpkeepPolicy
     bool AddP2pReactiveBlock(string exePath, string remoteIp);
     bool BypassesBlocklists(string exePath);
     bool AddAppDomainBlock(string exePath, string domain, string remoteIp);
+    /// <summary>"!!name": the user asked for the address to go even when shared.</summary>
+    bool IsDomainForced(string domain);
     bool AddDomainReactiveBlock(string domain, string remoteIp, out string declined);
     IReadOnlyCollection<AppAccessPolicy> ActiveAccessPolicies { get; }
     AppAccessPolicy? GetAccessPolicy(string exePath);
@@ -188,6 +190,14 @@ public sealed class EngineUpkeep
     /// in the kernel instead - which also holds for applications that bring
     /// their own resolver and never ask Windows at all.
     /// </summary>
+    /// <summary>"domain|address" pairs already explained as shared, so it is said once.</summary>
+    private readonly HashSet<string> _sharedTold = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The names seen on an address that are NOT on the blocklist - what a
+    /// block on that address would take down besides its target.</summary>
+    public static List<string> UnblockedNamesOn(IEnumerable<string> namesOnAddress, Func<string, bool> isBlocked) =>
+        namesOnAddress.Where(n => !string.IsNullOrWhiteSpace(n) && !isBlocked(n)).ToList();
+
     private void EnforceBlockedDomains(List<ConnectionInfo> conns, List<UpkeepNotice> notices)
     {
         using var _perf = PerfMonitor.Measure("EnforceBlockedDomains");
@@ -217,7 +227,14 @@ public sealed class EngineUpkeep
 
                 string domain = DnsObservations.DomainForIp(remote);
                 if (domain.Length == 0) continue;
-                if (!_isDomainBlocked(domain)) continue;
+                if (!_isDomainBlocked(domain))
+                {
+                    // DomainForIp names ONE of the names seen on the address. A blocked
+                    // name that shares it must not be missed because another name was
+                    // seen there too (0.99.237); the sharing rules below decide.
+                    domain = DnsObservations.NameListForIp(remote).FirstOrDefault(_isDomainBlocked) ?? "";
+                    if (domain.Length == 0) continue;
+                }
 
                 // BEFORE any filter is built, not after. Building one and then
                 // removing it would leave a window in which the exempt
@@ -242,6 +259,33 @@ public sealed class EngineUpkeep
                 // instead of being silently covered by the first one's.
                 if (!string.IsNullOrEmpty(c.ExePath))
                 {
+                    // "No collateral" was wrong for ONE case (0.99.237): the same
+                    // application reaching a DIFFERENT name on the same address. With
+                    // www.ox1de.xyz on the list, Bitwarden was cut off from
+                    // vaultx1.ox1de.xyz - both sit behind the same Cloudflare addresses
+                    // (2026-11-16). Which name this connection is for cannot be known
+                    // from the address, so when the address has also served a name
+                    // that is NOT blocked, it is left alone - unless the name is
+                    // marked "!!", which is the user accepting exactly that.
+                    if (!_fw.IsDomainForced(domain))
+                    {
+                        var others = UnblockedNamesOn(DnsObservations.NameListForIp(remote), _isDomainBlocked);
+                        bool unsure = DnsObservations.NameListSaturated(remote);
+                        if (others.Count > 0 || unsure)
+                        {
+                            if (_sharedTold.Add($"{domain}|{remote}"))
+                            {
+                                string why = others.Count > 0
+                                    ? $"{remote} also serves {string.Join(", ", others.Take(5))}{(others.Count > 5 ? ", ..." : "")}, which you have not blocked"
+                                    : $"{remote} has served too many names to be sure they are all blocked";
+                                DiagnosticLog.Log($"Blocked domain {domain}: {why} - the address is left alone for {c.ProcessName}.");
+                                notices.Add(new UpkeepNotice("info", $"{domain} was not blocked by address",
+                                    $"{why}. Blocking the address would cut those off too, so it was left alone. "
+                                    + $"To block it anyway, write !!{domain} in the DNS blocklist."));
+                            }
+                            continue;
+                        }
+                    }
                     if (!_appDomainBlocked.Add($"{c.ExePath}|{remote}")) continue;
                     if (_fw.AddAppDomainBlock(c.ExePath, domain, remote))
                     {
