@@ -1941,6 +1941,69 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// allow/block rule exists - housekeeping for "seen but never decided" apps.
     /// They'll prompt again the next time they connect. Returns the count removed.
     /// </summary>
+    /// <summary>
+    /// Forgets an application completely (0.99.239): its allow or block rule and every
+    /// filter made for it, its scope and timed blocks, access rules, P2P flag, note and
+    /// its place in the list. From then on it is a program GunWall has never seen: in
+    /// Zero Trust it is blocked by default and asked about the next time it connects.
+    /// True when there was anything to forget.
+    /// </summary>
+    public bool ForgetApp(string exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath) || IsOwnExecutable(exePath)) return false;
+        string lower = exePath.ToLowerInvariant();
+        bool any = false;
+        string name = System.IO.Path.GetFileNameWithoutExtension(exePath);
+        lock (_dataLock)
+        {
+            foreach (var rule in _data.Rules.Where(r => string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                if (!string.IsNullOrWhiteSpace(rule.DisplayName)) name = rule.DisplayName;
+                if (rule.FilterIds.Count > 0)
+                    try { _engine.RemoveFilters(rule.FilterIds); } catch (Exception ex) { DiagnosticLog.LogException("ForgetApp/rule", ex); }
+                _data.Rules.Remove(rule);
+                any = true;
+            }
+            // Per-app filters: "<path>|<scope>" and "appdomainblock|<path>|<address>".
+            foreach (var key in _data.ScopeFilters.Keys
+                         .Where(k => k.StartsWith(lower + "|", StringComparison.Ordinal)
+                                  || k.StartsWith("appdomainblock|" + lower + "|", StringComparison.Ordinal)).ToList())
+            {
+                try { _engine.RemoveFilters(_data.ScopeFilters[key]); } catch (Exception ex) { DiagnosticLog.LogException("ForgetApp/scope", ex); }
+                _data.ScopeFilters.Remove(key);
+                any = true;
+            }
+            foreach (var k in _data.AccessPolicies.Keys.Where(k => string.Equals(k, exePath, StringComparison.OrdinalIgnoreCase)).ToList())
+            { _data.AccessPolicies.Remove(k); any = true; }
+            foreach (var k in _data.TempBlocks.Keys.Where(k => string.Equals(k, exePath, StringComparison.OrdinalIgnoreCase)).ToList())
+            { _data.TempBlocks.Remove(k); any = true; }
+            foreach (var k in _data.AppNotes.Keys.Where(k => string.Equals(k, exePath, StringComparison.OrdinalIgnoreCase)).ToList())
+            { _data.AppNotes.Remove(k); any = true; }
+            if (_data.P2pApps.RemoveAll(p => string.Equals(p, exePath, StringComparison.OrdinalIgnoreCase)) > 0) any = true;
+            if (_data.KnownApps.RemoveAll(p => string.Equals(p, exePath, StringComparison.OrdinalIgnoreCase)) > 0) any = true;
+            _knownSet = null;
+            // The detector asks about a program once per session; this one is to be
+            // asked about again.
+            _forgotten.Add(exePath);
+            SaveStore();
+        }
+        if (any)
+        {
+            DiagnosticLog.Log($"{name} forgotten: its rule and everything kept for it were removed - it will be asked about when it next connects.");
+            EventLog($"{name}: removed from the list - it will be asked about again");
+        }
+        return any;
+    }
+
+    private readonly HashSet<string> _forgotten = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>True, once, for a program forgotten since the detector last asked
+    /// about it - so its "already asked this session" memory lets it through.</summary>
+    public bool TakeForgotten(string exePath)
+    {
+        lock (_dataLock) return _forgotten.Remove(exePath);
+    }
+
     public int PurgeUnusedApps()
     {
         var ruled = new HashSet<string>(

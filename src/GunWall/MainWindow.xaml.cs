@@ -515,7 +515,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.238 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.239 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -5704,6 +5704,74 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
+    /// <summary>"Allow an app" (0.99.239): programs chosen ahead of time connect without
+    /// ever asking - a launcher and its games, so nobody has to leave a game to answer
+    /// a popup. Several files can be chosen at once.</summary>
+    private void BrowseAllow_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        var dlg = new OpenFileDialog
+        {
+            Title = "Select the applications to allow",
+            Filter = "Programs (*.exe)|*.exe|All files (*.*)|*.*",
+            Multiselect = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            int done = 0;
+            foreach (string file in dlg.FileNames)
+            {
+                _firewall.AllowApp(file, System.IO.Path.GetFileNameWithoutExtension(file));
+                Services.DiagnosticLog.Log($"Allowed ahead of time: {System.IO.Path.GetFileName(file)}.");
+                done++;
+            }
+            RebuildAppsList();
+            if (!_firewall.StrictMode && done > 0)
+                ThemedMessageBox.Show("Protection is off, so nothing is being blocked and there is no rule to add yet. "
+                                    + "Turn protection on and allow the programs again.",
+                                      "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    /// <summary>"Remove from list (ask again)" (0.99.239), for every selected row: the
+    /// rule and everything kept for the program go, and it is asked about the next
+    /// time it connects. Asked first - in Zero Trust a forgotten program is blocked
+    /// until it is answered again.</summary>
+    private void ForgetApps_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RequireEngine()) return;
+        var apps = AppsList.SelectedItems.OfType<AppInfo>().ToList();
+        if (apps.Count == 0) return;
+        bool critical = apps.Any(a => FirewallManager.IsCriticalProcess(a.ExecutablePath));
+        string what = apps.Count == 1 ? apps[0].Name : $"{apps.Count} applications";
+        string text = $"Remove {what} from the list?\n\n"
+                    + "GunWall forgets the rule, timed and scope blocks, access rules and note. "
+                    + (_firewall.StrictMode ? "The program is blocked until it next connects and you answer its popup again."
+                                            : "It is asked about again the next time it connects with protection on.")
+                    + (critical ? "\n\nCaution: this includes a Windows system process. Until you allow it again, parts of Windows may lose their connection." : "");
+        if (ThemedMessageBox.Show(text, critical ? "Caution: system process" : "Remove from list",
+                                  MessageBoxButton.YesNo, critical ? MessageBoxImage.Warning : MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        try
+        {
+            int n = 0;
+            foreach (var a in apps)
+                if (_firewall.ForgetApp(a.ExecutablePath)) n++;
+            Services.DiagnosticLog.Log($"Applications: {n} of {apps.Count} selected application(s) removed from the list.");
+            RebuildAppsList();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void AppsList_ForgetKey(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Delete || AppsList.SelectedItems.Count == 0) return;
+        e.Handled = true;
+        ForgetApps_Click(sender, new RoutedEventArgs());
+    }
+
     private void RefreshApps_Click(object sender, RoutedEventArgs e) => RebuildAppsList();
 
     private void MuteApp_Click(object sender, RoutedEventArgs e)
@@ -5760,6 +5828,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var item = FindAncestor<System.Windows.Controls.ListViewItem>(e.OriginalSource as DependencyObject);
         if (item != null)
         {
+            // A right-click on a row OUTSIDE the selection starts a new one (0.99.239).
+            // It used to add the row to whatever was selected, which did not matter
+            // while every menu command acted on one row; "Remove from list" acts on
+            // them all, and must not take rows nobody is looking at.
+            if (!item.IsSelected && sender is System.Windows.Controls.ListView list
+                && list.SelectionMode != System.Windows.Controls.SelectionMode.Single)
+                list.SelectedItems.Clear();
             item.IsSelected = true;
             item.Focus();
         }

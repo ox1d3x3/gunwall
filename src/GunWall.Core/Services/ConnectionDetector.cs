@@ -24,6 +24,9 @@ public interface IDetectionPolicy
     /// <summary>True when <paramref name="exePath"/> is the same file as a blocked
     /// program in another folder and was blocked too (0.99.235).</summary>
     bool AdoptIdenticalBlocked(string exePath);
+    /// <summary>True once for a program the user removed from the list since it was
+    /// last asked about (0.99.239): it is to be asked about again this session.</summary>
+    bool TakeForgotten(string exePath);
     void SeedKnownApps(IEnumerable<string> exePaths);
     string? ApplyEntityBlocks(string appPath, string remoteIp);
     string ExplainVerdict(string exePath, string remoteAddress, int remotePort,
@@ -211,7 +214,7 @@ public sealed class ConnectionDetector
         if (_fw.IsBlocked(appPath) || _fw.IsAllowed(appPath) || _fw.IsSilent(appPath)) return r;
         if (!_fw.AlertsEnabled) return r;
         if (!_fw.StrictMode) return r;
-        if (!_prompted.Add(appPath)) return r;
+        if (!_prompted.Add(appPath) && !_fw.TakeForgotten(appPath)) return r;
         Ask(r, new PromptRequest(appName, appPath, remote, remotePort, protocol, now));
         r.ShowQueued = true;
         return r;
@@ -265,7 +268,7 @@ public sealed class ConnectionDetector
             if (strict)
             {
                 // Zero Trust: already blocked by default-deny; ask once per session.
-                if (!_prompted.Add(proc.Path)) continue;
+                if (!_prompted.Add(proc.Path) && !_fw.TakeForgotten(proc.Path)) continue;
             }
             else
             {

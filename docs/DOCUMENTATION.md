@@ -273,7 +273,12 @@ activity.
 - **Allow** or **Block** any application with the button on its row
 - **Filter** by name using the search box
 - **Show all running apps** to include programs that have not yet used the network
+- **Allow an app** to approve one or more programs before they ever ask - a game
+  launcher and its games, for example, so no popup appears mid-game
 - **Block an app** to add one by browsing to its executable
+- **Remove from list (ask again)**, on the right-click menu or with the Delete key,
+  for every selected row: GunWall forgets the rule and everything kept for the
+  program, and asks about it the next time it connects
 - **Purge unused** to clear entries with no rule and no connections
 - **Right-click a row → Properties…** for full details: publisher, hash,
   signature status, package type and a notes field of your own. **Open file

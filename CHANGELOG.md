@@ -15,6 +15,25 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.239] — 2026-11-16
+
+### Added
+- **Remove from list (ask again).** Right-click one or more applications on the
+  Applications page, or select them and press Delete. GunWall forgets the rule and
+  everything kept for the program - timed and scope blocks, access rules, the note -
+  and treats it as a program it has never seen: the next time it connects, it asks.
+  It asks for confirmation first, with a stronger warning for Windows system
+  processes, and with Protect settings on it needs administrator approval like any
+  change that can loosen protection.
+- **Allow an app.** A button beside **Block an app**: choose one or more programs
+  and they are allowed before they ever ask. Meant for a launcher and its games, so
+  a popup does not appear in the middle of one.
+
+### Fixed
+- **A right-click added the row to whatever was already selected** instead of
+  selecting it alone. Commands that act on every selected row would have reached
+  rows that were not in view.
+
 ## [0.99.238] — 2026-11-16
 
 ### Fixed

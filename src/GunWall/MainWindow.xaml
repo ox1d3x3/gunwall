@@ -983,6 +983,9 @@
                             <TextBox x:Name="AppSearch" Tag="Filter applications..." Style="{StaticResource SearchBox}"
                                      TextChanged="AppSearch_TextChanged" Margin="0,0,8,4"
                                      ToolTip="Search applications" />
+                            <Button Content="Allow an app" Style="{StaticResource ActionButton}"
+                                    Click="BrowseAllow_Click" Margin="0,0,8,4"
+                                    ToolTip="Choose one or more programs to allow before they ever ask - a game and its launcher, for example. They connect without a prompt." />
                             <Button Content="Block an app" Style="{StaticResource ActionButton}"
                                     Click="BrowseBlock_Click" Margin="0,0,8,4" />
                             <Button Content="Purge unused" Style="{StaticResource ActionButton}"
@@ -1019,7 +1022,8 @@
                 <Border Grid.Row="1" Padding="0">
                     <ListView x:Name="AppsList" SizeChanged="AppsList_SizeChanged" gw:Table.EmptyTitle="No applications yet" gw:Table.EmptyText="They appear here the first time each one tries to reach the network." VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel"
                               VirtualizingPanel.VirtualizationMode="Recycling"
-                              PreviewMouseRightButtonDown="Row_RightClickSelect">
+                              PreviewMouseRightButtonDown="Row_RightClickSelect"
+                              PreviewKeyDown="AppsList_ForgetKey">
                         <ListView.Resources>
                             <!-- Every text cell in this table trims with an ellipsis.
 
@@ -1076,6 +1080,10 @@
                                 <Separator />
                                 <MenuItem Header="Access rules..." Click="AccessRules_Click" />
                                 <MenuItem Header="Properties..." Click="Properties_Click" />
+                                <Separator />
+                                <!-- 0.99.239: every selected row. The program becomes one
+                                     GunWall has never seen, and is asked about again. -->
+                                <MenuItem Header="Remove from list (ask again)" InputGestureText="Del" Click="ForgetApps_Click" />
                             </ContextMenu>
                         </ListView.ContextMenu>
                         <ListView.View>

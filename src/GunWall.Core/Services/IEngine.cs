@@ -157,6 +157,9 @@ public interface IEngine
     [EngineAccess(Access.Local)] event Action? ProtectionChanged;
     [EngineAccess(Access.Loosen)] int PurgeExpiredTimers();
     [EngineAccess(Access.Loosen)] int PurgeUnusedApps();
+    /// <summary>Forgets an application completely; it is asked about again (0.99.239).
+    /// Loosening: forgetting a blocked program lets it be allowed at its next prompt.</summary>
+    [EngineAccess(Access.Loosen)] bool ForgetApp(string exePath);
     [EngineAccess(Access.Tighten)] bool RebuildHostsBlock();
     [EngineAccess(Access.Loosen)] bool RemoveAllFiltering();
     [EngineAccess(Access.Loosen)] bool RemoveCustomRule(string id);
