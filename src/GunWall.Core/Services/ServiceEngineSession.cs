@@ -113,6 +113,27 @@ public sealed class ServiceEngineSession : IEngineSession
                 try { fw?.LoadGeoIp(); }
                 catch (Exception ex) { DiagnosticLog.LogException("ServiceGeoIp", ex); }
                 LoadBlocklist();
+                try
+                {
+                    if (!_thread.IsDisposed)
+                        _thread.Invoke(() =>
+                        {
+                            if (fw == null) return;
+                            // 0.99.236/237 blocked custom-list names by address; those
+                            // filters are saved in the profile and would otherwise stay
+                            // for good (0.99.238). Blocks for names still on the DNS
+                            // blocklist form again the next time they are reached.
+                            if (Version.TryParse(fw.UpgradedFrom, out var from) && from < new Version(0, 99, 238))
+                            {
+                                int n = fw.ClearDomainReactiveBlocks();
+                                if (n > 0) DiagnosticLog.Log($"Upgrade: removed {n} address block(s) made for blocked names by an earlier version.");
+                            }
+                            // The custom list by name: hosts file, or Windows' DNS policy.
+                            if (fw.CustomDomainCount > 0 || DnsNameBlock.HasRules(fw.ProfileFolder)) fw.RebuildHostsBlock();
+                        });
+                }
+                catch (Exception ex) when (!_thread.IsDisposed) { DiagnosticLog.LogException("ServiceCustomList", ex); }
+                catch { /* the session ended meanwhile */ }
                 var (before, after) = MemoryTrim.Trim();   // the load's leftovers back to Windows (0.99.233)
                 DiagnosticLog.Log($"Memory: service after startup loads - {before:F0} MB of working set given back to Windows; what is used is read back in.");
             });
@@ -133,26 +154,24 @@ public sealed class ServiceEngineSession : IEngineSession
     {
         try
         {
-            List<string> user = new(), custom = new();
+            List<string> user = new();
             string key = "";
             if (_thread.IsDisposed) return;
             _thread.Invoke(() =>
             {
                 if (_fw == null) return;
                 user = _fw.DnsResolverBlocklist.ToList();
-                custom = _fw.CustomDomainSnapshot();
                 key = CurrentBlocklistKey();
             });
             var r = new DnsResolver();
-            // The custom list too (0.99.236): it reached only Windows' hosts file,
-            // which security software locks or puts back - 6 domains sat "loaded" and
-            // unblocked for three weeks. Here they are enforced by server address, with
-            // the same care as every other name: an address shared with a site that is
-            // not blocked is left alone, and the Alerts page says so.
-            r.SetBlocklist(DnsResolver.MergedBlocklist(user.Concat(custom)));
+            // NOT the custom list (0.99.238). 0.99.236 added it here so it would work
+            // without the hosts file. By address it leaked for any large site and cut
+            // Bitwarden and Edge off from a vault sharing Cloudflare addresses with a
+            // listed name. The custom list is blocked by NAME now - hosts file, or
+            // Windows' DNS policy (FirewallManager.SyncCustomNameBlock).
+            r.SetBlocklist(DnsResolver.MergedBlocklist(user));
             _blocklist = r;
             _blocklistKey = key;
-            _customEnforced = custom.Count;
             if (r.BlockedDomainCount > 0)
                 DiagnosticLog.Log($"Service engine: DNS blocklist loaded, {r.BlockedDomainCount:N0} name(s) enforced by address.");
         }
@@ -161,12 +180,11 @@ public sealed class ServiceEngineSession : IEngineSession
     }
 
     private volatile string _blocklistKey = "";
-    private volatile int _customEnforced;
 
     /// <summary>The list as it stands now: the user's lines, the preset file and the
     /// custom list (0.99.236). Engine thread.</summary>
     private string CurrentBlocklistKey() =>
-        _fw == null ? "" : BlocklistKey(_fw.DnsResolverBlocklist) + $":{_fw.CustomDomainCount}:{_fw.CustomListImportedUtc.Ticks}";
+        _fw == null ? "" : BlocklistKey(_fw.DnsResolverBlocklist);
     private int _blocklistReloading;
 
     /// <summary>Changes when the user's lines or the preset file change.</summary>
@@ -211,7 +229,7 @@ public sealed class ServiceEngineSession : IEngineSession
             : $"Service DNS watching: {(_dnsObserver.SessionActive ? "active" : "NOT active")}, {_dnsObserver.EventsSeen:N0} events, "
               + $"{_dnsObserver.AnswersRecorded:N0} answers, {_dnsObserver.ParseFailures} parse failures, lastError=[{_dnsObserver.LastError}].");
         sb.AppendLine($"Service DNS blocklist: {_blocklist?.BlockedDomainCount ?? 0:N0} name(s) enforced by address; "
-                    + $"custom list {_fw?.CustomDomainCount ?? 0:N0} domain(s) - {_customEnforced:N0} enforced by address, {_fw?.CustomDomainsEnforced() ?? 0:N0} in the hosts file.");
+                    + $"custom list {_fw?.CustomDomainCount ?? 0:N0} domain(s), enforcement [{_fw?.CustomListEnforcement()}], {_fw?.CustomDomainsEnforced() ?? 0:N0} in the hosts file.");
         return sb.ToString().TrimEnd();
     }
     private bool _lastEventsWant;

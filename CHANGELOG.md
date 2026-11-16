@@ -15,6 +15,37 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.238] — 2026-11-16
+
+### Fixed
+- **Pressing a key on a connection popup showed an error.** The popup's buttons
+  named a focus-ring style that was defined further down the same file, which WPF
+  cannot resolve; the first keyboard focus on a button threw
+  "'{DependencyProperty.UnsetValue}' is not a valid value for property
+  'FocusVisualStyle'". The focus styles are now defined before anything uses them.
+- **A read-only hosts file.** Windows refuses every writer, the system account
+  included, when the hosts file is marked read-only. GunWall now lifts the mark for
+  its write and puts it back, and the log says whether the file is read-only or
+  something else is protecting it.
+
+### Changed
+- **A custom blocklist is blocked by name, not by address.** When Windows' hosts
+  file cannot be written, GunWall now uses Windows' own DNS policy (the Name
+  Resolution Policy Table): lookups for exactly the listed names are sent nowhere,
+  so they fail for every program that uses Windows' resolver, and no other name is
+  touched. GunWall checks with a real lookup that the block is in effect before
+  saying so. The rules carry GunWall's name, only those are ever removed, and
+  **Remove all GunWall filtering** and the uninstaller remove them. Up to 2,000
+  names; a browser using its own secure DNS (DNS over HTTPS) does not ask Windows
+  and is not covered.
+- **Blocking the custom list by server address (0.99.236) is withdrawn.** It could
+  only act after a first connection, so a large site stayed reachable, and it cut
+  applications off from other sites on the same server - a password manager and a
+  browser both lost a self-hosted vault that shares addresses with a listed name.
+  Address blocks made by 0.99.236 and 0.99.237 are removed on upgrade.
+- **The Security page states how the list is enforced:** *blocking (Windows' hosts
+  file)*, *blocking (Windows' DNS policy)*, or *NOT blocking* with the reason.
+
 ## [0.99.237] — 2026-11-16
 
 ### Fixed

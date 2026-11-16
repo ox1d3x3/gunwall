@@ -471,6 +471,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             PopulateColorUi();
             PopulateFontChoice();
             ApplyUiFont(_firewall.UiFontFamily);
+            // A window running its own engine works out how the custom list is
+            // enforced here; with the background service, the service did at start.
+            try { if (!Remote && _firewall.CustomDomainCount > 0) _firewall.RebuildHostsBlock(); } catch { }
             UpdateCustomListStatus(); // §5 reflect any saved custom blocklist file
             RefreshCustomListIfChanged();
             RefreshEntityRules();     // §1 render saved country/continent/ASN rules + GeoIP status
@@ -512,7 +515,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.237 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.238 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -8409,29 +8412,44 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         else
         {
             int n = _firewall.CustomDomainCount;
-            // Loaded is not blocked (0.99.235): the list works through Windows' hosts
-            // file, which security software often locks or puts back.
-            int enforced = 0;
-            try { enforced = _firewall.CustomDomainsEnforced(); } catch { }
-            // With the background service the list is also enforced by server address
-            // (0.99.236), which needs no hosts file - as long as DNS watching is on.
-            bool byAddress = Remote && _firewall.DnsObserveSystemLookups;
-            string state = n == 0 ? "" : enforced >= n ? "  -  blocking"
-                : byAddress ? "  -  PARTLY blocking, by server address: Windows' hosts file could not be changed. Small sites on their own servers are blocked; large or shared sites mostly are not"
-                : enforced == 0 ? "  -  NOT blocking: Windows' hosts file could not be changed (security software often protects it)"
-                : $"  -  blocking {enforced:N0} of {n:N0}";
+            // Loaded is not blocked (0.99.235), and blocked means by NAME (0.99.238):
+            // Windows' hosts file, or - when that cannot be written - Windows' DNS
+            // policy. The engine reports which, and why when it is neither.
+            string mode = "", detail = "";
+            try
+            {
+                var parts = (_firewall.CustomListEnforcement() ?? "").Split('|', 2);
+                mode = parts[0]; detail = parts.Length > 1 ? parts[1] : "";
+            }
+            catch { }
+            string state = n == 0 ? "" : mode switch
+            {
+                "hosts" => "  -  blocking (Windows' hosts file)",
+                "dns-policy" => "  -  blocking (Windows' DNS policy; the hosts file could not be changed). A browser using its own secure DNS is not covered",
+                "none" => "  -  NOT blocking: " + (detail.Length > 0 ? detail : "neither the hosts file nor Windows' DNS policy could be changed"),
+                _ => "  -  checking...",
+            };
             CustomListStatus.Text = $"{n:N0} domain(s) loaded from {System.IO.Path.GetFileName(path)}{state}  -  {path}";
-            if (n > 0 && enforced == 0 && !byAddress && !_customListWarned)
+            if (n > 0 && mode == "none" && !_customListWarned)
             {
                 _customListWarned = true;
                 Notify("warn", "Your custom blocklist is not blocking anything",
-                       $"GunWall could not add its {n:N0} domain(s) to Windows' hosts file - it is locked or was put back, "
-                       + "which antivirus software often does. Turn on the background service and DNS watching so the list is "
-                       + "enforced by server address instead, or allow GunWall to change the hosts file in that software.",
+                       $"GunWall could not block its {n:N0} domain(s): {(detail.Length > 0 ? detail : "the hosts file and Windows' DNS policy both refused the change")}. "
+                       + "Security software that protects these settings usually has an exclusion list - add GunWall to it, then load the list again.",
                        "rules");
             }
+            // Windows takes a second or two to apply DNS policy rules: look again.
+            if (n > 0 && (mode == "pending" || mode == "") && _customStatusRetries < 6)
+            {
+                _customStatusRetries++;
+                var again = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                again.Tick += (_, _) => { again.Stop(); UpdateCustomListStatus(); };
+                again.Start();
+            }
+            else if (mode is "hosts" or "dns-policy" or "none") _customStatusRetries = 0;
         }
     }
+    private int _customStatusRetries;
 
     // ===== §1 entity rules (country / continent / ASN blocking) =====
     private readonly RangeObservableCollection<EntityRule> _entityRules = new();

@@ -4,6 +4,81 @@
     xmlns:gw="clr-namespace:GunWall.Controls"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
 
+    <!-- MOVED TO THE TOP in 0.99.237. These three styles used to sit near the end
+         of this file, AFTER the button styles that name them with StaticResource.
+         A StaticResource cannot look forward in its own dictionary: inside a Style
+         setter it does not fail at load, it becomes UnsetValue, and the first
+         keyboard focus on such a button threw "'{DependencyProperty.UnsetValue}' is
+         not a valid value for property 'FocusVisualStyle'" - twelve times in a
+         minute on a connection popup (2026-11-16), the first time anyone pressed a
+         key on one. Anything referenced with StaticResource must be defined above
+         its first use. -->
+    <!-- =====================================================================
+         Focus, SPEC.md section 12: a 2px 'brand' ring.
+
+         WPF's default focus visual is a dotted rectangle inherited from Win32,
+         which in this design reads as a rendering fault rather than as focus.
+
+         FocusVisualStyle is the right hook specifically because WPF applies it
+         for KEYBOARD focus and not for a mouse click. A ring drawn on the button
+         you just clicked tells you something you already know, and that is the
+         thing that makes people want focus indicators switched off.
+
+         2px is the reserved measure - the same as a selected table row and the
+         nav marker. Nothing else in this design is 2px, which is what lets the
+         width alone carry the meaning.
+         ===================================================================== -->
+    <!-- The same ring, keyed as the SYSTEM default.
+
+         FocusVisualStyle does not inherit - it is registered on FrameworkElement
+         without FrameworkPropertyMetadataOptions.Inherits - so setting it on the
+         window root does nothing for the 103 checkboxes, combo boxes and text
+         fields below it. Setting it per style would mean an implicit style per
+         control type with BasedOn pointing at the library's, which is the WPF
+         pattern most likely to resolve to itself and recurse.
+
+         SystemParameters.FocusVisualStyleKey is the supported hook: WPF looks up
+         this key for any element that has not specified its own focus visual, so
+         one entry replaces the Win32 dotted rectangle everywhere at once. The
+         explicit setters elsewhere stay - they document intent, and they win for
+         the controls that carry them.
+         ============================================================ -->
+    <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="8" RadiusY="8"
+                               Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FocusRing">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="8" RadiusY="8"
+                               Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- The prompt's ring. Drawn 3px outside a control with 8px corners, so its
+         radius is 11 - concentric with the button. The shared ring's 8 would
+         pinch in at the corners around these. -->
+    <Style x:Key="FocusRingPrompt">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="11" RadiusY="11"
+                               Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============================ Palette ============================ -->
     <!-- Theme-VARYING surfaces/text (BgPrimary, BgSecondary, BgCard,
          BgElevated, BorderBrush, TextPrimary, TextSecondary) live in the
@@ -868,72 +943,6 @@
                             <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
                         </Trigger>
                     </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <!-- =====================================================================
-         Focus, SPEC.md section 12: a 2px 'brand' ring.
-
-         WPF's default focus visual is a dotted rectangle inherited from Win32,
-         which in this design reads as a rendering fault rather than as focus.
-
-         FocusVisualStyle is the right hook specifically because WPF applies it
-         for KEYBOARD focus and not for a mouse click. A ring drawn on the button
-         you just clicked tells you something you already know, and that is the
-         thing that makes people want focus indicators switched off.
-
-         2px is the reserved measure - the same as a selected table row and the
-         nav marker. Nothing else in this design is 2px, which is what lets the
-         width alone carry the meaning.
-         ===================================================================== -->
-    <!-- The same ring, keyed as the SYSTEM default.
-
-         FocusVisualStyle does not inherit - it is registered on FrameworkElement
-         without FrameworkPropertyMetadataOptions.Inherits - so setting it on the
-         window root does nothing for the 103 checkboxes, combo boxes and text
-         fields below it. Setting it per style would mean an implicit style per
-         control type with BasedOn pointing at the library's, which is the WPF
-         pattern most likely to resolve to itself and recurse.
-
-         SystemParameters.FocusVisualStyleKey is the supported hook: WPF looks up
-         this key for any element that has not specified its own focus visual, so
-         one entry replaces the Win32 dotted rectangle everywhere at once. The
-         explicit setters elsewhere stay - they document intent, and they win for
-         the controls that carry them.
-         ============================================================ -->
-    <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}">
-        <Setter Property="Control.Template">
-            <Setter.Value>
-                <ControlTemplate>
-                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="8" RadiusY="8"
-                               Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style x:Key="FocusRing">
-        <Setter Property="Control.Template">
-            <Setter.Value>
-                <ControlTemplate>
-                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="8" RadiusY="8"
-                               Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <!-- The prompt's ring. Drawn 3px outside a control with 8px corners, so its
-         radius is 11 - concentric with the button. The shared ring's 8 would
-         pinch in at the corners around these. -->
-    <Style x:Key="FocusRingPrompt">
-        <Setter Property="Control.Template">
-            <Setter.Value>
-                <ControlTemplate>
-                    <Rectangle Margin="-3" StrokeThickness="2" RadiusX="11" RadiusY="11"
-                               Stroke="{DynamicResource BlockText}" SnapsToDevicePixels="True" />
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

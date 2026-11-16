@@ -358,15 +358,17 @@ domain name is skipped. GunWall reads the file when you choose it and keeps its 
 copy (`custom-blocklist.txt` in the data folder); if you edit your file, GunWall
 reads it again the next time it starts. Up to 1,000,000 domains.
 
-The list works through Windows' hosts file. Security software often locks that
-file or puts it back; when that happens the card says so, and the diagnostics log
-records the reason. With the background service running and *Watch system DNS
-lookups* on, the service also blocks the server addresses of listed sites, one
-application at a time. That is a partial fallback, not a replacement: a large site
-uses many addresses and is mostly not stopped, and an address that also serves a
-site you have not blocked is always left alone (write `!!name` in the DNS blocklist
-to block it regardless). The card shows **blocking**, **PARTLY blocking** or
-**NOT blocking**.
+The list is blocked by name. GunWall first adds the domains to Windows' hosts
+file. When that file cannot be written - security software often protects it - it
+uses Windows' own DNS policy instead: lookups for exactly the listed names are sent
+nowhere, so they fail, and no other name is affected. The card shows which is in
+effect: **blocking (Windows' hosts file)**, **blocking (Windows' DNS policy)**, or
+**NOT blocking** with the reason.
+
+Two limits of the DNS policy route: it takes up to 2,000 names, and a browser set to
+use its own secure DNS (DNS over HTTPS) does not ask Windows, so it is not covered -
+turn that setting off in the browser for the list to apply there. **Remove all
+GunWall filtering** and the uninstaller remove the policy rules.
 
 ### How domain blocking actually works
 

@@ -62,6 +62,8 @@ public interface IEngine
     [EngineAccess(Access.Read)] int CustomDomainCount { get; }
     /// <summary>Custom-list domains present in Windows' hosts file (0.99.235).</summary>
     [EngineAccess(Access.Read)] int CustomDomainsEnforced();
+    /// <summary>"mode|detail": hosts, dns-policy, none, pending or "" (0.99.238).</summary>
+    [EngineAccess(Access.Read)] string CustomListEnforcement();
     [EngineAccess(Access.Read)] string CustomListPath { get; }
     [EngineAccess(Access.Read)] int CustomRuleCount { get; }
     [EngineAccess(Access.ReadProfile)] IReadOnlyList<CustomRule> CustomRules { get; }

@@ -1398,6 +1398,18 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         }
         catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/hosts", ex); }
 
+        // Windows' DNS policy rules too (0.99.238): left behind, the listed names
+        // would stay unreachable after GunWall is gone, with nothing to explain it.
+        try
+        {
+            if (DnsNameBlock.HasRules(_store.ProfileFolder))
+            {
+                var c = DnsNameBlock.Clear(_store.ProfileFolder);
+                DiagnosticLog.Log($"Reset: {c.Detail}.");
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("RemoveAllFiltering/dns-policy", ex); }
+
         try
         {
             if (_data.DnsSavedAdapters is { Count: > 0 })
@@ -4792,9 +4804,74 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                             + $"they are NOT blocked this way. Reason: {HostsFileService.LastFailure}.");
         }
         if (ok) _hostsFailureLogged = false;
+        SyncCustomNameBlock(ok);
         return ok;
     }
     private bool _hostsFailureLogged;
+
+    // ---- the custom list as NAMES (0.99.238) ----------------------------------
+    // "hosts": in Windows' hosts file. "dns-policy": Windows' DNS policy rules, used
+    // when the hosts file cannot be written. "none": neither - nothing is blocked.
+    // "pending": being worked out. "": no custom list.
+    private volatile string _customMode = "";
+    private volatile string _customDetail = "";
+    private int _nameBlockBusy;
+
+    /// <summary>How the custom list is enforced right now, as "mode|detail" - see the
+    /// modes above. For the Security page and the diagnostics.</summary>
+    public string CustomListEnforcement() => $"{_customMode}|{_customDetail}";
+
+    /// <summary>After the hosts file was (or was not) written: keeps Windows' DNS policy
+    /// rules in step. They are wanted only when there is a custom list and the hosts
+    /// file did not take it; in every other case rules GunWall made earlier are
+    /// removed. Windows' cmdlets take a second or two, so the work runs off the
+    /// engine thread, one run at a time.</summary>
+    private void SyncCustomNameBlock(bool hostsOk)
+    {
+        if (ReadOnlyStore) return;   // a window that uses the service: the service does this
+        // "*.example.com" in the list is ".example.com" to Windows: the name and
+        // everything under it.
+        var custom = _customDomains.Select(d => d.StartsWith("*.", StringComparison.Ordinal) ? d[1..] : d).ToList();
+        string folder = _store.ProfileFolder;
+        bool inHosts = hostsOk && custom.Count > 0;
+        if (custom.Count == 0) { _customMode = ""; _customDetail = ""; }
+        else if (inHosts) { _customMode = "hosts"; _customDetail = ""; }
+        else _customMode = "pending";
+
+        bool wantRules = custom.Count > 0 && !inHosts;
+        if (!wantRules && !DnsNameBlock.HasRules(folder)) return;
+        if (Interlocked.Exchange(ref _nameBlockBusy, 1) == 1) { _nameBlockAgain = true; return; }
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                if (!wantRules)
+                {
+                    var c = DnsNameBlock.Clear(folder);
+                    DiagnosticLog.Log($"Custom blocklist: {c.Detail}.");
+                    return;
+                }
+                var names = DnsNameBlock.Clean(custom);
+                (bool Ok, string Detail) r = names.SequenceEqual(DnsNameBlock.RecordedNames(folder))
+                    ? (true, "DNS policy rules already in place")
+                    : DnsNameBlock.Apply(names, folder);
+                if (r.Ok && names.Count > 0 && !DnsNameBlock.InEffect(names[0]))
+                    r = (false, $"the DNS policy rules were created, but {names[0]} still resolves - they are not in effect");
+                _customMode = r.Ok ? "dns-policy" : "none";
+                _customDetail = r.Ok ? r.Detail : $"hosts file: {HostsFileService.LastFailure}; DNS policy: {r.Detail}";
+                DiagnosticLog.Log(r.Ok
+                    ? $"Custom blocklist: Windows' hosts file could not be written, so the list is blocked through Windows' DNS policy instead - {r.Detail}."
+                    : $"Custom blocklist: NOT blocking. {_customDetail}.");
+            }
+            catch (Exception ex) { DiagnosticLog.LogException("CustomNameBlock", ex); _customMode = "none"; _customDetail = ex.Message; }
+            finally
+            {
+                Interlocked.Exchange(ref _nameBlockBusy, 0);
+                if (_nameBlockAgain) { _nameBlockAgain = false; try { RebuildHostsBlock(); } catch { } }
+            }
+        });
+    }
+    private volatile bool _nameBlockAgain;
 
     /// <summary>The custom list's domains, copied (0.99.236). The background service
     /// adds them to the names it enforces by server address, so the list works when

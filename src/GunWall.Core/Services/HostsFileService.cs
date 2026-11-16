@@ -99,7 +99,23 @@ public static class HostsFileService
             }
             sb.AppendLine();
 
-            File.WriteAllText(HostsPath, sb.ToString());
+            // A read-only hosts file refuses every writer, SYSTEM included, with the
+            // same "access denied" a security product gives (0.99.238). The attribute
+            // is lifted for the write and put back, so whoever set it finds it set.
+            bool wasReadOnly = false;
+            try
+            {
+                var attrs = File.Exists(HostsPath) ? File.GetAttributes(HostsPath) : FileAttributes.Normal;
+                wasReadOnly = (attrs & FileAttributes.ReadOnly) != 0;
+                if (wasReadOnly) File.SetAttributes(HostsPath, attrs & ~FileAttributes.ReadOnly);
+            }
+            catch { }
+            try { File.WriteAllText(HostsPath, sb.ToString()); }
+            finally
+            {
+                if (wasReadOnly)
+                    try { File.SetAttributes(HostsPath, File.GetAttributes(HostsPath) | FileAttributes.ReadOnly); } catch { }
+            }
 
             int onDisk = GetBlockedDomains().Count;
             if (sorted.Count == 0 ? onDisk == 0 : onDisk > 0)
@@ -114,7 +130,11 @@ public static class HostsFileService
         {
             // Which of the two it is decides what to tell the user (0.99.237):
             // access denied is a lock, a vanished write is a restore.
-            LastFailure = $"{ex.GetType().Name}: {ex.Message}";
+            string ro = "";
+            try { ro = (File.GetAttributes(HostsPath) & FileAttributes.ReadOnly) != 0 ? " (the file is marked read-only)" : " (the file is not read-only, so something is protecting it)"; } catch { }
+            LastFailure = ex is UnauthorizedAccessException
+                ? "Windows denied access to the hosts file" + ro
+                : $"{ex.GetType().Name}: {ex.Message}";
         }
 
         return false;
