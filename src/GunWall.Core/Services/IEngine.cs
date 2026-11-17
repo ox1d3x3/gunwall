@@ -123,8 +123,11 @@ public interface IEngine
     [EngineAccess(Access.Read)] bool IsBlocklistViaWfp(string key);
     [EngineAccess(Access.Read)] bool IsFirstRun { get; }
     [EngineAccess(Access.Read)] bool IsKnownApp(string exePath);
-    [EngineAccess(Access.Read)] bool IsP2pBlocked(string exePath);
-    [EngineAccess(Access.Read)] bool IsScopeBlocked(string exePath, string scope);
+    // Profile reads (0.99.240): answered from the window's copy of the profile, not a
+    // round trip each. The Applications right-click menu asked six of these as it
+    // opened and froze the window for 330 ms (2026-11-16 17:23:26).
+    [EngineAccess(Access.ReadProfile)] bool IsP2pBlocked(string exePath);
+    [EngineAccess(Access.ReadProfile)] bool IsScopeBlocked(string exePath, string scope);
     [EngineAccess(Access.Read)] bool IsServiceBlocked(string serviceName);
     [EngineAccess(Access.ReadProfile)] bool IsSilent(string exePath);
     [EngineAccess(Access.Read)] bool IsSnoozed { get; }

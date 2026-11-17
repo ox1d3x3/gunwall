@@ -155,6 +155,21 @@ public sealed class ConnectionDetector
     /// <summary>A mode change re-prompts for every undecided app.</summary>
     public void ResetPrompts() => _prompted.Clear();
 
+    /// <summary>
+    /// Whether to ask about this program now: the first time this session, or once
+    /// more after it was removed from the list. The "removed" mark is taken FIRST,
+    /// every time (0.99.240): it used to be read only when the program had been asked
+    /// about before, so a program forgotten before it was ever asked kept its mark,
+    /// the kernel event asked, and the next poll asked again - two popups for msedge
+    /// a quarter of a second apart (2026-11-16 17:23:29).
+    /// </summary>
+    private bool ShouldAsk(string path)
+    {
+        bool forgotten = _fw.TakeForgotten(path);
+        bool first = _prompted.Add(path);
+        return first || forgotten;
+    }
+
     /// <summary>An app already asked about by other means - a prompt the background
     /// service queued while the window was closed (0.99.199) - so detection does not
     /// ask again this session. False if it was already marked.</summary>
@@ -214,7 +229,7 @@ public sealed class ConnectionDetector
         if (_fw.IsBlocked(appPath) || _fw.IsAllowed(appPath) || _fw.IsSilent(appPath)) return r;
         if (!_fw.AlertsEnabled) return r;
         if (!_fw.StrictMode) return r;
-        if (!_prompted.Add(appPath) && !_fw.TakeForgotten(appPath)) return r;
+        if (!ShouldAsk(appPath)) return r;
         Ask(r, new PromptRequest(appName, appPath, remote, remotePort, protocol, now));
         r.ShowQueued = true;
         return r;
@@ -268,7 +283,7 @@ public sealed class ConnectionDetector
             if (strict)
             {
                 // Zero Trust: already blocked by default-deny; ask once per session.
-                if (!_prompted.Add(proc.Path) && !_fw.TakeForgotten(proc.Path)) continue;
+                if (!ShouldAsk(proc.Path)) continue;
             }
             else
             {

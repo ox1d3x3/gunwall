@@ -988,12 +988,19 @@
                                     ToolTip="Choose one or more programs to allow before they ever ask - a game and its launcher, for example. They connect without a prompt." />
                             <Button Content="Block an app" Style="{StaticResource ActionButton}"
                                     Click="BrowseBlock_Click" Margin="0,0,8,4" />
-                            <Button Content="Purge unused" Style="{StaticResource ActionButton}"
-                                    Click="PurgeUnused_Click" Margin="0,0,8,4"
-                                    ToolTip="Forget apps that have no allow/block rule (they'll prompt again)" />
-                            <Button Content="Purge expired timers" Style="{StaticResource ActionButton}"
-                                    Click="PurgeExpiredTimers_Click" Margin="0,0,8,4"
-                                    ToolTip="Clear any timed blocks whose timer has already elapsed" />
+                            <!-- One "Clean up" menu instead of two purge buttons (0.99.240):
+                                 with Allow an app added, the toolbar wrapped onto a
+                                 second line at ordinary window widths. -->
+                            <Button x:Name="CleanUpButton" Content="Clean up &#x25BE;" Style="{StaticResource ActionButton}"
+                                    Click="CleanUp_Click" Margin="0,0,8,4"
+                                    ToolTip="Forget apps with no rule, or clear timed blocks that have run out">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Forget apps with no rule (they ask again)" Click="PurgeUnused_Click" />
+                                        <MenuItem Header="Clear expired timed blocks" Click="PurgeExpiredTimers_Click" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
                             <Button Content="Refresh" Style="{StaticResource ActionButton}"
                                     Click="RefreshApps_Click" Margin="0,0,0,4" />
                         </WrapPanel>

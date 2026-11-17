@@ -279,7 +279,8 @@ activity.
 - **Remove from list (ask again)**, on the right-click menu or with the Delete key,
   for every selected row: GunWall forgets the rule and everything kept for the
   program, and asks about it the next time it connects
-- **Purge unused** to clear entries with no rule and no connections
+- **Clean up** to forget entries with no rule (they ask again when they next
+  connect), or to clear timed blocks whose time has run out
 - **Right-click a row → Properties…** for full details: publisher, hash,
   signature status, package type and a notes field of your own. **Open file
   location** and **Copy path** sit under the path; **Allow**, **Block** and

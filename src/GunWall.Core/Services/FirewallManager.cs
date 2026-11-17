@@ -956,7 +956,6 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             rule.UntilRestart = true;
             SaveStore();
         }
-        DiagnosticLog.Log($"{displayName} allowed until the next restart.");
         EventLog($"{displayName}: allowed until the next restart");
     }
 
@@ -1031,9 +1030,8 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             }
             SaveStore();
         }
-        DiagnosticLog.Log($"{prior.DisplayName} is the same file as a blocked program, in a new folder: blocked too, no prompt"
-                        + (removed > 0 ? $"; {removed} earlier copy rule(s) whose file is gone removed." : "."));
-        EventLog($"{prior.DisplayName}: same file in a new folder, kept your block rule");
+        EventLog($"{prior.DisplayName} is the same file as a blocked program, in a new folder: blocked too, no prompt"
+               + (removed > 0 ? $"; {removed} earlier copy rule(s) whose file is gone removed" : ""));
         return true;
     }
 
@@ -1987,11 +1985,8 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
             _forgotten.Add(exePath);
             SaveStore();
         }
-        if (any)
-        {
-            DiagnosticLog.Log($"{name} forgotten: its rule and everything kept for it were removed - it will be asked about when it next connects.");
-            EventLog($"{name}: removed from the list - it will be asked about again");
-        }
+        // EventLog writes the diagnostics log too: one line, not two (0.99.240).
+        if (any) EventLog($"{name} removed from the list: its rule and everything kept for it are gone - it will be asked about when it next connects");
         return any;
     }
 
@@ -4915,11 +4910,20 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                     return;
                 }
                 var names = DnsNameBlock.Clean(custom);
-                (bool Ok, string Detail) r = names.SequenceEqual(DnsNameBlock.RecordedNames(folder))
+                string probe = DnsNameBlock.ProbeName(names);
+                bool recorded = names.SequenceEqual(DnsNameBlock.RecordedNames(folder));
+                (bool Ok, string Detail) r = recorded
                     ? (true, "DNS policy rules already in place")
                     : DnsNameBlock.Apply(names, folder);
-                if (r.Ok && names.Count > 0 && !DnsNameBlock.InEffect(names[0]))
-                    r = (false, $"the DNS policy rules were created, but {names[0]} still resolves - they are not in effect");
+                // Recorded is not proof (0.99.240): the rules can be removed by hand
+                // or by another tool. If a listed name resolves, make them again once.
+                if (r.Ok && recorded && probe.Length > 0 && !DnsNameBlock.InEffect(probe))
+                {
+                    DiagnosticLog.Log($"Custom blocklist: the DNS policy rules on record are not in effect ({probe} resolves) - making them again.");
+                    r = DnsNameBlock.Apply(names, folder);
+                }
+                if (r.Ok && probe.Length > 0 && !DnsNameBlock.InEffect(probe))
+                    r = (false, $"the DNS policy rules were created, but {probe} still resolves - they are not in effect");
                 _customMode = r.Ok ? "dns-policy" : "none";
                 _customDetail = r.Ok ? r.Detail : $"hosts file: {HostsFileService.LastFailure}; DNS policy: {r.Detail}";
                 DiagnosticLog.Log(r.Ok

@@ -15,6 +15,41 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.240] — 2026-11-16
+
+### Fixed
+- **Two popups for one program after Remove from list.** A program removed from
+  the list before it had ever been asked about was asked twice a moment apart -
+  once from the kernel's report of its connection, once from the connection table.
+  The "ask again" mark is now used up by the first popup. The window also never
+  queues a second popup for a program whose popup is open or waiting, and drops a
+  waiting popup for a program that was decided meanwhile.
+- **The Applications right-click menu could freeze the window for a third of a
+  second** as it opened. It asked the background service six separate questions;
+  they are now answered from the window's own copy of the settings.
+- **A Shift+click selection could be lost** when the list refreshed.
+- **Custom blocklist through Windows' DNS policy:**
+  - Blocked names are now sent to 127.0.0.2. They were sent to 127.0.0.1, where
+    GunWall's own DNS resolver listens when it is on - and other local DNS tools
+    often do - which would have answered them. Rules made by 0.99.238 and 0.99.239
+    are replaced once.
+  - The check that the block is in effect tested an entry like `.example.com`,
+    which is not a host name and always read as blocked; it now tests a real name.
+  - If the rules were removed outside GunWall, they are made again instead of the
+    list showing as not blocking.
+
+### Changed
+- **The connection popup fades out** as it closes, matching the way it fades in.
+  The answer is applied first, so the fade never delays a rule.
+- **Clean up** replaces the two purge buttons on the Applications page, so the
+  toolbar fits on one line with **Allow an app** added.
+- **Answering a popup while GunWall is in the tray no longer rebuilds the hidden
+  Applications list.** It is rebuilt when shown.
+- **Popup answers are timed in the diagnostics,** so a slow answer can be traced
+  to the service.
+- **One log line per change** instead of two for Remove from list, Allow until
+  restart and a blocked program found in a new folder.
+
 ## [0.99.239] — 2026-11-16
 
 ### Added

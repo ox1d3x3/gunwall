@@ -351,6 +351,37 @@ public partial class AlertWindow : Window
             ? $"{host}:{port}" : host;
     }
 
+    private bool _exitPlayed;
+
+    /// <summary>Fades out and sinks 8 px as it closes (0.99.240), the reverse of
+    /// PlayEntrance, so a popup no longer vanishes in one frame. The answer is already
+    /// given when this runs - Allow and Block act first and close after - so the
+    /// 140 ms never delays a rule. Skipped when Windows' animation effects are off,
+    /// when the window is not on screen, and while the application is shutting down.</summary>
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (e.Cancel || _exitPlayed || !IsVisible || !SystemParameters.ClientAreaAnimation
+            || Dispatcher.HasShutdownStarted || Application.Current?.Dispatcher.HasShutdownStarted == true)
+            return;
+        _exitPlayed = true;
+        try
+        {
+            e.Cancel = true;
+            IsHitTestVisible = false;   // no second click while it fades
+            var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseIn };
+            var fade = new System.Windows.Media.Animation.DoubleAnimation(RootGrid.Opacity, 0, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease };
+            fade.Completed += (_, _) => { try { Close(); } catch { } };
+            RootShift.BeginAnimation(TranslateTransform.YProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 8, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease });
+            RootGrid.BeginAnimation(OpacityProperty, fade);
+        }
+        catch
+        {
+            e.Cancel = false;   // an animation is never a reason to keep a prompt open
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         StopCountdown();

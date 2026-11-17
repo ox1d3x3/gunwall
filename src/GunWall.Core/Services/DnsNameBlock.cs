@@ -27,6 +27,16 @@ namespace GunWall.Services;
 public static class DnsNameBlock
 {
     public const string Tag = "GunWall custom blocklist";
+
+    /// <summary>Where blocked lookups are sent (0.99.240): a loopback address nothing
+    /// listens on, so they fail at once. It was 127.0.0.1 - where GunWall's own DNS
+    /// resolver listens when it is on, and where other local DNS tools (AdGuard,
+    /// Acrylic, DNSCrypt) often do: those would have answered the blocked names.</summary>
+    public const string Sink = "127.0.0.2";
+
+    /// <summary>First line of the record: which sink the rules in place point at, so
+    /// rules made by an earlier version are replaced once.</summary>
+    private const string RecordHeader = "#gunwall-nrpt sink=" + Sink;
     public const int MaxNames = 2000;
     public const int NamesPerRule = 50;
     private const string StateFile = "dns-policy-names.txt";
@@ -39,11 +49,29 @@ public static class DnsNameBlock
         try { return File.Exists(StatePath(dataFolder)); } catch { return false; }
     }
 
-    /// <summary>The names the rules in place were made for, or empty.</summary>
+    /// <summary>The names the rules in place were made for, or empty. Empty too when
+    /// they were made for another sink - they are then made again.</summary>
     public static List<string> RecordedNames(string dataFolder)
     {
-        try { return File.Exists(StatePath(dataFolder)) ? Clean(File.ReadAllLines(StatePath(dataFolder))) : new(); }
+        try
+        {
+            if (!File.Exists(StatePath(dataFolder))) return new();
+            var lines = File.ReadAllLines(StatePath(dataFolder));
+            if (lines.Length == 0 || lines[0] != RecordHeader) return new();
+            return Clean(lines);
+        }
         catch { return new(); }
+    }
+
+    /// <summary>The name to test with a real lookup: a plain name from the list, or,
+    /// when every entry is a whole domain (".example.com"), a name under the first.
+    /// A leading-dot name is not a host name: looking it up throws, which read as
+    /// "blocked" whatever the rules did.</summary>
+    public static string ProbeName(IReadOnlyList<string> names)
+    {
+        if (names.Count == 0) return "";
+        var plain = names.FirstOrDefault(n => !n.StartsWith('.'));
+        return plain ?? "www" + names[0];
     }
 
     /// <summary>Names fit for a policy rule: plain host names only, lower case, sorted,
@@ -78,7 +106,7 @@ public static class DnsNameBlock
         + "$n=@(Get-Content -LiteralPath '" + namesFile.Replace("'", "''") + "' | Where-Object { $_ }); "
         + "for($i=0;$i -lt $n.Count;$i+=" + NamesPerRule + "){ "
         + "Add-DnsClientNrptRule -Namespace $n[$i..([Math]::Min($i+" + (NamesPerRule - 1) + ",$n.Count-1))] "
-        + "-NameServers '127.0.0.1' -Comment '" + Tag + "' }; "
+        + "-NameServers '" + Sink + "' -Comment '" + Tag + "' }; "
         + "Clear-DnsClientCache";
 
     /// <summary>Puts rules in place for <paramref name="names"/>. Returns whether it
@@ -96,6 +124,8 @@ public static class DnsNameBlock
             string tmp = path + ".new";
             File.WriteAllLines(tmp, list);
             var (code, output) = RunPowerShell(ApplyScript(tmp), 60_000);
+            // The record carries the sink; the names file given to PowerShell does not.
+            if (code == 0) File.WriteAllLines(tmp, new[] { RecordHeader }.Concat(list));
             if (code != 0)
             {
                 try { File.Delete(tmp); } catch { }

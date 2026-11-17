@@ -515,7 +515,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.239 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.240 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1002,6 +1002,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 if (_firewall.IsBlocked(q.ExePath) || _firewall.IsAllowed(q.ExePath) || _firewall.IsSilent(q.ExePath)) continue;
                 if (!_detector.MarkPrompted(q.ExePath)) continue;
+                if (AlertPendingFor(q.ExePath)) continue;
                 _alertQueue.Enqueue(new AlertWindow.AlertInfo(
                     q.ProcessName, q.ExePath, q.RemoteAddress, q.RemotePort, q.Protocol, q.Time));
                 _promptsQueued++;
@@ -1059,7 +1060,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             while (_activity.Count > MaxActivity) _activity.RemoveAt(_activity.Count - 1);
             Services.DiagnosticLog.Log($"Allowed automatically: {q.ProcessName} (core Windows process, seen in the {source}).");
         }
-        if (r.AutoAllow.Count > 0) RebuildAppsList();
+        if (r.AutoAllow.Count > 0) RebuildAppsListIfShown();
         // An allowed app offline because WebView2 is blocked (0.99.234.2).
         foreach (var n in r.Notices)
         {
@@ -1068,6 +1069,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         foreach (var q in r.Prompts)
         {
+            if (AlertPendingFor(q.ExePath)) continue;   // one popup per program (0.99.240)
             _alertQueue.Enqueue(new AlertWindow.AlertInfo(
                 q.ProcessName, q.ExePath, q.RemoteAddress, q.RemotePort, q.Protocol, q.Time));
             _promptsQueued++;
@@ -3217,22 +3219,42 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var win = new ReviewAppsWindow(batch, _firewall.StrictMode,
             onAllow: a =>
             {
-                _firewall.AllowApp(a.ExePath, a.ProcessName);
+                PromptAllow(a.ExePath, a.ProcessName, once: false);
                 Services.DiagnosticLog.Log($"Review window: allowed {a.ProcessName}.");
-                RebuildAppsList();
             },
             onBlock: a =>
             {
-                _firewall.BlockApp(a.ExePath, a.ProcessName);
+                PromptBlock(a.ExePath, a.ProcessName);
                 Services.DiagnosticLog.Log($"Review window: blocked {a.ProcessName}.");
-                RebuildAppsList();
             });
         win.Closed += (_, _) => { _alertOpen = false; ShowNextAlert(); };
         win.Show();
     }
 
+    /// <summary>The program whose popup is on screen, or null.</summary>
+    private string? _openAlertPath;
+
+    /// <summary>A popup for this program is open or already waiting (0.99.240). The
+    /// service can report one program from two sources in the same instant; the
+    /// window shows it once whatever reaches it.</summary>
+    private bool AlertPendingFor(string exePath) =>
+        string.Equals(_openAlertPath, exePath, StringComparison.OrdinalIgnoreCase)
+        || _alertQueue.Any(a => string.Equals(a.ExePath, exePath, StringComparison.OrdinalIgnoreCase));
+
     private void ShowNextAlert()
     {
+        // Drop any that were answered meanwhile - in the Applications list, by a
+        // popup for the same program, or by the background service (0.99.240).
+        while (!_alertOpen && _alertQueue.Count > 0)
+        {
+            var next = _alertQueue.Peek();
+            bool decided;
+            try { decided = _firewall.IsAllowed(next.ExePath) || _firewall.IsBlocked(next.ExePath) || _firewall.IsSilent(next.ExePath); }
+            catch { decided = false; }
+            if (!decided) break;
+            _alertQueue.Dequeue();
+            Services.DiagnosticLog.Log($"Prompt dropped: {next.ProcessName} was decided while it waited.");
+        }
         if (_alertOpen || _alertQueue.Count == 0) return;
         // Fullscreen-silent: hold approval popups while a game/fullscreen app is
         // foreground. The alert stays queued and appears once fullscreen ends.
@@ -3251,6 +3273,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _promptsShown++;
         Services.DiagnosticLog.Log($"Prompt shown: {info.ProcessName}.");
         _alertOpen = true;
+        _openAlertPath = info.ExePath;
 
         // Optional notification sound.
         if (_firewall.NotificationSound)
@@ -3274,27 +3297,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             catch { }
         }
 
+        // Timed (0.99.240): a 661 ms freeze after a popup answer could not be
+        // attributed - the call goes to the background service and waits for it.
         var win = new AlertWindow(info,
-            onBlock: () =>
-            {
-                _firewall.BlockApp(info.ExePath, info.ProcessName);
-                RebuildAppsList();
-            },
-            onAllow: () =>
-            {
-                _firewall.AllowApp(info.ExePath, info.ProcessName); // permits in strict mode
-                RebuildAppsList();
-            },
+            onBlock: () => PromptBlock(info.ExePath, info.ProcessName),
+            onAllow: () => PromptAllow(info.ExePath, info.ProcessName, once: false),   // permits in strict mode
             strictMode: _firewall.StrictMode,
             timeoutSeconds: _firewall.PopupTimeoutSeconds,
             defaultAllow: _firewall.PopupDefaultAllow,
             geo: _firewall.GeoIp,
-            onAllowOnce: () =>
-            {
-                _firewall.AllowAppOnce(info.ExePath, info.ProcessName);   // ends at the next restart (0.99.235)
-                Services.DiagnosticLog.Log($"Prompt: {info.ProcessName} allowed until the next restart.");
-                RebuildAppsList();
-            },
+            onAllowOnce: () => PromptAllow(info.ExePath, info.ProcessName, once: true),   // ends at the next restart (0.99.235)
             waiting: _alertQueue.Count);
         // Owned only while this window is on screen. An owned window is hidden
         // with its owner, so a popup raised while GunWall was starting minimised -
@@ -3302,7 +3314,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // the window was restored (reported 2026-10-10). Unowned, it is still
         // topmost in the corner like every prompt.
         if (IsVisible && WindowState != WindowState.Minimized) win.Owner = this;
-        win.Closed += (_, _) => { _alertOpen = false; ShowNextAlert(); };
+        win.Closed += (_, _) => { _alertOpen = false; _openAlertPath = null; ShowNextAlert(); };
         win.Show();
     }
 
@@ -3326,6 +3338,34 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ================================================================ lists
+    /// <summary>A popup's Allow (0.99.240: timed - a 661 ms freeze after a popup answer
+    /// could not be attributed; the call goes to the background service and waits).</summary>
+    private void PromptAllow(string exePath, string name, bool once)
+    {
+        using (PerfMonitor.Measure("PromptAllow"))
+        {
+            if (once) _firewall.AllowAppOnce(exePath, name);
+            else _firewall.AllowApp(exePath, name);
+        }
+        RebuildAppsListIfShown();
+    }
+
+    /// <summary>A popup's Block, timed like PromptAllow.</summary>
+    private void PromptBlock(string exePath, string name)
+    {
+        using (PerfMonitor.Measure("PromptBlock")) _firewall.BlockApp(exePath, name);
+        RebuildAppsListIfShown();
+    }
+
+    /// <summary>Rebuilds the Applications list only when it is on screen (0.99.240).
+    /// A popup answered from the tray rebuilt the hidden list - 30 to 300 ms on the UI
+    /// thread for a table nobody could see. Hidden, it is rebuilt when it is shown, as
+    /// it always was (page switch and return from the tray both rebuild it).</summary>
+    private void RebuildAppsListIfShown()
+    {
+        if (OnScreen && PanelFirewall.Visibility == Visibility.Visible) RebuildAppsList();
+    }
+
     private void RebuildAppsList()
     {
         using var _perf = PerfMonitor.Measure("RebuildAppsList");
@@ -3442,7 +3482,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             var reselect = _apps.FirstOrDefault(a =>
                 string.Equals(a.ExecutablePath, keepPath, StringComparison.OrdinalIgnoreCase));
-            if (reselect != null) AppsList.SelectedItem = reselect;
+            // Only when it is not selected already (0.99.240): setting SelectedItem
+            // on a list that allows several selected rows selects that one ALONE, so
+            // a periodic rebuild could undo a Shift+click selection.
+            if (reselect != null && !AppsList.SelectedItems.Contains(reselect)) AppsList.SelectedItem = reselect;
         }
     }
 
@@ -5875,6 +5918,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch (Exception ex) { Services.DiagnosticLog.LogException("Properties", ex); ShowError(ex); }
     }
 
+    /// <summary>Opens the Clean up menu under its button (0.99.240).</summary>
+    private void CleanUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.ContextMenu is not ContextMenu menu) return;
+        menu.PlacementTarget = b;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
     private void PurgeUnused_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -7076,6 +7128,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Reflect each app's current scope-block state in the context-menu checkmarks.
     private void AppsContextMenu_Opened(object sender, RoutedEventArgs e)
     {
+        using var _perf = PerfMonitor.Measure("AppsContextMenu_Opened");
         if (AppsList.SelectedItem is AppInfo app)
         {
             if (ScopeLocalItem != null) ScopeLocalItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "local");
