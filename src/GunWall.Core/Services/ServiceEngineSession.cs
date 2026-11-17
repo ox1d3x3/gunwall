@@ -340,7 +340,8 @@ public sealed class ServiceEngineSession : IEngineSession
             // window must not allow them a second time.
             foreach (var b in _batch) b.AutoAllow.Clear();
             // A notice is said once per session, so it must not be the part dropped.
-            bool hasPrompt = _batch.Any(b => b.Prompts.Count > 0 || b.Notices.Count > 0);
+            // Nor a decision made without asking (0.99.241): the window lists it.
+            bool hasPrompt = _batch.Any(b => b.Prompts.Count > 0 || b.Notices.Count > 0 || b.Decisions.Count > 0);
             server.Push(new Remote.EngineMessage { Kind = "detected", Detected = _batch.ToList() }, droppable: !hasPrompt);
             _batch.Clear();
             _lastFlushMs = now;
@@ -354,7 +355,7 @@ public sealed class ServiceEngineSession : IEngineSession
         // A connected window shows it as it happens: packet log, activity, prompts.
         if (_server != null && _server.SessionCount > 0
             && (r.Packet != null || r.Activity.Count > 0 || r.Prompts.Count > 0 || r.FirstSeen.Count > 0
-                || r.Notices.Count > 0))
+                || r.Notices.Count > 0 || r.Decisions.Count > 0))
         {
             if (_batch.Count < 500) _batch.Add(r);
         }

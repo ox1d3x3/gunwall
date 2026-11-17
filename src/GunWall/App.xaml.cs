@@ -269,6 +269,23 @@ public partial class App : Application
         return null;
     }
 
+    /// <summary>Menus, hover tips and windows are built the first time they open, in
+    /// WPF's layout pass, where no timing reaches (0.99.241). The last one opened is
+    /// remembered, so a freeze nothing measured explains names what it happened around.</summary>
+    private static void RegisterUiMoments()
+    {
+        try
+        {
+            EventManager.RegisterClassHandler(typeof(System.Windows.Controls.ContextMenu), System.Windows.Controls.ContextMenu.OpenedEvent,
+                new RoutedEventHandler((_, _) => PerfMonitor.Moment("context menu")));
+            EventManager.RegisterClassHandler(typeof(System.Windows.Controls.ToolTip), System.Windows.Controls.ToolTip.OpenedEvent,
+                new RoutedEventHandler((_, _) => PerfMonitor.Moment("hover tip")));
+            EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
+                new RoutedEventHandler((s, e) => { if (s == e.OriginalSource) PerfMonitor.Moment("window " + s.GetType().Name); }));
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("RegisterUiMoments", ex); }
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -303,6 +320,7 @@ public partial class App : Application
         Services.PerfMonitor.RegisterUiThread();   // before anything is timed
         WindowTheme.Register();   // every standard title bar in the app's theme (0.99.182)
         UiZoom.RegisterPopups();  // right-click menus and hover tips follow the UI size (0.99.229)
+        RegisterUiMoments();      // names what an unattributed freeze happened around (0.99.241)
 
         DiagnosticLog.Log("App starting (OnStartup).");
 

@@ -228,12 +228,18 @@ corner.
 
 - **Allow** — a permanent rule; the program is never asked about again
 - **Block** — a permanent rule denying it
-- **Allow until restart** — allows the program now and asks again after the next
-  restart. For installers and other one-off programs. The Applications page marks
-  it with a star; click **Allow** there to keep it for good
+- **Allow for ▾** — allows the program now and asks again later: after **1 hour**,
+  **until it closes** (a few seconds after its last copy exits), or **until the next
+  restart** (for installers and other one-off programs). The Applications page marks
+  these with a star; hover the status to see when it ends, or right-click and choose
+  **Allow** to keep it for good
 - **Chevron (⌄)** — expands full detail: reverse DNS, exact time, full path
 
 When other programs are waiting, the prompt says how many.
+
+**Undo.** After you answer, a small notice in the corner offers **Undo** for a few
+seconds. It puts the program back exactly as it was - for a program you had never
+decided on, that means it is asked about again the next time it connects.
 
 **A blocked program in a new folder stays blocked.** Some programs run from a new
 temporary folder every time. If a program has the same file name and the same
@@ -270,11 +276,26 @@ activity.
 
 **What you can do**
 
-- **Allow** or **Block** any application with the button on its row
-- **Filter** by name using the search box
+- **Allow** or **Block** any application with the button on its row, or select
+  several rows (Ctrl+click, Shift+click) and right-click → **Allow** or **Block**
+- **Allow for** (right-click) — 1 hour, until it closes, or until the next restart
+- **Filter** by name using the search box, and by status with the chips above the
+  table: **All**, **Allowed**, **Blocked**, **Temporary** and **No rule** (seen but
+  never decided), each with its count
+- **Undo** — every Allow, Block and Remove from list offers Undo in the corner for
+  a few seconds; the tray menu offers it for the most recent one
 - **Show all running apps** to include programs that have not yet used the network
-- **Allow an app** to approve one or more programs before they ever ask - a game
-  launcher and its games, for example, so no popup appears mid-game
+- **Allow ▾ → Programs...** to approve one or more programs before they ever ask -
+  a game launcher and its games, for example, so no popup appears mid-game
+- **Allow ▾ → Every program in a folder...** to allow a whole folder, such as a
+  Steam or Epic Games library: every program in it, and in the folders inside it,
+  connects without asking - including programs added later. A program you blocked
+  stays blocked. Right-click a program → **Allow every program in its folder...**
+  starts in that program's folder. Folders that collect files from anywhere are
+  refused: a whole drive, Windows, Program Files or ProgramData themselves, your
+  user folder, Desktop, Downloads, Documents, AppData itself and Temp folders. The
+  folders allowed now are listed at the bottom of the same menu; choosing one stops
+  allowing it, and the programs it allowed are asked about again
 - **Block an app** to add one by browsing to its executable
 - **Remove from list (ask again)**, on the right-click menu or with the Delete key,
   for every selected row: GunWall forgets the rule and everything kept for the
@@ -694,6 +715,16 @@ leaving protection off and forgetting. The pause is saved: if you close GunWall 
 restart during it, protection still comes back when it was due (at the next start
 if nothing was running then). Switching protection on or off yourself, or **Turn
 off and exit**, cancels the pause instead.
+
+**The tray menu** also lists your three most recent decisions - choosing one
+opens it in Applications - and **Undo** for the latest one. Decisions GunWall made
+by itself (a program in an allowed folder, a temporary allow that ended) are marked
+*Auto*.
+
+**While you were away.** When GunWall comes back from the tray after ten minutes or
+more, a notice sums up what happened meanwhile: which programs were blocked from
+connecting and how often, what GunWall decided by itself, and how many popups
+asked. It stays on the Alerts page.
 
 **Exiting.** Closing the window keeps GunWall running in the tray. To exit, use
 **Exit** in the tray menu. If protection or lockdown is on, GunWall asks first:

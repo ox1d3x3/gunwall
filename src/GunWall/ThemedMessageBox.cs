@@ -62,6 +62,7 @@ public sealed class ThemedMessageBox : Window
             return app.Dispatcher.Invoke(() => ShowCore(text, caption, button, icon, defaultResult, labels));
         try
         {
+            Services.PerfMonitor.Moment("message box");   // built from nothing the first time (0.99.241)
             var box = new ThemedMessageBox(text, caption, button, icon, defaultResult, labels);
             box.ShowDialog();
             return box._result;

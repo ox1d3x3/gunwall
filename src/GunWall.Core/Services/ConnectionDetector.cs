@@ -36,11 +36,22 @@ public interface IDetectionPolicy
     /// <summary>The display name of an allowed rule whose program file is named
     /// <paramref name="fileName"/> (any folder), or null (0.99.234.2).</summary>
     string? AllowedAppNamed(string fileName);
+    /// <summary>Any folder is allowed (0.99.241) - so the poll looks at undecided
+    /// programs even with popups turned off.</summary>
+    bool HasAllowedFolders { get; }
+    /// <summary>A program with no rule inside an allowed folder: given an allow rule,
+    /// true, and not asked about (0.99.241).</summary>
+    bool AdoptFolderAllowed(string exePath);
 }
 
 /// <summary>An undecided application to ask the user about.</summary>
 public sealed record PromptRequest(string ProcessName, string ExePath, string RemoteAddress,
                                    int RemotePort, string Protocol, DateTime Time);
+
+/// <summary>Something GunWall decided on its own (0.99.241): a program in an allowed
+/// folder allowed, a temporary allow ended. Shown in the activity feed, counted in the
+/// "while you were away" summary and listed under Recent in the tray menu.</summary>
+public sealed record AutoDecision(string ProcessName, string ExePath, string What);
 
 /// <summary>One Packet Log row: GunWall's verdict for a kernel event, and why.</summary>
 public sealed record PacketVerdict(string AppName, string ExePath, string Protocol,
@@ -65,6 +76,8 @@ public sealed class DetectionResult
     /// <summary>Things to tell the user (0.99.234.2): an allowed app that cannot
     /// connect because Microsoft Edge WebView2, which it connects through, is blocked.</summary>
     public List<UpkeepNotice> Notices { get; } = new();
+    /// <summary>Decisions made without asking (0.99.241).</summary>
+    public List<AutoDecision> Decisions { get; } = new();
 }
 
 /// <summary>
@@ -127,6 +140,16 @@ public sealed class ConnectionDetector
                 "rules"));
             r.Activity.Add(new NetActivityEvent { ProcessName = name, Detail = "cannot connect - Microsoft Edge WebView2 is blocked" });
         }
+    }
+
+    /// <summary>A program in an allowed folder: allowed, said in the activity feed and
+    /// passed on as a decision (0.99.241). False when no folder covers it.</summary>
+    private bool AdoptFolder(DetectionResult r, string name, string path)
+    {
+        if (!_fw.HasAllowedFolders || !_fw.AdoptFolderAllowed(path)) return false;
+        r.Activity.Add(new NetActivityEvent { ProcessName = name, Detail = "in an allowed folder - allowed without asking" });
+        r.Decisions.Add(new AutoDecision(name, path, "allowed - in an allowed folder"));
+        return true;
     }
 
     /// <summary>Either a popup or, for a Windows core process with the setting on,
@@ -227,8 +250,10 @@ public sealed class ConnectionDetector
         // Approval: prompt once for an undecided app, and only when protection is
         // on - monitoring mode observes silently.
         if (_fw.IsBlocked(appPath) || _fw.IsAllowed(appPath) || _fw.IsSilent(appPath)) return r;
-        if (!_fw.AlertsEnabled) return r;
         if (!_fw.StrictMode) return r;
+        // An allowed folder answers before any popup, and with popups off (0.99.241).
+        if (AdoptFolder(r, appName, appPath)) return r;
+        if (!_fw.AlertsEnabled) return r;
         if (!ShouldAsk(appPath)) return r;
         Ask(r, new PromptRequest(appName, appPath, remote, remotePort, protocol, now));
         r.ShowQueued = true;
@@ -268,8 +293,10 @@ public sealed class ConnectionDetector
             return;
         }
 
-        if (!_fw.AlertsEnabled) return;
-        r.ShowQueued = true;
+        // With popups off the poll still runs for allowed folders (0.99.241).
+        bool alerts = _fw.AlertsEnabled;
+        if (!alerts && !(strict && _fw.HasAllowedFolders)) return;
+        if (alerts) r.ShowQueued = true;
 
         foreach (var c in conns)
         {
@@ -282,11 +309,14 @@ public sealed class ConnectionDetector
 
             if (strict)
             {
+                if (AdoptFolder(r, proc.Name, proc.Path)) continue;
+                if (!alerts) continue;
                 // Zero Trust: already blocked by default-deny; ask once per session.
                 if (!ShouldAsk(proc.Path)) continue;
             }
             else
             {
+                if (!alerts) continue;
                 // Monitoring: record first activity, never prompt.
                 if (!string.IsNullOrEmpty(c.RemoteAddress) && c.RemoteAddress is not ("0.0.0.0" or "::"))
                     if (_fw.MarkKnown(proc.Path))

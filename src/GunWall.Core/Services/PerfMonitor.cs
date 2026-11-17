@@ -108,6 +108,41 @@ public static class PerfMonitor
                             + (onUi ? " on the UI thread." : " in the background."));
     }
 
+    // ---- UI moments (0.99.241) ----------------------------------------------
+    // Freezes that no measured operation explains are mostly WPF building something
+    // for the first time: a page shown, a dialog or menu opened. Timing those as
+    // operations is not possible - the cost is in WPF's own layout pass - so the last
+    // one is remembered instead, and an unattributed freeze names it. The 0.99.239 and
+    // 0.99.240 bundles had freezes of 649 and 1670 ms on the Applications page, and a
+    // 327-342 ms pair a few seconds before a Remove from list, with nothing to go on.
+    private static string _moment = "";
+    private static long _momentAt;
+    private static int _probeGen2 = -1;
+
+    /// <summary>Records something the window just started that can take a frame or
+    /// more to build - "page Firewall", "message box", "context menu". A code name,
+    /// never content. Cheap: one timestamp under the lock.</summary>
+    public static void Moment(string what)
+    {
+        lock (Gate) { _moment = what; _momentAt = Stopwatch.GetTimestamp(); }
+    }
+
+    /// <summary>What happened around a freeze: the last UI moment if it falls inside
+    /// it (or up to half a second before), and a full garbage collection if one ran
+    /// since the previous probe. "" when neither. Called under the lock.</summary>
+    private static string FreezeContext(double ms, long now)
+    {
+        string s = "";
+        if (_momentAt > 0)
+        {
+            double ago = Ms(now - _momentAt);
+            if (ago <= ms + 500) s = $" Around: {_moment} ({ago:F0} ms before it ended).";
+        }
+        int g2 = GC.CollectionCount(2);
+        if (_probeGen2 >= 0 && g2 > _probeGen2) s += " A full garbage collection ran during it.";
+        return s;
+    }
+
     // ---- UI responsiveness ------------------------------------------------
     // Buckets in ms: <16, <33, <50, <100, <250, <500, <1000, >=1000
     private static readonly double[] LagEdges = { 16, 33, 50, 100, 250, 500, 1000 };
@@ -144,6 +179,8 @@ public static class PerfMonitor
         lock (Gate)
         {
             long now = Stopwatch.GetTimestamp();
+            string context = ms >= StallMs ? FreezeContext(ms, now) : "";
+            _probeGen2 = GC.CollectionCount(2);
             bool attributed = ms >= StallMs && _lastLongTicks > 0
                 && Ms(now - _lastLongEnd) <= ms + 100
                 && Ms(_lastLongTicks) >= ms * 0.5;
@@ -177,7 +214,7 @@ public static class PerfMonitor
                 line = attributed
                     ? $"Perf: UI froze for {ms:F0} ms on {panel} - {_lastLongName} took {Ms(_lastLongTicks):F0} ms.{extra}"
                     : $"Perf: UI froze for {ms:F0} ms on {panel} - unattributed: no measured operation explains it, "
-                      + $"so the cause is in code not yet measured.{extra}";
+                      + $"so the cause is in code not yet measured.{extra}{context}";
             }
         }
         if (line != null) DiagnosticLog.Log(line);

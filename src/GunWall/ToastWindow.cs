@@ -33,20 +33,31 @@ public sealed class ToastWindow : Window
     private const double ShadowMargin = 12, EdgeGap = 12, Rise = 14;
 
     /// <summary>Shows a notice for <paramref name="milliseconds"/>. <paramref name="kind"/>
-    /// is "info" or "warn". Safe to call from the UI thread only; never throws.</summary>
-    public static void Show(string title, string text, string kind = "info", int milliseconds = 4000, Action? onClick = null)
+    /// is "info" or "warn". <paramref name="actionText"/> adds a button - "Undo"
+    /// (0.99.241) - that runs <paramref name="onAction"/> and closes the notice. Safe
+    /// to call from the UI thread only; never throws.</summary>
+    public static void Show(string title, string text, string kind = "info", int milliseconds = 4000, Action? onClick = null,
+                            string? actionText = null, Action? onAction = null)
     {
         try
         {
             _current?.CloseNow();
-            var t = new ToastWindow(title, text, kind, milliseconds, onClick);
+            var t = new ToastWindow(title, text, kind, milliseconds, onClick, actionText, onAction);
             _current = t;
             t.Show();
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("Toast", ex); }
     }
 
-    private ToastWindow(string title, string text, string kind, int milliseconds, Action? onClick)
+    /// <summary>Moves the notice on screen clear of a connection popup that opened after
+    /// it (0.99.241): the Undo for one answer would otherwise sit under the next popup.</summary>
+    public static void Reposition()
+    {
+        try { _current?.Place(); } catch { }
+    }
+
+    private ToastWindow(string title, string text, string kind, int milliseconds, Action? onClick,
+                        string? actionText, Action? onAction)
     {
         _onClick = onClick;
         Title = "GunWall";
@@ -78,6 +89,7 @@ public sealed class ToastWindow : Window
         var row = new Grid { Margin = new Thickness(14, 13, 12, 13) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var tile = new Border
@@ -119,8 +131,36 @@ public sealed class ToastWindow : Window
             VerticalAlignment = VerticalAlignment.Top, Cursor = Cursors.Hand, ToolTip = "Dismiss",
         };
         close.MouseLeftButtonUp += (_, e) => { e.Handled = true; Dismiss(); };
-        Grid.SetColumn(close, 2);
+        Grid.SetColumn(close, 3);
         row.Children.Add(close);
+
+        // The action (0.99.241): "Undo" after a decision. A pill in the brand tint, so
+        // it reads as the one thing to press; the card's own click still opens GunWall.
+        if (!string.IsNullOrWhiteSpace(actionText) && onAction != null)
+        {
+            var label = new TextBlock
+            {
+                Text = actionText, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Foreground = Res("BlockText", Brushes.OrangeRed),
+            };
+            var action = new Border
+            {
+                Child = label, CornerRadius = new CornerRadius(7), Padding = new Thickness(10, 4, 10, 5),
+                Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center,
+                Background = Res("AccentSoft", Brushes.Transparent), Cursor = Cursors.Hand,
+                ToolTip = actionText,
+            };
+            action.MouseEnter += (_, _) => label.TextDecorations = TextDecorations.Underline;
+            action.MouseLeave += (_, _) => label.TextDecorations = null;
+            action.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                Dismiss();
+                try { onAction(); } catch (Exception ex) { Services.DiagnosticLog.LogException("Toast/action", ex); }
+            };
+            Grid.SetColumn(action, 2);
+            row.Children.Add(action);
+        }
 
         var card = new Border
         {

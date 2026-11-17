@@ -983,9 +983,16 @@
                             <TextBox x:Name="AppSearch" Tag="Filter applications..." Style="{StaticResource SearchBox}"
                                      TextChanged="AppSearch_TextChanged" Margin="0,0,8,4"
                                      ToolTip="Search applications" />
-                            <Button Content="Allow an app" Style="{StaticResource ActionButton}"
-                                    Click="BrowseAllow_Click" Margin="0,0,8,4"
-                                    ToolTip="Choose one or more programs to allow before they ever ask - a game and its launcher, for example. They connect without a prompt." />
+                            <!-- "Allow ▾" (0.99.241): programs, or a whole folder - a game
+                                 library, a launcher. The menu is built when it opens, so
+                                 it lists the folders allowed now. -->
+                            <Button x:Name="AllowMenuButton" Content="Allow &#x25BE;" Style="{StaticResource ActionButton}"
+                                    Click="AllowMenu_Click" Margin="0,0,8,4"
+                                    ToolTip="Allow programs, or every program in a folder, before they ever ask - a game library or a launcher, for example. They connect without a prompt.">
+                                <Button.ContextMenu>
+                                    <ContextMenu x:Name="AllowMenu" />
+                                </Button.ContextMenu>
+                            </Button>
                             <Button Content="Block an app" Style="{StaticResource ActionButton}"
                                     Click="BrowseBlock_Click" Margin="0,0,8,4" />
                             <!-- One "Clean up" menu instead of two purge buttons (0.99.240):
@@ -1014,7 +1021,12 @@
                          the moment anyone edited a colour. Both now read
                          CategoryPalette, and RefreshSwatches repaints all three
                          places at once. -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,0,0">
+                    <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
                         <Ellipse x:Name="LegendSignedDot" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Signed" Style="{StaticResource Muted}" Margin="0,0,12,0" />
                         <Ellipse x:Name="LegendUnsignedDot" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,4,0" />
@@ -1024,6 +1036,22 @@
                         <Ellipse x:Name="LegendInvalidDot" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="Invalid sig" Style="{StaticResource Muted}" />
                     </StackPanel>
+                    <!-- Status chips (0.99.241): which rows to show, each with its count. -->
+                    <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <RadioButton x:Name="ChipAll" Content="All" Tag="all" GroupName="AppStatusFilter" IsChecked="True"
+                                     Style="{StaticResource FilterChip}" Checked="StatusChip_Checked" />
+                        <RadioButton x:Name="ChipAllowed" Content="Allowed" Tag="allowed" GroupName="AppStatusFilter"
+                                     Style="{StaticResource FilterChip}" Checked="StatusChip_Checked" />
+                        <RadioButton x:Name="ChipBlocked" Content="Blocked" Tag="blocked" GroupName="AppStatusFilter"
+                                     Style="{StaticResource FilterChip}" Checked="StatusChip_Checked" />
+                        <RadioButton x:Name="ChipTemporary" Content="Temporary" Tag="temporary" GroupName="AppStatusFilter"
+                                     Style="{StaticResource FilterChip}" Checked="StatusChip_Checked"
+                                     ToolTip="Allowed for an hour, until it closes, or until the next restart" />
+                        <RadioButton x:Name="ChipNoRule" Content="No rule" Tag="norule" GroupName="AppStatusFilter"
+                                     Style="{StaticResource FilterChip}" Checked="StatusChip_Checked"
+                                     ToolTip="Seen, but never allowed or blocked - in Zero Trust these are blocked until you decide" />
+                    </WrapPanel>
+                    </Grid>
                 </StackPanel>
 
                 <Border Grid.Row="1" Padding="0">
@@ -1054,8 +1082,37 @@
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                             </Style>
                         </ListView.Resources>
+                        <!-- A row that appears while the list is on screen fades in
+                             (0.99.241). IsNew is set by the window for a moment and
+                             cleared, so a recycled row never replays it. -->
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsNew}" Value="True">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                     From="0" To="1" Duration="0:0:0.35" DecelerationRatio="0.7" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListView.ItemContainerStyle>
                         <ListView.ContextMenu>
                             <ContextMenu Opened="AppsContextMenu_Opened">
+                                <!-- 0.99.241: Allow and Block act on every selected row. -->
+                                <MenuItem x:Name="AllowSelectedItem" Header="Allow" Click="AllowSelected_Click" />
+                                <MenuItem x:Name="BlockSelectedItem" Header="Block" Click="BlockSelected_Click" />
+                                <MenuItem x:Name="AllowForItem" Header="Allow for">
+                                    <MenuItem Header="1 hour" Tag="hour" Click="AllowSelectedFor_Click" />
+                                    <MenuItem Header="Until it closes" Tag="close" Click="AllowSelectedFor_Click" />
+                                    <MenuItem Header="Until the next restart" Tag="restart" Click="AllowSelectedFor_Click" />
+                                </MenuItem>
+                                <MenuItem Header="Allow every program in its folder..." Click="AllowFolderOf_Click" />
+                                <Separator />
                                 <MenuItem Header="Mute (allow, no popups)" Click="MuteApp_Click" />
                                 <MenuItem Header="Unmute" Click="UnmuteApp_Click" />
                                 <Separator />
@@ -1139,9 +1196,33 @@
                                 <GridViewColumn Header="PUBLISHER" Width="190">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding Publisher}"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       ToolTip="{Binding Publisher}" />
+                                            <Grid>
+                                                <TextBlock x:Name="PublisherText" Text="{Binding Publisher}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding Publisher}" />
+                                                <!-- While the signature is being checked: a bar that
+                                                     pulses, not the word "Checking..." (0.99.241). -->
+                                                <Border x:Name="PublisherSkeleton" Visibility="Collapsed" Width="96" Height="8"
+                                                        CornerRadius="4" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                        Background="{DynamicResource Skeleton}" ToolTip="Checking the signature" />
+                                            </Grid>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding Publisher}" Value="Checking&#x2026;">
+                                                    <Setter TargetName="PublisherText" Property="Visibility" Value="Collapsed" />
+                                                    <Setter TargetName="PublisherSkeleton" Property="Visibility" Value="Visible" />
+                                                    <DataTrigger.EnterActions>
+                                                        <BeginStoryboard x:Name="PublisherPulse">
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetName="PublisherSkeleton" Storyboard.TargetProperty="Opacity"
+                                                                                 From="1" To="0.35" Duration="0:0:0.8" AutoReverse="True" RepeatBehavior="Forever" />
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.EnterActions>
+                                                    <DataTrigger.ExitActions>
+                                                        <StopStoryboard BeginStoryboardName="PublisherPulse" />
+                                                    </DataTrigger.ExitActions>
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
@@ -1200,21 +1281,37 @@
                                         <DataTemplate>
                                             <Border x:Name="StatusPill" CornerRadius="6" Padding="10,3"
                                                     HorizontalAlignment="Left"
+                                                    ToolTip="{Binding TemporaryNote}"
                                                     Background="{Binding Status, Converter={StaticResource StatusToFill}}">
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="{Binding Status, Converter={StaticResource StatusToText}}"
                                                                Foreground="{Binding Status, Converter={StaticResource StatusToBrush}}"
                                                                FontSize="11.5" FontWeight="SemiBold" />
-                                                    <!-- The star marks an allow that ends at the next restart (0.99.235). -->
+                                                    <!-- The star marks an allow that ends by itself: at the next
+                                                         restart (0.99.235), after an hour or when it closes (0.99.241). -->
                                                     <TextBlock x:Name="OnceMark" Text=" *" Visibility="Collapsed"
                                                                Foreground="{Binding Status, Converter={StaticResource StatusToBrush}}"
                                                                FontSize="11.5" FontWeight="SemiBold" />
                                                 </StackPanel>
                                             </Border>
                                             <DataTemplate.Triggers>
-                                                <DataTrigger Binding="{Binding UntilRestart}" Value="True">
+                                                <DataTrigger Binding="{Binding Temporary}" Value="True">
                                                     <Setter TargetName="OnceMark" Property="Visibility" Value="Visible" />
-                                                    <Setter TargetName="StatusPill" Property="ToolTip" Value="Allowed until the next restart. Click Allow to keep it for good." />
+                                                </DataTrigger>
+                                                <!-- No note, no hover tip (an empty one shows as a blank box). -->
+                                                <DataTrigger Binding="{Binding TemporaryNote}" Value="">
+                                                    <Setter TargetName="StatusPill" Property="ToolTip" Value="{x:Null}" />
+                                                </DataTrigger>
+                                                <!-- The pill cross-fades when the status changes (0.99.241). -->
+                                                <DataTrigger Binding="{Binding StatusFlash}" Value="True">
+                                                    <DataTrigger.EnterActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetName="StatusPill" Storyboard.TargetProperty="Opacity"
+                                                                                 From="0.2" To="1" Duration="0:0:0.32" DecelerationRatio="0.7" />
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.EnterActions>
                                                 </DataTrigger>
                                             </DataTemplate.Triggers>
                                         </DataTemplate>

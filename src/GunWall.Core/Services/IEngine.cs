@@ -28,6 +28,20 @@ public interface IEngine
     [EngineAccess(Access.Loosen)] void AllowApp(string exePath, string displayName);
     /// <summary>Allows until the next restart (0.99.235).</summary>
     [EngineAccess(Access.Loosen)] void AllowAppOnce(string exePath, string displayName);
+    /// <summary>Allows until the next restart, for an hour, or until it closes (0.99.241).</summary>
+    [EngineAccess(Access.Loosen)] void AllowAppFor(string exePath, string displayName, TemporaryAllow kind);
+    /// <summary>An allow that does not end by itself (0.99.241).</summary>
+    [EngineAccess(Access.ReadProfile)] bool IsAllowedForGood(string exePath);
+    /// <summary>Folders whose programs are allowed without asking (0.99.241).</summary>
+    [EngineAccess(Access.ReadProfile)] IReadOnlyList<string> AllowedFolders { get; }
+    [EngineAccess(Access.Loosen)] int AddAllowedFolder(string folder);
+    /// <summary>Removes the rules the folder made: those programs are asked again.</summary>
+    [EngineAccess(Access.Tighten)] int RemoveAllowedFolder(string folder);
+    /// <summary>A program's rule now, for Undo (0.99.241). A round trip, not the
+    /// window's copy: right after another decision that copy can be a moment old.</summary>
+    [EngineAccess(Access.Read)] DecisionSnapshot CaptureDecision(string exePath, string displayName);
+    /// <summary>Puts a rule back as CaptureDecision found it - may allow, so Loosen.</summary>
+    [EngineAccess(Access.Loosen)] void RestoreDecision(DecisionSnapshot snapshot);
     [EngineAccess(Access.Local)] bool AlwaysConfirmExit { get; }
     [EngineAccess(Access.Local)] bool AlwaysOnTop { get; }
     [EngineAccess(Access.Local)] int AppIconSize { get; }

@@ -75,6 +75,27 @@ public enum AppStatus
 /// <summary>Visual category for color-coding apps in the list.</summary>
 public enum AppCategory { Unknown, Signed, Unsigned, System, Invalid }
 
+/// <summary>An allow that ends by itself (0.99.241). UntilRestart is 0.99.235's
+/// "Allow until restart"; the other two were added with it in the popup's
+/// "Allow for" row and the Applications menu.</summary>
+public enum TemporaryAllow { UntilRestart, OneHour, UntilClosed }
+
+/// <summary>What a program's rule was before a decision, so the decision can be
+/// undone (0.99.241). HadRule false: there was no rule - undoing removes the new
+/// one and the program is asked about again.</summary>
+public sealed class DecisionSnapshot
+{
+    public string ExePath { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public bool HadRule { get; set; }
+    public AppStatus Status { get; set; }
+    public bool Silent { get; set; }
+    public bool UntilRestart { get; set; }
+    public bool UntilExit { get; set; }
+    public DateTime? AllowUntilUtc { get; set; }
+    public string AllowedByFolder { get; set; } = "";
+}
+
 /// <summary>An application known to GunWall, with its current policy.</summary>
 /// <summary>
 /// One row of the Applications list.
@@ -257,6 +278,40 @@ public sealed class AppInfo : System.ComponentModel.INotifyPropertyChanged
     }
     private bool _untilRestart;
 
+    /// <summary>Allowed for a while: until restart, for an hour or until it closes
+    /// (0.99.241). The star in the Status column; <see cref="TemporaryNote"/> says which.</summary>
+    public bool Temporary
+    {
+        get => _temporary;
+        set { if (_temporary != value) { _temporary = value; Changed(nameof(Temporary)); } }
+    }
+    private bool _temporary;
+
+    /// <summary>The star's tooltip: "Allowed until 14:30. ..." (0.99.241).</summary>
+    public string TemporaryNote
+    {
+        get => _temporaryNote;
+        set { if (_temporaryNote != value) { _temporaryNote = value; Changed(nameof(TemporaryNote)); } }
+    }
+    private string _temporaryNote = "";
+
+    /// <summary>A row that has just appeared, for its fade-in (0.99.241). Set by the
+    /// window when the row is added and cleared a moment later.</summary>
+    public bool IsNew
+    {
+        get => _isNew;
+        set { if (_isNew != value) { _isNew = value; Changed(nameof(IsNew)); } }
+    }
+    private bool _isNew;
+
+    /// <summary>The status has just changed, for the pill's cross-fade (0.99.241).</summary>
+    public bool StatusFlash
+    {
+        get => _statusFlash;
+        set { if (_statusFlash != value) { _statusFlash = value; Changed(nameof(StatusFlash)); } }
+    }
+    private bool _statusFlash;
+
     /// <summary>Allowed but not notified about.</summary>
     public bool Silent
     {
@@ -296,6 +351,22 @@ public sealed class FirewallRule
     /// The rule is dropped when filtering is rebuilt at start-up, so the program is
     /// asked about again. For installers and other one-off programs.</summary>
     public bool UntilRestart { get; set; }
+
+    /// <summary>"Allow until it closes" (0.99.241): the rule ends a few seconds after
+    /// the last copy of the program exits, and at the next restart.</summary>
+    public bool UntilExit { get; set; }
+
+    /// <summary>"Allow for 1 hour" (0.99.241): the rule ends at this time (UTC). Kept
+    /// across a restart, unlike the two above.</summary>
+    public DateTime? AllowUntilUtc { get; set; }
+
+    /// <summary>The allowed folder that made this rule (0.99.241), or "". Removing the
+    /// folder removes the rules it made; deciding on the program yourself clears it.</summary>
+    public string AllowedByFolder { get; set; } = "";
+
+    /// <summary>Any of the three allows that end by themselves.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsTemporary => UntilRestart || UntilExit || AllowUntilUtc != null;
 
     /// <summary>Exempt this application from KERNEL-level domain blocking.
     ///

@@ -279,6 +279,11 @@ public sealed class StoreData
     /// <summary>Executables already seen once — no alert popup for these.</summary>
     public List<string> KnownApps { get; set; } = new();
 
+    /// <summary>Folders whose programs are allowed without asking (0.99.241), full
+    /// paths without a trailing separator. A program in one gets an ordinary allow
+    /// rule the first time it connects, marked with the folder that made it.</summary>
+    public List<string> AllowedFolders { get; set; } = new();
+
     /// <summary>Whether the new-connection alert popup is enabled.</summary>
     public bool AlertsEnabled { get; set; } = true;
 

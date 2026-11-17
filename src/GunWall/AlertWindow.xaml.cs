@@ -39,20 +39,22 @@ public partial class AlertWindow : Window
 
     private readonly GunWall.Services.GeoIpService? _firewallGeo;
 
-    private readonly Action? _onAllowOnce;
-    private bool _once;                      // "Allow until restart" was chosen
-    /// <param name="onAllowOnce">Allow until the next restart; the link is hidden without it.</param>
+    private readonly Action<GunWall.Models.TemporaryAllow>? _onAllowFor;
+    private GunWall.Models.TemporaryAllow? _for;   // chosen under "Allow for" (0.99.241)
+    /// <param name="onAllowFor">An allow that ends by itself - for an hour, until the
+    /// program closes, or until the next restart (0.99.241; until restart only, as
+    /// "Allow until restart", in 0.99.235). The link is hidden without it.</param>
     /// <param name="waiting">How many more applications are queued behind this one.</param>
     public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null, bool strictMode = false,
                        int timeoutSeconds = 0, bool defaultAllow = false,
                        GunWall.Services.GeoIpService? geo = null,
-                       Action? onAllowOnce = null, int waiting = 0)
+                       Action<GunWall.Models.TemporaryAllow>? onAllowFor = null, int waiting = 0)
     {
         _firewallGeo = geo;
-        _onAllowOnce = onAllowOnce;
+        _onAllowFor = onAllowFor;
         InitializeComponent();
-        // "Allow until restart" only where an allow is a rule at all (Zero Trust).
-        OnceButton.Visibility = onAllowOnce != null && strictMode ? Visibility.Visible : Visibility.Collapsed;
+        // "Allow for" only where an allow is a rule at all (Zero Trust).
+        AllowForButton.Visibility = onAllowFor != null && strictMode ? Visibility.Visible : Visibility.Collapsed;
         if (waiting > 0)
         {
             QueueText.Text = QueueLabel(waiting);
@@ -218,7 +220,11 @@ public partial class AlertWindow : Window
             return;
         }
 
-        try { (_once && _onAllowOnce != null ? _onAllowOnce : _onAllow)?.Invoke(); }
+        try
+        {
+            if (_for is GunWall.Models.TemporaryAllow kind && _onAllowFor != null) _onAllowFor(kind);
+            else _onAllow?.Invoke();
+        }
         catch (Exception ex)
         {
             // LOGGED, not only shown. This dialog appeared on a machine whose
@@ -252,12 +258,31 @@ public partial class AlertWindow : Window
         return $"Could not {verb}: {ex.Message}";
     }
 
-    /// <summary>"Allow until restart" (0.99.235): the same path as Allow, with the
-    /// rule marked to end at the next restart.</summary>
-    private void Once_Click(object sender, RoutedEventArgs e)
+    /// <summary>"Allow for ▾" (0.99.241): opens the three allows that end by
+    /// themselves. Opening it is deciding, so the countdown stops.</summary>
+    private void AllowForMenu_Click(object sender, RoutedEventArgs e)
     {
         if (_decided) return;
-        _once = true;
+        StopCountdown();
+        if (CountdownHint != null) CountdownHint.Text = "";
+        var menu = AllowForButton.ContextMenu;
+        if (menu == null) return;
+        menu.PlacementTarget = AllowForButton;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
+    /// <summary>One of the "Allow for" choices: the same path as Allow, with the rule
+    /// marked to end by itself (0.99.235 for until restart, 0.99.241 for the others).</summary>
+    private void AllowFor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_decided) return;
+        _for = ((sender as FrameworkElement)?.Tag as string) switch
+        {
+            "hour" => GunWall.Models.TemporaryAllow.OneHour,
+            "close" => GunWall.Models.TemporaryAllow.UntilClosed,
+            _ => GunWall.Models.TemporaryAllow.UntilRestart,
+        };
         Allow_Click(sender, e);
     }
 

@@ -47,6 +47,8 @@ internal sealed class TrayMenu
         public const string Lock = "";         // Lock
         public const string Unlock = "";       // Unlock
         public const string Exit = "";         // PowerButton
+        public const string Undo = "";         // Undo (0.99.241)
+        public const string Recent = "";       // Recent (0.99.241)
     }
 
     /// <summary>How one item is drawn. Kept in the item's Tag.</summary>
@@ -106,8 +108,12 @@ internal sealed class TrayMenu
         return item;
     }
 
-    public void AddSeparator() =>
-        Strip.Items.Add(new WinForms.ToolStripSeparator { AutoSize = false, Height = Px(7) });
+    public WinForms.ToolStripSeparator AddSeparator()
+    {
+        var sep = new WinForms.ToolStripSeparator { AutoSize = false, Height = Px(7) };
+        Strip.Items.Add(sep);
+        return sep;
+    }
 
     /// <summary>Changes an item's label, icon and colour role, e.g. for the
     /// lockdown item when the menu opens.</summary>

@@ -96,7 +96,9 @@ public sealed class DetectionHost : IDisposable
                     // Approval prompts and §1 reactive geo-blocking (polling path).
                     if (_engineReady())
                     {
-                        Detected?.Invoke(Detector.OnPoll(conns, procs, DateTime.Now), "connection table");
+                        var result = Detector.OnPoll(conns, procs, DateTime.Now);
+                        ExpireTimedAllows(procs, result);
+                        Detected?.Invoke(result, "connection table");
                         Snapshot?.Invoke(conns, procs);
                     }
                     EventMarkerHeartbeat();
@@ -114,6 +116,32 @@ public sealed class DetectionHost : IDisposable
             try { await Task.Delay(300, ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
         }
+    }
+
+    private long _lastExpiryMs;
+    public static readonly TimeSpan ExpiryEvery = TimeSpan.FromSeconds(2);
+
+    /// <summary>Ends the "for an hour" and "until it closes" allows whose time is up
+    /// (0.99.241), every two seconds, on the engine context. The running programs are
+    /// listed only when there is such an allow.</summary>
+    private void ExpireTimedAllows(Dictionary<int, (string Name, string Path)> procs, DetectionResult result)
+    {
+        long now = Environment.TickCount64;
+        if (now - _lastExpiryMs < (long)ExpiryEvery.TotalMilliseconds) return;
+        _lastExpiryMs = now;
+        try
+        {
+            if (!_fw.HasTimedAllows) return;
+            var running = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in procs.Values)
+                if (!string.IsNullOrEmpty(p.Path)) running.Add(p.Path);
+            foreach (var d in _fw.ExpireTimedAllows(DateTime.UtcNow, running))
+            {
+                result.Decisions.Add(d);
+                result.Activity.Add(new NetActivityEvent { ProcessName = d.ProcessName, Detail = d.What });
+            }
+        }
+        catch (Exception ex) { DiagnosticLog.LogException("ExpireTimedAllows", ex); }
     }
 
     /// <summary>Runs <paramref name="work"/> on the engine context and completes

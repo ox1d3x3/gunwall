@@ -328,12 +328,27 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         }
 
         if (IsSilent(exePath)) { blocked = false; return "Muted \u2014 allowed, no popups"; }
-        if (IsAllowed(exePath)) { blocked = false; return "App rule \u2014 Allow"; }
+        if (IsAllowed(exePath)) { blocked = false; return "App rule \u2014 Allow" + AllowNote(exePath); }
 
         if (_data.StrictMode) { blocked = true; return "Zero-Trust \u2014 no allow rule yet"; }
 
         blocked = false;
         return "Monitor mode \u2014 allowed by default";
+    }
+
+    /// <summary>" (until 14:30)", " (folder: C:\Games)"... for the Packet Log (0.99.241).</summary>
+    private string AllowNote(string exePath)
+    {
+        lock (_dataLock)
+        {
+            var r = _data.Rules.FirstOrDefault(x => x.Status == AppStatus.Allowed
+                && string.Equals(x.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+            if (r == null) return "";
+            if (r.AllowUntilUtc is DateTime u) return $" (until {u.ToLocalTime():HH:mm})";
+            if (r.UntilExit) return " (until it closes)";
+            if (r.UntilRestart) return " (until restart)";
+            return r.AllowedByFolder.Length > 0 ? $" (folder: {r.AllowedByFolder})" : "";
+        }
     }
 
     /// <summary>Exact match, or IPv4 CIDR containment when the rule uses "a.b.c.d/n".</summary>
@@ -945,7 +960,10 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     /// </summary>
     public void AllowAppOnce(string exePath, string displayName)
     {
-        bool already = IsAllowed(exePath);
+        // Allowed for good stays that way. An allow that is itself temporary (an hour,
+        // until it closes) is replaced: it used to count as "already allowed", and
+        // AllowApp, which rebuilds the rule, made it permanent (0.99.241).
+        bool already = IsAllowedForGood(exePath);
         AllowApp(exePath, displayName);
         if (already) return;
         lock (_dataLock)
@@ -959,6 +977,293 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         EventLog($"{displayName}: allowed until the next restart");
     }
 
+    /// <summary>An allow rule that does not end by itself (0.99.241).</summary>
+    public bool IsAllowedForGood(string exePath)
+    {
+        lock (_dataLock)
+            return _data.Rules.Any(r => r.Status == AppStatus.Allowed && !r.IsTemporary
+                && string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// "Allow for" (0.99.241): allowed now, and the rule ends by itself - at the next
+    /// restart (as Allow until restart), after an hour, or a few seconds after the last
+    /// copy of the program closes. When it ends the program is asked about again, as
+    /// if it had never been decided. A program allowed for good stays that way.
+    /// </summary>
+    public void AllowAppFor(string exePath, string displayName, TemporaryAllow kind)
+    {
+        if (kind == TemporaryAllow.UntilRestart) { AllowAppOnce(exePath, displayName); return; }
+        bool forGood = IsAllowedForGood(exePath);
+        AllowApp(exePath, displayName);
+        if (forGood) return;
+        string what;
+        lock (_dataLock)
+        {
+            var rule = _data.Rules.FirstOrDefault(r => r.Status == AppStatus.Allowed
+                && string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+            if (rule == null) return;   // not Zero Trust: nothing is blocked, so nothing to time-limit
+            rule.UntilRestart = false;
+            rule.AllowedByFolder = "";
+            if (kind == TemporaryAllow.OneHour)
+            {
+                rule.AllowUntilUtc = DateTime.UtcNow.Add(TemporaryAllowClock.Hour);
+                rule.UntilExit = false;
+                what = $"allowed until {rule.AllowUntilUtc.Value.ToLocalTime():HH:mm}";
+            }
+            else
+            {
+                rule.UntilExit = true;
+                rule.AllowUntilUtc = null;
+                _exitSeen.Remove(exePath);
+                what = "allowed until it closes";
+            }
+            SaveStore();
+        }
+        EventLog($"{displayName}: {what}");
+    }
+
+    /// <summary>When each "until it closes" program was last seen running (UTC).</summary>
+    private readonly Dictionary<string, DateTime> _exitSeen = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Any allow that ends on a clock or on the program closing - so the poll
+    /// builds the running-program list only when it has something to check.</summary>
+    public bool HasTimedAllows
+    {
+        get { lock (_dataLock) return _data.Rules.Any(r => r.UntilExit || r.AllowUntilUtc != null); }
+    }
+
+    /// <summary>
+    /// Ends the allows whose time is up (0.99.241): an hour that has passed, or a
+    /// program allowed until it closes that is no longer running. Each one's rule and
+    /// filters go and it is asked about again when it next connects. Called by the
+    /// detection poll on the engine thread with the programs running now.
+    /// </summary>
+    public List<AutoDecision> ExpireTimedAllows(DateTime nowUtc, ICollection<string> running)
+    {
+        var ended = new List<(FirewallRule Rule, string Why)>();
+        lock (_dataLock)
+        {
+            foreach (var r in _data.Rules)
+            {
+                if (r.Status != AppStatus.Allowed) continue;
+                if (r.AllowUntilUtc is DateTime until)
+                {
+                    if (nowUtc >= until) ended.Add((r, "its hour is up"));
+                    continue;
+                }
+                if (!r.UntilExit) continue;
+                if (running.Contains(r.ExecutablePath)) { _exitSeen[r.ExecutablePath] = nowUtc; continue; }
+                bool seen = _exitSeen.TryGetValue(r.ExecutablePath, out var last);
+                if (TemporaryAllowClock.ExitExpired(seen, seen ? last : r.CreatedUtc, nowUtc))
+                    ended.Add((r, "it closed"));
+            }
+            foreach (var (r, _) in ended)
+            {
+                if (r.FilterIds.Count > 0)
+                    try { _engine.RemoveFilters(r.FilterIds); } catch (Exception ex) { DiagnosticLog.LogException("ExpireTimedAllows", ex); }
+                _data.Rules.Remove(r);
+                _exitSeen.Remove(r.ExecutablePath);
+                _forgotten.Add(r.ExecutablePath);   // asked about again this session
+            }
+            if (ended.Count > 0) SaveStore();
+        }
+        var said = new List<AutoDecision>();
+        foreach (var (r, why) in ended)
+        {
+            string name = string.IsNullOrWhiteSpace(r.DisplayName) ? System.IO.Path.GetFileNameWithoutExtension(r.ExecutablePath) : r.DisplayName;
+            EventLog($"{name}: the temporary allow ended ({why}) - it will be asked about when it next connects");
+            said.Add(new AutoDecision(name, r.ExecutablePath, $"allow ended - {why}"));
+        }
+        return said;
+    }
+
+    // ------------------------------------------------ allowed folders (0.99.241)
+    /// <summary>The allowed folders, as saved.</summary>
+    public IReadOnlyList<string> AllowedFolders
+    {
+        get { lock (_dataLock) return _data.AllowedFolders.ToList(); }
+    }
+
+    public bool HasAllowedFolders
+    {
+        get { lock (_dataLock) return _data.AllowedFolders.Count > 0; }
+    }
+
+    /// <summary>Programs whose folder allow failed this session - not tried again on
+    /// every packet; they are asked about instead.</summary>
+    private readonly HashSet<string> _folderAdoptFailed = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Allows every program in <paramref name="folder"/> (0.99.241). Refused with an
+    /// ArgumentException for a folder FolderAllows.Refusal names. Programs already
+    /// seen there with no rule are allowed now, and a temporary allow there becomes
+    /// the folder's; a program you blocked stays blocked. Returns how many programs
+    /// were allowed now.
+    /// </summary>
+    public int AddAllowedFolder(string folder)
+    {
+        string f = FolderAllows.Normalize(folder);
+        string? why = FolderAllows.Refusal(f);
+        if (why != null) throw new ArgumentException(why);
+        List<string> undecided;
+        lock (_dataLock)
+        {
+            if (_data.AllowedFolders.Any(x => string.Equals(x, f, StringComparison.OrdinalIgnoreCase) || FolderAllows.Contains(x, f)))
+                return 0;   // already allowed, itself or by a folder around it
+            // Folders inside this one are covered by it now.
+            foreach (var inner in _data.AllowedFolders.Where(x => FolderAllows.Contains(f, x)).ToList())
+            {
+                _data.AllowedFolders.Remove(inner);
+                foreach (var r in _data.Rules.Where(r => string.Equals(r.AllowedByFolder, inner, StringComparison.OrdinalIgnoreCase)))
+                    r.AllowedByFolder = f;
+            }
+            _data.AllowedFolders.Add(f);
+            foreach (var r in _data.Rules.Where(r => r.Status == AppStatus.Allowed && r.IsTemporary && FolderAllows.Contains(f, r.ExecutablePath)))
+            {
+                r.UntilRestart = false; r.UntilExit = false; r.AllowUntilUtc = null;
+                r.AllowedByFolder = f;
+            }
+            var ruled = new HashSet<string>(_data.Rules.Select(r => r.ExecutablePath), StringComparer.OrdinalIgnoreCase);
+            undecided = _data.KnownApps.Where(p => FolderAllows.Contains(f, p) && !ruled.Contains(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            SaveStore();
+        }
+        int allowed = 0;
+        if (_data.StrictMode)
+            foreach (var p in undecided)
+                if (AdoptFolderAllowed(p)) allowed++;
+        EventLog($"Folder allowed: {f} - every program in it connects without asking"
+               + (allowed > 0 ? $"; {allowed} program(s) already seen there allowed now" : ""));
+        return allowed;
+    }
+
+    /// <summary>Stops allowing a folder (0.99.241). The rules it made go, so those
+    /// programs are asked about again; a program you allowed yourself keeps its rule.
+    /// Returns how many rules were removed, or -1 when the folder was not allowed.</summary>
+    public int RemoveAllowedFolder(string folder)
+    {
+        string f = FolderAllows.Normalize(folder);
+        List<FirewallRule> made;
+        lock (_dataLock)
+        {
+            if (_data.AllowedFolders.RemoveAll(x => string.Equals(x, f, StringComparison.OrdinalIgnoreCase)) == 0) return -1;
+            made = _data.Rules.Where(r => string.Equals(r.AllowedByFolder, f, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var r in made)
+            {
+                if (r.FilterIds.Count > 0)
+                    try { _engine.RemoveFilters(r.FilterIds); } catch (Exception ex) { DiagnosticLog.LogException("RemoveAllowedFolder", ex); }
+                _data.Rules.Remove(r);
+                _forgotten.Add(r.ExecutablePath);
+            }
+            SaveStore();
+        }
+        EventLog($"Folder no longer allowed: {f}" + (made.Count > 0 ? $" - {made.Count} program(s) it allowed will be asked about again" : ""));
+        return made.Count;
+    }
+
+    /// <summary>
+    /// A program inside an allowed folder, with no rule (0.99.241): gives it an allow
+    /// rule marked with the folder, and returns true so it is not asked about. Zero
+    /// Trust only - in monitoring mode nothing is blocked to begin with.
+    /// </summary>
+    public bool AdoptFolderAllowed(string exePath)
+    {
+        if (string.IsNullOrEmpty(exePath) || !_data.StrictMode || IsOwnExecutable(exePath)) return false;
+        string? folder;
+        lock (_dataLock)
+        {
+            if (_data.AllowedFolders.Count == 0 || _folderAdoptFailed.Contains(exePath)) return false;
+            folder = FolderAllows.Match(_data.AllowedFolders, exePath);
+            if (folder == null) return false;
+            if (_data.Rules.Any(r => string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase))) return false;
+        }
+        string name = System.IO.Path.GetFileNameWithoutExtension(exePath);
+        try
+        {
+            if (!IsApplicablePath(exePath)) { lock (_dataLock) _folderAdoptFailed.Add(exePath); return false; }
+            AllowApp(exePath, name);
+        }
+        catch (Exception ex)
+        {
+            lock (_dataLock) _folderAdoptFailed.Add(exePath);
+            DiagnosticLog.LogException($"AdoptFolderAllowed/{name}", ex);
+            return false;
+        }
+        lock (_dataLock)
+        {
+            var rule = _data.Rules.FirstOrDefault(r => r.Status == AppStatus.Allowed
+                && string.Equals(r.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+            if (rule == null) return false;
+            rule.AllowedByFolder = folder;
+            if (KnownSet.Add(exePath)) _data.KnownApps.Add(exePath);
+            SaveStore();
+        }
+        EventLog($"{name} is in an allowed folder ({folder}): allowed, no prompt");
+        return true;
+    }
+
+    // ------------------------------------------------ undo (0.99.241)
+    /// <summary>A program's rule as it is now, for undoing the decision about to be
+    /// made. Read from the profile, so the window answers it without the service.</summary>
+    public DecisionSnapshot CaptureDecision(string exePath, string displayName)
+    {
+        lock (_dataLock)
+        {
+            var r = _data.Rules.FirstOrDefault(x => string.Equals(x.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+            return r == null
+                ? new DecisionSnapshot { ExePath = exePath, DisplayName = displayName }
+                : new DecisionSnapshot
+                {
+                    ExePath = exePath,
+                    DisplayName = string.IsNullOrWhiteSpace(r.DisplayName) ? displayName : r.DisplayName,
+                    HadRule = true,
+                    Status = r.Status,
+                    Silent = r.Silent,
+                    UntilRestart = r.UntilRestart,
+                    UntilExit = r.UntilExit,
+                    AllowUntilUtc = r.AllowUntilUtc,
+                    AllowedByFolder = r.AllowedByFolder,
+                };
+        }
+    }
+
+    /// <summary>Puts a program's rule back as <see cref="CaptureDecision"/> found it
+    /// (0.99.241). No rule then: the rule made since is removed, and the program is
+    /// asked about again when it next connects.</summary>
+    public void RestoreDecision(DecisionSnapshot snapshot)
+    {
+        if (snapshot == null || string.IsNullOrWhiteSpace(snapshot.ExePath) || IsOwnExecutable(snapshot.ExePath)) return;
+        string path = snapshot.ExePath;
+        string name = string.IsNullOrWhiteSpace(snapshot.DisplayName) ? System.IO.Path.GetFileNameWithoutExtension(path) : snapshot.DisplayName;
+        if (!snapshot.HadRule)
+        {
+            UnblockApp(path);   // removes whatever rule the decision made
+            lock (_dataLock) _forgotten.Add(path);
+            EventLog($"Undone: {name} has no rule again - it will be asked about when it next connects");
+            return;
+        }
+        if (snapshot.Status == AppStatus.Blocked) BlockApp(path, name);
+        else AllowApp(path, name);
+        lock (_dataLock)
+        {
+            var r = _data.Rules.FirstOrDefault(x => x.Status == snapshot.Status
+                && string.Equals(x.ExecutablePath, path, StringComparison.OrdinalIgnoreCase));
+            if (r != null)
+            {
+                r.Silent = snapshot.Silent;
+                if (r.Status == AppStatus.Allowed)
+                {
+                    r.UntilRestart = snapshot.UntilRestart;
+                    r.UntilExit = snapshot.UntilExit;
+                    r.AllowUntilUtc = snapshot.AllowUntilUtc;
+                    r.AllowedByFolder = snapshot.AllowedByFolder;
+                }
+                SaveStore();
+            }
+        }
+        EventLog($"Undone: {name} is {(snapshot.Status == AppStatus.Blocked ? "blocked" : "allowed")} again");
+    }
+
     /// <summary>Drops the "allow once" rules. Called when filtering is rebuilt after a
     /// restart: the kernel holds none of their filters by then, so only the rules go.</summary>
     private int DropAllowOnceRules()
@@ -966,7 +1271,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         List<FirewallRule> once;
         lock (_dataLock)
         {
-            once = _data.Rules.Where(r => r.UntilRestart).ToList();
+            once = _data.Rules.Where(r => r.UntilRestart || r.UntilExit).ToList();
             if (once.Count == 0) return 0;
             foreach (var r in once) _data.Rules.Remove(r);
             SaveStore();
@@ -2040,6 +2345,7 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
                       .Append(c.Protocol).Append(c.RemoteAddress).Append(';');
                 foreach (var k in _data.SystemRules.Keys.OrderBy(k => k)) sb.Append(k).Append(';');
                 foreach (var k in _data.BlockedServices.Keys.OrderBy(k => k)) sb.Append(k).Append(';');
+                foreach (var f in _data.AllowedFolders.OrderBy(f => f, StringComparer.OrdinalIgnoreCase)) sb.Append("F:").Append(f).Append(';');
 
                 byte[] h = System.Security.Cryptography.SHA256.HashData(
                     System.Text.Encoding.UTF8.GetBytes(sb.ToString()));

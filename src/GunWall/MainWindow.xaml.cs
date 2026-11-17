@@ -339,6 +339,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUiLagProbe();                // freezes caught as they happen
             FillAppCachesInBackground(DistinctPaths(_firewall.GetRules().Select(r => r.ExecutablePath)));
             _engineReady = true;
+            UpdateAway();   // started minimised: the away summary counts from here (0.99.241)
 
             // AFTER Initialize(), because that is where the store is read. Placed
             // above it in 0.99.93 and 0.99.94, which is why the reconcile kept
@@ -515,7 +516,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.240 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.241 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1023,6 +1024,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // shown, or held. Each app is queued at most once per session, so one line each.
     private int _promptsQueued, _promptsShown;
 
+    /// <summary>The last decisions this session, for Undo and the tray's Recent list,
+    /// and what happened while the window was in the tray (0.99.241).</summary>
+    private readonly RecentDecisions _recent = new();
+    private readonly AwayTally _away = new();
+
     private void ShowDetection(DetectionResult r, string source)
     {
         foreach (var ev in r.Activity)
@@ -1032,6 +1038,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         if (r.Packet is { } p)
         {
+            if (p.Blocked && !p.Reason.StartsWith("Blocked by something else", StringComparison.Ordinal)) _away.Blocked(p.AppName);
             LogPacket(new PacketLogEntry
             {
                 AppName = p.AppName,
@@ -1061,6 +1068,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Services.DiagnosticLog.Log($"Allowed automatically: {q.ProcessName} (core Windows process, seen in the {source}).");
         }
         if (r.AutoAllow.Count > 0) RebuildAppsListIfShown();
+        // Decided without asking (0.99.241): a program in an allowed folder, an allow
+        // whose time ran out. Listed under Recent in the tray, counted while away.
+        foreach (var d in r.Decisions)
+        {
+            _recent.Add(new RecentDecision(DateTime.Now, d.ProcessName, d.ExePath, d.What, true, null));
+            _away.Decided(d.What.StartsWith("allowed", StringComparison.Ordinal)
+                ? "allowed (in an allowed folder)" : "had a temporary allow end");
+            Services.DiagnosticLog.Log($"Decided without asking: {d.ProcessName} - {d.What} (seen in the {source}).");
+        }
+        if (r.Decisions.Count > 0) RebuildAppsListIfShown();
         // An allowed app offline because WebView2 is blocked (0.99.234.2).
         foreach (var n in r.Notices)
         {
@@ -3219,12 +3236,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var win = new ReviewAppsWindow(batch, _firewall.StrictMode,
             onAllow: a =>
             {
-                PromptAllow(a.ExePath, a.ProcessName, once: false);
+                PromptAllow(a.ExePath, a.ProcessName, null, undoToast: false);
                 Services.DiagnosticLog.Log($"Review window: allowed {a.ProcessName}.");
             },
             onBlock: a =>
             {
-                PromptBlock(a.ExePath, a.ProcessName);
+                PromptBlock(a.ExePath, a.ProcessName, undoToast: false);
                 Services.DiagnosticLog.Log($"Review window: blocked {a.ProcessName}.");
             });
         win.Closed += (_, _) => { _alertOpen = false; ShowNextAlert(); };
@@ -3274,6 +3291,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Services.DiagnosticLog.Log($"Prompt shown: {info.ProcessName}.");
         _alertOpen = true;
         _openAlertPath = info.ExePath;
+        _away.Asked();
 
         // Optional notification sound.
         if (_firewall.NotificationSound)
@@ -3301,12 +3319,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // attributed - the call goes to the background service and waits for it.
         var win = new AlertWindow(info,
             onBlock: () => PromptBlock(info.ExePath, info.ProcessName),
-            onAllow: () => PromptAllow(info.ExePath, info.ProcessName, once: false),   // permits in strict mode
+            onAllow: () => PromptAllow(info.ExePath, info.ProcessName, null),   // permits in strict mode
             strictMode: _firewall.StrictMode,
             timeoutSeconds: _firewall.PopupTimeoutSeconds,
             defaultAllow: _firewall.PopupDefaultAllow,
             geo: _firewall.GeoIp,
-            onAllowOnce: () => PromptAllow(info.ExePath, info.ProcessName, once: true),   // ends at the next restart (0.99.235)
+            onAllowFor: kind => PromptAllow(info.ExePath, info.ProcessName, kind),   // ends by itself (0.99.235, 0.99.241)
             waiting: _alertQueue.Count);
         // Owned only while this window is on screen. An owned window is hidden
         // with its owner, so a popup raised while GunWall was starting minimised -
@@ -3315,6 +3333,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // topmost in the corner like every prompt.
         if (IsVisible && WindowState != WindowState.Minimized) win.Owner = this;
         win.Closed += (_, _) => { _alertOpen = false; _openAlertPath = null; ShowNextAlert(); };
+        // The Undo notice for the last answer moves above this popup, not under it (0.99.241).
+        win.ContentRendered += (_, _) => ToastWindow.Reposition();
         win.Show();
     }
 
@@ -3340,21 +3360,77 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // ================================================================ lists
     /// <summary>A popup's Allow (0.99.240: timed - a 661 ms freeze after a popup answer
     /// could not be attributed; the call goes to the background service and waits).</summary>
-    private void PromptAllow(string exePath, string name, bool once)
+    private void PromptAllow(string exePath, string name, TemporaryAllow? temp, bool undoToast = true)
     {
+        IReadOnlyList<DecisionSnapshot>? before;
         using (PerfMonitor.Measure("PromptAllow"))
         {
-            if (once) _firewall.AllowAppOnce(exePath, name);
+            before = CaptureForUndo(new[] { (exePath, name) });
+            if (temp is TemporaryAllow kind) _firewall.AllowAppFor(exePath, name, kind);
             else _firewall.AllowApp(exePath, name);
         }
+        Decided(name, exePath, AllowedWords(temp), before, undoToast);
         RebuildAppsListIfShown();
     }
 
     /// <summary>A popup's Block, timed like PromptAllow.</summary>
-    private void PromptBlock(string exePath, string name)
+    private void PromptBlock(string exePath, string name, bool undoToast = true)
     {
-        using (PerfMonitor.Measure("PromptBlock")) _firewall.BlockApp(exePath, name);
+        IReadOnlyList<DecisionSnapshot>? before;
+        using (PerfMonitor.Measure("PromptBlock"))
+        {
+            before = CaptureForUndo(new[] { (exePath, name) });
+            _firewall.BlockApp(exePath, name);
+        }
+        Decided(name, exePath, "blocked", before, undoToast);
         RebuildAppsListIfShown();
+    }
+
+    private static string AllowedWords(TemporaryAllow? temp) => temp switch
+    {
+        null => "allowed",
+        TemporaryAllow.OneHour => "allowed for 1 hour",
+        TemporaryAllow.UntilClosed => "allowed until it closes",
+        _ => "allowed until restart",
+    };
+
+    // ------------------------------------------------------------- undo (0.99.241)
+    /// <summary>Each program's rule before a decision, read from the engine so Undo can
+    /// put it back. Null when it cannot be read - the decision still goes ahead, it
+    /// just cannot be undone.</summary>
+    private IReadOnlyList<DecisionSnapshot>? CaptureForUndo(IEnumerable<(string Path, string Name)> apps)
+    {
+        try { return apps.Select(a => _firewall.CaptureDecision(a.Path, a.Name)).ToList(); }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("CaptureForUndo", ex); return null; }
+    }
+
+    /// <summary>Records a decision for the tray's Recent list and, unless asked not
+    /// to, offers to undo it for a few seconds.</summary>
+    private void Decided(string name, string exePath, string what, IReadOnlyList<DecisionSnapshot>? before, bool undoToast = true)
+    {
+        var d = new RecentDecision(DateTime.Now, name, exePath, what, false, before);
+        _recent.Add(d);
+        if (!undoToast || before is not { Count: > 0 }) return;
+        ToastWindow.Show($"{name} {what}", "", "info", UndoToastMs,
+                         actionText: "Undo", onAction: () => UndoDecision(d));
+    }
+
+    private const int UndoToastMs = 6000;
+
+    /// <summary>Puts every program in <paramref name="d"/> back as it was before.</summary>
+    private void UndoDecision(RecentDecision d)
+    {
+        if (d.Undo is not { Count: > 0 } undo || !_recent.Items.Contains(d)) return;
+        try
+        {
+            using (PerfMonitor.Measure("UndoDecision"))
+                foreach (var snap in undo.Reverse()) _firewall.RestoreDecision(snap);
+            _recent.Remove(d);
+            Services.DiagnosticLog.Log($"Undo: {d.Name} - {d.What} undone ({undo.Count} program(s)).");
+            RebuildAppsListIfShown();
+            ToastWindow.Show("Undone", undo.Count > 1 ? $"{undo.Count} programs are back as they were." : $"{d.Name} is back as it was.", "info", 3000);
+        }
+        catch (Exception ex) { ShowError(ex); }
     }
 
     /// <summary>Rebuilds the Applications list only when it is on screen (0.99.240).
@@ -3383,9 +3459,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         foreach (var a in source) known[a.ExecutablePath] = a;
 
         var untilRestart = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // The Status pill's note (0.99.241): when a temporary allow ends, or the
+        // allowed folder an allow came from. A rule of any kind is "decided" for the
+        // No rule chip.
+        var notes = new Dictionary<string, (bool Temporary, string Note)>(StringComparer.OrdinalIgnoreCase);
+        var ruled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var rule in _firewall.GetRules())
         {
+            ruled.Add(rule.ExecutablePath);
             if (rule.UntilRestart) untilRestart.Add(rule.ExecutablePath);
+            if (rule.Status == AppStatus.Allowed)
+            {
+                string keep = " Right-click and choose Allow to keep it for good.";
+                if (rule.AllowUntilUtc is DateTime until) notes[rule.ExecutablePath] = (true, $"Allowed until {until.ToLocalTime():HH:mm}, then asked again.{keep}");
+                else if (rule.UntilExit) notes[rule.ExecutablePath] = (true, "Allowed until it closes, then asked again." + keep);
+                else if (rule.UntilRestart) notes[rule.ExecutablePath] = (true, "Allowed until the next restart, then asked again." + keep);
+                else if (!string.IsNullOrEmpty(rule.AllowedByFolder)) notes[rule.ExecutablePath] = (false, $"Allowed because it is in {rule.AllowedByFolder}, an allowed folder.");
+            }
             if (!known.TryGetValue(rule.ExecutablePath, out var app))
             {
                 app = new AppInfo { Name = rule.DisplayName, ExecutablePath = rule.ExecutablePath };
@@ -3397,6 +3487,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             a.Status = _firewall.EffectiveStatus(a.ExecutablePath);
             a.UntilRestart = untilRestart.Contains(a.ExecutablePath);
+            if (notes.TryGetValue(a.ExecutablePath, out var note)) { a.Temporary = note.Temporary; a.TemporaryNote = note.Note; }
+            else { a.Temporary = false; a.TemporaryNote = ""; }
             a.Silent = _firewall.IsSilent(a.ExecutablePath);
             a.Hash = _firewall.GetHash(a.ExecutablePath);
             a.Category = ComputeCategory(a.ExecutablePath);
@@ -3444,6 +3536,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 || _firewall.IsAllowed(a.ExecutablePath)
                 || _firewall.IsSilent(a.ExecutablePath));
 
+        // The status chips (0.99.241): counted before they filter, so each says how
+        // many it would show.
+        var counted = view.ToList();
+        UpdateStatusChips(counted, ruled);
+        view = _statusFilter switch
+        {
+            "allowed" => counted.Where(a => a.Status == AppStatus.Allowed),
+            "blocked" => counted.Where(a => a.Status == AppStatus.Blocked),
+            "temporary" => counted.Where(a => a.Temporary),
+            "norule" => counted.Where(a => !ruled.Contains(a.ExecutablePath)),
+            _ => counted,
+        };
+
         // Preserve selection across the periodic rebuild: the timer replaces every
         // AppInfo object, which would otherwise null out SelectedItem mid-interaction
         // (e.g. while a right-click context menu is open).
@@ -3471,12 +3576,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // row also moved (blocked apps sort to the top), which redrew it and hid
         // the fault; filtered to a few rows it often did not move. Reported from
         // use; 0.99.176's click log showed every click arriving and acting.
+        // A row that appears while the list is on screen fades in (0.99.241) - not
+        // the first fill, and not when a search, chip or "Show all" changed the view.
+        string viewKey = $"{_appFilter}|{_showAllApps}|{_statusFilter}";
+        bool fadeNew = _apps.Count > 0 && viewKey == _appsViewKey && Animations;
+        _appsViewKey = viewKey;
+        HashSet<string>? shownBefore = fadeNew
+            ? new HashSet<string>(_apps.Select(a => a.ExecutablePath), StringComparer.OrdinalIgnoreCase) : null;
+
         SyncList(_apps, desired,
                  a => a.ExecutablePath.ToLowerInvariant(),
                  (_, _) => true,
                  CopyAppRow,
                  NoteAppRowReplaced);
         EndAppRowChurnPass();
+        if (shownBefore != null)
+            foreach (var a in _apps)
+                if (!shownBefore.Contains(a.ExecutablePath)) FlashRow(a, newRow: true);
 
         if (!string.IsNullOrEmpty(keepPath))
         {
@@ -3502,7 +3618,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // A row whose Block or Allow is still being applied keeps the status the
         // click already showed; a refresh landing in between would otherwise flick
         // it back for a moment (0.99.179).
-        if (!_appActionsPending.Contains(cur.ExecutablePath)) cur.Status = next.Status;
+        if (!_appActionsPending.Contains(cur.ExecutablePath))
+        {
+            if (cur.Status != next.Status) FlashRow(cur, newRow: false);   // the pill cross-fades (0.99.241)
+            cur.Status = next.Status;
+        }
         cur.Category = next.Category;
         cur.Publisher = next.Publisher;
         cur.Icon = next.Icon;
@@ -3519,8 +3639,66 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         cur.ServicesDetail = next.ServicesDetail;
         cur.Silent = next.Silent;
         cur.UntilRestart = next.UntilRestart;
+        cur.Temporary = next.Temporary;
+        cur.TemporaryNote = next.TemporaryNote;
         if (!SamePoints(cur.Spark as PointCollection, next.Spark as PointCollection)) cur.Spark = next.Spark;
         cur.SparkTip = next.SparkTip;
+    }
+
+    // ---- Status chips and row motion (0.99.241) --------------------------------
+    /// <summary>Which rows the Applications list shows: all, allowed, blocked,
+    /// temporary, or programs with no rule yet. The chip's Tag.</summary>
+    private string _statusFilter = "all";
+    private string _appsViewKey = "";
+
+    private void StatusChip_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton { Tag: string tag }) return;
+        _statusFilter = tag;
+        if (IsLoaded && _engineReady) RebuildAppsList();
+    }
+
+    /// <summary>"Allowed 41" on each chip; set only when the number changed.</summary>
+    private void UpdateStatusChips(List<AppInfo> rows, HashSet<string> ruled)
+    {
+        void Set(RadioButton? chip, string label, int n)
+        {
+            if (chip == null) return;
+            string text = $"{label}  {n:N0}";
+            if (!Equals(chip.Content as string, text)) chip.Content = text;
+        }
+        Set(ChipAll, "All", rows.Count);
+        Set(ChipAllowed, "Allowed", rows.Count(a => a.Status == AppStatus.Allowed));
+        Set(ChipBlocked, "Blocked", rows.Count(a => a.Status == AppStatus.Blocked));
+        Set(ChipTemporary, "Temporary", rows.Count(a => a.Temporary));
+        Set(ChipNoRule, "No rule", rows.Count(a => !ruled.Contains(a.ExecutablePath)));
+    }
+
+    /// <summary>Windows' "Animation effects" setting: off means no motion anywhere.</summary>
+    private static bool Animations => SystemParameters.ClientAreaAnimation;
+
+    private readonly List<AppInfo> _flashing = new();
+    private System.Windows.Threading.DispatcherTimer? _flashTimer;
+
+    /// <summary>Marks a row for its fade-in (new) or its status pill's cross-fade, and
+    /// clears the mark a moment later so a recycled row never replays it.</summary>
+    private void FlashRow(AppInfo a, bool newRow)
+    {
+        if (!Animations) return;
+        if (newRow) a.IsNew = true; else a.StatusFlash = true;
+        _flashing.Add(a);
+        if (_flashTimer == null)
+        {
+            _flashTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+            _flashTimer.Tick += (_, _) =>
+            {
+                _flashTimer!.Stop();
+                foreach (var r in _flashing) { r.IsNew = false; r.StatusFlash = false; }
+                _flashing.Clear();
+            };
+        }
+        _flashTimer.Stop();
+        _flashTimer.Start();
     }
 
     // ---- Row churn diagnostics (0.99.176) --------------------------------------
@@ -4311,6 +4489,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         UpdateGraphFrameHook();
         if (OnScreen && IsLoaded) RefreshVisiblePanel();
         UpdateHiddenTrim();
+        UpdateAway();
+    }
+
+    /// <summary>"While you were away" (0.99.241, Mahabub 2026-11-17): the tally starts
+    /// when the window goes to the tray and is said once when it comes back - in the
+    /// corner for a few seconds and on the Alerts page, where it stays.</summary>
+    private void UpdateAway()
+    {
+        try
+        {
+            if (!OnScreen) { if (_engineReady) _away.Begin(DateTime.Now); return; }
+            if (!IsLoaded || _away.End(DateTime.Now) is not { } sum) return;
+            Notify("info", sum.Title, sum.Body, "general");
+            ToastWindow.Show(sum.Title, sum.Body, "info", 9000, onClick: () => OpenAt("Alerts"));
+            Services.DiagnosticLog.Log($"Away summary shown: {sum.Title} - {sum.Body.Replace('\n', ' ')}");
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("UpdateAway", ex); }
     }
 
     // In the tray or minimised (0.99.233): the window gives back the memory it is not
@@ -5587,6 +5782,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         if (PanelDashboard == null) return; // during init
         string tag = (string)((RadioButton)sender).Tag;
+        // Timed with the layout pass that follows (0.99.241): showing a page builds
+        // it, and the 649 and 1670 ms freezes on the Applications page were outside
+        // every timed method.
+        using var _perf = PerfMonitor.Measure("Nav_Checked");
+        PerfMonitor.Moment("page " + tag);
+        long shown = Stopwatch.GetTimestamp();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+            new Action(() => PerfMonitor.Record("Nav_Checked+layout", shown)));
         PanelDashboard.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         UpdateGraphFrameHook();
         PanelFirewall.Visibility = tag == "Firewall" ? Visibility.Visible : Visibility.Collapsed;
@@ -5629,17 +5832,37 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (tag == "Settings") { RefreshProfilesCombo(); RefreshProfileCombo(); RefreshBackupsCombo(); RefreshWinFwStatus(); }
 
         if (tag == "Dashboard") RedrawGraph();
-        AnimatePanelIn(); // choreographed entrance: fade + rise, 200ms ease-out
+        AnimatePanelIn(tag); // choreographed entrance: fade + rise (or fall, moving up the list), 200ms
     }
 
-    /// <summary>Panel-switch motion: the content host fades in and rises 12px
-    /// with an ease-out curve. Small and fast (~200ms) so it reads as polish,
-    /// never as delay; failures are swallowed so navigation can never break.</summary>
-    private void AnimatePanelIn()
+    /// <summary>The sidebar's order, for which way a page arrives (0.99.241): from
+    /// below when moving down the list, from above when moving up.</summary>
+    private static readonly string[] NavOrder =
+        { "Dashboard", "Activity", "Packets", "Connections", "Traffic", "Alerts", "Firewall",
+          "Rules", "Security", "Dns", "Services", "Network", "Settings" };
+    private int _navIndex = -1;
+
+    /// <summary>Panel-switch motion: the content host fades in and slides 30 px into
+    /// place - up from below, or down from above when moving up the sidebar (0.99.241).
+    /// Small and fast (~200ms) so it reads as polish, never as delay; none at all with
+    /// Windows' animation effects off; failures are swallowed so navigation can never break.</summary>
+    private void AnimatePanelIn(string? tag = null)
     {
         try
         {
             if (PanelHost == null || PanelHostShift == null) return;
+            int index = tag == null ? -1 : Array.IndexOf(NavOrder, tag);
+            bool up = index >= 0 && _navIndex >= 0 && index < _navIndex;
+            if (index >= 0) _navIndex = index;
+            // Windows' "Animation effects" off: the page simply appears (0.99.241).
+            if (!Animations)
+            {
+                PanelHost.BeginAnimation(OpacityProperty, null);
+                PanelHostShift.BeginAnimation(TranslateTransform.YProperty, null);
+                PanelHost.Opacity = 1;
+                PanelHostShift.Y = 0;
+                return;
+            }
 
             // The library's FadeInWithSlide, matched exactly: translate from 30
             // with DecelerationRatio 0.7, opacity 0 to 1, one duration for both.
@@ -5648,7 +5871,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // distributes it evenly and reads as a slower slide. This used 12
             // pixels with a cubic ease, which is why the motion felt unlike the
             // rest of the Fluent surface.
-            const double slideFrom = 30.0;
+            double slideFrom = up ? -30.0 : 30.0;
             var span = TimeSpan.FromMilliseconds(200);
 
             var fade = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0, span)
@@ -5701,12 +5924,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // in finally puts back whatever is actually true.
         _appActionsPending.Add(path);
         app.Status = block ? AppStatus.Blocked : AppStatus.Allowed;
+        FlashRow(app, newRow: false);
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
         {
             try
             {
+                // Read before the change, after the row has redrawn (0.99.241).
+                var before = CaptureForUndo(new[] { (path, app.Name) });
                 if (block) _firewall.BlockApp(path, app.Name);
                 else       _firewall.AllowApp(path, app.Name);
+                Decided(app.Name, path, block ? "blocked" : "allowed", before);
             }
             catch (Exception ex)
             {
@@ -5725,6 +5952,193 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// Compared without case, as Windows paths are.</summary>
     private readonly HashSet<string> _appActionsPending = new(StringComparer.OrdinalIgnoreCase);
 
+    // ------------------------------------------- selection, folders (0.99.241)
+    private void AllowSelected_Click(object sender, RoutedEventArgs e) => DecideSelected(block: false, temp: null);
+    private void BlockSelected_Click(object sender, RoutedEventArgs e) => DecideSelected(block: true, temp: null);
+
+    private void AllowSelectedFor_Click(object sender, RoutedEventArgs e) =>
+        DecideSelected(block: false, temp: ((sender as FrameworkElement)?.Tag as string) switch
+        {
+            "hour" => TemporaryAllow.OneHour,
+            "close" => TemporaryAllow.UntilClosed,
+            _ => TemporaryAllow.UntilRestart,
+        });
+
+    /// <summary>Allow, Allow for or Block on every selected row (0.99.241, Mahabub
+    /// 2026-11-17: bulk actions). One Undo puts them all back.</summary>
+    private void DecideSelected(bool block, TemporaryAllow? temp)
+    {
+        if (!RequireEngine()) return;
+        var apps = AppsList.SelectedItems.OfType<AppInfo>().ToList();
+        if (apps.Count == 0) return;
+        if (block)
+        {
+            var careful = apps.Where(a => SharedRuntimes.IsWebView2(a.ExecutablePath) || FirewallManager.IsCriticalProcess(a.ExecutablePath)).ToList();
+            if (careful.Count > 0)
+            {
+                string names = string.Join(", ", careful.Select(a => a.Name).Take(5));
+                string text = $"{names} {(careful.Count == 1 ? "is" : "are")} shared by Windows or by many apps. Blocking "
+                            + (careful.Count == 1 ? "it" : "them") + " can break networking, updates, sign-in, or every app built on Microsoft Edge WebView2."
+                            + $"\n\nBlock {(apps.Count == 1 ? apps[0].Name : $"all {apps.Count}")} anyway?";
+                if (ThemedMessageBox.Show(text, "Caution: shared programs", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    return;
+            }
+        }
+        var before = CaptureForUndo(apps.Select(a => (a.ExecutablePath, a.Name)));
+        int done = 0;
+        using (PerfMonitor.Measure("DecideSelected"))
+            foreach (var a in apps)
+            {
+                try
+                {
+                    if (block) _firewall.BlockApp(a.ExecutablePath, a.Name);
+                    else if (temp is TemporaryAllow kind) _firewall.AllowAppFor(a.ExecutablePath, a.Name, kind);
+                    else _firewall.AllowApp(a.ExecutablePath, a.Name);
+                    done++;
+                }
+                catch (Exception ex) { Services.DiagnosticLog.LogException("DecideSelected", ex); }
+            }
+        string what = block ? "blocked" : AllowedWords(temp);
+        Services.DiagnosticLog.Log($"Applications: {done} of {apps.Count} selected application(s) {what}.");
+        if (done > 0)
+            Decided(apps.Count == 1 ? apps[0].Name : $"{apps.Count} programs", apps.Count == 1 ? apps[0].ExecutablePath : "", what, before);
+        RebuildAppsList();
+    }
+
+    /// <summary>"Allow ▾" on the toolbar: programs, a folder, and the folders allowed
+    /// now - pressing one stops allowing it. Built as it opens.</summary>
+    private void AllowMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (AllowMenu == null || AllowMenuButton == null) return;
+        AllowMenu.Items.Clear();
+        var programs = new MenuItem { Header = "Programs...", ToolTip = "Choose one or more programs to allow before they ever ask." };
+        programs.Click += BrowseAllow_Click;
+        var folder = new MenuItem { Header = "Every program in a folder...", ToolTip = "A game library or a launcher's folder: its programs connect without asking, including ones added later." };
+        folder.Click += AllowFolder_Click;
+        AllowMenu.Items.Add(programs);
+        AllowMenu.Items.Add(folder);
+        IReadOnlyList<string> folders;
+        try { folders = _firewall.AllowedFolders; } catch { folders = Array.Empty<string>(); }
+        if (folders.Count > 0)
+        {
+            AllowMenu.Items.Add(new Separator());
+            AllowMenu.Items.Add(new MenuItem { Header = "Allowed folders - choose one to stop allowing it", IsEnabled = false });
+            foreach (var f in folders)
+            {
+                // Underscores doubled: a single one would mark an access key and vanish.
+                var mi = new MenuItem { Header = f.Replace("_", "__"), Tag = f, ToolTip = $"Stop allowing every program in {f}" };
+                mi.Click += StopAllowingFolder_Click;
+                AllowMenu.Items.Add(mi);
+            }
+        }
+        AllowMenu.PlacementTarget = AllowMenuButton;
+        AllowMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        AllowMenu.IsOpen = true;
+    }
+
+    private void AllowFolder_Click(object sender, RoutedEventArgs e) => AllowFolderFlow(null);
+
+    /// <summary>Right-click a program: allow its folder, starting the folder picker there
+    /// so a parent - "Kaspersky Lab" rather than its cache - is one click up.</summary>
+    private void AllowFolderOf_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppsList.SelectedItem is not AppInfo app) return;
+        string? dir = null;
+        try { dir = System.IO.Path.GetDirectoryName(app.ExecutablePath); } catch { }
+        AllowFolderFlow(dir);
+    }
+
+    /// <summary>"Allow a folder" (0.99.241, Mahabub 2026-11-17: Q1 = A): every program
+    /// in it, and in the folders inside it, connects without asking. Folders anyone
+    /// can write to are refused (FolderAllows.Refusal); the engine checks again.</summary>
+    private void AllowFolderFlow(string? start)
+    {
+        if (!RequireEngine()) return;
+        var dlg = new OpenFolderDialog { Title = "Choose a folder - every program in it will be allowed" };
+        try { if (!string.IsNullOrEmpty(start) && System.IO.Directory.Exists(start)) dlg.InitialDirectory = start; } catch { }
+        if (dlg.ShowDialog(this) != true) return;
+        string folder = FolderAllows.Normalize(dlg.FolderName);
+        if (FolderAllows.Refusal(folder) is string why)
+        {
+            ThemedMessageBox.Show(why, "Choose a different folder", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        string? cover;
+        try { cover = _firewall.AllowedFolders.FirstOrDefault(x => string.Equals(x, folder, StringComparison.OrdinalIgnoreCase) || FolderAllows.Contains(x, folder)); }
+        catch { cover = null; }
+        if (cover != null)
+        {
+            ThemedMessageBox.Show(string.Equals(cover, folder, StringComparison.OrdinalIgnoreCase)
+                    ? $"{folder} is already allowed."
+                    : $"{folder} is already allowed: it is inside {cover}.",
+                "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        string caution = FolderAllows.Caution(folder) is string c ? "\n\nCaution: " + c : "";
+        string text = $"Allow every program in {folder}?\n\n"
+                    + "Programs in it, and in the folders inside it, will connect without asking - including programs added there later. "
+                    + "A program you blocked stays blocked." + caution;
+        if (ThemedMessageBox.Show(text, "Allow a folder", MessageBoxButton.YesNo,
+                caution.Length > 0 ? MessageBoxImage.Warning : MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        try
+        {
+            int now = _firewall.AddAllowedFolder(folder);
+            Services.DiagnosticLog.Log($"Folder allowed from the Applications page: {folder} ({now} program(s) allowed now).");
+            RebuildAppsList();
+            if (!_firewall.StrictMode)
+                ThemedMessageBox.Show("Protection is off, so nothing is being blocked yet. The folder is saved and takes effect when protection is on.",
+                                      "GunWall", MessageBoxButton.OK, MessageBoxImage.Information);
+            else
+                ToastWindow.Show("Folder allowed", now > 0
+                    ? $"{folder} - {now} program(s) already seen there are allowed now."
+                    : $"{folder} - its programs connect without asking.", "info", 5000);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void StopAllowingFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string folder }) return;
+        if (!RequireEngine()) return;
+        if (ThemedMessageBox.Show($"Stop allowing every program in {folder}?\n\n"
+                + "Programs it allowed are asked about again the next time they connect. "
+                + "Programs you allowed or blocked yourself keep their rules.",
+                "Stop allowing a folder", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        try
+        {
+            int n = _firewall.RemoveAllowedFolder(folder);
+            Services.DiagnosticLog.Log($"Folder no longer allowed (Applications page): {folder} ({Math.Max(n, 0)} rule(s) removed).");
+            RebuildAppsList();
+            ToastWindow.Show("Folder no longer allowed", n > 0 ? $"{n} program(s) it allowed will ask again." : folder, "info", 4000);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    /// <summary>Opens the Applications page with one program selected - from the
+    /// tray's Recent list (0.99.241). Clears a search or chip that would hide it.</summary>
+    private void RevealApp(string exePath)
+    {
+        OpenAt("Firewall");
+        if (string.IsNullOrEmpty(exePath)) return;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+        {
+            try
+            {
+                if (ChipAll != null && ChipAll.IsChecked != true) ChipAll.IsChecked = true;
+                if (AppSearch != null && AppSearch.Text.Length > 0) AppSearch.Text = "";
+                RebuildAppsList();
+                var row = _apps.FirstOrDefault(a => string.Equals(a.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase));
+                if (row == null) return;
+                AppsList.SelectedItem = row;
+                AppsList.ScrollIntoView(row);
+                FlashRow(row, newRow: true);
+            }
+            catch (Exception ex) { Services.DiagnosticLog.LogException("RevealApp", ex); }
+        }));
+    }
+
     private void BrowseBlock_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireEngine()) return;
@@ -5738,7 +6152,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             string name = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName);
+            var before = CaptureForUndo(new[] { (dlg.FileName, name) });
             _firewall.BlockApp(dlg.FileName, name);
+            Decided(name, dlg.FileName, "blocked", before);
             RebuildAppsList();
         }
         catch (Exception ex)
@@ -5763,12 +6179,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             int done = 0;
+            var chosen = dlg.FileNames.Select(f => (f, System.IO.Path.GetFileNameWithoutExtension(f))).ToList();
+            var before = CaptureForUndo(chosen);
             foreach (string file in dlg.FileNames)
             {
                 _firewall.AllowApp(file, System.IO.Path.GetFileNameWithoutExtension(file));
                 Services.DiagnosticLog.Log($"Allowed ahead of time: {System.IO.Path.GetFileName(file)}.");
                 done++;
             }
+            if (done > 0 && _firewall.StrictMode)
+                Decided(done == 1 ? chosen[0].Item2 : $"{done} programs", done == 1 ? chosen[0].f : "", "allowed", before);
             RebuildAppsList();
             if (!_firewall.StrictMode && done > 0)
                 ThemedMessageBox.Show("Protection is off, so nothing is being blocked and there is no rule to add yet. "
@@ -5799,10 +6219,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             return;
         try
         {
+            var before = CaptureForUndo(apps.Select(a => (a.ExecutablePath, a.Name)));
             int n = 0;
             foreach (var a in apps)
                 if (_firewall.ForgetApp(a.ExecutablePath)) n++;
             Services.DiagnosticLog.Log($"Applications: {n} of {apps.Count} selected application(s) removed from the list.");
+            // Undo puts the Allow or Block back; notes, scopes and timed blocks are gone.
+            if (n > 0) Decided(what, apps.Count == 1 ? apps[0].ExecutablePath : "", "removed from the list",
+                               before?.Where(b => b.HadRule).ToList());
             RebuildAppsList();
         }
         catch (Exception ex) { ShowError(ex); }
@@ -7129,6 +7553,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void AppsContextMenu_Opened(object sender, RoutedEventArgs e)
     {
         using var _perf = PerfMonitor.Measure("AppsContextMenu_Opened");
+        int picked = AppsList.SelectedItems.Count;
+        if (AllowSelectedItem != null) AllowSelectedItem.Header = picked > 1 ? $"Allow {picked} selected" : "Allow";
+        if (BlockSelectedItem != null) BlockSelectedItem.Header = picked > 1 ? $"Block {picked} selected" : "Block";
+        // An allow that ends by itself is a rule only in Zero Trust (0.99.241).
+        if (AllowForItem != null) AllowForItem.IsEnabled = _firewall.StrictMode;
         if (AppsList.SelectedItem is AppInfo app)
         {
             if (ScopeLocalItem != null) ScopeLocalItem.IsChecked = _firewall.IsScopeBlocked(app.ExecutablePath, "local");
@@ -9740,6 +10169,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         timer.Start();
     }
 
+    private const int TrayRecentCount = 3;
+    private List<RecentDecision> _trayRecent = new();
+
     private void SetupTray()
     {
         PrepareTrayForShell(out bool taskbarReady);
@@ -9797,6 +10229,55 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
 
             tray.AddSeparator();
+
+            // Recent decisions (0.99.241, Mahabub 2026-11-17): the last three, yours or
+            // GunWall's - each opens the program in Applications - and Undo for the
+            // newest one that can be undone. Filled each time the menu opens; hidden
+            // until there is something to show.
+            var recentItems = new System.Windows.Forms.ToolStripMenuItem[TrayRecentCount];
+            for (int i = 0; i < TrayRecentCount; i++)
+            {
+                int slot = i;
+                recentItems[i] = tray.Add("", Controls.TrayMenu.Glyphs.Recent, () => Dispatcher.Invoke(() =>
+                {
+                    if (slot < _trayRecent.Count) RevealApp(_trayRecent[slot].ExePath);
+                }));
+                recentItems[i].Visible = false;
+            }
+            var undoItem = tray.Add("Undo", Controls.TrayMenu.Glyphs.Undo, () => Dispatcher.Invoke(() =>
+            {
+                if (_recent.LastUndoable is { } last) UndoDecision(last);
+            }));
+            undoItem.Visible = false;
+            var recentSeparator = tray.AddSeparator();
+            recentSeparator.Visible = false;
+            menu.Opening += (_, _) =>
+            {
+                try
+                {
+                    _trayRecent = _recent.Items.Take(TrayRecentCount).ToList();
+                    for (int i = 0; i < TrayRecentCount; i++)
+                    {
+                        bool on = i < _trayRecent.Count;
+                        recentItems[i].Visible = on;
+                        if (!on) continue;
+                        var d = _trayRecent[i];
+                        Controls.TrayMenu.Set(recentItems[i], (d.Automatic ? "Auto: " : "") + d.MenuText.Replace("&", "&&"),
+                            Controls.TrayMenu.Glyphs.Recent,
+                            d.What.StartsWith("blocked", StringComparison.Ordinal) ? Controls.TrayTone.Block
+                            : d.What.StartsWith("allowed", StringComparison.Ordinal) ? Controls.TrayTone.Allow
+                            : Controls.TrayTone.Normal);
+                    }
+                    var undoable = _recent.LastUndoable;
+                    undoItem.Visible = undoable != null;
+                    if (undoable != null)
+                        Controls.TrayMenu.Set(undoItem, $"Undo: {undoable.Name} {undoable.What}".Replace("&", "&&"),
+                            Controls.TrayMenu.Glyphs.Undo, Controls.TrayTone.Normal);
+                    recentSeparator.Visible = _trayRecent.Count > 0 || undoable != null;
+                }
+                catch { }
+            };
+
             // Named for what pressing it will do, read fresh each time the menu
             // opens. It said "Toggle lockdown" in both states, so after engaging it
             // from the tray nothing there said lockdown was on or offered to release

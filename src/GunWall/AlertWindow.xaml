@@ -275,7 +275,7 @@
                     </Grid>
 
                     <!-- Second row (0.99.235): how many more are waiting, and the
-                         allow that ends at the next restart. Its own row so the
+                         allows that end by themselves. Its own row so the
                          17-character hint column above keeps its width. -->
                     <Grid Margin="0,10,0,0">
                         <Grid.ColumnDefinitions>
@@ -286,13 +286,16 @@
                                    VerticalAlignment="Center" Visibility="Collapsed"
                                    TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextTertiary}" />
-                        <Button x:Name="OnceButton" Grid.Column="1" Click="Once_Click"
+                        <!-- "Allow for" (0.99.241): the allows that end by themselves.
+                             One link and a menu, not three links: the row is 368 px and
+                             shares it with the waiting count. -->
+                        <Button x:Name="AllowForButton" Grid.Column="1" Click="AllowForMenu_Click"
                                 Cursor="Hand" Focusable="True"
-                                AutomationProperties.Name="Allow until restart"
-                                ToolTip="Allow it now and ask again after the next restart. For installers and other one-off programs.">
+                                AutomationProperties.Name="Allow for a while"
+                                ToolTip="Allow it now, and ask again after an hour, when it closes, or after the next restart.">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
-                                    <TextBlock x:Name="OnceLabel" Text="Allow until restart" FontSize="11.5"
+                                    <TextBlock x:Name="OnceLabel" Text="Allow for &#x25BE;" FontSize="11.5"
                                                Style="{x:Null}" Background="Transparent" Padding="4,2,0,2"
                                                Foreground="{DynamicResource TextSecondary}" />
                                     <ControlTemplate.Triggers>
@@ -306,6 +309,16 @@
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </Button.Template>
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="1 hour" Tag="hour" Click="AllowFor_Click"
+                                              ToolTip="Ask again in an hour." />
+                                    <MenuItem Header="Until it closes" Tag="close" Click="AllowFor_Click"
+                                              ToolTip="Ask again the next time it connects after this copy has closed." />
+                                    <MenuItem Header="Until the next restart" Tag="restart" Click="AllowFor_Click"
+                                              ToolTip="For installers and other one-off programs." />
+                                </ContextMenu>
+                            </Button.ContextMenu>
                         </Button>
                     </Grid>
                 </StackPanel>

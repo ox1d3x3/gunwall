@@ -25,7 +25,7 @@ GunWall remains **WPF / .NET 8, single elevated portable EXE, one NuGet dependen
 
 ## ✅ Shipped
 
-**Engine & enforcement** — event-driven WFP detection (kernel net-event stream, not polling) with crash-loop self-recovery · Zero-Trust default-deny with persistent per-app approval · lockdown · stealth mode · per-app allow/block, directional, timed (auto-expiring) and silent (muted) rules · critical-process protection · persistent filters with stored IDs for clean removal.
+**Engine & enforcement** — event-driven WFP detection (kernel net-event stream, not polling) with crash-loop self-recovery · Zero-Trust default-deny with persistent per-app approval · lockdown · stealth mode · per-app allow/block, directional, timed (auto-expiring) and silent (muted) rules · temporary allows (an hour, until the program closes, until restart) · allowed folders · undo for every decision · critical-process protection · persistent filters with stored IDs for clean removal.
 
 **Rules** — custom rules by IP / CIDR / port / protocol / direction / local-port · manual IP blocklist · curated system-rule library (~21 presets + secure baseline).
 

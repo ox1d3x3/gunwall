@@ -15,6 +15,53 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.241] — 2026-11-17
+
+### Added
+- **Allow a folder.** Applications → **Allow ▾ → Every program in a folder...**, or
+  right-click a program → **Allow every program in its folder...**. Every program in
+  the folder, and in the folders inside it, connects without asking - including
+  programs added later, such as new games in a Steam or Epic Games library, or the
+  file Kaspersky renames after each of its updates. A program you blocked stays
+  blocked. Folders that collect files from anywhere are refused: a whole drive,
+  Windows, Program Files and ProgramData themselves, a user's own folder, Desktop,
+  Downloads, Documents, AppData itself and Temp folders - checked by the window and
+  again by the background service. The folders allowed now are listed in the same
+  menu; choosing one stops allowing it, and the programs it allowed ask again.
+- **Allow for 1 hour, or until it closes.** The popup's **Allow until restart** link
+  is now **Allow for ▾** with three choices: 1 hour, until it closes, until the next
+  restart. The same three are on the Applications right-click menu. When the time is
+  up the rule goes and the program asks again. The star in the Status column marks
+  all three; hovering it says when it ends.
+- **Undo.** Every Allow, Block and Remove from list - from a popup or from the
+  Applications page - shows a notice with **Undo** for six seconds. Undo puts each
+  program back exactly as it was; one never decided before asks again.
+- **Allow or block several at once.** Select rows (Ctrl+click, Shift+click) and
+  right-click → **Allow** or **Block**; one Undo puts them all back.
+- **Status chips** on the Applications page: All, Allowed, Blocked, Temporary and
+  No rule, each with its count.
+- **Recent decisions in the tray menu.** The last three, yours or GunWall's (marked
+  *Auto*), each opening the program in Applications, and **Undo** for the latest.
+- **While you were away.** Back from the tray after ten minutes or more, a notice
+  sums up what happened: programs blocked from connecting and how often, decisions
+  GunWall made by itself, popups shown. It stays on the Alerts page.
+
+### Changed
+- **Motion.** A program that appears in the Applications list fades in; a status
+  pill cross-fades when it changes; a page slides in from below, or from above when
+  moving up the sidebar; tables that are loading, and the Publisher column while a
+  signature is checked, show a gently pulsing bar. All of it is off with Windows'
+  animation effects turned off - the page change used to ignore that setting.
+- **Diagnostics name what a freeze happened around.** A freeze no timed operation
+  explains now says what had just opened - a page, a menu, a message box, a window -
+  and whether a full garbage collection ran during it. Showing a page is timed with
+  its layout. The 0.99.239 and 0.99.240 bundles had 649 and 1,670 ms freezes on the
+  Applications page with nothing to go on.
+
+### Fixed
+- **Allow until restart on a program allowed for a while** made it permanent; it
+  now replaces the earlier temporary allow.
+
 ## [0.99.240] — 2026-11-16
 
 ### Fixed
