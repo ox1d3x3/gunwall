@@ -340,6 +340,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             FillAppCachesInBackground(DistinctPaths(_firewall.GetRules().Select(r => r.ExecutablePath)));
             _engineReady = true;
             UpdateAway();   // started minimised: the away summary counts from here (0.99.241)
+            WarmMenusSoon();
 
             // AFTER Initialize(), because that is where the store is read. Placed
             // above it in 0.99.93 and 0.99.94, which is why the reconcile kept
@@ -516,7 +517,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.241 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.242 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -569,6 +570,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        // Popups open, or waiting their turn, are not answered by exiting (0.99.242):
+        // each is asked again when it next connects - queued by the service for the
+        // window's next start. Said before the engine below is let go.
+        try
+        {
+            // The waiting ones first: closing the open popup shows the next in line.
+            while (_alertQueue.Count > 0) _firewall.AskAgain(_alertQueue.Dequeue().ExePath);
+            foreach (var alert in Application.Current?.Windows.OfType<AlertWindow>().ToList() ?? new List<AlertWindow>())
+                alert.DismissForExit();
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("OnClosed/popups", ex); }
         _cts?.Cancel();
         _dbRefreshCts?.Cancel();
         // Clean exit - clears the crash-guard marker. Not for a window that uses the
@@ -3325,7 +3337,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             defaultAllow: _firewall.PopupDefaultAllow,
             geo: _firewall.GeoIp,
             onAllowFor: kind => PromptAllow(info.ExePath, info.ProcessName, kind),   // ends by itself (0.99.235, 0.99.241)
-            waiting: _alertQueue.Count);
+            waiting: _alertQueue.Count,
+            onDismissed: () => _firewall.AskAgain(info.ExePath));   // no rule, ask again (0.99.242)
         // Owned only while this window is on screen. An owned window is hidden
         // with its owner, so a popup raised while GunWall was starting minimised -
         // the prompts the background service queued - flashed and vanished until
@@ -5952,6 +5965,39 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// Compared without case, as Windows paths are.</summary>
     private readonly HashSet<string> _appActionsPending = new(StringComparer.OrdinalIgnoreCase);
 
+    // ------------------------------------------- the right-click menu, built ahead (0.99.242)
+    // 0.99.241's diagnostics named the Applications page's freezes: "UI froze for 1721
+    // ms on Firewall ... Around: context menu" and 460 ms in the next session - the
+    // first right-click of each session. AppsContextMenu_Opened itself is timed and
+    // fast; the cost is WPF building the menu's 18 items and their templates the first
+    // time it opens. Built here instead, once, when the app has been idle a few
+    // seconds after start-up - timed, so the next bundle says what it costs.
+    private bool _menusWarm;
+
+    private void WarmMenusSoon()
+    {
+        var t = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.ApplicationIdle)
+        { Interval = TimeSpan.FromSeconds(8) };
+        t.Tick += (_, _) => { t.Stop(); WarmMenus(); };
+        t.Start();
+    }
+
+    private void WarmMenus()
+    {
+        if (_menusWarm) return;
+        _menusWarm = true;
+        using var _perf = PerfMonitor.Measure("WarmMenus");
+        var menu = AppsList?.ContextMenu;
+        if (menu == null || menu.IsOpen) return;
+        try
+        {
+            menu.ApplyTemplate();
+            menu.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            foreach (var item in menu.Items.OfType<MenuItem>()) item.ApplyTemplate();
+        }
+        catch (Exception ex) { Services.DiagnosticLog.LogException("WarmMenus", ex); }
+    }
+
     // ------------------------------------------- selection, folders (0.99.241)
     private void AllowSelected_Click(object sender, RoutedEventArgs e) => DecideSelected(block: false, temp: null);
     private void BlockSelected_Click(object sender, RoutedEventArgs e) => DecideSelected(block: true, temp: null);
@@ -6060,6 +6106,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         string folder = FolderAllows.Normalize(dlg.FolderName);
         if (FolderAllows.Refusal(folder) is string why)
         {
+            // Logged (0.99.242): 0.99.241's test bundle could not tell a refusal from
+            // a folder picker that was closed.
+            Services.DiagnosticLog.Log($"Folder not allowed (refused): {folder} - {why}");
             ThemedMessageBox.Show(why, "Choose a different folder", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -6080,7 +6129,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                     + "A program you blocked stays blocked." + caution;
         if (ThemedMessageBox.Show(text, "Allow a folder", MessageBoxButton.YesNo,
                 caution.Length > 0 ? MessageBoxImage.Warning : MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            Services.DiagnosticLog.Log($"Folder not allowed (answered No): {folder}");
             return;
+        }
         try
         {
             int now = _firewall.AddAllowedFolder(folder);

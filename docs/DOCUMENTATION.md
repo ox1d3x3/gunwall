@@ -250,8 +250,9 @@ a new place still asks.
 *Settings → Popup stays open for* — but be careful: with a timeout set, anything
 you do not answer in time gets a **permanent** rule.
 
-**Closing the prompt without answering blocks that connection.** No rule is saved,
-so you will be asked again next time.
+**Closing the prompt without answering** (Alt+F4, or exiting GunWall while it is
+open) leaves the program blocked. No rule is saved, so it is asked again the next
+time it connects - or, if you exited, when GunWall's window opens again.
 
 **Several at once, after a fresh start.** The first time protection is on after a
 fresh install or **Remove all GunWall filtering**, every running program asks at
@@ -293,7 +294,9 @@ activity.
   stays blocked. Right-click a program → **Allow every program in its folder...**
   starts in that program's folder. Folders that collect files from anywhere are
   refused: a whole drive, Windows, Program Files or ProgramData themselves, your
-  user folder, Desktop, Downloads, Documents, AppData itself and Temp folders. The
+  user folder, Desktop, Downloads, Documents, AppData itself and Temp folders. A
+  folder you made inside Downloads, Desktop or Documents can be allowed - keep only
+  programs you trust in it, because anything placed there connects. The
   folders allowed now are listed at the bottom of the same menu; choosing one stops
   allowing it, and the programs it allowed are asked about again
 - **Block an app** to add one by browsing to its executable

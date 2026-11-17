@@ -15,6 +15,28 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.242] — 2026-11-17
+
+### Changed
+- **A folder inside Downloads, Desktop, Documents or OneDrive can be allowed.** In
+  0.99.241 everything under those folders was refused, so a test copy of a program
+  kept in its own folder inside Downloads could not be allowed. The folders
+  themselves are still refused, and the confirmation now warns that anything placed
+  in the chosen folder connects without asking. A refusal, and answering No, are
+  written to the diagnostics log.
+- **Closing a popup without answering no longer saves a rule.** Alt+F4, or exiting
+  GunWall while a popup is open, leaves the program blocked with no rule - as it
+  already is in Zero Trust, the only mode that asks - and it is asked again the next
+  time it connects (after exiting, when the window next opens), as the user guide
+  says. It used to save a permanent block rule, so exiting with a popup open blocked
+  that program for good without a word.
+
+### Fixed
+- **The first right-click on the Applications page could freeze the window** for up
+  to 1.7 s while WPF built the menu. 0.99.241's diagnostics named it ("Around:
+  context menu"). The menu is now built a few seconds after start-up, when nothing
+  else is happening, and that step is timed.
+
 ## [0.99.241] — 2026-11-17
 
 ### Added

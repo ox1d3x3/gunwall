@@ -41,17 +41,21 @@ public partial class AlertWindow : Window
 
     private readonly Action<GunWall.Models.TemporaryAllow>? _onAllowFor;
     private GunWall.Models.TemporaryAllow? _for;   // chosen under "Allow for" (0.99.241)
+    private readonly Action? _onDismissed;
     /// <param name="onAllowFor">An allow that ends by itself - for an hour, until the
     /// program closes, or until the next restart (0.99.241; until restart only, as
     /// "Allow until restart", in 0.99.235). The link is hidden without it.</param>
     /// <param name="waiting">How many more applications are queued behind this one.</param>
+    /// <param name="onDismissed">Closed without an answer (0.99.242): no rule, ask again.</param>
     public AlertWindow(AlertInfo info, Action onBlock, Action? onAllow = null, bool strictMode = false,
                        int timeoutSeconds = 0, bool defaultAllow = false,
                        GunWall.Services.GeoIpService? geo = null,
-                       Action<GunWall.Models.TemporaryAllow>? onAllowFor = null, int waiting = 0)
+                       Action<GunWall.Models.TemporaryAllow>? onAllowFor = null, int waiting = 0,
+                       Action? onDismissed = null)
     {
         _firewallGeo = geo;
         _onAllowFor = onAllowFor;
+        _onDismissed = onDismissed;
         InitializeComponent();
         // "Allow for" only where an allow is a rule at all (Zero Trust).
         AllowForButton.Visibility = onAllowFor != null && strictMode ? Visibility.Visible : Visibility.Collapsed;
@@ -407,17 +411,38 @@ public partial class AlertWindow : Window
         }
     }
 
+    /// <summary>GunWall is exiting with this popup open (0.99.242): no rule, and the
+    /// engine is told to ask again now - while the window can still reach it; by the
+    /// time the application closes its windows, the main window has let go of the
+    /// background service.</summary>
+    public void DismissForExit()
+    {
+        if (_decided) return;
+        _decided = true;
+        StopCountdown();
+        try { _onDismissed?.Invoke(); }
+        catch (Exception ex) { GunWall.Services.DiagnosticLog.LogException("AlertWindow.Dismissed", ex); }
+        GunWall.Services.DiagnosticLog.Log($"Prompt closed without an answer (GunWall exiting): {_info.ProcessName} stays blocked with no rule, and is asked again when it next connects.");
+        _exitPlayed = true;   // no fade on the way out
+        try { Close(); } catch { }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         StopCountdown();
         if (!_decided)
         {
+            // Closed without an answer - Alt+F4, or GunWall exiting with the popup open:
+            // no rule (0.99.242, Mahabub 2026-11-17). Popups appear only in Zero Trust,
+            // where a program with no rule is blocked already, so this still fails
+            // closed. The engine is told to ask again when it next connects - queued
+            // for the window's next start if no window is open by then. It used to
+            // save a permanent block rule, so exiting GunWall with a popup open
+            // blocked that program for good without a word.
             _decided = true;
-            try { _onBlock(); }
-            catch (Exception ex)
-            {
-                GunWall.Services.DiagnosticLog.LogException("AlertWindow.CloseBlock", ex);
-            }
+            try { _onDismissed?.Invoke(); }
+            catch (Exception ex) { GunWall.Services.DiagnosticLog.LogException("AlertWindow.Dismissed", ex); }
+            GunWall.Services.DiagnosticLog.Log($"Prompt closed without an answer: {_info.ProcessName} stays blocked with no rule, and is asked again when it next connects.");
         }
         base.OnClosed(e);
     }

@@ -1202,6 +1202,16 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         return true;
     }
 
+    /// <summary>A popup closed without an answer (0.99.242): the program keeps no rule -
+    /// blocked, in Zero Trust, the only mode that asks - and is asked again the next
+    /// time it connects. With no window open then (GunWall was exited with the popup
+    /// up), the service queues the question for when the window next opens.</summary>
+    public void AskAgain(string exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath)) return;
+        lock (_dataLock) _forgotten.Add(exePath);
+    }
+
     // ------------------------------------------------ undo (0.99.241)
     /// <summary>A program's rule as it is now, for undoing the decision about to be
     /// made. Read from the profile, so the window answers it without the service.</summary>

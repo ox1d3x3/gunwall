@@ -140,7 +140,14 @@ public static class FolderAllows
                             return "AppData\\Local\\Programs holds every program installed for you - choose one program's folder inside it.";
                         break;   // a program's own folder in AppData: on to the Temp check
                     }
-                    return $"Your {open} folder collects files from anywhere - a program saved there later would connect without asking.";
+                    // The folder itself collects files from anywhere; a folder made inside
+                    // it is one you chose to put programs in (0.99.242: Mahabub kept a
+                    // test copy of OPxFlasher in a folder inside one and was refused).
+                    // Allowed, with the caution below.
+                    if (parts.Length == 3)
+                        return $"Your {open} folder collects files from anywhere - a program saved there later would connect without asking. "
+                             + $"Make a folder inside it for the programs you want allowed, and choose that.";
+                    break;
                 }
         }
 
@@ -157,6 +164,11 @@ public static class FolderAllows
         string f = Normalize(folder);
         string root = RootOf(f);
         string[] parts = f.Length > root.Length ? f[root.Length..].Split('\\', StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>();
+        if (parts.Length >= 4 && parts[0].Equals("Users", StringComparison.OrdinalIgnoreCase))
+            foreach (var open in OpenUserFolders)
+                if (open != "AppData" && (parts[2].Equals(open, StringComparison.OrdinalIgnoreCase) || parts[2].StartsWith(open + " - ", StringComparison.OrdinalIgnoreCase)))
+                    return $"This folder is inside your {open} folder. Keep only programs you trust in it, and do not save downloads straight into it: "
+                         + "anything placed there will connect without asking.";
         if (parts.Length >= 1 && parts[0].Equals("Users", StringComparison.OrdinalIgnoreCase))
             return "This folder is inside a user's own folder, so programs you run can add files to it without asking for administrator rights.";
         if (root.StartsWith(@"\\", StringComparison.Ordinal))

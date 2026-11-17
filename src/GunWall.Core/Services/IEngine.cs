@@ -40,6 +40,9 @@ public interface IEngine
     /// <summary>A program's rule now, for Undo (0.99.241). A round trip, not the
     /// window's copy: right after another decision that copy can be a moment old.</summary>
     [EngineAccess(Access.Read)] DecisionSnapshot CaptureDecision(string exePath, string displayName);
+    /// <summary>A popup closed without an answer (0.99.242): no rule, asked again when it
+    /// next connects. Changes no rule, so it never needs Protect settings unlocked.</summary>
+    [EngineAccess(Access.Tighten)] void AskAgain(string exePath);
     /// <summary>Puts a rule back as CaptureDecision found it - may allow, so Loosen.</summary>
     [EngineAccess(Access.Loosen)] void RestoreDecision(DecisionSnapshot snapshot);
     [EngineAccess(Access.Local)] bool AlwaysConfirmExit { get; }
