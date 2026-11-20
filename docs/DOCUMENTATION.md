@@ -513,9 +513,28 @@ applied. Where an address has no country, the Location column says why — *This
 GeoIP data* when the database has not been downloaded. A socket waiting for
 connections, with no remote yet (TCP or UDP), reads *Listening*.
 
-**Traffic** — a world map of destinations, top countries, most active applications,
+**Traffic** — a live world map, top countries, most active applications,
 per-application data usage over a chosen window, and a breakdown by host, traffic
 type and country.
+
+The map shows where your traffic is going as it happens:
+
+- A line runs from this PC to each country it is exchanging data with now (the
+  busiest twenty), drawing itself out when a country first appears. Streaks travel
+  along it: red for downloads arriving, green for uploads leaving. More streaks,
+  moving faster, mean more traffic. This PC's country glows as downloads arrive,
+  and a destination blinks green as an upload reaches it.
+- Countries are shaded in five steps by how much data went to and from them since
+  GunWall started (by number of destinations until any data has been counted). The
+  green country is where Windows' region setting places this PC.
+- Hover a country for its download and upload rates, the connections open to it now,
+  its destinations and data this session, and the networks those connections reach.
+- Rates are shared out between each program's connections, so they show where traffic
+  goes rather than measure each country exactly. Without precise metering they are
+  estimates and carry a **≈**.
+- The map moves only while the Traffic page is on screen. With **Animation effects**
+  off in Windows (Settings → Accessibility → Visual effects) it is drawn still, with a
+  dot where each line lands.
 
 > **Per-application byte counts are estimated by default**, attributed by share of
 > active connections. For measured figures, enable *precise per-app data metering*
@@ -902,7 +921,9 @@ after starting it, and then says so on the **Alerts** page.
 
 **Why does my VPN's country not show on the map?**
 The map plots the destinations traffic is going **to**, not the tunnel it travels
-through. Changing your VPN exit does not change where the websites are.
+through. Changing your VPN exit does not change where the websites are. The green
+country marking this PC comes from Windows' region setting, not from your address,
+so a VPN does not move it either.
 
 **Why do some connections show no country?**
 The lookup table does not cover every address. Download the GeoIP data from the

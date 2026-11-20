@@ -15,6 +15,65 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.244] — 2026-11-20
+
+### Added
+- Traffic map: a new line now draws itself out from this PC instead of appearing
+  at once, with its streaks following behind the tip. Your country glows briefly as
+  downloads arrive, and a destination blinks green as an upload reaches it. Home
+  has two slow rings instead of one, and streak tails taper like a comet.
+- Diagnostics: the five-minute performance line reports the map's frame rate over
+  the time it was drawing, the display's refresh rate, how many frames came late
+  and what the map had just done before each, and the longest gap.
+
+### Changed
+- Traffic map motion is smoother. It now draws on a whole number of the display's
+  refreshes (every third on a 240 Hz monitor) rather than by elapsed time, which
+  alternated between three and four refreshes and juddered. A frame no longer
+  creates any drawing objects (0.99.243 made several per frame, which the .NET
+  memory manager then had to collect). Arc shapes are kept between frames. After a
+  hitch, streaks catch up over a few frames instead of jumping.
+- Pages are laid out ahead, a few seconds after start-up, one at a time while
+  GunWall is idle and on screen, so the first visit to a page does not have to lay
+  it out. The page slide now starts after the page is laid out, and moves the page
+  as one image while it slides.
+- The right-click menu on the Applications page, including its submenus, is built
+  2.5 seconds after start-up instead of 8.
+
+### Fixed
+- A long freeze (20 seconds in one report) on the Applications page at the first
+  start after an update. Its category column checked every program's digital
+  signature on the window's own thread; it now uses only checks already made and
+  fills in the rest from the background. The Properties window also checks the
+  signature in the background.
+
+---
+
+## [0.99.243] — 2026-11-19
+
+### Added
+- **A live Traffic map.** The Traffic page's map now moves with the traffic, after
+  the Traffic Map in the UniSense OPNsense theme. Countries are shaded in five steps
+  by the data exchanged with them this session; a line runs from this PC to each of
+  the twenty busiest countries right now, with streaks travelling along it - red for
+  downloads arriving, green for uploads leaving - more of them, and faster, the more
+  traffic there is; each destination pulses. Hovering a country outlines it, dims the
+  other lines and shows a card with its download and upload rates (marked ≈ when
+  estimated), connections open now, destinations, data this session and the networks
+  reached. A legend under the map explains the colours and the shading.
+- New map data: every country from Natural Earth's 1:50m set as its own shape (235),
+  with small countries drawn as dots and places without a shape kept as points, so
+  every country the previous map placed is still placed.
+
+### Changed
+- The map animates only while the Traffic page is on screen, with Windows' animation
+  effects on, and while something is moving. Still layers are drawn once and kept as
+  bitmaps; only the streaks are redrawn each frame, at most about 80 times a second
+  (30 without graphics acceleration), and at half that rate while preparing a frame
+  takes long. With animation effects off the map is drawn still. A failure in the
+  map leaves it still and is logged once; the page carries on.
+- The green country marking this PC is a dot with a ring instead of the device icon.
+
 ## [0.99.242] — 2026-11-17
 
 ### Changed

@@ -235,6 +235,10 @@ public sealed class NetworkStatsService
         set.Add(value);
     }
 
+    /// <summary>An address on the internet: not loopback, private, link-local or
+    /// CGNAT, and parseable (0.99.243: the Traffic map uses the same rule).</summary>
+    public static bool IsExternal(string? ip) => !string.IsNullOrEmpty(ip) && !IsLocalOrPrivate(ip);
+
     /// <summary>True for loopback, RFC1918, link-local, CGNAT and IPv6 ULA/link-local.</summary>
     private static bool IsLocalOrPrivate(string ip)
     {

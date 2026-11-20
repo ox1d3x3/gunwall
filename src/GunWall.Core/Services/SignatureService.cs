@@ -62,8 +62,13 @@ public static class SignatureService
         });
     }
 
-    /// <summary>A short publisher label for lists ("Microsoft...", "Unsigned",
-    /// "Invalid signature").</summary>
+    /// <summary>The verdict if this file was verified already, else null. Never
+    /// verifies (0.99.244): a cold WinVerifyTrust took 10.9 s for one file in the
+    /// 0.99.243 bundle, and the Apps list's category column called Verify for every
+    /// program on the UI thread - a 20 s freeze on the first start after the update.</summary>
+    public static SignatureInfo? IfKnown(string? exePath) =>
+        !string.IsNullOrWhiteSpace(exePath) && Cache.TryGetValue(exePath, out var s) ? s : null;
+
     /// <summary>The publisher label if this file was verified already, else null.
     /// Never verifies: the Apps list must not wait on WinVerifyTrust on the UI
     /// thread - 805 ms for one new application in the 0.99.154 bundle.</summary>

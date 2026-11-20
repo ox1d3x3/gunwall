@@ -204,6 +204,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         PacketsList.ItemsSource = _packets;
         TrafficCountries.ItemsSource = _trafficCountries;
         TrafficApps.ItemsSource = _trafficApps;
+        TrafficMapView.HoverMoved += TrafficMap_HoverMoved;
+        UpdateMapLegend();
         DnsLog.ItemsSource = _dnsLog;
         // Carry across anything an older build wrote beside the executable, before
         // anything reads or overwrites it. Copies, and never over a newer file.
@@ -341,6 +343,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _engineReady = true;
             UpdateAway();   // started minimised: the away summary counts from here (0.99.241)
             WarmMenusSoon();
+            WarmPagesSoon();   // first visits to pages without the layout pause (0.99.244)
 
             // AFTER Initialize(), because that is where the store is read. Placed
             // above it in 0.99.93 and 0.99.94, which is why the reconcile kept
@@ -517,7 +520,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.242 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.244 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -1250,6 +1253,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // tool stole the session, ...). Degrade to the estimate rather than
             // silently showing an empty usage table.
             bool etwLive = _etwMeter is { SessionActive: true } && !_etwDegraded;
+            _mapMeasured = etwLive;
             if (etwLive)
             {
                 long ev = _etwMeter!.EventsTotal;
@@ -1298,6 +1302,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
         }
         catch (Exception ex) { SampleStepError("stats", ex); }
+        // Closed every tick, with or without traffic, so a country that went quiet
+        // fades from the map rather than keeping its last rate (0.99.243).
+        try { _countryTraffic.EndTick(_lastTickDt, MapConnections(snap.Conns)); }
+        catch (Exception ex) { SampleStepError("CountryTraffic", ex); }
         try { UpdateSessionTotals(); } catch (Exception ex) { SampleStepError("UpdateSessionTotals", ex); }
 
         // Painting only - enforcement above runs whether or not anyone is looking.
@@ -1404,171 +1412,149 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
         }
 
-        RefreshMapMarkers();
+        RefreshTrafficMap();
         RefreshUsage();
         RefreshBreakdown();
     }
 
-    /// <summary>Plot a green dot per active country on the world map, sized by
-    /// destination count. Uses the same TopCountries data as the list, so map and
-    /// list always agree. Cheap: a couple dozen ellipses, only on Traffic refresh.</summary>
-    private string _lastMapSig = "";
+    // ------------------------------------------------------------ Traffic map
+    // 0.99.243 (Mahabub 2026-11-19): a live map like UniSense's Traffic Map, in
+    // place of the dots and dashed arcs. The drawing is Controls/TrafficMap.cs and
+    // the logic GunWall.Core's TrafficMapModel; this part feeds them and shows the
+    // hover card.
 
-    private void RefreshMapMarkers()
+    private readonly CountryTrafficTracker _countryTraffic = new();
+    private List<CountryLive> _mapLive = new();
+    private Dictionary<string, int> _mapDest = new(StringComparer.OrdinalIgnoreCase);
+    private bool _mapMeasured;
+    private string? _mapCardCode;
+    private static string? _homeRegion;
+
+    /// <summary>Where this PC is set to be: Windows' region setting - offline, no
+    /// lookup, and the same with a VPN on (as the previous map did).</summary>
+    private static string HomeRegion => _homeRegion ??= ReadHomeRegion();
+
+    private static string ReadHomeRegion()
     {
-        if (MapMarkers == null) return;
-        var top = _stats.TopCountries(200);
+        try { return System.Globalization.RegionInfo.CurrentRegion.TwoLetterISORegionName.ToUpperInvariant(); }
+        catch { return ""; }
+    }
 
-        // Rebuilding identical markers every second would also restart the arc
-        // animations; skip entirely unless the data actually changed.
-        var sigB = new System.Text.StringBuilder();
-        foreach (var (code, count) in top) sigB.Append(code).Append(':').Append(count).Append(';');
-        string sig = sigB.ToString();
-        if (sig == _lastMapSig) return;
-        _lastMapSig = sig;
+    /// <summary>A connection's country for the map, or null for one not placed or
+    /// not on the internet (the LAN, loopback).</summary>
+    private static string? MapCountry(ConnectionInfo c) =>
+        c.Country.Length == 2 && NetworkStatsService.IsExternal(c.RemoteAddress) ? c.Country : null;
 
-        MapMarkers.Children.Clear();
-        int max = 1;
-        foreach (var (_, count) in top) if (count > max) max = count;
+    private static IEnumerable<(string Country, string Network)> MapConnections(List<ConnectionInfo> conns)
+    {
+        foreach (var c in conns)
+            if (MapCountry(c) is string cc) yield return (cc, c.AsnOwner);
+    }
 
-        // ---- GlassWire-style connection arcs: home country -> busiest ten ----
-        // Home is the OS region setting (offline, no lookup, VPN-independent);
-        // unknown regions fall back to a neutral south-center origin.
-        string homeCode = "";
-        try { homeCode = System.Globalization.RegionInfo.CurrentRegion.TwoLetterISORegionName; } catch { }
-        (double X, double Y) home = WorldMapData.CountryPoints.TryGetValue(homeCode.ToUpperInvariant(), out var hp)
-            ? hp : (500, 470);
+    /// <summary>The live map's figures, with each Traffic refresh: per-country rates
+    /// from this tick's attribution, destinations per country (the shading when
+    /// nothing was metered), and home.</summary>
+    private void RefreshTrafficMap()
+    {
+        if (TrafficMapView == null) return;
+        using var _perf = PerfMonitor.Measure("RefreshTrafficMap");
+        _mapLive = _countryTraffic.Snapshot();
+        var dest = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (code, count) in _stats.TopCountries(250))
+            if (code.Length == 2) dest[code.ToUpperInvariant()] = count;
+        _mapDest = dest;
+        TrafficMapView.SetData(_mapLive, dest, HomeRegion);
+        if (_mapCardCode != null && MapCard?.Visibility == Visibility.Visible) FillMapCard(_mapCardCode);
+    }
 
-        // Was #E0524D - a red, but not either palette's red, so it drifted from
-        // every other red on screen and did not move with the theme.
-        var arcColor = ((SolidColorBrush)System.Windows.Application.Current
-            .FindResource("BlockText")).Color;
-        int arcs = 0;
-        foreach (var (code, count) in top)
+    /// <summary>The map moves only while it is on screen: the Traffic page showing,
+    /// the window neither minimised nor in the tray.</summary>
+    private void UpdateTrafficMapActive()
+    {
+        if (TrafficMapView == null) return;
+        TrafficMapView.Active = IsVisible && WindowState != WindowState.Minimized
+                             && PanelTraffic?.Visibility == Visibility.Visible;
+    }
+
+    /// <summary>The legend's heat scale, in the map's own mixed colours.</summary>
+    private void UpdateMapLegend()
+    {
+        if (TrafficMapView == null) return;
+        var cells = new[] { MapHeat1, MapHeat2, MapHeat3, MapHeat4, MapHeat5 };
+        for (int i = 0; i < cells.Length; i++)
+            if (cells[i] != null) cells[i].Background = TrafficMapView.HeatSwatch(i + 1);
+    }
+
+    private void TrafficMap_HoverMoved(object? sender, GunWall.Controls.TrafficMapHoverEventArgs e)
+    {
+        if (MapCard == null || MapOverlay == null) return;
+        if (e.Code == null)
         {
-            // Twenty, not ten. Ten was low enough to hide whole countries on a
-            // busy machine, and the dots already go to two hundred - so the map
-            // showed a destination while omitting the line explaining where it
-            // came from. Not raised further: arcs are the one element here that
-            // becomes clutter rather than detail, and this is the same surface
-            // whose left edge had to be fixed twice.
-            if (arcs >= 20) break;
-            string cc = code.ToUpperInvariant();
-            if (cc == homeCode.ToUpperInvariant()) continue;
-            if (!WorldMapData.CountryPoints.TryGetValue(cc, out var dst)) continue;
-            arcs++;
-
-            var p1 = new Point(home.X, home.Y);
-            var p2 = new Point(dst.X, dst.Y);
-            double dx = p2.X - p1.X, dy = p2.Y - p1.Y;
-            double dist = Math.Sqrt(dx * dx + dy * dy);
-            // Control point: lifted above the midpoint so long hops bow higher.
-            var ctrl = new Point((p1.X + p2.X) / 2, Math.Max(8, (p1.Y + p2.Y) / 2 - dist * 0.28));
-
-            var geo = new PathGeometry();
-            var fig = new PathFigure { StartPoint = p1 };
-            fig.Segments.Add(new QuadraticBezierSegment(ctrl, p2, isStroked: true));
-            geo.Figures.Add(fig);
-            geo.Freeze();
-
-            double share = count / (double)max;
-            var arc = new System.Windows.Shapes.Path
-            {
-                Data = geo,
-                // FULLY OPAQUE, and volume is no longer encoded here.
-                //
-                // The alpha used to run 0x46..0x96 by share, so the quietest arcs
-                // sat at 1.45:1 against the land - barely above the contrast the
-                // map itself was just fixed for, and invisible for exactly the
-                // connections a person is most likely to be looking for. Faint
-                // does not read as "less traffic", it reads as "not there".
-                //
-                // Volume is already carried by the destination dot, whose radius
-                // grows with share. Encoding the same fact twice bought nothing
-                // and cost legibility, so the arc is now a constant, readable
-                // line and the dot remains the single volume signal.
-                Stroke = new SolidColorBrush(arcColor),
-                StrokeThickness = 1.1 + 0.7 * share,
-                StrokeDashArray = new DoubleCollection { 2.2, 4.4 },
-                StrokeDashCap = PenLineCap.Round,
-                IsHitTestVisible = false
-            };
-            // Flowing-dash animation: offset slides one full dash period per beat.
-            arc.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty,
-                new System.Windows.Media.Animation.DoubleAnimation(6.6, 0,
-                    new Duration(TimeSpan.FromSeconds(1.1)))
-                { RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever });
-            MapMarkers.Children.Add(arc);
+            _mapCardCode = null;
+            MapCard.Visibility = Visibility.Collapsed;
+            return;
         }
-
-
-        foreach (var (code, count) in top)
+        if (!string.Equals(e.Code, _mapCardCode, StringComparison.OrdinalIgnoreCase) || MapCard.Visibility != Visibility.Visible)
         {
-            if (!WorldMapData.CountryPoints.TryGetValue(code.ToUpperInvariant(), out var pt)) continue;
-
-            // radius 3..9 by share of the busiest country (sqrt keeps small ones visible)
-            double r = 3.0 + 6.0 * Math.Sqrt(count / (double)max);
-            var dot = new System.Windows.Shapes.Ellipse
-            {
-                Width = r * 2, Height = r * 2,
-                // Was #23C05C. Green here is decoration, not state - a destination
-                // is not "allowed", it is just somewhere traffic went - and section
-                // 2 reserves green for state. Brand is the one hue this design
-                // spends on drawing the eye.
-                Fill = new SolidColorBrush(HueOf("BlockText", 0xE0)),
-                Stroke = new SolidColorBrush(HueOf("BlockText", 0x66)),
-                StrokeThickness = 2,
-                ToolTip = $"{GunWall.Services.GeoData.CountryName(code)} · {count} destinations"
-            };
-            Canvas.SetLeft(dot, pt.X - r);
-            Canvas.SetTop(dot, pt.Y - r);
-            MapMarkers.Children.Add(dot);
+            _mapCardCode = e.Code;
+            FillMapCard(e.Code);
+            MapCard.Visibility = Visibility.Visible;
         }
+        PlaceMapCard(e.Position);
+    }
 
-        // Home is drawn LAST, on top of the destinations.
-        //
-        // It was drawn first, which meant any destination in the same country
-        // covered it - and with a VPN active the apparent location IS usually a
-        // destination, so the marker for "you" was hidden precisely in the case
-        // it matters most. Nothing about the colour was wrong; the dot was
-        // underneath another one.
-        // A device glyph rather than another dot. The destinations are dots; this
-        // is not a destination, it is the machine, and giving it the same shape in
-        // a different colour asks the eye to remember a legend. The shape says it
-        // directly - and with a VPN running, seeing this sit over a different
-        // country is the whole confirmation that the tunnel is carrying traffic.
-        var homeIcon = new System.Windows.Shapes.Path
+    /// <summary>The hover card: flag and name, the rates now, connections and data
+    /// this session, and the networks (ASN owners) the connections go to. Rates
+    /// carry "≈" without the kernel meter, as the metering banner says.</summary>
+    private void FillMapCard(string code)
+    {
+        CountryLive? live = null;
+        foreach (var c in _mapLive)
+            if (string.Equals(c.Code, code, StringComparison.OrdinalIgnoreCase)) { live = c; break; }
+        bool home = string.Equals(code, HomeRegion, StringComparison.OrdinalIgnoreCase);
+
+        var flag = GunWall.Converters.CountryFlagConverter.Load(code);
+        MapCardFlag.Source = flag;
+        MapCardFlag.Visibility = flag != null ? Visibility.Visible : Visibility.Collapsed;
+        string name = GunWall.Services.GeoData.CountryName(code);
+        MapCardName.Text = home ? name + " \u00b7 this PC" : name;
+
+        if (live != null && live.TotalBps > 0)
         {
-            Data = (Geometry)System.Windows.Application.Current.FindResource("IconDevice"),
-            Stretch = Stretch.Uniform,
-            Width = 17, Height = 17,
-            Fill = null,
-            Stroke = new SolidColorBrush(HueOf("TextPrimary", 0xFF)),
-            StrokeThickness = 2.0,
-            StrokeLineJoin = PenLineJoin.Round,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round,
-            SnapsToDevicePixels = true,
-            ToolTip = homeCode.Length > 0
-                ? $"This device \u00b7 traffic appears to originate in {GunWall.Services.GeoData.CountryName(homeCode)}"
-                : "This device"
-        };
+            string approx = _mapMeasured ? "" : "\u2248 ";
+            MapCardDown.Text = "\u2193 " + approx + FormatRate(live.DownBps);
+            MapCardUp.Text = "\u2191 " + approx + FormatRate(live.UpBps);
+            MapCardRates.Visibility = Visibility.Visible;
+        }
+        else MapCardRates.Visibility = Visibility.Collapsed;
 
-        // A halo in the page background, so the glyph stays legible over a
-        // landmass, an arc, or a destination dot underneath it.
-        var halo = new System.Windows.Shapes.Ellipse
-        {
-            Width = 25, Height = 25,
-            Fill = new SolidColorBrush(HueOf("BgPrimary", 0xD9)),
-            IsHitTestVisible = false
-        };
-        Canvas.SetLeft(halo, home.X - 12.5);
-        Canvas.SetTop(halo, home.Y - 12.5);
-        MapMarkers.Children.Add(halo);
+        var parts = new List<string>();
+        int conns = live?.Connections ?? 0;
+        if (conns > 0) parts.Add(conns == 1 ? "1 connection now" : $"{conns:N0} connections now");
+        if (_mapDest.TryGetValue(code, out int dests) && dests > 0)
+            parts.Add(dests == 1 ? "1 destination" : $"{dests:N0} destinations");
+        if (live is { SessionBytes: > 0 }) parts.Add(FormatBytes(live.SessionBytes));
+        MapCardDetail.Text = parts.Count > 0 ? string.Join(" \u00b7 ", parts)
+                           : home ? "Where Windows' region setting places this PC."
+                           : "No traffic since GunWall started.";
 
-        Canvas.SetLeft(homeIcon, home.X - 8.5);
-        Canvas.SetTop(homeIcon, home.Y - 8.5);
-        MapMarkers.Children.Add(homeIcon);
+        var nets = live?.Networks ?? Array.Empty<string>();
+        MapCardNets.Text = nets.Count > 0 ? string.Join(", ", nets) : "";
+        MapCardNets.Visibility = nets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Beside the pointer, flipped to the other side near the map's edges.</summary>
+    private void PlaceMapCard(Point at)
+    {
+        var p = TrafficMapView.TranslatePoint(at, MapOverlay);
+        MapCard.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var size = MapCard.DesiredSize;
+        double w = MapOverlay.ActualWidth, h = MapOverlay.ActualHeight;
+        double x = p.X + 16, y = p.Y + 14;
+        if (x + size.Width > w) x = p.X - 16 - size.Width;
+        if (y + size.Height > h) y = p.Y - 14 - size.Height;
+        Canvas.SetLeft(MapCard, Math.Max(0, x));
+        Canvas.SetTop(MapCard, Math.Max(0, y));
     }
 
     /// <summary>Builds the 90x20 sparkline for one app row from its last 30
@@ -2497,6 +2483,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 {
                     long bytes = v.Down + v.Up;
                     if (bytes <= 0 || !byPid.TryGetValue((int)pid, out var list)) continue;
+                    // The Traffic map: the same even split, with direction kept.
+                    long down = v.Down / list.Count, up = v.Up / list.Count;
+                    foreach (var c in list) _countryTraffic.AddBytes(MapCountry(c), down, up);
                     long share = bytes / list.Count;
                     if (share <= 0) continue;
                     foreach (var c in list)
@@ -2510,6 +2499,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 long total = (long)((downRate + upRate) * _lastTickDt);
                 long share = total / ext.Count;
+                long down = (long)(downRate * _lastTickDt / ext.Count), up = (long)(upRate * _lastTickDt / ext.Count);
+                foreach (var c in ext) _countryTraffic.AddBytes(MapCountry(c), down, up);
                 if (share <= 0) return;
                 foreach (var c in ext)
                     _stats.RecordTraffic(
@@ -3762,10 +3753,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 path.StartsWith(win, StringComparison.OrdinalIgnoreCase))
                 return AppCategory.System;
 
-            // Real Authenticode validation (cached), not just a name read: a file
-            // with a broken, expired, untrusted or forged signature is flagged
-            // Invalid rather than trusted.
-            return SignatureService.Verify(path).Status switch
+            // Real Authenticode validation, not just a name read: a file with a
+            // broken, expired, untrusted or forged signature is flagged Invalid
+            // rather than trusted. Peeked, never computed (0.99.244): this ran
+            // WinVerifyTrust for every program on the UI thread - 20 s frozen on the
+            // first start after an update. Not verified yet: Unknown for now; the
+            // publisher peek below queues the background fill, which redraws.
+            return SignatureService.IfKnown(path)?.Status switch
             {
                 SignatureStatus.Valid    => AppCategory.Signed,
                 SignatureStatus.Unsigned => AppCategory.Unsigned,
@@ -4499,6 +4493,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void OnScreenChanged()
     {
         _probeWanted = OnScreen;   // the freeze probe sleeps while nothing is shown
+        if (OnScreen && _warmTimer is { IsEnabled: false }) _warmTimer.Start();   // pages laid out ahead (0.99.244)
         UpdateGraphFrameHook();
         if (OnScreen && IsLoaded) RefreshVisiblePanel();
         UpdateHiddenTrim();
@@ -4756,6 +4751,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// </summary>
     private void UpdateGraphFrameHook()
     {
+        UpdateTrafficMapActive();
         bool want = IsVisible
                  && WindowState != WindowState.Minimized
                  && PanelDashboard?.Visibility == Visibility.Visible;
@@ -5800,6 +5796,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // every timed method.
         using var _perf = PerfMonitor.Measure("Nav_Checked");
         PerfMonitor.Moment("page " + tag);
+        _pagesShown.Add(tag);   // laid out now: not warmed ahead (0.99.244)
         long shown = Stopwatch.GetTimestamp();
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
             new Action(() => PerfMonitor.Record("Nav_Checked+layout", shown)));
@@ -5808,6 +5805,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         PanelFirewall.Visibility = tag == "Firewall" ? Visibility.Visible : Visibility.Collapsed;
         PanelConnections.Visibility = tag == "Connections" ? Visibility.Visible : Visibility.Collapsed;
         PanelTraffic.Visibility = tag == "Traffic" ? Visibility.Visible : Visibility.Collapsed;
+        UpdateTrafficMapActive();
         PanelDns.Visibility = tag == "Dns" ? Visibility.Visible : Visibility.Collapsed;
         _dnsVisible = tag == "Dns";
         PanelAlerts.Visibility = tag == "Alerts" ? Visibility.Visible : Visibility.Collapsed;
@@ -5870,6 +5868,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // Windows' "Animation effects" off: the page simply appears (0.99.241).
             if (!Animations)
             {
+                _slideGen++;   // a slide still waiting for its layout pass does not start
+                PanelHost.CacheMode = null;
                 PanelHost.BeginAnimation(OpacityProperty, null);
                 PanelHostShift.BeginAnimation(TranslateTransform.YProperty, null);
                 PanelHost.Opacity = 1;
@@ -5884,18 +5884,69 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             // distributes it evenly and reads as a slower slide. This used 12
             // pixels with a cubic ease, which is why the motion felt unlike the
             // rest of the Fluent surface.
+            //
+            // 0.99.244: the start pose is set now and the slide begins after the
+            // page's layout pass. Started here, its clock ran during the layout (up
+            // to 180 ms on a first visit), so its first drawn frame was already most
+            // of the way through - a jump instead of a slide.
             double slideFrom = up ? -30.0 : 30.0;
+            PanelHost.BeginAnimation(OpacityProperty, null);
+            PanelHostShift.BeginAnimation(TranslateTransform.YProperty, null);
+            PanelHost.Opacity = 0;
+            PanelHostShift.Y = slideFrom;
+            int gen = ++_slideGen;
+            bool live = tag is "Traffic" or "Dashboard";
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+                new Action(() => StartSlide(gen, slideFrom, live)));
+        }
+        catch
+        {
+            // Motion is cosmetic - never let it break navigation, or leave a page
+            // in its invisible start pose.
+            try { PanelHost.Opacity = 1; PanelHostShift.Y = 0; } catch { }
+        }
+    }
+
+    private int _slideGen;
+
+    /// <summary>The page's slide, begun once it is laid out. While it moves, the page
+    /// is drawn once into a bitmap and the bitmap moved and faded (0.99.244): fading a
+    /// whole page otherwise re-renders all of it through a layer on every frame. Not
+    /// for pages that change every frame themselves (the Traffic map, the live graph),
+    /// where the bitmap would be redrawn every frame anyway.</summary>
+    private void StartSlide(int gen, double slideFrom, bool live)
+    {
+        if (gen != _slideGen) return;   // a later page switch owns the slide
+        try
+        {
             var span = TimeSpan.FromMilliseconds(200);
-
-            var fade = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0, span)
-            { DecelerationRatio = 0.7 };
-            var rise = new System.Windows.Media.Animation.DoubleAnimation(slideFrom, 0.0, span)
-            { DecelerationRatio = 0.7 };
-
+            if (!live)
+            {
+                double dpi = 1;
+                try { dpi = VisualTreeHelper.GetDpi(PanelHost).DpiScaleX; } catch { }
+                PanelHost.CacheMode = new BitmapCache(dpi > 0 ? dpi : 1) { SnapsToDevicePixels = true };
+            }
+            var fade = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0, span) { DecelerationRatio = 0.7 };
+            var rise = new System.Windows.Media.Animation.DoubleAnimation(slideFrom, 0.0, span) { DecelerationRatio = 0.7 };
+            rise.Completed += (_, _) =>
+            {
+                if (gen != _slideGen) return;
+                // Settled: plain values again, and the page drawn live, not as a bitmap.
+                PanelHost.CacheMode = null;
+                PanelHost.BeginAnimation(OpacityProperty, null);
+                PanelHostShift.BeginAnimation(TranslateTransform.YProperty, null);
+                PanelHost.Opacity = 1;
+                PanelHostShift.Y = 0;
+            };
             PanelHost.BeginAnimation(OpacityProperty, fade);
             PanelHostShift.BeginAnimation(TranslateTransform.YProperty, rise);
         }
-        catch { /* motion is cosmetic - never let it break navigation */ }
+        catch
+        {
+            PanelHost.CacheMode = null;
+            PanelHost.Opacity = 1;
+            PanelHostShift.Y = 0;
+        }
     }
 
     // ================================================================ actions
@@ -5977,7 +6028,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void WarmMenusSoon()
     {
         var t = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.ApplicationIdle)
-        { Interval = TimeSpan.FromSeconds(8) };
+        // 2.5 s (0.99.244): at 8 s the 0.99.243 bundle's first right-click, 6 s after
+        // start-up, still came first - "UI froze for 535 ms ... Around: context menu".
+        { Interval = TimeSpan.FromSeconds(2.5) };
         t.Tick += (_, _) => { t.Stop(); WarmMenus(); };
         t.Start();
     }
@@ -5993,9 +6046,96 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             menu.ApplyTemplate();
             menu.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-            foreach (var item in menu.Items.OfType<MenuItem>()) item.ApplyTemplate();
+            // Submenus too (0.99.244, Mahabub: "bit laggy when menu hopping starts" -
+            // moving onto Allow for or Block traffic built them the first time).
+            foreach (var item in menu.Items.OfType<MenuItem>())
+            {
+                item.ApplyTemplate();
+                foreach (var sub in item.Items.OfType<MenuItem>()) sub.ApplyTemplate();
+            }
+            WarmPopupWindow();
         }
         catch (Exception ex) { Services.DiagnosticLog.LogException("WarmMenus", ex); }
+    }
+
+    /// <summary>A menu opens in a window of its own; the first such window of a
+    /// session pays for setting up transparent popup windows. Paid here, at idle, by
+    /// a one-pixel transparent popup that takes no clicks and closes at once.</summary>
+    private void WarmPopupWindow()
+    {
+        var warm = new System.Windows.Controls.Primitives.Popup
+        {
+            AllowsTransparency = true,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Absolute,
+            HorizontalOffset = -10000, VerticalOffset = -10000,
+            StaysOpen = true, Focusable = false, IsHitTestVisible = false,
+            Child = new Border { Width = 1, Height = 1, Opacity = 0, IsHitTestVisible = false },
+        };
+        warm.IsOpen = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+            new Action(() => { try { warm.IsOpen = false; } catch { } }));
+    }
+
+    // ------------------------------------------- pages built ahead (0.99.244)
+    // Mahabub (0.99.243 tests): page hopping lags when it starts. The 0.99.243 bundle:
+    // "Nav_Checked+layout 8x avg 56.4 max 179 ms" - the first visit to a page builds
+    // and lays it out (templates, lists, the Traffic map's layers) inside the click.
+    // Each page is laid out once ahead instead, one at a time while the app is idle
+    // and on screen: made Hidden (measured and arranged, not drawn, takes no input)
+    // for one layout pass, then Collapsed again. The pages share one grid cell of a
+    // fixed size, so a page being laid out cannot move the one showing.
+    private static readonly string[] WarmOrder =
+        { "Firewall", "Traffic", "Connections", "Activity", "Settings", "Rules", "Security",
+          "Alerts", "Dns", "Packets", "Services", "Network", "Dashboard" };
+    private readonly HashSet<string> _pagesShown = new(StringComparer.Ordinal);
+    private int _warmIndex;
+    private System.Windows.Threading.DispatcherTimer? _warmTimer;
+
+    private void WarmPagesSoon()
+    {
+        _warmTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.ApplicationIdle)
+        { Interval = TimeSpan.FromSeconds(4) };
+        _warmTimer.Tick += (_, _) => WarmNextPage();
+        _warmTimer.Start();
+    }
+
+    private FrameworkElement? PageFor(string tag) => tag switch
+    {
+        "Dashboard" => PanelDashboard, "Firewall" => PanelFirewall, "Connections" => PanelConnections,
+        "Traffic" => PanelTraffic, "Dns" => PanelDns, "Alerts" => PanelAlerts, "Packets" => PanelPackets,
+        "Rules" => PanelRules, "Services" => PanelServices, "Network" => PanelNetwork,
+        "Security" => PanelSecurity, "Activity" => PanelActivity, "Settings" => PanelSettings,
+        _ => null,
+    };
+
+    private void WarmNextPage()
+    {
+        if (_warmTimer == null) return;
+        _warmTimer.Interval = TimeSpan.FromMilliseconds(700);
+        // Only while the window is on screen (a hidden window is not laid out) and
+        // the map is still (a layout pass is a hitch in its motion).
+        // Not while off screen: stopped, and started again when the window returns.
+        if (!OnScreen) { _warmTimer.Stop(); return; }
+        if (TrafficMapView?.Active == true) { _warmTimer.Interval = TimeSpan.FromSeconds(3); return; }
+        while (_warmIndex < WarmOrder.Length)
+        {
+            string tag = WarmOrder[_warmIndex++];
+            var page = PageFor(tag);
+            if (page == null || _pagesShown.Contains(tag) || page.Visibility != Visibility.Collapsed) continue;
+            using var _perf = PerfMonitor.Measure("WarmNextPage");
+            long started = Stopwatch.GetTimestamp();
+            page.Visibility = Visibility.Hidden;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+            {
+                // Only if still being warmed: a click may have shown it meanwhile.
+                if (page.Visibility == Visibility.Hidden) page.Visibility = Visibility.Collapsed;
+                PerfMonitor.Record("WarmNextPage+layout", started);
+            }));
+            _pagesShown.Add(tag);
+            return;
+        }
+        _warmTimer.Stop();
+        _warmTimer = null;
     }
 
     // ------------------------------------------- selection, folders (0.99.241)
@@ -10532,14 +10672,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
-    /// <summary>A palette colour at a given alpha. Drawing code needs Color
-    /// rather than Brush, and needed a way to tint one without restating it.</summary>
-    private static Color HueOf(string key, byte alpha)
-    {
-        var c = ((SolidColorBrush)System.Windows.Application.Current.FindResource(key)).Color;
-        return Color.FromArgb(alpha, c.R, c.G, c.B);
-    }
-
     private void ApplyTheme(bool dark)
     {
         try
@@ -10590,6 +10722,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 UpdateStatusBanner();
                 SyncLockdownButton();
             }
+            // The Traffic map is drawn in code, so its colours are re-read (0.99.243).
+            TrafficMapView?.RefreshTheme();
+            UpdateMapLegend();
 
             // Match the OS title bar to the theme.
             TrySetTitleBarTheme(dark);

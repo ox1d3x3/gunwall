@@ -66,7 +66,15 @@
     <SolidColorBrush x:Key="GraphCursor" Color="#660D0F12" />
     <SolidColorBrush x:Key="SelectionFill" Color="#1AD92C11" />
     <SolidColorBrush x:Key="MapLand" Color="#D2D9E2" />
-    <SolidColorBrush x:Key="MapBorder" Color="#9FA9B7" />
+    <!-- Traffic map (0.99.243). Countries are separated by hairlines in the card's
+         own colour, so the land reads as tiles; heat levels are mixed in code from
+         MapLand towards MapDownload. Download is the brand (traffic arriving, as in
+         the Dashboard graph); upload and this device are the 'ok' green - on the map
+         upload streaks must read against red ones, where the graph's text-coloured
+         upload line would vanish into the land. SPEC section 9 records the change. -->
+    <SolidColorBrush x:Key="MapEdge" Color="#FAFBFC" />
+    <SolidColorBrush x:Key="MapDownload" Color="#D92C11" />
+    <SolidColorBrush x:Key="MapUpload" Color="#0F8A4D" />
 
     <!-- Chart series, SPEC.md section 9: download is the brand, upload is the
          TEXT colour - which is why these live here and not in the shared

@@ -226,6 +226,45 @@ public static class PerfMonitor
     /// <summary>One per rendered frame of an animation GunWall drives itself.</summary>
     public static void RecordFrame() { Interlocked.Increment(ref _frames); Interlocked.Increment(ref _sFrames); }
 
+    // The Traffic map's own frames (0.99.244, Mahabub: "sometimes gets bit laggy"):
+    // how many it drew, and how often the display's frame came late - the window's
+    // thread was busy - with the worst gap. In the five-minute line as map[...].
+    // Its rate is over the time it was drawing, not the five minutes; with the
+    // display's refresh and the divisor in use, and each late frame put down to what
+    // the map did just before it - so the next bundle can say which cause is left.
+    private static long _mapFrames, _mapLate, _sMapFrames, _sMapLate;
+    private static double _mapWorst, _sMapWorst, _mapSeconds, _mapHz;
+    private static int _mapDivisor;
+    private static string _mapWorstAfter = "", _sMapWorstAfter = "";
+    private static readonly Dictionary<string, int> MapLateBy = new(StringComparer.Ordinal);
+
+    /// <summary>A frame the map drew, <paramref name="seconds"/> after its last one.</summary>
+    public static void RecordMapFrame(double seconds, double refreshHz, int divisor)
+    {
+        Interlocked.Increment(ref _mapFrames);
+        Interlocked.Increment(ref _sMapFrames);
+        lock (Gate)
+        {
+            if (seconds > 0 && seconds < 1) _mapSeconds += seconds;
+            _mapHz = refreshHz;
+            _mapDivisor = divisor;
+        }
+    }
+
+    /// <summary>A frame that came well after the display's refresh interval, and
+    /// what the map did just before it ("" when nothing of its own).</summary>
+    public static void RecordMapGap(double ms, string after)
+    {
+        string cause = string.IsNullOrEmpty(after) ? "other" : after;
+        lock (Gate)
+        {
+            _mapLate++; _sMapLate++;
+            MapLateBy[cause] = MapLateBy.TryGetValue(cause, out int n) ? n + 1 : 1;
+            if (ms > _mapWorst) { _mapWorst = ms; _mapWorstAfter = cause; }
+            if (ms > _sMapWorst) { _sMapWorst = ms; _sMapWorstAfter = cause; }
+        }
+    }
+
     // ---- startup --------------------------------------------------------------
     private static readonly List<(string Phase, double Ms)> Startup = new();
     private static bool _startupLogged;
@@ -307,6 +346,8 @@ public static class PerfMonitor
         var gcInfo = GC.GetGCMemoryInfo();
         int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
         long frames = Interlocked.Exchange(ref _frames, 0);
+        long mapFrames = Interlocked.Exchange(ref _mapFrames, 0);
+        string map = "";
 
         string ops, lag;
         lock (Gate)
@@ -316,6 +357,15 @@ public static class PerfMonitor
             long stalls = _stalls;
             lag += stalls > 0 ? $", freezes {stalls}" : "";
             lag += $"] background[{_hidProbes} probes, max {_hidMax:F0} ms, freezes {_hidStalls}";
+            if (mapFrames > 0)
+            {
+                string by = string.Join(", ", MapLateBy.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {kv.Value}"));
+                map = $" map[{mapFrames / Math.Max(1, _mapSeconds):F0}/s over {_mapSeconds:F0} s at {_mapHz:F0} Hz /{_mapDivisor}, " +
+                      $"{_mapLate} late" + (by.Length > 0 ? $" ({by})" : "") +
+                      (_mapLate > 0 ? $", worst {_mapWorst:F0} ms after {_mapWorstAfter}" : "") + "]";
+            }
+            _mapLate = 0; _mapWorst = 0; _mapSeconds = 0; _mapWorstAfter = "";
+            MapLateBy.Clear();
             Array.Clear(LagHist); _lagMax = 0; _stalls = 0;
             _hidProbes = 0; _hidMax = 0; _hidStalls = 0;
             foreach (var o in Ops.Values) { o.Count = 0; o.Total = 0; o.Max = 0; }
@@ -328,7 +378,7 @@ public static class PerfMonitor
             // A percentage over a near-empty interval is noise: two samples taken
             // milliseconds apart once reported 117.9%.
             $"cpu={(wall >= 1000 ? $"{cpuPct:F1}%" : "n/a")} threads={p.Threads.Count} handles={p.HandleCount} " +
-            $"ui[{lag}] frames={frames / (wall / 1000):F0}/s | {ops}";
+            $"ui[{lag}] frames={frames / (wall / 1000):F0}/s{map} | {ops}";
 
         _lastCpu = cpu; _lastPause = pause; _lastSampleAt = now;
         LastGc[0] = g0; LastGc[1] = g1; LastGc[2] = g2;
@@ -352,7 +402,9 @@ public static class PerfMonitor
         yield return $"Performance: gc {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)} " +
                      $"(gen0/1/2), paused {pause.TotalMilliseconds:F0} ms = " +
                      $"{pause.TotalMilliseconds / Math.Max(1, up.TotalMilliseconds) * 100:F3}% of uptime, " +
-                     $"graph frames {Interlocked.Read(ref _sFrames):N0}";
+                     $"graph frames {Interlocked.Read(ref _sFrames):N0}" +
+                     (Interlocked.Read(ref _sMapFrames) > 0
+                        ? $", map frames {Interlocked.Read(ref _sMapFrames):N0} ({_sMapLate:N0} late, worst {_sMapWorst:F0} ms after {(_sMapWorstAfter.Length > 0 ? _sMapWorstAfter : "nothing")})" : "");
         string ops, lag;
         List<(string, double)> startup;
         lock (Gate)

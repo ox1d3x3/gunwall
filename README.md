@@ -296,7 +296,9 @@ via [jedisct1/iptoasn-webservice](https://github.com/jedisct1/iptoasn-webservice
 resolver's ads and malware preset from
 [StevenBlack/hosts](https://github.com/StevenBlack/hosts) (MIT). Device
 manufacturers from the [IEEE registry](https://standards-oui.ieee.org/). Country
-flags from [FlagKit](https://github.com/madebybowtie/FlagKit) (MIT). Interface
+flags from [FlagKit](https://github.com/madebybowtie/FlagKit) (MIT). Map outlines
+from [Natural Earth](https://www.naturalearthdata.com) (public domain), via
+[world-atlas](https://github.com/topojson/world-atlas) (ISC). Interface
 controls from [WPF-UI](https://github.com/lepoco/wpfui) (MIT).
 
 <div align="center">

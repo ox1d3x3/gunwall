@@ -1658,21 +1658,54 @@
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="CONNECTION MAP" Style="{StaticResource Muted}"
                                    FontSize="11" FontWeight="SemiBold" Margin="2,0,0,10" />
-                        <Viewbox Stretch="Uniform" MaxHeight="320" HorizontalAlignment="Stretch">
-                            <Grid Width="1000" Height="500">
-                                <!-- StrokeThickness 1.1, not 0.4. The Grid is 1000x500
-                                     inside a Viewbox capped at 320px tall, so everything
-                                     here is scaled to roughly 0.64x: a 0.4 stroke landed
-                                     at a quarter of a pixel and simply did not draw on
-                                     most displays. The coastline is what makes a
-                                     landmass readable at this size, so it has to survive
-                                     the scale rather than be chosen at design size. -->
-                                <Path Data="{Binding Source={x:Static svc:WorldMapData.LandPathData}}"
-                                      Fill="{DynamicResource MapLand}" Stroke="{DynamicResource MapBorder}"
-                                      StrokeThickness="1.5" />
-                                <Canvas x:Name="MapMarkers" Width="1000" Height="500" />
-                            </Grid>
-                        </Viewbox>
+                        <!-- The legend: what the colours mean (SPEC section 9's 8 x 2 ticks),
+                             and the shading's five steps, filled in code from the map. -->
+                        <StackPanel x:Name="MapLegend" DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="2,10,0,0">
+                            <Border Width="8" Height="2" VerticalAlignment="Center" Background="{DynamicResource MapDownload}" />
+                            <TextBlock Text="Download" Style="{StaticResource Muted}" FontSize="11" Margin="6,0,14,0" VerticalAlignment="Center" />
+                            <Border Width="8" Height="2" VerticalAlignment="Center" Background="{DynamicResource MapUpload}" />
+                            <TextBlock Text="Upload" Style="{StaticResource Muted}" FontSize="11" Margin="6,0,18,0" VerticalAlignment="Center" />
+                            <TextBlock Text="Less" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <Border x:Name="MapHeat1" Width="14" Height="8" CornerRadius="2" Margin="0,0,2,0" VerticalAlignment="Center" />
+                            <Border x:Name="MapHeat2" Width="14" Height="8" CornerRadius="2" Margin="0,0,2,0" VerticalAlignment="Center" />
+                            <Border x:Name="MapHeat3" Width="14" Height="8" CornerRadius="2" Margin="0,0,2,0" VerticalAlignment="Center" />
+                            <Border x:Name="MapHeat4" Width="14" Height="8" CornerRadius="2" Margin="0,0,2,0" VerticalAlignment="Center" />
+                            <Border x:Name="MapHeat5" Width="14" Height="8" CornerRadius="2" VerticalAlignment="Center" />
+                            <TextBlock Text="More" Style="{StaticResource Muted}" FontSize="11" Margin="6,0,8,0" VerticalAlignment="Center" />
+                            <gw:InfoTip VerticalAlignment="Center"
+                                        Text="Each line runs from this device to a country it is exchanging data with now - the busiest twenty. Red streaks are downloads travelling to you, green ones uploads travelling away; more and faster streaks mean more traffic. Countries are shaded by how much data went to and from them since GunWall started, and the green country is where this PC is set to be (Windows' region setting). Hover a country for its details. The rates are shared out between each program's connections, so they show where traffic goes rather than measure each country exactly; without precise metering they are estimates, marked with ≈. With Windows' animation effects turned off, the map stands still." />
+                        </StackPanel>
+                        <!-- 0.99.243: a live map in the style of UniSense's Traffic Map
+                             (Controls/TrafficMap.cs). The hover card sits on a canvas
+                             above it that never takes the pointer, so moving over the
+                             card cannot make the map lose its hover. -->
+                        <Grid x:Name="MapHost">
+                            <gw:TrafficMap x:Name="TrafficMapView" MaxHeight="340" HorizontalAlignment="Stretch" />
+                            <Canvas x:Name="MapOverlay" IsHitTestVisible="False">
+                                <Border x:Name="MapCard" Visibility="Collapsed" IsHitTestVisible="False"
+                                        Background="{DynamicResource BgElevated}" BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1" CornerRadius="8" Padding="11,9" MaxWidth="260">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Image x:Name="MapCardFlag" Width="18" Height="12" Margin="0,0,7,0"
+                                                   VerticalAlignment="Center" Stretch="Uniform" SnapsToDevicePixels="True" />
+                                            <TextBlock x:Name="MapCardName" FontSize="12.5" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock x:Name="MapCardRates" FontSize="12" Margin="0,6,0,0">
+                                            <Run x:Name="MapCardDown" Foreground="{DynamicResource MapDownload}" />
+                                            <Run Text="   " />
+                                            <Run x:Name="MapCardUp" Foreground="{DynamicResource MapUpload}" />
+                                        </TextBlock>
+                                        <TextBlock x:Name="MapCardDetail" Style="{StaticResource Muted}" FontSize="11.5" Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock x:Name="MapCardNets" Style="{StaticResource Muted}" FontSize="11.5" Margin="0,2,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </Canvas>
+                        </Grid>
                     </DockPanel>
                 </Border>
 

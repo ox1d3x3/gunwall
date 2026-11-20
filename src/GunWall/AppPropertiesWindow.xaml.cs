@@ -33,7 +33,40 @@ public partial class AppPropertiesWindow : Window
         NoteBox.Text = firewall.GetNote(app.ExecutablePath);
         BypassBlocklistsCheck.IsChecked = firewall.BypassesBlocklists(app.ExecutablePath);
 
-        var sig = SignatureService.Verify(app.ExecutablePath);
+        // Off the UI thread (0.99.244): an uncached check can take seconds.
+        var known = SignatureService.IfKnown(app.ExecutablePath);
+        if (known != null) ShowSignature(known);
+        else
+        {
+            SignatureText.Text = "Checking\u2026";
+            DetailText.Text = "\u2014";
+            string path = app.ExecutablePath;
+            _ = System.Threading.Tasks.Task.Run(() => SignatureService.Verify(path)).ContinueWith(t =>
+            {
+                if (t.Status == System.Threading.Tasks.TaskStatus.RanToCompletion)
+                    Dispatcher.BeginInvoke(new Action(() => ShowSignature(t.Result)));
+            }, System.Threading.Tasks.TaskScheduler.Default);
+        }
+
+        // Microsoft Store / UWP identity
+        if (_app.IsStoreApp)
+        {
+            TypeText.Text = string.IsNullOrWhiteSpace(_app.StoreName)
+                ? "Microsoft Store app"
+                : $"Microsoft Store app \u2014 {_app.StoreName}";
+            PackageText.Text = string.IsNullOrWhiteSpace(_app.PackageFamily)
+                ? "\u2014" : _app.PackageFamily;
+        }
+        else
+        {
+            TypeText.Text = "Desktop application";
+            PackageLabel.Visibility = Visibility.Collapsed;
+            PackageText.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void ShowSignature(SignatureInfo sig)
+    {
         DetailText.Text = string.IsNullOrEmpty(sig.Detail) ? "\u2014" : sig.Detail;
         SignatureText.Text = sig.Status switch
         {
@@ -51,22 +84,6 @@ public partial class AppPropertiesWindow : Window
             SignatureStatus.Invalid  => "BlockText",
             _                        => "TextTertiary"
         });
-
-        // Microsoft Store / UWP identity
-        if (_app.IsStoreApp)
-        {
-            TypeText.Text = string.IsNullOrWhiteSpace(_app.StoreName)
-                ? "Microsoft Store app"
-                : $"Microsoft Store app \u2014 {_app.StoreName}";
-            PackageText.Text = string.IsNullOrWhiteSpace(_app.PackageFamily)
-                ? "\u2014" : _app.PackageFamily;
-        }
-        else
-        {
-            TypeText.Text = "Desktop application";
-            PackageLabel.Visibility = Visibility.Collapsed;
-            PackageText.Visibility = Visibility.Collapsed;
-        }
     }
 
     private void SaveNote()
