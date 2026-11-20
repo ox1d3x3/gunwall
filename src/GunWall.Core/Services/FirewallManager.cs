@@ -95,9 +95,15 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
         // after every state message, so a read must cost a stat, not a parse.
         var stamp = _store.FileStamp();
         if (stamp == _loadedStamp && stamp.Size >= 0) return;
+        using var _perf = PerfMonitor.Measure("ReloadStoreFromDisk");
+        // Already read in the background for this very file (0.99.245): swapped in,
+        // no parse here - this runs on whichever thread asked, usually the window's.
+        StoreData fresh;
+        if (Volatile.Read(ref _prefetched) is { } pre && pre.Stamp == stamp) fresh = pre.Data;
         // Quietly, and keeping the copy it has if the read fails: this runs while
         // the service may be saving, and a failed read is not a damaged profile.
-        if (!_store.TryLoadQuiet(out var fresh)) return;
+        else if (!_store.TryLoadQuiet(out fresh)) return;
+        Volatile.Write(ref _prefetched, null);
         _loadedStamp = stamp;
         _data = fresh;
         _knownSet = null;
@@ -106,6 +112,26 @@ public sealed class FirewallManager : IDisposable, IDetectionPolicy, IUpkeepPoli
     }
 
     private (DateTime When, long Size) _loadedStamp = (DateTime.MinValue, -1);
+
+    private sealed record Prefetched((DateTime When, long Size) Stamp, StoreData Data);
+    private Prefetched? _prefetched;
+
+    /// <summary>
+    /// Reads a changed profile ahead, off the window's thread (0.99.245). The window
+    /// keeps a read-only copy of the profile for the reads it makes every second;
+    /// when the service saves, the next read re-parsed the whole file (108 KB in
+    /// Mahabub's) on the window's thread. Called from the pipe's state messages on a
+    /// pool thread; <see cref="ReloadStoreFromDisk"/> then only swaps it in.
+    /// </summary>
+    public void PrefetchStoreFromDisk()
+    {
+        if (!ReadOnlyStore) return;
+        var stamp = _store.FileStamp();
+        if (stamp.Size < 0 || stamp == _loadedStamp || Volatile.Read(ref _prefetched)?.Stamp == stamp) return;
+        if (!_store.TryLoadQuiet(out var fresh)) return;
+        // Only if the file did not change again while it was read.
+        if (_store.FileStamp() == stamp) Volatile.Write(ref _prefetched, new Prefetched(stamp, fresh));
+    }
 
     private void SaveStore()
     {

@@ -15,6 +15,31 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.245] — 2026-11-20
+
+### Changed
+- The window answers more of its own questions. Three lookups it made through the
+  background service, one round trip at a time, only read the saved profile, which
+  the window already keeps a copy of: VirusTotal results, blocked services and
+  which blocklists are on. With a VirusTotal key set, the Applications list made
+  one such round trip per program every second while it was open.
+- When the service saves the profile on its own (a timer, a decision made without
+  asking), the window's copy is read again in the background rather than on the
+  window's thread the next time it is needed. After a change made in the window,
+  the copy is still read on the window's thread, as before.
+- GunWall now waits two minutes after the window is hidden before giving its
+  unused memory back to Windows (was 15 seconds). Coming back from a short trip to
+  the tray no longer has to read the window back in.
+- Pages start being prepared 2 seconds after start-up instead of 4, one every half
+  second, with Packets fourth.
+
+### Added
+- Diagnostics: a call to the background service that takes longer than 15 ms is
+  recorded by name (including calls that time out or fail), and opening and
+  preparing each page are timed separately, so a pause can be traced to its cause.
+
+---
+
 ## [0.99.244] — 2026-11-20
 
 ### Added

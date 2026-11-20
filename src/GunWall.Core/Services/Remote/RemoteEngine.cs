@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Pipes;
@@ -83,6 +84,35 @@ public class RemoteEngine : DispatchProxy, IDisposable
     /// was changed through the service since the last read.</summary>
     public Action? ReloadLocal { get; set; }
     private int _localStale;
+
+    /// <summary>Reads a changed profile ahead, on a pool thread, when a state
+    /// message says the service may have saved (0.99.245), so ReloadLocal on the
+    /// window's thread only swaps it in.</summary>
+    public Action? PrefetchLocal { get; set; }
+    private int _prefetching, _prefetchAgain;
+
+    private void PrefetchSoon()
+    {
+        if (PrefetchLocal is not { } prefetch) return;
+        if (Interlocked.Exchange(ref _prefetching, 1) == 1) { Volatile.Write(ref _prefetchAgain, 1); return; }
+        ThreadPool.UnsafeQueueUserWorkItem(_ =>
+        {
+            try
+            {
+                do
+                {
+                    Volatile.Write(ref _prefetchAgain, 0);
+                    lock (_localGate) { try { prefetch(); } catch (Exception ex) { DiagnosticLog.LogException("PrefetchLocal", ex); } }
+                } while (Volatile.Read(ref _prefetchAgain) == 1);
+            }
+            finally { Volatile.Write(ref _prefetching, 0); }
+        }, null);
+    }
+
+    /// <summary>A round trip that took longer than this is recorded by member name
+    /// (0.99.245): the window's freezes the log called "unattributed" can then name
+    /// the call that waited on the service.</summary>
+    private const double SlowCallMs = 15;
 
     /// <summary>
     /// A call was refused because Protect settings is locked (stage 4c). The window
@@ -231,6 +261,7 @@ public class RemoteEngine : DispatchProxy, IDisposable
 
         var tcs = new TaskCompletionSource<EngineMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[msg.Id] = tcs;
+        long sent = Stopwatch.GetTimestamp();
         try
         {
             lock (_write) EngineWire.Write(_pipe!, msg);
@@ -241,7 +272,13 @@ public class RemoteEngine : DispatchProxy, IDisposable
             if (!done)
                 throw new TimeoutException($"the GunWall service did not answer {member} in {CallTimeout.TotalSeconds:0} s");
         }
-        finally { _pending.TryRemove(msg.Id, out _); }
+        finally
+        {
+            _pending.TryRemove(msg.Id, out _);
+            // Here, so a call that timed out or failed - the longest waits - is
+            // recorded as well.
+            if (Stopwatch.GetElapsedTime(sent).TotalMilliseconds > SlowCallMs) PerfMonitor.Record("Engine " + member, sent);
+        }
 
         var reply = tcs.Task.Result;
         if (reply.State != null) { ApplyState(reply.State, reply.StateSeq); Volatile.Write(ref _localStale, 1); }
@@ -275,8 +312,10 @@ public class RemoteEngine : DispatchProxy, IDisposable
                     ApplyState(m.State, m.StateSeq);
                     // The service may have saved (a timer, a prompt it decided): the
                     // window's profile copy is checked again on its next read. The
-                    // reload itself skips an unchanged file (0.99.221).
+                    // reload itself skips an unchanged file (0.99.221), and a changed
+                    // one is read ahead here, off the window's thread (0.99.245).
                     Volatile.Write(ref _localStale, 1);
+                    PrefetchSoon();
                 }
                 else if (m.Kind == "detected" && m.Detected != null)
                 {

@@ -520,7 +520,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             StartUpdateCheckLoop();
             _ = OfferFirstRunDownloadsAsync();
 
-            AboutText.Text = $"GunWall v0.99.244 - free, open-source, no telemetry. " +
+            AboutText.Text = $"GunWall v0.99.245 - free, open-source, no telemetry. " +
                              $"Your profile is saved at: {_firewall.ProfileFolder}";
 
             // Try event-driven detection (kernel net events). If it starts, it
@@ -892,6 +892,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         remote.EventContext = new System.Windows.Threading.DispatcherSynchronizationContext(Dispatcher);
         remote.LocalFallback = _engineLocal;
         remote.ReloadLocal = _engineLocal.ReloadStoreFromDisk;
+        remote.PrefetchLocal = _engineLocal.PrefetchStoreFromDisk;   // parsed off this thread (0.99.245)
         remote.Detected += r => ShowDetection(r, "background service");
         remote.Notice += n => Notify(n.Level, n.Title, n.Body, n.Category);
         remote.Disconnected += OnServiceLost;
@@ -4522,6 +4523,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private System.Windows.Threading.DispatcherTimer? _trimTimer;
     private bool _trimLogged;
 
+    private bool _trimmedSinceHidden;
+
     private void UpdateHiddenTrim()
     {
         if (OnScreen)
@@ -4538,7 +4541,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 // The first trim after hiding always runs; later ones only when memory
                 // has grown again (0.99.235) - a routine trim every 10 minutes took back
                 // pages the next snapshot needed and stalled it.
-                bool first = _trimTimer!.Interval < TimeSpan.FromMinutes(1);
+                bool first = !_trimmedSinceHidden;
+                _trimmedSinceHidden = true;
                 _trimTimer!.Interval = TimeSpan.FromMinutes(10);
                 if (!first && !MemoryTrim.WorthTrimming(MemoryTrim.WorkingSetMb(), MemoryTrim.WindowRepeatAboveMb)) return;
                 var (before, after) = MemoryTrim.Trim();
@@ -4549,7 +4553,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 }
             };
         }
-        _trimTimer.Interval = TimeSpan.FromSeconds(15);
+        // Two minutes hidden before the first trim (0.99.245; was 15 s). Trimming
+        // empties the working set to a few MB, and everything the window touches when
+        // it comes back is read in again: the 0.99.244 bundle's slow page switch and
+        // its 490 ms Applications rebuild each came on the first use after a trim. A
+        // quick trip to the tray now comes back to a warm window.
+        _trimmedSinceHidden = false;
+        _trimTimer.Interval = TimeSpan.FromMinutes(2);
         _trimTimer.Start();
     }
 
@@ -5798,8 +5808,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         PerfMonitor.Moment("page " + tag);
         _pagesShown.Add(tag);   // laid out now: not warmed ahead (0.99.244)
         long shown = Stopwatch.GetTimestamp();
+        // And by page (0.99.245): the totals said page switches cost 53 ms on average,
+        // not which pages.
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
-            new Action(() => PerfMonitor.Record("Nav_Checked+layout", shown)));
+            new Action(() => { PerfMonitor.Record("Nav_Checked+layout", shown); PerfMonitor.Record("Open " + tag, shown); }));
         PanelDashboard.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         UpdateGraphFrameHook();
         PanelFirewall.Visibility = tag == "Firewall" ? Visibility.Visible : Visibility.Collapsed;
@@ -6084,9 +6096,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // and on screen: made Hidden (measured and arranged, not drawn, takes no input)
     // for one layout pass, then Collapsed again. The pages share one grid cell of a
     // fixed size, so a page being laid out cannot move the one showing.
+    // Packets fourth (0.99.245): the 0.99.244 bundle's slow first visit was Packets.
     private static readonly string[] WarmOrder =
-        { "Firewall", "Traffic", "Connections", "Activity", "Settings", "Rules", "Security",
-          "Alerts", "Dns", "Packets", "Services", "Network", "Dashboard" };
+        { "Firewall", "Traffic", "Connections", "Packets", "Activity", "Settings", "Rules",
+          "Security", "Alerts", "Dns", "Services", "Network", "Dashboard" };
     private readonly HashSet<string> _pagesShown = new(StringComparer.Ordinal);
     private int _warmIndex;
     private System.Windows.Threading.DispatcherTimer? _warmTimer;
@@ -6094,7 +6107,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void WarmPagesSoon()
     {
         _warmTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.ApplicationIdle)
-        { Interval = TimeSpan.FromSeconds(4) };
+        // From 2 s, one page every 0.5 s (0.99.245; was 4 s and 0.7 s): every page is
+        // ready about 8 s after start-up, the most used in the first 4. A click in the
+        // first 2 s still lays its page out then. Idle priority keeps the warm-up
+        // behind anything the user does.
+        { Interval = TimeSpan.FromSeconds(2) };
         _warmTimer.Tick += (_, _) => WarmNextPage();
         _warmTimer.Start();
     }
@@ -6111,7 +6128,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void WarmNextPage()
     {
         if (_warmTimer == null) return;
-        _warmTimer.Interval = TimeSpan.FromMilliseconds(700);
+        _warmTimer.Interval = TimeSpan.FromMilliseconds(500);
         // Only while the window is on screen (a hidden window is not laid out) and
         // the map is still (a layout pass is a hitch in its motion).
         // Not while off screen: stopped, and started again when the window returns.
@@ -6130,6 +6147,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 // Only if still being warmed: a click may have shown it meanwhile.
                 if (page.Visibility == Visibility.Hidden) page.Visibility = Visibility.Collapsed;
                 PerfMonitor.Record("WarmNextPage+layout", started);
+                PerfMonitor.Record("Warm " + tag, started);   // by page (0.99.245)
             }));
             _pagesShown.Add(tag);
             return;

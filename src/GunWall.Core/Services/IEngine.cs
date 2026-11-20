@@ -129,14 +129,14 @@ public interface IEngine
     [EngineAccess(Access.ReadProfile)] string GetNote(string exePath);
     [EngineAccess(Access.Local)] AppAccessPolicy GetOrCreateAccessPolicy(string exePath);
     [EngineAccess(Access.ReadProfile)] IReadOnlyList<FirewallRule> GetRules();
-    [EngineAccess(Access.Read)] VtCacheEntry? GetVtCached(string sha256);
+    [EngineAccess(Access.ReadProfile)] VtCacheEntry? GetVtCached(string sha256);
     [EngineAccess(Access.Read)] bool GroupPrompts { get; }
     [EngineAccess(Access.Read)] bool HashesEnabled { get; }
     [EngineAccess(Access.Local)] int ImportProfile(string filePath);
     [EngineAccess(Access.Loosen)] int ImportWindowsFirewallRules();
     [EngineAccess(Access.ReadProfile)] bool IsAllowed(string exePath);
     [EngineAccess(Access.ReadProfile)] bool IsBlocked(string exePath);
-    [EngineAccess(Access.Read)] bool IsBlocklistOn(string key);
+    [EngineAccess(Access.ReadProfile)] bool IsBlocklistOn(string key);
     [EngineAccess(Access.Read)] bool IsBlocklistViaWfp(string key);
     [EngineAccess(Access.Read)] bool IsFirstRun { get; }
     [EngineAccess(Access.Read)] bool IsKnownApp(string exePath);
@@ -145,7 +145,7 @@ public interface IEngine
     // opened and froze the window for 330 ms (2026-11-16 17:23:26).
     [EngineAccess(Access.ReadProfile)] bool IsP2pBlocked(string exePath);
     [EngineAccess(Access.ReadProfile)] bool IsScopeBlocked(string exePath, string scope);
-    [EngineAccess(Access.Read)] bool IsServiceBlocked(string serviceName);
+    [EngineAccess(Access.ReadProfile)] bool IsServiceBlocked(string serviceName);
     [EngineAccess(Access.ReadProfile)] bool IsSilent(string exePath);
     [EngineAccess(Access.Read)] bool IsSnoozed { get; }
     [EngineAccess(Access.ReadProfile)] bool IsSystemRuleOn(string key);
