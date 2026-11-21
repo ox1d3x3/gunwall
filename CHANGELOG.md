@@ -15,6 +15,26 @@ All notable changes to GunWall are recorded here. Format follows
 
 ---
 
+## [0.99.246] — 2026-11-21
+
+### Fixed
+- Traffic map: uneven pacing of the download and upload streaks on high-refresh
+  monitors. The map held each drawn frame for a count of the frames WPF raised
+  rather than for a time, so a frame stayed on screen longer whenever a refresh
+  passed without one, and its estimate of the refresh rate, an average of the gaps
+  between frames, read a 240 Hz display as anything from 93 to 234 Hz. A frame is
+  now drawn when its time is due, to within half a refresh, and the refresh rate is
+  taken from the shorter gaps of the last second. A single slow frame no longer
+  halves the map's frame rate for eight seconds, and a frame is counted as late
+  against the map's own frame time rather than one refresh.
+
+### Added
+- Diagnostics: the Traffic map's line records how many frames WPF raised per
+  second, and a delayed frame is put down to the last timed operation of 2 ms or
+  more on the window's thread instead of "other".
+
+---
+
 ## [0.99.245] — 2026-11-20
 
 ### Changed

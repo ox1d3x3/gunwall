@@ -101,6 +101,7 @@ public static class PerfMonitor
             // the UI thread, and crediting a freeze to it would send an
             // optimisation after code that never blocked anything.
             if (onUi && Ms(d) >= 50) { _lastLongName = name; _lastLongTicks = d; _lastLongEnd = now; }
+            if (onUi && Ms(d) >= UiOpBlame) { _lastUiOp = name; _lastUiOpEnd = now; }
             if (Ms(d) >= SlowOpMs && Ms(now - _lastSlowLog) >= 5000) { _lastSlowLog = now; logSlow = true; }
         }
         if (logSlow)
@@ -232,11 +233,21 @@ public static class PerfMonitor
     // Its rate is over the time it was drawing, not the five minutes; with the
     // display's refresh and the divisor in use, and each late frame put down to what
     // the map did just before it - so the next bundle can say which cause is left.
-    private static long _mapFrames, _mapLate, _sMapFrames, _sMapLate;
+    private static long _mapFrames, _mapLate, _sMapFrames, _sMapLate, _mapTicks;
     private static double _mapWorst, _sMapWorst, _mapSeconds, _mapHz;
     private static int _mapDivisor;
     private static string _mapWorstAfter = "", _sMapWorstAfter = "";
+    /// <summary>The last operation measured on the window's thread that took at least
+    /// <see cref="UiOpBlame"/> ms, and when it ended: shorter ones cannot delay a frame
+    /// enough to be its cause.</summary>
+    private const double UiOpBlame = 2;
+    private static string _lastUiOp = "";
+    private static long _lastUiOpEnd;
     private static readonly Dictionary<string, int> MapLateBy = new(StringComparer.Ordinal);
+
+    /// <summary>A frame WPF raised while the map was drawing (0.99.246): set against
+    /// the display's refresh, it says whether frames are being skipped.</summary>
+    public static void RecordMapTick() => Interlocked.Increment(ref _mapTicks);
 
     /// <summary>A frame the map drew, <paramref name="seconds"/> after its last one.</summary>
     public static void RecordMapFrame(double seconds, double refreshHz, int divisor)
@@ -252,12 +263,17 @@ public static class PerfMonitor
     }
 
     /// <summary>A frame that came well after the display's refresh interval, and
-    /// what the map did just before it ("" when nothing of its own).</summary>
+    /// what the map did just before it ("" when nothing of its own). Nothing of its
+    /// own: put down to the last measured operation of 2 ms or more on the window's
+    /// thread that ended inside the gap (0.99.246), "other" when none did.</summary>
     public static void RecordMapGap(double ms, string after)
     {
-        string cause = string.IsNullOrEmpty(after) ? "other" : after;
+        long now = Stopwatch.GetTimestamp();
         lock (Gate)
         {
+            string cause = !string.IsNullOrEmpty(after) ? after
+                         : _lastUiOp.Length > 0 && Ms(now - _lastUiOpEnd) <= ms ? _lastUiOp
+                         : "other";
             _mapLate++; _sMapLate++;
             MapLateBy[cause] = MapLateBy.TryGetValue(cause, out int n) ? n + 1 : 1;
             if (ms > _mapWorst) { _mapWorst = ms; _mapWorstAfter = cause; }
@@ -347,6 +363,7 @@ public static class PerfMonitor
         int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
         long frames = Interlocked.Exchange(ref _frames, 0);
         long mapFrames = Interlocked.Exchange(ref _mapFrames, 0);
+        long mapTicks = Interlocked.Exchange(ref _mapTicks, 0);
         string map = "";
 
         string ops, lag;
@@ -361,6 +378,7 @@ public static class PerfMonitor
             {
                 string by = string.Join(", ", MapLateBy.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {kv.Value}"));
                 map = $" map[{mapFrames / Math.Max(1, _mapSeconds):F0}/s over {_mapSeconds:F0} s at {_mapHz:F0} Hz /{_mapDivisor}, " +
+                      $"raised {mapTicks / Math.Max(1, _mapSeconds):F0}/s, " +
                       $"{_mapLate} late" + (by.Length > 0 ? $" ({by})" : "") +
                       (_mapLate > 0 ? $", worst {_mapWorst:F0} ms after {_mapWorstAfter}" : "") + "]";
             }

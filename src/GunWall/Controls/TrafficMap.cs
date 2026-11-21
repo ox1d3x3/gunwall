@@ -33,8 +33,8 @@ public sealed class TrafficMapHoverEventArgs : EventArgs
 ///   anim     streaks, pulses and home's rings - every frame, nothing else, and
 ///            with nothing created per frame: lines and circles in cached pens
 /// The frame hook runs only while the map is on screen (Active), Windows' animation
-/// effects are on, and something is moving. It draws on every Nth refresh of the
-/// display - about 70 frames a second, each held for the same number of refreshes -
+/// effects are on, and something is moving. It draws once every N refreshes of the
+/// display - about 70 frames a second, each held for the same time -
 /// and at half that while recording a frame costs more than 4 ms (a slow or busy PC),
 /// so the map never takes a large share of the window's thread. Frames slower than
 /// 8 ms, and frames that came late, are recorded for the diagnostics bundle. The logic is TrafficMapModel
@@ -66,12 +66,13 @@ public sealed class TrafficMap : FrameworkElement
         return list.ToArray();
     });
 
-    /// <summary>The most frames a second the map draws (0.99.244). WPF raises a
-    /// frame per refresh of the display - 240 a second on a 240 Hz monitor - and the
-    /// map draws on every Nth one, N chosen from the measured refresh interval, so
-    /// every drawn frame is held for the same number of refreshes. 0.99.243 skipped
-    /// by elapsed time against 12.5 ms, which is exactly three refreshes at 240 Hz:
-    /// it drew after three or four by rounding, and the motion juddered.</summary>
+    /// <summary>The most frames a second the map draws (0.99.244). The map draws once
+    /// every N refreshes of the display, N chosen from the measured refresh interval,
+    /// so every drawn frame is held for the same time. Due by elapsed time to within
+    /// half a refresh (TrafficMapModel.DrawDue, 0.99.246): 0.99.243 compared against
+    /// the full period, which at 240 Hz sat on a refresh boundary and drew after three
+    /// or four by rounding; 0.99.244-245 counted the frames WPF raised, which held a
+    /// frame longer whenever WPF skipped a refresh.</summary>
     private const double TargetFps = 70;
     /// <summary>Without graphics acceleration (render tier 0: a remote session, a VM)
     /// WPF rasterises on the CPU, where the frame's real cost is on the render thread
@@ -88,6 +89,10 @@ public sealed class TrafficMap : FrameworkElement
     private const double HalfRateCost = 0.004;
     private const double FullRateCost = 0.0025;
     private const double SlowFrame = 0.008;
+    /// <summary>One second's frame gaps, for the refresh interval; preallocated so a
+    /// frame allocates nothing (500 Hz and above simply stop adding).</summary>
+    private readonly double[] _gaps = new double[512];
+    private int _gapCount;
 
     private readonly TrafficMapModel _model = new();
     private readonly VisualCollection _visuals;
@@ -99,7 +104,7 @@ public sealed class TrafficMap : FrameworkElement
     private bool _active, _hooked, _broken, _colorsRead;
     private TimeSpan _lastTick = TimeSpan.MinValue, _lastDrawn = TimeSpan.MinValue;
     private double _tickInterval = 1.0 / 60, _cost, _halfUntil, _divisorAt, _targetFps = TargetFps;
-    private int _divisor = 1, _ticks;
+    private int _divisor = 1;
     private bool _half;
     // Arrival flashes (0.99.244): home glows as downloads land, a destination
     // blinks as uploads reach it.
@@ -274,8 +279,8 @@ public sealed class TrafficMap : FrameworkElement
         if (want)
         {
             _lastTick = _lastDrawn = TimeSpan.MinValue;
-            _ticks = 0;
             _divisorAt = 0;
+            _gapCount = 0;
             _targetFps = (RenderCapability.Tier >> 16) == 0 ? SoftwareFps : TargetFps;
             CompositionTarget.Rendering += OnFrame;
         }
@@ -309,6 +314,7 @@ public sealed class TrafficMap : FrameworkElement
             // RenderingTime means the same frame.
             TimeSpan t = e is RenderingEventArgs r ? r.RenderingTime : _clock.Elapsed;
             if (t == _lastTick) return;
+            PerfMonitor.RecordMapTick();   // frames WPF raised, against the display's refresh
             double raw = _lastTick == TimeSpan.MinValue ? 0 : (t - _lastTick).TotalSeconds;
             _lastTick = t;
             double now = t.TotalSeconds;
@@ -317,16 +323,22 @@ public sealed class TrafficMap : FrameworkElement
             // frame that came well after it is a hitch (the window's thread was busy).
             // Recorded before the interval's own limit: a hitch of 100 ms or more is
             // the one most worth knowing about.
-            if (raw > _tickInterval * 2.5) PerfMonitor.RecordMapGap(raw * 1000, _lastWork);
-            if (raw > 0 && raw < 0.1) _tickInterval += (raw - _tickInterval) * 0.05;
+            // Late against the drawn period, not one refresh (0.99.246): with the true
+            // 4.2 ms interval at 240 Hz, a single skipped refresh would count.
+            if (raw > _tickInterval * Math.Max(2.5, _divisor * 2)) PerfMonitor.RecordMapGap(raw * 1000, _lastWork);
+            // The refresh interval is the lower quartile of the last second's gaps
+            // (0.99.246). An average read a 240 Hz display as 93-234 Hz, and the
+            // divisor changed from second to second with it.
+            if (raw > 0 && raw < 0.1 && _gapCount < _gaps.Length) _gaps[_gapCount++] = raw;
             if (now >= _divisorAt)
             {
                 _divisorAt = now + 1;
+                _tickInterval = TrafficMapModel.RefreshInterval(_gaps, _gapCount, _tickInterval);
+                _gapCount = 0;
                 _divisor = TrafficMapModel.FrameDivisor(_tickInterval, _targetFps) * (_half ? 2 : 1);
             }
-            if (_lastDrawn != TimeSpan.MinValue && ++_ticks < _divisor) return;
-            _ticks = 0;
             double since = _lastDrawn == TimeSpan.MinValue ? 0 : (t - _lastDrawn).TotalSeconds;
+            if (_lastDrawn != TimeSpan.MinValue && !TrafficMapModel.DrawDue(since, _divisor, _tickInterval)) return;
             double dt = Math.Min(MaxStep, since);
             _lastDrawn = t;
 
@@ -340,7 +352,9 @@ public sealed class TrafficMap : FrameworkElement
             // something else), half the rate for a while: a steady half rate looks
             // smoother than an uneven full one, and halves the map's share.
             double cost = Stopwatch.GetElapsedTime(started).TotalSeconds;
-            _cost += (cost - _cost) * 0.1;
+            // Capped (0.99.246): one frame stretched by a garbage collection moved
+            // the average past HalfRateCost on its own and halved the rate for 8 s.
+            _cost += (Math.Min(cost, SlowFrame) - _cost) * 0.1;
             bool half = _half;
             if (!_half && _cost > HalfRateCost) { _half = true; _halfUntil = now + 8; }
             else if (_half && now > _halfUntil && _cost < FullRateCost) _half = false;

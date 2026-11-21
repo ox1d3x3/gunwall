@@ -279,6 +279,30 @@ public sealed class TrafficMapModel
         return Math.Clamp((int)Math.Round(1 / (refreshSeconds * targetFps)), 1, 8);
     }
 
+    /// <summary>The display's refresh interval from one second's frame gaps: their
+    /// lower quartile (0.99.246). An average of the gaps read one 240 Hz display as
+    /// 93-234 Hz: late frames, and refreshes WPF did not raise a frame for, both
+    /// lengthen gaps. The lower quartile ignores both while they are a minority, and
+    /// stays put when gaps alternate between two lengths (a median there flips with
+    /// the count). Sorts gaps[0..count) in place. Fewer than 8 gaps:
+    /// <paramref name="previous"/> stands.</summary>
+    public static double RefreshInterval(double[] gaps, int count, double previous)
+    {
+        if (count < 8 || count > gaps.Length) return previous;
+        Array.Sort(gaps, 0, count);
+        return gaps[count / 4];
+    }
+
+    /// <summary>Whether to draw now, <paramref name="since"/> seconds after the last
+    /// drawn frame (0.99.246): once the divisor's period is due, to within half a
+    /// refresh. By elapsed time, not by counting frames: a count held a drawn frame
+    /// longer whenever WPF skipped a refresh. Half a refresh short of the period, so
+    /// a steady display still draws on exactly every Nth refresh (0.99.243 compared
+    /// against the full period, which at 240 Hz sat on a refresh boundary and drew
+    /// after three or four by rounding).</summary>
+    public static bool DrawDue(double since, int divisor, double refreshSeconds) =>
+        since >= (divisor - 0.5) * refreshSeconds;
+
     /// <summary>Streaks on a lane: one per decade of rate, 1 to 6.</summary>
     public static int StreakCount(double bytesPerSec)
     {
